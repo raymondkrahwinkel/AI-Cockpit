@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
@@ -30,6 +31,35 @@ internal sealed class GitHubWorkflowClient
             root.TryGetProperty("url", out var url) ? url.GetString() ?? string.Empty : string.Empty,
             root.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.String ? body.GetString() : null,
             issue.Repository);
+    }
+
+    /// <summary>Reads an issue's comments (<c>gh issue view --json comments</c>), normalized to <see cref="TrackerComment"/> (GitHub's <c>createdAt</c> is an ISO-8601 string).</summary>
+    public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(GitHubIssueReference issue, CancellationToken cancellationToken)
+    {
+        var json = await _RunAsync(
+            ["issue", "view", issue.Number.ToString(), "--repo", issue.Repository, "--json", "comments"],
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+        var comments = new List<TrackerComment>();
+        if (!document.RootElement.TryGetProperty("comments", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return comments;
+        }
+
+        foreach (var comment in array.EnumerateArray())
+        {
+            var login = comment.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object && author.TryGetProperty("login", out var loginValue)
+                ? loginValue.GetString() ?? string.Empty
+                : string.Empty;
+            var body = comment.TryGetProperty("body", out var bodyValue) && bodyValue.ValueKind == JsonValueKind.String ? bodyValue.GetString() ?? string.Empty : string.Empty;
+            var created = comment.TryGetProperty("createdAt", out var createdValue) && createdValue.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(createdValue.GetString(), out var timestamp)
+                ? timestamp
+                : DateTimeOffset.MinValue;
+            comments.Add(new TrackerComment(login, body, created));
+        }
+
+        return comments;
     }
 
     public Task AssignToMeAsync(GitHubIssueReference issue, CancellationToken cancellationToken) =>

@@ -28,7 +28,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 ///   on the control channel so the CLI routes permission prompts here rather than to its interactive/MCP path.</item>
 /// </list>
 /// F-C1 caveat mirrors the rest of this plugin: no logged-in <c>claude</c> CLI exists in this sandbox, so the live end
-/// of this round-trip (the CLI actually emitting <c>can_use_tool</c> for this spawn shape) is Raymond's eyeball item.
+/// of this round-trip (the CLI actually emitting <c>can_use_tool</c> for this spawn shape) needs a manual eyeball check.
 /// The parse/build round-trip below is fully unit-tested; if a field name ever drifts, it changes in this one file.
 /// </remarks>
 internal static class ClaudeControlProtocol

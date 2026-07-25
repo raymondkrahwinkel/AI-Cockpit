@@ -238,14 +238,9 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private void _OpenInBrowser(LinkedIssue link)
     {
         var url = YouTrackClient.BuildIssueUrl(link.Instance.InstanceUrl, link.Issue.IdReadable);
-
-        try
+        if (YouTrackBrowser.Open(url) is { } failure)
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception exception)
-        {
-            _host.ShowToast($"Could not open the browser: {exception.Message}", PluginToastSeverity.Error);
+            _host.ShowToast(failure, PluginToastSeverity.Error);
         }
     }
 }

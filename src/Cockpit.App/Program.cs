@@ -43,6 +43,16 @@ sealed class Program
             return;
         }
 
+        // Headless dictation worker (AC-174): the transcription child the running cockpit spawns so Whisper's native
+        // runtime — which can abort() and take a process down — loads here, isolated, instead of in the desktop. Same
+        // reason and same placement as the calibration child above: before the single-instance guard, Avalonia and DI,
+        // none of which a transcription worker should pay for. A native crash in here kills only this child.
+        if (Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args))
+        {
+            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessDictation.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
+            return;
+        }
+
         // Strip everything the host owns from this process's own environment before Avalonia starts or anything
         // spawns a child: the agent-session markers of a Claude Code session the cockpit may have been launched
         // from (else a spawned session adopts the parent's id — AC-42), the host terminal's self-identification
@@ -204,6 +214,26 @@ sealed class Program
         // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
+
+        // Global UI-thread safety net: a plugin body — or any dispatcher work — that throws while rendering must never
+        // take the whole cockpit down with it (a render exception in one workspace was tearing the process down). Log it
+        // and mark it handled so the app keeps running: the surface that threw fails on its own, every other session,
+        // terminal and workspace survives. A genuinely fatal condition still ends the process through other paths; this
+        // only stops a recoverable UI exception from being terminal.
+        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
+        {
+            var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
+            if (logger is not null)
+            {
+                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unhandled UI-thread exception caught by the global net; the cockpit stays up.\n{exceptionEvent.Exception}");
+            }
+
+            exceptionEvent.Handled = true;
+        };
 
         try
         {

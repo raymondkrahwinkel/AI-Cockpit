@@ -63,6 +63,13 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
     /// </summary>
     public Func<Task>? LockAction { get; set; }
 
+    /// <summary>
+    /// Gives the unlock screen the keyboard back once the operator is on their own desktop again (AC-187). Supplied by
+    /// <c>App</c> like <see cref="LockAction"/>, because the window is the view layer's. Null until wired — the screen
+    /// then simply stays as it was shown.
+    /// </summary>
+    public Action? RestoreFocusAction { get; set; }
+
     /// <summary>Subscribes to the monitor and registers it with the OS. Safe to call once; a second call is a no-op.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -73,10 +80,13 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
 
         _started = true;
         _monitor.Locked += OnLocked;
+        _monitor.Unlocked += OnUnlocked;
         await _monitor.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void OnLocked(object? sender, EventArgs e) => _ = HandleLockAsync();
+
+    private void OnUnlocked(object? sender, EventArgs e) => HandleUnlock();
 
     /// <summary>
     /// The gate, made awaitable so the tests can drive it directly. Returns true when this event actually locked the
@@ -136,11 +146,40 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
         }
     }
 
+    /// <summary>
+    /// The other half of the lock (AC-187): the screen went up while the OS was still on its own lock desktop, where a
+    /// window cannot be activated or typed into. This is the first moment the operator's desktop is back, so it is the
+    /// moment to hand the unlock screen the keyboard — without it the modal sits there unfocusable and the only way out
+    /// is killing the app. Returns true when focus was actually handed back, which is what the tests assert.
+    /// </summary>
+    internal bool HandleUnlock()
+    {
+        // Only for a lock of ours that is still up. An unlock event without one (the feature is off, the operator
+        // never locked the app, the screen was already dismissed) is not ours to act on.
+        if (RestoreFocusAction is null || Volatile.Read(ref _locking) == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            RestoreFocusAction();
+
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Restoring focus to the unlock screen after the OS unlocked failed.");
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (_started)
         {
             _monitor.Locked -= OnLocked;
+            _monitor.Unlocked -= OnUnlocked;
         }
 
         _monitor.Dispose();

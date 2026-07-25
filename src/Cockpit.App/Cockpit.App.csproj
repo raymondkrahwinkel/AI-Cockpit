@@ -35,16 +35,15 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
-    <!-- TTY-mode experiment (#9): Exclr8.Terminal (MIT; NuGet), a pure Avalonia terminal-emulator
-         control with no PTY plumbing baked in — Write(bytes) feeds pty output in, the Input/Output
-         events carry bytes the terminal wants written back (user keystrokes and protocol replies
-         alike), Resized reports cell-grid changes. Verified pty-agnostic (no seam that wants to own
-         the process), so the cockpit still hosts the pty itself (ConPtyProcess on Windows,
-         PortaPtyProcess on Linux/macOS, both with our profile-aware env injection of
-         CLAUDE_CONFIG_DIR + TERM) and renders into this control. Replaced the earlier in-tree
-         Cockpit.Terminal fork of SvcSystems.UI.Terminal (whose renderer had a cell-width/glyph-advance
-         coupling bug); that fork has since been removed now the Exclr8 renderer is the settled path. -->
-    <PackageReference Include="Exclr8.Terminal" Version="1.0.7" />
+    <!-- TTY-mode experiment (#9): Exclr8.Terminal (MIT), a pure Avalonia terminal-emulator control with
+         no PTY plumbing baked in — Write(bytes) feeds pty output in, the Input/Output events carry bytes
+         the terminal wants written back (user keystrokes and protocol replies alike), Resized reports
+         cell-grid changes. Verified pty-agnostic (no seam that wants to own the process), so the cockpit
+         still hosts the pty itself (ConPtyProcess on Windows, PortaPtyProcess on Linux/macOS, both with
+         our profile-aware env injection of CLAUDE_CONFIG_DIR + TERM) and renders into this control.
+         Vendored from source under third_party/ (see that project) instead of the NuGet package: 1.0.7 is
+         the last published release, and the renderer's glyph-drift (AC-66) and reflow/cols (AC-129) bugs
+         are fixed in-tree there — a ProjectReference below. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
   </ItemGroup>
@@ -53,6 +52,8 @@
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <!-- Vendored terminal renderer (MIT), patched in-tree — see third_party/Exclr8.Terminal. -->
+    <ProjectReference Include="..\..\third_party\Exclr8.Terminal\Exclr8.Terminal.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -98,6 +99,11 @@
          the box, and it exercises the workspace-type SDK — a plugin drawing a whole workspace with a real host
          session embedded in it — from a real plugin, the way UsageTrend exercises the widget SDK. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\Cockpit.Plugin.ExampleWorkspace.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Autopilot (AC-94, skeleton AC-149): bundled so its workspace and settings are there out of the box; it
+         registers a plugin workspace type through the AC-122 SDK. The run flow lands in later sub-tickets. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
     <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
@@ -170,6 +176,16 @@
         <LogicalName>bundled-plugins/example-workspace/plugin.json</LogicalName>
       </EmbeddedResource>
 
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll">
+        <LogicalName>bundled-plugins/autopilot/Cockpit.Plugin.Autopilot.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json">
+        <LogicalName>bundled-plugins/autopilot/Cockpit.Plugin.Autopilot.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json">
+        <LogicalName>bundled-plugins/autopilot/plugin.json</LogicalName>
+      </EmbeddedResource>
+
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll">
         <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.dll</LogicalName>
       </EmbeddedResource>
@@ -199,6 +215,9 @@
       <ExampleWorkspaceFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll;
                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json;
                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json" />
+      <AutopilotFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll;
+                              $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json;
+                              $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json" />
       <ClaudeProviderFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json" />
@@ -208,6 +227,7 @@
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-workspace" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(OutDir)bundled-plugins\autopilot" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a

@@ -35,6 +35,10 @@
     <!-- Extracts the .tar.bz2 SupertonicTTS model archive sherpa-onnx's model releases ship as (the ONNX graphs +
          tts.json + unicode_indexer.bin) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
     <PackageReference Include="SharpCompress" Version="0.49.1" />
+    <!-- Rasterises an SVG project logo to a PNG when it is stored (AC-162). The core Svg.Skia, not its Avalonia
+         binding: that one still tracks Avalonia 11 while this app is on 12, whereas this needs only SkiaSharp —
+         the same 3.119 Avalonia already brings — so the logo path carries no UI-framework version coupling. -->
+    <PackageReference Include="Svg.Skia" Version="5.1.1" />
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->

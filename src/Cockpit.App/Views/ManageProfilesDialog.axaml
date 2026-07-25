@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -195,6 +196,15 @@
                         </DockPanel>
                     </StackPanel>
 
+                    <!-- Standing instructions (AC-142): who this profile is and where its knowledge lives. Appended to
+                         the provider's own system prompt, never replacing it, so it works for every provider. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="System prompt" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="88"
+                                 PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
+                    </StackPanel>
+
                     <!-- A memory ceiling for the session CLI. Off unless someone types a number, and the warning is
                          not decoration: a capped session that needs more memory than the cap dies mid-turn. -->
                     <StackPanel Spacing="4">
@@ -240,7 +250,7 @@
                                          AcceptsReturn="True"
                                          MinHeight="60"
                                          TextWrapping="NoWrap"
-                                         PlaceholderText="/home/raymond/RiderProjects/Eveworkbench&#x0a;one directory per line"/>
+                                         PlaceholderText="/home/you/projects/webshop&#x0a;one directory per line"/>
                                 <TextBlock Text="A delegated task may only run in these directories, and in what lies under them. Empty means a task may not choose a directory at all — so delegation can never reach an arbitrary part of the disk."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                             </StackPanel>
@@ -294,6 +304,19 @@
                                       IsChecked="{Binding MayDelegateFurther}"
                                       ToolTip.Tip="Off by default: without this, a delegated task cannot hand work on again, so a chain of agents cannot start"/>
                         </StackPanel>
+                    </StackPanel>
+
+                    <!-- Default view (AC-138): the reading level a new SDK session under this profile opens with —
+                         provider-neutral, since any profile can launch an SDK session, so it sits outside the
+                         Claude-only session-defaults block below. Has no effect on a TTY session, which has no levels. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="DEFAULT VIEW" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
 
                     <!-- Session defaults + login are Claude-CLI concepts; a local provider has no permission
@@ -376,18 +399,12 @@
                         <CheckBox Content="Pre-select MCP servers for this profile"
                                   IsChecked="{Binding RestrictMcpServers}"
                                   ToolTip.Tip="Off: a new session ticks every enabled server (and future ones). On: only the servers ticked below."/>
-                        <StackPanel Spacing="4" IsVisible="{Binding RestrictMcpServers}">
-                            <TextBlock Text="Ticked servers are pre-selected for every new session under this profile; each can still be changed when a session is started."
-                                       FontSize="11" TextWrapping="Wrap"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                            <ItemsControl ItemsSource="{Binding McpServers}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
+                        <controls:McpServerChecklist IsVisible="{Binding RestrictMcpServers}"
+                                                     Servers="{Binding McpServers}"
+                                                     Hint="Ticked servers are pre-selected for every new session under this profile; each can still be changed when a session is started."
+                                                     TokenSummary="{Binding McpToolTokenSummary}"
+                                                     ShowTokenSummary="{Binding HasMcpTokenSummary}"
+                                                     RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
                     </StackPanel>
 
                     <!-- Per-profile environment variables (AC-22), injected into every session spawned under this

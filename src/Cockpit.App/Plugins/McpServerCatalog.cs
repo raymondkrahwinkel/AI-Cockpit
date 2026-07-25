@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions.Mcp;
 
@@ -16,11 +17,24 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 internal sealed class McpServerCatalog(
     IMcpServerStore store,
+    IProjectStore projectStore,
     IEnumerable<IPluginMcpProvider> pluginProviders,
     IEnumerable<ICockpitInternalMcpProvider> internalProviders,
     ILogger<McpServerCatalog> logger)
     : IMcpServerCatalog, ISingletonService
 {
+    public async Task<IReadOnlyList<McpServerConfig>> GetServersForProjectAsync(string? projectId, CancellationToken cancellationToken = default)
+    {
+        var servers = await GetServersAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(projectId))
+        {
+            return servers;
+        }
+
+        var projects = await projectStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return projects.Find(projectId)?.McpOverlay.ApplyTo(servers) ?? servers;
+    }
+
     public async Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default)
     {
         var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);

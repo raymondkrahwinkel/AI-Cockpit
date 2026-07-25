@@ -91,8 +91,9 @@ internal sealed class PluginManager(
     // A plugin discovery decided not to load leaves no other trace — the loop simply skips it — so a provider that
     // silently vanished (a Claude update that dropped to needs-consent, an abstractions mismatch) became an
     // unexplained "no such provider" downstream with nothing in the log to explain it. This is that breadcrumb.
-    // The refused decisions (abstractions/host) are also recorded for the plugin manager to surface; the everyday
-    // ones (disabled, awaiting consent) are a log line only — the manager already shows those states.
+    // The refused decisions (abstractions/host) and awaiting-consent are also recorded for the startup banner and
+    // plugin manager to surface (AC-208 added the latter); disabled is a log line only — the manager already shows
+    // that state, and an operator who disabled a plugin does not need reminding.
     private void _NoteSkipped(DiscoveredPlugin candidate)
     {
         switch (candidate.Decision)
@@ -121,6 +122,9 @@ internal sealed class PluginManager(
                 logger.LogInformation(
                     "Plugin {PluginId} is awaiting approval (new, or its bytes changed since you approved it) and was not loaded until you approve it in Plugin Manager.",
                     candidate.FolderId);
+                // AC-208: also register it, so the startup banner and the plugin-store badge can count it — the
+                // log line alone left this state invisible until the operator happened to open Plugin Manager.
+                diagnostics.RecordPendingApproval(candidate.FolderId, candidate.Manifest.Name);
                 break;
 
             case PluginLoadDecision.Disabled:

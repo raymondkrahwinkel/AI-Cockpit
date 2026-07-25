@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:projects="using:Cockpit.Core.Projects"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ProjectsDialog"
+        x:DataType="vm:ProjectsViewModel"
+        Title="Projects"
+        Width="720" Height="620" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:ProjectsViewModel/>
+    </Design.DataContext>
+
+    <!-- Projects manage themselves in their own window rather than as a tab in Options (Raymond, 2026-07-24):
+         they are not a setting of the cockpit but the work it is pointed at, and where they come from is about to
+         widen — a shared Depot environment as well as this machine. A tab inside the options tree would have to be
+         unpicked again the moment that lands. -->
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1" Padding="18,14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Projects" FontSize="18" FontWeight="SemiBold"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="What your sessions work on: a folder, the profile that starts by default, and the servers they get."
+                           FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <Button Content="New project…" Classes="Accent" Command="{Binding AddProjectCommand}"/>
+                    <Button Content="Edit…" Command="{Binding EditProjectCommand}"/>
+                    <Button Content="Remove" Command="{Binding RemoveProjectCommand}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Content="Close" Click="OnClose"/>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="18,16,18,24" Spacing="12">
+                <StackPanel Spacing="8" IsVisible="{Binding !HasProjects}" Margin="0,24,0,0">
+                    <TextBlock Text="No projects yet" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <TextBlock MaxWidth="420" TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                               HorizontalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Text="A project remembers the folder you work in, who works on it and what it may reach — so starting work on it is one click, every time."/>
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="projects:Project">
+                            <!-- A row per project, showing what it is rather than only its name: the logo it will
+                                 carry on its card, what it is for, and where its files and memory live. -->
+                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="{StaticResource CockpitPanelRadius}"
+                                    Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    PointerPressed="OnProjectPressed" DoubleTapped="OnProjectDoubleTapped"
+                                    Cursor="Hand">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <controls:ProjectLogoBadge Grid.Column="0" Size="38" Margin="0,0,12,0"
+                                                               VerticalAlignment="Top"
+                                                               LogoPath="{Binding LogoPath}"
+                                                               ProjectName="{Binding Name}"
+                                                               WellBackground="{StaticResource CockpitPanelBgBrush}"/>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <TextBlock Text="{Binding SourceDirectory}" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <TextBlock Text="{Binding MemoryRef, StringFormat='Memory: {0}'}" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding MemoryRef, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

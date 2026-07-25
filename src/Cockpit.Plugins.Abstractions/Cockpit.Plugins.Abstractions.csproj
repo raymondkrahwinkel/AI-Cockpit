@@ -104,7 +104,80 @@
          register its own full-surface workspace type, owning the whole body and optionally embedding a live host
          session. Both host members are default-implemented (no-op / empty), so existing hosts and test fakes keep
          compiling. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.20.0</Version>
+    <!-- 1.21.0 (#AC-180): added EmbeddedSessionRequest.AppendSystemPrompt and WellKnownPluginSessionOptions.AppendSystemPrompt
+         — the host folds a hidden per-session system prompt into the launch options map so an embedded run (Autopilot's
+         CEO) is briefed at start rather than through a visible turn, and each provider driver applies it its own way
+         (a CLI's append-system-prompt flag / Codex's developerInstructions / a leading system message for a local model).
+         Both are additions a driver reads only if it wants to; nothing breaks. Additive API — still a minor; the major
+         and abstractionsVersion stay 1. -->
+    <!-- 1.22.0 (#AC-174): added IWorkspaceContext.Closed (raised once when a workspace is really closed, not on a mere
+         tab-switch, so a body can cancel a long-running job like Autopilot's autonomous run) and
+         PluginProfileInfo.ModelSuggestions (host-supplied per-profile model list for a picker, since a plugin cannot
+         tell a Claude profile from a local one on the provider name alone). Both additive — a default no-op event and
+         an init-property with a default — so nothing breaks. Still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.23.0 (#AC-174): added IEmbeddedSession.Completion (a task that completes when an embedded session ends, so an
+         embedder awaiting the session — Autopilot's step wait — unblocks instead of hanging when the host ends it) and
+         PluginSessionCapabilities.ConfinesFileAccessToWorkingDirectory (whether a provider's file tools stay in the
+         session working directory, so the host can refuse an isolate-in-worktree run on a provider that cannot confine
+         them rather than let it edit the operator's real checkout) and PluginProfileInfo.RunsLocally (host-supplied
+         cost signal — a local free model vs a paid hosted API — so Autopilot's CEO can pick the cheapest-adequate model
+         per step), plus IEmbeddedSession.SetInputEnabled and EmbeddedSessionRequest.StartWithInputDisabled (an
+         autonomous embedded run starts with its composer off so the operator does not type into a self-driving session,
+         and re-enables it to intervene). Completion and SetInputEnabled are new interface members, but no plugin
+         implements IEmbeddedSession — the host hands it out — so nothing breaks; the info/request additions are
+         init-properties with defaults. Additive in practice — still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.24.0 (#AC-174): added ICockpitHost.DetectGitDirectoryStatusAsync (with the GitDirectoryStatus enum) so a
+         plugin can tell up front whether a working directory is a git repository — Autopilot isolates each step in a
+         repo but runs an admin task in a plain folder without isolation, rather than failing at the first step — and
+         GetRememberedWorkingPathsAsync/RememberWorkingPathAsync (with PluginRememberedWorkingPaths) so a plugin that
+         asks the operator to name a working directory offers the same pinned/recent folders as the New-session quick-pick.
+         The status enum defaults to Unknown (fail-closed: treat as needing isolation) and both host members are
+         default-implemented (Unknown / Empty / no-op), so existing hosts and test fakes keep compiling. Additive API —
+         still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.25.0 is the single Autopilot-release minor that folds in four additive groups (AC-189, AC-190, AC-195 landed
+         on ICockpitHost.cs / PluginSessionCapabilities.cs / IEmbeddedSession.cs without touching this Version; AC-202
+         carried the one bump). Nothing was removed or changed, so the major and abstractionsVersion stay 1.
+         - AC-189: ICockpitHost.RegisterAutopilotTemplate (default no-op) plus the PluginAutopilotTemplate /
+           RegisteredAutopilotTemplate records — a plugin contributes a reusable Autopilot run template.
+         - AC-190: PluginSessionCapabilities.ConfinesViaPermissionsOnly (init, default false) — a provider marks that its
+           worktree confinement rests on its permission system (Claude) rather than an OS sandbox, so the isolation gate
+           can vouch a permission-engaged mode and refuse a bypass mode.
+         - AC-195: IEmbeddedSession.IsBusy (default false) and BusyChanged (default no-op event) — an embedder lights or
+           clears a "working" indicator; no plugin implements IEmbeddedSession (the host hands it out) so nothing breaks.
+         - AC-202: the TrackerWorkStage enum (a tracker-neutral point in a consumer's work lifecycle) and
+           ITrackerProvider.SuggestStageName (default null → no auto-mapping), which maps it to the tracker's own stage
+           name so Autopilot moves a source issue automatically at run-start and merge-ready without hardcoding any
+           tracker's vocabulary. An existing provider keeps compiling and loading; it simply is not auto-moved until it
+           opts in.
+         All four are additions (new types, init-properties with defaults, or default-implemented members) — a minor. -->
+    <!-- 1.26.0 is the Autopilot live-run minor that folds in three additive groups (AC-212, AC-215, AC-216). Nothing
+         was removed or changed, so the major and abstractionsVersion stay 1.
+         - AC-212: ITrackerProvider.ReadToolMcpServerNames (default empty) — the MCP servers hosting a tracker's read-only
+           tools, which a source-triggered plan scopes the planning CEO to so it can read the issue and pull an epic's
+           children, while the tracker's write tools stay out of planning. A provider that reads via a CLI (GitHub via gh)
+           contributes none and keeps the default.
+         - AC-215: EmbeddedSessionRequest.PreApprovedTools (init, default empty) and PreApproveAllTools (init, default
+           false) — an autonomous run's own control tools pre-authorized, or the "worktree is the boundary" all-tools
+           auto-approval an isolated self-driving run opts into, so it does not stall on a permission prompt it cannot
+           answer; plus IEmbeddedSession.Activity (default no-op event) — the tool-progress signal an embedder resets its
+           per-step stall deadline on. No plugin implements IEmbeddedSession (the host hands it out), so nothing breaks.
+         - AC-216: PluginAutopilotTemplate.DeliversPullRequest (init, default false) — whether a template is a code run
+           that must end with a merge-ready pull request, carried to the run's finalizer. An existing template omits it
+           and is treated as administrative.
+         All three are additions (a default-implemented member, init-properties with defaults, a default no-op event) — a minor. -->
+    <!-- 1.27.0 (AC-229): usage signals — PluginUsageSignal / PluginUsageSignalKind / PluginUsageReading, plus
+         TtyProviderRegistration.UsageSignals + ReadUsage and SessionProviderRegistration.UsageSignals. A provider
+         declares what its sessions can run out of, how full is worth mentioning, and (TTY) how to read its own
+         statusline snapshot — so the host can warn on it without carrying any provider's format. All init-only with
+         empty/null defaults: an already-compiled plugin keeps its constructors and simply declares no signals, which
+         reads as "measures nothing" rather than as an error. Additions only — a minor; major and abstractionsVersion
+         stay 1.
+         Also in 1.27.0 (AC-296): ICockpitHost.CreateMarkdownView — renders markdown the way the transcript does, so a
+         plugin dialog showing an issue description gets the host's look without carrying a parser. A default interface
+         method returning the raw text in a wrapping SelectableTextBlock, which is what every plugin rendered before the
+         seam existed: an already-compiled plugin and a test fake keep working unchanged. Additive, so it folds into
+         this same minor; abstractionsVersion stays 1. -->
+    <Version>1.27.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
@@ -113,9 +186,20 @@
     <Company>Krahwinkel-IT</Company>
     <Copyright>Copyright (c) 2026 Raymond Krahwinkel / Krahwinkel-IT</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- The package is handed out as a release asset, so its readme is the only usage instruction that travels
+         with the file. It is what a feed would render as the package page, and it is what an author who opens
+         the .nupkg finds — hence the compile-only reference rule and the two version gates are in it, not just
+         in the repo's SDK guide. -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/docs/plugins/PLUGIN-SDK.md</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/raymondkrahwinkel/AI-Cockpit</RepositoryUrl>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />

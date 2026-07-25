@@ -55,6 +55,26 @@ public class CockpitInternalMcpProviderTests
     }
 
     [Fact]
+    public async Task EndpointHost_ProjectsTheInternalFlag_SoTheFilterCanHideSpawnScopedEndpoints()
+    {
+        await using var host = new CockpitMcpEndpointHost(
+            endpoints: [],
+            services: new ServiceCollection().BuildServiceProvider(),
+            authKey: new McpAuthKey(),
+            keyring: new SessionMcpKeyring(),
+            loggerFactory: NullLoggerFactory.Instance);
+
+        // An ordinary endpoint is not internal; an internal-only one (AC-204, e.g. the Autopilot CEO/step tools)
+        // carries the flag through to the fan-out's McpServerConfig so the user-facing selection can hide it.
+        await host.MountAsync("cockpit-public", new ProbeTools(), isEnabled: () => true);
+        await host.MountAsync("cockpit-private", new ProbeTools(), isEnabled: () => true, isInternal: true);
+
+        var servers = host.GetServers();
+        servers.Single(server => server.Name == "cockpit-public").Internal.Should().BeFalse();
+        servers.Single(server => server.Name == "cockpit-private").Internal.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Orchestrator_LoadsTheToggleAtStartup_ThenFlipsAndPersistsOnSet()
     {
         var store = Substitute.For<IDelegationSettingsStore>();

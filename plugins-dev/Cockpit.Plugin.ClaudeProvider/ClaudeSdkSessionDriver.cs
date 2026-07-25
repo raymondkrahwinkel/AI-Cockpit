@@ -18,7 +18,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// control channel, and every tool needing approval arrives as a <c>can_use_tool</c> control_request which this driver
 /// surfaces as <see cref="PluginPermissionRequested"/> and answers with a control_response — the exact same in-band
 /// shape Codex's app-server route uses for <c>item/*/requestApproval</c>. No logged-in <c>claude</c> exists in this
-/// sandbox, so the live end (the CLI emitting <c>can_use_tool</c> for this spawn) is Raymond's eyeball item; the
+/// sandbox, so the live end (the CLI emitting <c>can_use_tool</c> for this spawn) needs a manual eyeball check; the
 /// turn-taking and the parse/respond round-trip are unit-tested against a fake subprocess.
 /// </remarks>
 internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
@@ -78,6 +78,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         SupportsLiveModelSwitch = true,
         SupportsPermissionModeSwitch = true,
         SupportsEnvVars = true,
+        // Claude spawns in the session's working directory and edits with cwd-bound native tools, so an isolated
+        // embedded run (Autopilot worktree) stays inside its worktree (AC-174).
+        ConfinesFileAccessToWorkingDirectory = true,
     };
 
     public string? SessionId => _sessionId;
@@ -128,7 +131,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // operator's cockpit-configured servers.
         _mcpConfigPath = mcpServers is { Count: > 0 } servers ? ClaudeMcpConfig.Write(servers) : null;
 
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, mcpConfigPath: _mcpConfigPath);
+        // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
+        // (Autopilot's CEO). Applied at start through --append-system-prompt, so it needs no post-start turn.
+        var appendSystemPrompt = _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null);
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPrompt: appendSystemPrompt, mcpConfigPath: _mcpConfigPath);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the

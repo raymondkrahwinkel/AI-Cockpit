@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
@@ -38,6 +40,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     private string _defaultWorkingDirectory;
 
     /// <summary>
+    /// Standing instructions every session under this profile starts with (AC-142) — who it is and where its
+    /// knowledge lives ("you are Olaf; look yourself up in the Depot MCP"). Appended to the provider's own system
+    /// prompt, never replacing it. Empty means none.
+    /// <para>
+    /// Deliberately not called <c>SystemPrompt</c>: that name is already taken in this editor by the local-LLM
+    /// provider config's own field (Ollama/LM Studio), which reaches only those two providers. This one is the
+    /// profile's, and rides the append-system-prompt option every provider honours.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    private string _profileSystemPrompt;
+
+    /// <summary>
     /// Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
     /// restriction: a New session ticks every enabled server, as before. On reveals <see cref="McpServers"/> and
     /// persists exactly the ticked ones, so a project profile need not re-toggle them each time.
@@ -63,6 +78,13 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     [ObservableProperty]
     private EffortOption _selectedEffort;
+
+    /// <summary>The three SDK reading levels (AC-138) offered by the "Default view" picker; provider-neutral, since any profile can launch an SDK session.</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    /// <summary>The reading level a new SDK session under this profile opens with (AC-138) — the profile's "Default view".</summary>
+    [ObservableProperty]
+    private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
 
     /// <summary>Whether a session under this profile starts with "allow all tools" already on (#26) — only meaningful for a local provider, which gates tool calls per-call rather than through Claude's permission modes.</summary>
     [ObservableProperty]
@@ -198,6 +220,62 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     /// <summary>Saved pre-selected servers the catalog did not offer at load (disabled/absent), so the checklist can't represent them; preserved verbatim by <see cref="ToProfile"/> so a save never silently drops them.</summary>
     private readonly IReadOnlyList<string> _carriedOverMcpServerNames;
+
+    private readonly IMcpToolTokenEstimator? _tokenEstimator;
+    private CancellationTokenSource? _tokenEstimateCts;
+
+    /// <summary>The AC-134 pre-flight summary line for the ticked MCP servers; shown only once the pre-selection is revealed and an estimator is available.</summary>
+    public bool HasMcpTokenSummary => _tokenEstimator is not null && RestrictMcpServers && McpServers.Count > 0;
+
+    /// <summary>The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.</summary>
+    public string McpToolTokenSummary => McpTokenEstimation.SummaryLabel(McpServers);
+
+    /// <summary>Re-enumerates every offered MCP server's tools and refreshes the estimate (AC-134).</summary>
+    [RelayCommand]
+    private Task RefreshMcpTokens() => _EstimateMcpTokensAsync(refresh: true);
+
+    private async Task _EstimateMcpTokensAsync(bool refresh)
+    {
+        if (_tokenEstimator is null || McpServers.Count == 0)
+        {
+            return;
+        }
+
+        _tokenEstimateCts?.Cancel();
+        _tokenEstimateCts?.Dispose();
+        _tokenEstimateCts = new CancellationTokenSource();
+
+        try
+        {
+            await McpTokenEstimation.EstimateAllAsync([.. McpServers], _tokenEstimator, refresh, _tokenEstimateCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer run or the editor closing.
+        }
+    }
+
+    // Revealing the pre-selection (AC-130) is when the token estimate becomes worth computing (AC-134): count then,
+    // not while the section is hidden. The estimator caches per server, so re-revealing — or another profile using
+    // the same servers — does not re-spawn them.
+    partial void OnRestrictMcpServersChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasMcpTokenSummary));
+        if (value)
+        {
+            _ = _EstimateMcpTokensAsync(refresh: false);
+        }
+    }
+
+    private void _OnMcpServerRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(McpServerSelectionItemViewModel.IsEnabledForSession)
+            or nameof(McpServerSelectionItemViewModel.TokenEstimate)
+            or nameof(McpServerSelectionItemViewModel.IsEstimatingTokens))
+        {
+            OnPropertyChanged(nameof(McpToolTokenSummary));
+        }
+    }
 
     /// <summary>
     /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
@@ -351,13 +429,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         bool canChooseProvider = false,
         IReadOnlyList<SessionProviderOption>? providers = null,
         IPluginProviderRegistry? pluginProviderRegistry = null,
-        IReadOnlyList<string>? availableMcpServerNames = null)
+        IReadOnlyList<string>? availableMcpServerNames = null,
+        IMcpToolTokenEstimator? tokenEstimator = null)
     {
+        _tokenEstimator = tokenEstimator;
         _label = profile.Label;
         _configDir = profile.Claude?.ConfigDir ?? string.Empty;
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
+        _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
 
         // MCP pre-selection (AC-130): a non-null saved set restricts; null means "all servers" (the gate stays off).
@@ -367,7 +448,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         var selected = profile.EnabledMcpServerNames is { } names ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase) : null;
         foreach (var name in availableMcpServerNames ?? [])
         {
-            McpServers.Add(new McpServerSelectionItemViewModel(name) { IsEnabledForSession = selected?.Contains(name) ?? true });
+            var item = new McpServerSelectionItemViewModel(name) { IsEnabledForSession = selected?.Contains(name) ?? true };
+            item.PropertyChanged += _OnMcpServerRowChanged;
+            McpServers.Add(item);
+        }
+
+        // If the profile already restricts its MCP servers, the pre-selection is shown from the start, so its
+        // token estimate (AC-134) is worth computing now; otherwise it waits until the operator reveals it.
+        if (_restrictMcpServers)
+        {
+            _ = _EstimateMcpTokensAsync(refresh: false);
         }
 
         // A saved server the catalog no longer offers (temporarily disabled, or a plugin not loaded right now) is not
@@ -381,6 +471,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _claudeModel = SessionOptionCatalog.DefaultModel.Value;
         _selectedEffort = SessionOptionCatalog.DefaultEffort;
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
+        _selectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel);
 
         var delegation = profile.DelegationPolicy;
         _allowedAsTarget = delegation.AllowedAsTarget;
@@ -442,6 +533,9 @@ public partial class EditableProfileViewModel : ViewModelBase
         var defaults = IsPluginProvider
             ? new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools) { OptionDefaults = _CollectPluginOptionDefaults() }
             : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
+        // The reading level is provider-neutral (AC-138) — any profile can launch an SDK session — so it rides on
+        // Defaults for both the plugin and the legacy-typed branch above rather than only one of them.
+        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value };
 
         return new(
             Label.Trim(),
@@ -461,6 +555,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 ? [.. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name), .. _carriedOverMcpServerNames]
                 : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
+            SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
         };
     }
 

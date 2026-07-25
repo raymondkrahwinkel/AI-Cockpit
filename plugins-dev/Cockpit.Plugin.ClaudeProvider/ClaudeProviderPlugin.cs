@@ -17,7 +17,6 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.4.1",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -59,6 +58,8 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
             IsLoggedIn = ClaudeProfileDiscovery.IsLoggedIn,
             DetectProfiles = ClaudeProfileDiscovery.Detect,
+            UsageSignals = ClaudeUsageSignals.Declarations,
+            ReadUsage = ClaudeUsageSignals.Read,
         });
 
         // The SDK/session-driver route (weg A): the headless stream-json driver, whose tool-approval prompts ride the
@@ -71,8 +72,16 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // These registration capabilities are the ones the host actually honours: SessionDriverFactory builds the
             // PluginSessionDriverAdapter from registration.Capabilities, not from the driver instance's own Capabilities.
             // So SupportsVision must be declared here — the SDK driver already builds base64 image content blocks, but
-            // without this the host gates a pasted image off ("provider does not support image input") anyway.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true },
+            // without this the host gates a pasted image off ("provider does not support image input") anyway. Likewise
+            // ConfinesFileAccessToWorkingDirectory (AC-174): Claude spawns in the session's working directory and edits
+            // with cwd-bound tools, so an isolated Autopilot run stays in its worktree — without this on the registration
+            // the host refuses a Claude step for "does not confine its file tools to the worktree".
+            // ConfinesViaPermissionsOnly (AC-190): that confinement leans on Claude's permission system, which
+            // bypassPermissions (--dangerously-skip-permissions) disables — so the host's driver adapter downgrades the
+            // mapped confinement to false for a bypass session, and the fail-closed isolation gate refuses an isolated
+            // Claude step that a bypass mode would leave free to write outside its worktree. Codex, confined by a real OS
+            // sandbox, leaves this false and stays confined in every mode.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =
@@ -84,6 +93,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.EffortOptionKey, "Effort", ClaudeOptionChoices.EffortLevels, "medium")
                     { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
             ],
+
+            // The same three things a Claude session runs out of, whichever route it opened through — an SDK
+            // session already reports the figures at each turn boundary, so this only says what they are.
+            UsageSignals = ClaudeUsageSignals.Declarations,
         });
     }
 

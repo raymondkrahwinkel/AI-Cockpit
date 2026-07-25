@@ -1,6 +1,8 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -39,6 +41,31 @@ public class ManageProfilesDialogViewModelTests
         // and login status.
         row.IsLoggedIn.Should().BeTrue();
         vm.SelectedProfile.Should().Be(row);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ExcludesInternalEndpoints_FromTheProfileMcpPreselection()
+    {
+        var work = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(work).Returns(true);
+
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "server-a", Command = "npx" },
+            // An internal-only endpoint (AC-204, the Autopilot CEO/step tools) is enabled and mountable but must not
+            // be offered as a profile pre-selection. Red without the fix, which listed every enabled catalog server.
+            new() { Name = "cockpit-autopilot-ceo", Url = "http://127.0.0.1:1/mcp", Internal = true },
+        });
+
+        var vm = new ManageProfilesDialogViewModel(store, loginChecker, mcpServerCatalog: catalog);
+
+        await vm.LoadAsync();
+
+        vm.Profiles[0].McpServers.Select(server => server.Name).Should().Equal("server-a");
     }
 
     [Fact]

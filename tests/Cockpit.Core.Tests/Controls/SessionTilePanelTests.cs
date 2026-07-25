@@ -77,6 +77,43 @@ public class SessionTilePanelTests
     }
 
     [Fact]
+    public void DropClosedCells_ClosingAMiddlePane_CompactsSoTwoLeftFallBackToTheMinimalGrid()
+    {
+        // Three panes fill a 2×2's first three cells; close the middle one. The survivor's cells must compact to
+        // two entries so Dimensions gives 2×1 (or 1×2 stacked) — not stay length-3 and render a 2×2 with a gap
+        // (Raymond, 2026-07-21).
+        var cells = new List<object?> { "a", "b", "c" };
+
+        var removed = SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "c" });
+
+        removed.Should().BeTrue();
+        cells.Should().Equal("a", "c");
+        SessionTilePanel.Dimensions(cells.Count).Should().Be((2, 1));
+    }
+
+    [Fact]
+    public void DropClosedCells_KeepsADeliberateFreePlacementHole()
+    {
+        // The null here is a hole a drag left behind (a pane dropped onto an empty cell), tied to no pane — it is
+        // not a closed session and must survive the reconcile.
+        var cells = new List<object?> { "a", null, "b" };
+
+        SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "b" }).Should().BeFalse();
+        cells.Should().Equal(new object?[] { "a", null, "b" });
+    }
+
+    [Fact]
+    public void DropClosedCells_RemovesAClosedPaneButKeepsAnInteriorHole()
+    {
+        // A deliberate hole at index 1 and a live pane "b" at index 2; closing "b" removes only its cell and
+        // leaves the drag-hole where it is.
+        var cells = new List<object?> { "a", null, "b", "c" };
+
+        SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "c" }).Should().BeTrue();
+        cells.Should().Equal(new object?[] { "a", null, "c" });
+    }
+
+    [Fact]
     public void PlaceInCells_OntoOwnCell_NoChange()
     {
         var cells = new List<object?> { "a", "b" };

@@ -52,11 +52,11 @@ internal static class GitHubWorkflowSteps
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
             ["issue"] = "42",
-            ["repository"] = "raymondkrahwinkel/AI-Cockpit",
+            ["repository"] = "acme/webshop",
             ["title"] = "Fix the login redirect",
-            ["url"] = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues/42",
+            ["url"] = "https://github.com/acme/webshop/issues/42",
             ["branch"] = "42-fix-the-login-redirect",
-            ["directory"] = "/home/raymond/RiderProjects/AI-Cockpit",
+            ["directory"] = "/home/you/projects/webshop",
         };
     }
 
@@ -84,7 +84,7 @@ internal static class GitHubWorkflowSteps
         {
             ["issue"] = "42",
             ["title"] = "Fix the login redirect",
-            ["url"] = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues/42",
+            ["url"] = "https://github.com/acme/webshop/issues/42",
             ["branch"] = "42-fix-the-login-redirect",
         };
 

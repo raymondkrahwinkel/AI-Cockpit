@@ -7,8 +7,8 @@ namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
 /// The system monitor. Its own plugin rather than half of a "reference widgets" pair, so it can be left out:
-/// wanting a clock is not wanting a CPU meter (Raymond, 2026-07-15: "als ik wel de clock wil maar niet de
-/// system monitor, wil ik dus alleen de clock downloaden en installeren"). One plugin per widget is what makes
+/// wanting a clock is not wanting a CPU meter (wanting the clock but not the system monitor means being able to
+/// download and install just the clock). One plugin per widget is what makes
 /// that a choice instead of a package deal.
 /// <para>
 /// From the store, not bundled: the clock ships so a fresh Dashboard is not empty, and this comes when it is
@@ -21,7 +21,6 @@ public sealed class SystemMonitorPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "system-monitor",
         DisplayName: "System Monitor",
-        Version: "1.0.1",
         Author: "Cockpit",
         Description: "CPU, memory and disk usage for a Dashboard workspace. You pick which of the three in its settings.");
 

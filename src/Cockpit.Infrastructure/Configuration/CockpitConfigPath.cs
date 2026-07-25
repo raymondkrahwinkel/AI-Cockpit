@@ -31,6 +31,14 @@ internal static class CockpitConfigPath
     public static string PluginsRoot => Path.Combine(Root, "plugins");
 
     /// <summary>
+    /// Where project logos live (AC-162): a <c>project-logos/</c> folder next to <c>cockpit.json</c>. The picked
+    /// file or downloaded image is copied here and the project keeps the copy's path, so a logo survives the
+    /// original being moved, renamed or unplugged — a card that quietly loses its picture is worse than one that
+    /// never had it.
+    /// </summary>
+    public static string ProjectLogosRoot => Path.Combine(Root, "project-logos");
+
+    /// <summary>
     /// Where session-isolation worktrees live (AC-85): a <c>worktrees/</c> folder next to <c>cockpit.json</c>,
     /// grouped per repository. Under the app state root, so a development build keeps its own (<see cref="CockpitBuild"/>)
     /// and a worktree is never checked out inside the repository being worked on.

@@ -24,7 +24,7 @@ public class OrchestratorToolsTests
             .Returns<Task<DelegatedTaskView>>(_ => throw new DelegationRejectedException("Profile 'private' is not available as a delegation target."));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("rejected").GetBoolean().Should().BeTrue();
@@ -41,7 +41,7 @@ public class OrchestratorToolsTests
             .Returns(_View("task-1", DelegatedTaskStatus.Running));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("TaskId").GetString().Should().Be("task-1");
@@ -58,7 +58,7 @@ public class OrchestratorToolsTests
             .Returns(_View("task-2", DelegatedTaskStatus.Queued));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("queued").GetBoolean().Should().BeTrue();

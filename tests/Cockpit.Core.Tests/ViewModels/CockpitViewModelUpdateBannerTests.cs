@@ -105,6 +105,90 @@ public class CockpitViewModelUpdateBannerTests
         vm.HasUpdate.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task RunPeriodicUpdateCheck_WhenABuildIsFound_ShowsTheBannerAndRaisesExactlyOneToast()
+    {
+        var updates = Substitute.For<IUpdateService>();
+        updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+        var vm = NewVm(updates);
+
+        await vm.RunPeriodicUpdateCheckAsync();
+
+        vm.UpdateBannerVisible.Should().BeTrue();
+        vm.UpdateName.Should().Be("v1.2.3");
+        vm.Toasts.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task RunPeriodicUpdateCheck_TwiceForTheSameBuild_ToastsOnlyOnce_AndKeepsTheBannerVisible()
+    {
+        var updates = Substitute.For<IUpdateService>();
+        updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+        var vm = NewVm(updates);
+
+        await vm.RunPeriodicUpdateCheckAsync();
+        await vm.RunPeriodicUpdateCheckAsync();
+
+        // The same release must not nag every hour — one toast for the build, and the banner is still up.
+        vm.Toasts.Should().ContainSingle();
+        vm.UpdateBannerVisible.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunPeriodicUpdateCheck_WhenStartupChecksAreOff_LooksAtNothing()
+    {
+        var updates = Substitute.For<IUpdateService>();
+        updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+        var vm = NewVm(updates);
+        // The startup setting is the global on/off for every automatic check — off means the hourly loop stays quiet too.
+        vm.CheckForUpdatesOnStartup = false;
+
+        await vm.RunPeriodicUpdateCheckAsync();
+
+        await updates.DidNotReceive().CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>());
+        vm.UpdateBannerVisible.Should().BeFalse();
+        vm.Toasts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RunPeriodicUpdateCheck_WhenAGenuinelyNewerBuildArrives_ReToastsAndReShowsTheBanner()
+    {
+        var updates = Substitute.For<IUpdateService>();
+        updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null),
+                new UpdateCheckResult(Release("1.2.4", "def", "v1.2.4"), null));
+        var vm = NewVm(updates);
+
+        await vm.RunPeriodicUpdateCheckAsync();
+        await vm.RunPeriodicUpdateCheckAsync();
+
+        vm.UpdateBannerVisible.Should().BeTrue();
+        vm.UpdateName.Should().Be("v1.2.4");
+        // A newer build is worth telling about again: one toast per distinct release.
+        vm.Toasts.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task RunPeriodicUpdateCheck_AfterDismiss_DoesNotReToastOrReShowTheSameBuild()
+    {
+        var updates = Substitute.For<IUpdateService>();
+        updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
+            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+        var vm = NewVm(updates);
+        await vm.RunPeriodicUpdateCheckAsync();
+        vm.DismissUpdateCommand.Execute(null);
+
+        await vm.RunPeriodicUpdateCheckAsync();
+
+        // Dismissed and unchanged: no new toast, and the banner stays down.
+        vm.Toasts.Should().ContainSingle();
+        vm.UpdateBannerVisible.Should().BeFalse();
+    }
+
     private static AppRelease Release(string version, string commit, string name) =>
         new(version, commit, name, "notes", $"https://example.test/{version}.{commit}", DateTimeOffset.UnixEpoch, IsPrerelease: false);
 

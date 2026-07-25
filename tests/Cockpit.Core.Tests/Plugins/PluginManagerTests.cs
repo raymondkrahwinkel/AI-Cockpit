@@ -130,6 +130,25 @@ public class PluginManagerTests
         diagnostics.Failures.Should().BeEmpty();
     }
 
+    [Fact]
+    public void LoadAndConfigure_WhenAPluginNeedsConsent_RecordsItAsPendingApprovalNotAFailure()
+    {
+        var discovered = _Discovered("consent", PluginLoadDecision.NeedsConsent);
+        var diagnostics = new PluginDiagnostics();
+        var manager = new PluginManager(NullLogger<PluginManager>.Instance, diagnostics);
+
+        manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("consent"));
+
+        // AC-208: awaiting-approval is recorded so the startup banner and the plugin-store badge can count it …
+        var pending = diagnostics.PendingApprovals;
+        pending.Should().ContainSingle();
+        pending[0].FolderId.Should().Be("consent");
+        pending[0].DisplayName.Should().Be("consent");
+        // … but it is not a load failure — the plugin simply has not been reviewed yet.
+        diagnostics.Failures.Should().BeEmpty();
+        manager.Loaded.Should().BeEmpty();
+    }
+
     private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
 
     private static DiscoveredPlugin _Discovered(string id, PluginLoadDecision decision) => new(

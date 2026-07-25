@@ -40,7 +40,10 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             context.Options.GetValueOrDefault(ModelKey),
             context.Options.GetValueOrDefault(EffortKey),
             mcpConfigPath,
-            context.DelegationSystemPrompt,
+            // The standing instructions the cockpit resolved for this session (a profile's identity, a project's
+            // behaviour) alongside the orchestrator nudge: both are things the model should start knowing, and the
+            // CLI takes one --append-system-prompt, so they travel as one value.
+            _AppendedInstructions(context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), context.DelegationSystemPrompt),
             context.Resume,
             statusLineSettings);
 
@@ -71,6 +74,21 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     }
 
     /// <summary>
+    /// The session's standing instructions and the orchestrator nudge as one value, blank-separated — the
+    /// instructions first, since they say who the session is and what it works on, and the nudge is a note about
+    /// tools. Null when neither applies, which leaves the flag off entirely.
+    /// </summary>
+    internal static string? _AppendedInstructions(string? instructions, string? delegationSystemPrompt)
+    {
+        var parts = new[] { instructions, delegationSystemPrompt }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim())
+            .ToList();
+
+        return parts.Count == 0 ? null : string.Join("\n\n", parts);
+    }
+
+    /// <summary>
     /// The launch-only start-default flags for the TTY spawn (<c>internal</c> for unit tests). Deliberately no
     /// <c>-p</c>/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
     /// id is not forced (<c>--session-id</c> is undocumented for a new interactive session); the cockpit locates the
@@ -81,7 +99,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         string? model,
         string? effort,
         string? mcpConfigPath,
-        string? delegationSystemPrompt,
+        string? appendSystemPrompt,
         PluginTtyResume? resume,
         string? settingsJson)
     {
@@ -139,11 +157,12 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
             arguments.Add(mcpConfigPath);
         }
 
-        // The orchestrator nudge (#67): its tools are only reached for if the model knows when they are worth it.
-        if (!string.IsNullOrWhiteSpace(delegationSystemPrompt))
+        // What the session starts knowing: the standing instructions a profile/project gave it (AC-142/AC-158) and
+        // the orchestrator nudge (#67), whose tools are only reached for if the model knows when they are worth it.
+        if (!string.IsNullOrWhiteSpace(appendSystemPrompt))
         {
             arguments.Add("--append-system-prompt");
-            arguments.Add(delegationSystemPrompt);
+            arguments.Add(appendSystemPrompt);
         }
 
         return arguments;

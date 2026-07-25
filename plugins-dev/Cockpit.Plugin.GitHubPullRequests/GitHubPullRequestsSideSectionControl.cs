@@ -31,7 +31,7 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 {
-    // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed (Raymond's ask)
+    // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed — a deliberate choice —
     // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
     // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);

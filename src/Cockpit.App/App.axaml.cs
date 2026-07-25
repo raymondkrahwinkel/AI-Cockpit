@@ -18,12 +18,17 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Plugins.Abstractions.Workflows;
 
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App;
 
 public partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private MainWindow? _mainWindow;
+    private UnlockWindow? _screenLockWindow;
     private DispatcherTimer? _pluginUpdateTimer;
 
     /// <summary>
@@ -106,11 +111,11 @@ public partial class App : Application
     /// thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
     /// call while the dialog is up would try to own a second modal, which the guard prevents.
     /// </summary>
-    private Task _LockToUnlockScreen()
+    private async Task _LockToUnlockScreen()
     {
         if (_mainWindow is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         // Bring the cockpit to the front first: a lock screen hidden behind a minimized or tray-hidden window reads
@@ -127,7 +132,18 @@ public partial class App : Application
         // dialog is what completes ShowDialog's task.
         viewModel.Unlocked += (_, _) => window.Close();
 
-        return window.ShowDialog(_mainWindow);
+        // Held for as long as the screen is up so the OS unlock can hand it the keyboard (AC-187) — it was shown while
+        // the desktop was still locked, where activation does not stick.
+        _screenLockWindow = window;
+
+        try
+        {
+            await window.ShowDialog(_mainWindow);
+        }
+        finally
+        {
+            _screenLockWindow = null;
+        }
     }
 
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
@@ -178,6 +194,7 @@ public partial class App : Application
         // Its task completes when the operator has unlocked again.
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
+        screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() => _screenLockWindow?.TakeFocus());
         _ = screenLock.StartAsync();
 
         // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
@@ -200,6 +217,21 @@ public partial class App : Application
         // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
         // what went wrong when someone asks from Options.
         _ = cockpitViewModel.InitialiseUpdatesAsync();
+        // AC-188: and keep looking every hour after that, so a window left open for a workday still learns about a
+        // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
+        cockpitViewModel.StartPeriodicUpdateChecks();
+
+        // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
+        // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
+        cockpitViewModel.ScheduledResumes = Program.Services.GetService<ScheduledResumeCoordinator>();
+        _ = cockpitViewModel.StartScheduledResumesAsync();
+
+        // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
+        // the settings screen that edits them.
+        if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)
+        {
+            _ = _LoadUsageThresholdsAsync(cockpitViewModel, thresholdStore);
+        }
 
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
@@ -284,7 +316,8 @@ public partial class App : Application
             Program.Services.GetRequiredService<IWorkflowTemplateLibrary>(),
             Program.Services.GetRequiredService<IWorkflowTemplateRegistry>());
 
-        // Surface any load/init failures (phase 1 or 2) as a banner; the app kept running regardless.
+        // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
+        // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
     }
 
@@ -371,5 +404,35 @@ public partial class App : Application
         tray.Clicked += (_, _) => ShowMainWindow();
 
         TrayIcon.SetIcons(this, [tray]);
+    }
+
+    /// <summary>
+    /// Builds the usage-threshold settings (AC-233) from what every registered provider declares — TTY and SDK
+    /// alike, since a provider can offer either route and declares the same signals for both — and hands the saved
+    /// values to the cockpit so sessions started from here judge their figures by them.
+    /// </summary>
+    private static async Task _LoadUsageThresholdsAsync(CockpitViewModel cockpit, IUsageThresholdStore store)
+    {
+        var providers = new List<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)>();
+
+        foreach (var registration in Program.Services.GetService<IPluginTtyProviderRegistry>()?.Registrations ?? [])
+        {
+            providers.Add((registration.ProviderId, registration.DisplayName, registration.UsageSignals));
+        }
+
+        foreach (var registration in Program.Services.GetService<IPluginProviderRegistry>()?.Registrations ?? [])
+        {
+            // A provider registered on both routes declares the same signals for each; list it once.
+            if (!providers.Any(entry => string.Equals(entry.ProviderId, registration.ProviderId, StringComparison.OrdinalIgnoreCase)))
+            {
+                providers.Add((registration.ProviderId, registration.DisplayName, registration.UsageSignals));
+            }
+        }
+
+        var settings = new UsageThresholdsViewModel(store);
+        await settings.LoadAsync(providers);
+
+        cockpit.UsageThresholdSettings = settings;
+        cockpit.UsageThresholds = await store.LoadAsync();
     }
 }

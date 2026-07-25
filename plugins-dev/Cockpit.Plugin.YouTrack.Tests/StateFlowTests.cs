@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 /// </summary>
 public class StateFlowTests
 {
-    // Raymond's own board, read from the API: Stage, an ordinary field.
+    // A real board, read from the API: Stage, an ordinary field.
     private static readonly string[] Board = ["Backlog", "In Progress", "Review (GIT)", "Development", "Staging", "Released"];
 
     [Fact]

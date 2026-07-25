@@ -39,6 +39,22 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         return Task.CompletedTask;
     }
 
+    // The host's full start surface. All this driver needs from it is the hidden per-session system prompt the host
+    // folds into the options map (AC-180 — an embedded run's brief): seeded once at the front of the history so every
+    // turn carries it, since this HTTP driver owns its own history. Everything else (working dir, resume, MCP) has no
+    // meaning for a plain chat provider, so it drops through to the base overload.
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
+    {
+        if (options is not null
+            && options.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var appendSystemPrompt)
+            && !string.IsNullOrWhiteSpace(appendSystemPrompt))
+        {
+            _history.Add(new ChatMessage(ChatRole.System, appendSystemPrompt.Trim()));
+        }
+
+        return StartAsync(model, cancellationToken);
+    }
+
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
         // Run the turn in the background so the caller returns immediately and consumes the reply through

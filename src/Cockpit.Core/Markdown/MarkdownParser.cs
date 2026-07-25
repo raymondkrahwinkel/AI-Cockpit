@@ -269,6 +269,10 @@ public static partial class MarkdownParser
     [GeneratedRegex(@"^\s*\d+\.\s+")]
     private static partial Regex OrderedItemRegex();
 
-    [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")]
+    // Runs against the line after every line containing a pipe, so it meets whatever a tracker's issue body holds.
+    // Its adjacent \s* runs are the classic quadratic shape — a line of nothing but whitespace made the backtracking
+    // engine take seconds, synchronously, on the UI thread (AC-303). NonBacktracking answers the same question in
+    // linear time; the pattern uses no lookaround or backreference, which are what that engine cannot do.
+    [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", RegexOptions.NonBacktracking)]
     private static partial Regex TableSeparatorRegex();
 }

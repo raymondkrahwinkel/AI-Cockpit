@@ -35,7 +35,7 @@ internal static class ClaudeSdkArguments
         string? model,
         string? resumeSessionId,
         bool continueMostRecent,
-        string? delegationSystemPrompt = null,
+        string? appendSystemPrompt = null,
         string? mcpConfigPath = null)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? "default" : permissionMode;
@@ -86,11 +86,13 @@ internal static class ClaudeSdkArguments
             arguments.Add(model);
         }
 
-        // The orchestrator nudge (#67): its tools are only reached for if the model knows when they are worth it.
-        if (!string.IsNullOrWhiteSpace(delegationSystemPrompt))
+        // A system prompt appended for this one session (AC-180): the host folds an embedded run's hidden brief (the
+        // CEO's "you are the CEO, this is how you plan") into the options map under its well-known key, which the driver
+        // resolves and hands here — the same --append-system-prompt channel the orchestrator nudge (#67) would ride.
+        if (!string.IsNullOrWhiteSpace(appendSystemPrompt))
         {
             arguments.Add("--append-system-prompt");
-            arguments.Add(delegationSystemPrompt);
+            arguments.Add(appendSystemPrompt);
         }
 
         return arguments;

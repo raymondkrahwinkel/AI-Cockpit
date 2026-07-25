@@ -1,0 +1,155 @@
+using FluentAssertions;
+
+namespace Cockpit.Plugin.Autopilot.Tests;
+
+/// <summary>
+/// The turns the autonomous run hands its sessions (AC-174): a step agent's visible opening instruction (its work plus
+/// how to report done) and the CEO's validation turn. Kept pure builders off the coordinator so the wording — the tool
+/// to call, what to include — is tested without a live session.
+/// </summary>
+public class AutopilotStepBriefTests
+{
+    [Fact]
+    public void For_IncludesTheWork_AcceptanceAndTheStepDoneTool()
+    {
+        var step = new AutopilotStep("1", "Code", "desc", "Claude", "opus", "do the code", "compiles and tests green");
+
+        var brief = AutopilotStepBrief.For(step, agentCount: 1, agentNumber: 1);
+
+        brief.Should().Contain("do the code");
+        brief.Should().Contain("compiles and tests green");
+        brief.Should().Contain("mcp__cockpit-autopilot-run__autopilot_step_done");
+    }
+
+    [Fact]
+    public void For_FallsBackToTheDescription_WhenNoBriefWasWritten()
+    {
+        var step = new AutopilotStep("1", "Code", "the description", "Claude", "opus", "  ", "acc");
+
+        AutopilotStepBrief.For(step, 1, 1).Should().Contain("the description");
+    }
+
+    [Fact]
+    public void For_ParallelAgent_NamesItsShareOfTheWork()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "a");
+
+        AutopilotStepBrief.For(step, agentCount: 3, agentNumber: 2).Should().Contain("agent 2 of 3");
+    }
+
+    [Fact]
+    public void For_CarriesAGenericBrainSkip_SoAnEmbeddedAgentDoesNotStallOnASetupQuestion()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "a");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // The autonomy preamble tells the agent to step past a persona/brain/config prompt instead of waiting for a
+        // human — and it names no specific persona, so it stays generic across profiles.
+        brief.Should().Contain("autonomous agent");
+        brief.Should().Contain("persona, brain, or");
+        brief.Should().Contain("do not stop to ask");
+        brief.Should().NotContain("Zyra");
+        brief.Should().NotContain("Aura");
+        // The task itself still comes through.
+        brief.Should().Contain("do the work");
+    }
+
+    [Fact]
+    public void For_TellsTheAgentToAssumeAndFollowConventions_ForATaskAmbiguity_NotStopToAsk()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-193: a task ambiguity the brief did not spell out is not a mid-run question — the agent makes the most
+        // reasonable assumption, follows the codebase's existing conventions, and records it in its done-summary.
+        brief.Should().Contain("Task ambiguity");
+        brief.Should().Contain("most reasonable assumption");
+        brief.Should().Contain("FOLLOW THE EXISTING CONVENTIONS");
+        brief.Should().Contain("note the assumption in your autopilot_step_done summary");
+    }
+
+    [Fact]
+    public void For_FramesAutopilotBlockedAsConsultingTheManager_NotReachingTheOperatorDirectly()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-201: when a reasonable assumption is not enough, the agent consults its MANAGER (the CEO) via
+        // autopilot_blocked — which answers or escalates to the operator — rather than reaching the operator itself.
+        brief.Should().Contain("Your manager (the CEO) is reachable");
+        brief.Should().Contain("autopilot_blocked to consult your manager");
+        brief.Should().Contain("escalates to the operator");
+        brief.Should().Contain("Never stop for an ordinary judgement call");
+    }
+
+    [Fact]
+    public void For_DirectsTheAgentToExecuteAndCommit_NotAnalyseOrPlan()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Qwen (local)", null, "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // The execution mandate: every model, however light, is told to BUILD — write the code, run
+        // the tests, commit in the worktree — and explicitly not to analyse, summarise, ask, or reply with a plan, which
+        // is the failure that strands a step on a lighter model.
+        brief.Should().Contain("execution task, not an analysis or planning task");
+        brief.Should().Contain("COMMIT your work in this worktree");
+        brief.Should().Contain("Do NOT instead describe the repository");
+        brief.Should().Contain("verify it builds and its tests pass, commit it, and only then report");
+        // Provider-neutral — the mandate names no brand or model.
+        brief.Should().NotContain("Claude");
+        brief.Should().NotContain("opus");
+    }
+
+    [Fact]
+    public void For_KeepsTheAssumptionAndConsultFlow_AlongsideTheExecutionMandate()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // The new execution mandate must not have displaced AC-193 (assume + follow conventions) or AC-201 (consult the
+        // manager, do not stop for an ordinary judgement call).
+        brief.Should().Contain("most reasonable assumption");
+        brief.Should().Contain("autopilot_blocked to consult your manager");
+        brief.Should().Contain("Never stop for an ordinary judgement call");
+    }
+
+    [Fact]
+    public void ValidationTurn_AsksTheCeoToJudgeAgainstAcceptance_ViaTheTool()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
+
+        var turn = AutopilotStepBrief.ValidationTurn(step, ["opened PR #1"]);
+
+        turn.Should().Contain("compiles");
+        turn.Should().Contain("opened PR #1");
+        turn.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_validate");
+    }
+
+    [Fact]
+    public void ValidationTurn_WithAWhitespaceOnlySingleSummary_UsesTheNoSummaryFallback()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
+
+        var turn = AutopilotStepBrief.ValidationTurn(step, ["   "]);
+
+        // AC-206: a single whitespace-only summary is treated as no summary — the CEO gets the clear fallback rather than
+        // a blank "What the agent(s) reported:" block, like the zero-summary case already does.
+        turn.Should().Contain("(the agent reported no summary)");
+    }
+
+    [Fact]
+    public void ValidationTurn_ListsEveryAgentsReport_ForAParallelStep()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "a");
+
+        var turn = AutopilotStepBrief.ValidationTurn(step, ["did part A", "did part B"]);
+
+        turn.Should().Contain("did part A");
+        turn.Should().Contain("did part B");
+    }
+}

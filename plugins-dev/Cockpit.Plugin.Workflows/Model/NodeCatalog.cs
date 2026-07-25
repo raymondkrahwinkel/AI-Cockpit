@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.Workflows.Model;
 /// <summary>
 /// The node types the cockpit ships (#69). Deliberately cockpit-shaped rather than a general automation kit: the
 /// value here is in what only this app can do — start sessions, delegate work, watch what an agent says, put a
-/// ticket in progress. Anything that talks to a hundred SaaS products already exists, and Raymond runs it.
+/// ticket in progress. Anything that talks to a hundred SaaS products already exists, and the operator runs it elsewhere.
 /// <para>
 /// The built-in half of the list. The other half comes from plugins (<c>ICockpitHost.AddWorkflowStep</c>) and is
 /// handed to <see cref="Contribute"/> once, at startup: YouTrack knows how to move a ticket, and this plugin should
@@ -33,7 +33,7 @@ public static class NodeCatalog
             WorkflowNodeKind.Trigger,
             [""],
             ["Pattern"],
-            new Dictionary<string, string> { ["match"] = "All tests passed", ["session"] = "Eveworkbench" })
+            new Dictionary<string, string> { ["match"] = "All tests passed", ["session"] = "webshop" })
         {
             IconKind = MaterialIconKind.Eye,
         },
@@ -86,7 +86,7 @@ public static class NodeCatalog
             WorkflowNodeKind.Action,
             [""],
             ["Message", "Webhook URL"],
-            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" })
+            new Dictionary<string, string> { ["message"] = "Deployed WEB-14 to staging" })
         {
             IconKind = MaterialIconKind.ChatOutline,
         },
@@ -99,7 +99,7 @@ public static class NodeCatalog
             WorkflowNodeKind.Action,
             [""],
             ["Message", "Webhook URL"],
-            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" })
+            new Dictionary<string, string> { ["message"] = "Deployed WEB-14 to staging" })
         {
             IconKind = MaterialIconKind.Gamepad,
         },
@@ -125,7 +125,7 @@ public static class NodeCatalog
             WorkflowNodeKind.Action,
             [""],
             ["Profile", "Prompt", "Working directory"],
-            new Dictionary<string, string> { ["session"] = "Eveworkbench" })
+            new Dictionary<string, string> { ["session"] = "webshop" })
         {
             IconKind = MaterialIconKind.Rocket,
         },

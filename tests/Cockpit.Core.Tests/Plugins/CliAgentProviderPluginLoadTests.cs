@@ -52,6 +52,12 @@ public class CliAgentProviderPluginLoadTests
         // The interactive Codex provider is now the app-server driver (#45 fase 3), which does support live
         // approvals — where the headless exec driver it replaced reported no permission support.
         registration.Capabilities.SupportsPermissions.Should().BeTrue();
+        // AC-190: Codex confines to the working directory through a real OS sandbox (workspace-write), independent of its
+        // approval mode, so it vouches confinement unconditionally and must NOT declare ConfinesViaPermissionsOnly — the
+        // adapter would otherwise downgrade a bypass session that the sandbox still confines. Regression guard that the
+        // permission-mode downgrade is scoped to permission-based providers only.
+        registration.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+        registration.Capabilities.ConfinesViaPermissionsOnly.Should().BeFalse();
         // The real registration must carry the live model/list resolver (increment 2 step C), not just the
         // static options — asserted on the actual plugin object, since the dialog-side test only proves the
         // host renders a hand-rolled one. Not invoked here: doing so would spawn a real codex app-server.

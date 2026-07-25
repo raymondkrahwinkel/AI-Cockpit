@@ -30,7 +30,7 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "list_profiles")]
-    [Description("Lists the profiles you may delegate a task to, with what each one is meant for and how many tasks it will run at once.")]
+    [Description("Lists the profiles you may delegate a task to, with what each one is meant for, how many tasks it will run at once, and the MCP servers a task delegated to it would get ('mcpServers'). Pass a subset of those as delegate_task's mcp_servers to narrow one task to fewer servers.")]
     public async Task<string> ListProfilesAsync(CancellationToken cancellationToken)
     {
         var targets = await _delegation.ListTargetsAsync(cancellationToken);
@@ -104,12 +104,13 @@ internal sealed class OrchestratorTools
         [Description("A short human-readable label for this task, shown in the cockpit.")] string? label,
         [Description("The working directory for the task; must be one the target profile allows.")] string? working_directory,
         [Description("Optional least-privilege cap for this one task: 'plan'/'default' (read-only), 'acceptEdits' (also file writes), or 'bypassPermissions'. It can only lower what the profile already allows, never raise it — a request above the profile's ceiling is clamped to the ceiling. Omit to run at the profile's own ceiling.")] string? requested_permission,
+        [Description("Optional narrowing of which MCP servers this one task gets: the server names to keep, as they appear in this profile's 'mcpServers' from list_profiles. It can only restrict within what the profile already allows, never grant — naming a server the profile does not have refuses the whole call, so read list_profiles first. Omit to run with the profile's full set.")] string[]? mcp_servers,
         CancellationToken cancellationToken)
     {
         try
         {
             var task = await _delegation.DelegateAsync(
-                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission),
+                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission, McpServers: mcp_servers),
                 McpRequestContext.CurrentPaneId,
                 cancellationToken);
 

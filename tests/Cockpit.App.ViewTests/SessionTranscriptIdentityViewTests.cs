@@ -70,11 +70,12 @@ public class SessionTranscriptIdentityViewTests
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        // The dropdowns now live in a closed flyout opened from one chip — none render inline in the header.
-        var combosInHeader = window.GetVisualDescendants().OfType<ComboBox>().Count();
+        // The provider dropdowns now live in a closed flyout opened from one chip — none render inline in the header.
+        // The AC-138 reading-level "View" picker is a deliberate inline dropdown, so it is excluded from the count.
+        var combosInHeader = window.GetVisualDescendants().OfType<ComboBox>().Count(combo => combo.Name != "ReadingLevelPicker");
         window.Close();
 
-        combosInHeader.Should().Be(0, "the model/effort/permission dropdowns collapse into a single chip's flyout, not spread across the header");
+        combosInHeader.Should().Be(0, "the model/effort/permission dropdowns collapse into a single chip's flyout, not spread across the header (the reading-level picker aside)");
     });
 
     [Fact]

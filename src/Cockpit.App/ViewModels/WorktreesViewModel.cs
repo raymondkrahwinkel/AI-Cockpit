@@ -23,7 +23,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     public WorktreesViewModel()
     {
         var record = new WorktreeRecord("gone-session", "/home/me/project", "/state/worktrees/ab12/cockpit-fix-1", "cockpit/fix-1", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.Now.AddHours(-2)) { IsRetained = true };
-        Worktrees.Add(new ManagedWorktreeRowViewModel(new WorktreeStatus(record, Exists: true, HasUncommittedChanges: true, CommitsAhead: 0), isOwnerLive: false));
+        Worktrees.Add(new ManagedWorktreeRowViewModel(new WorktreeStatus(record, Exists: true, HasUncommittedChanges: true, StrandableCommits: 0), isOwnerLive: false));
         Count = Worktrees.Count;
     }
 

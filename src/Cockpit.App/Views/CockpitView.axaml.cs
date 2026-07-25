@@ -12,6 +12,7 @@ using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
 using Exclr8.Terminal;
 
@@ -406,6 +407,14 @@ public partial class CockpitView : UserControl
             return;
         }
 
+        // Only the left button reorders. Arming on any press meant a right-click armed it too, and the row then
+        // followed the pointer all the way to whatever the context menu opened — the rename box being the case that
+        // showed it (AC-277). The selection above already happened, so a right-click still targets the row it hit.
+        if (!e.GetCurrentPoint(sender as Control).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
         // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did what a
         // click does, rather than the row needing two gestures to both select and move.
         _draggingSession = session;
@@ -423,6 +432,14 @@ public partial class CockpitView : UserControl
     {
         if (_draggingSession is null || SessionListStrip?.ItemsPanelRoot is not { } panel || DataContext is not CockpitViewModel cockpit)
         {
+            return;
+        }
+
+        // A move with the button up means the gesture ended somewhere this handler never saw — let go rather than
+        // leaving a row glued to the pointer, the same rule the widget drag applies.
+        if (!e.GetCurrentPoint(panel).Properties.IsLeftButtonPressed)
+        {
+            _draggingSession = null;
             return;
         }
 
@@ -492,6 +509,14 @@ public partial class CockpitView : UserControl
         {
             cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
 
+            // Only the left button reorders — the same rule the session rows follow (AC-277). This strip has its own
+            // Rename in the tab context menu, so arming on a right-click left the tab following the pointer on the
+            // way to the rename box and silently reordered the workspaces. Selecting above already happened.
+            if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
             // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
             // what a click does, rather than the tab needing two gestures to both switch and move.
             _draggingTab = tab;
@@ -515,6 +540,14 @@ public partial class CockpitView : UserControl
         // ever moved.
         if (_draggingTab is null || WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
         {
+            return;
+        }
+
+        // A move with the button up means the gesture ended somewhere this handler never saw — let go rather than
+        // leaving a tab glued to the pointer, the same rule the widget drag and the session rows apply.
+        if (!e.GetCurrentPoint(strip).Properties.IsLeftButtonPressed)
+        {
+            _draggingTab = null;
             return;
         }
 
@@ -950,6 +983,8 @@ public partial class CockpitView : UserControl
 
     private void OnSetSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.SetSessionStatusCommand.Execute(s));
 
+    private void OnScheduleSessionResume(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ScheduleSessionResumeCommand.Execute(s));
+
     private void OnClearSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionStatusCommand.Execute(s));
 
     private void OnMoveSessionUp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionUpCommand.Execute(s));
@@ -963,6 +998,25 @@ public partial class CockpitView : UserControl
         if (sender is Control { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             invoke(cockpit, session);
+        }
+    }
+
+    // The project rows' context menu (AC-164). Click handlers rather than command bindings for the same reason the
+    // session rows use them: a ContextMenu is not in the ItemsControl's visual tree, so the {$parent[ItemsControl]}
+    // binding the row's own ▶ uses cannot reach the cockpit from inside the menu.
+    private void OnStartProjectSession(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.StartProjectSessionCommand.Execute(p));
+
+    private void OnNewSessionForProject(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.NewSessionForProjectCommand.Execute(p));
+
+    private void OnOpenProjectFolder(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.OpenProjectFolderCommand.Execute(p));
+
+    private void OnEditProject(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.EditProjectCommand.Execute(p));
+
+    private void _InvokeProjectCommand(object? sender, Action<CockpitViewModel, Project> invoke)
+    {
+        if (sender is Control { DataContext: Project project } && DataContext is CockpitViewModel cockpit)
+        {
+            invoke(cockpit, project);
         }
     }
 

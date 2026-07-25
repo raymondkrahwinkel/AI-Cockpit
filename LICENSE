@@ -227,3 +227,22 @@ Commons Clause restriction. See `src/Cockpit.Plugins.Abstractions/LICENSE`.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+---
+
+## Acknowledgments — Third-Party Software
+
+Cockpit includes third-party components under their own licenses. Each retains
+its original license text alongside its source.
+
+### Exclr8.Terminal
+
+The terminal renderer is vendored from source under `third_party/Exclr8.Terminal`
+(from https://github.com/alexmehlhorn/exclr8-terminal, tag v1.0.7), so it can be
+patched in-tree. It is used and redistributed under the MIT License; the full
+license is kept at `third_party/Exclr8.Terminal/LICENSE`.
+
+    The MIT License (MIT)
+    Copyright (c) 2026 Exclr8 Business Automation (Pty) Ltd
+
+With thanks to Alexander Mehlhorn for a clean, pure-Avalonia terminal control.

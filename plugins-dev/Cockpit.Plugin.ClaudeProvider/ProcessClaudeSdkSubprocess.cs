@@ -13,7 +13,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// </summary>
 /// <remarks>
 /// Never exercised against a real <c>claude</c> process in this sandbox (no logged-in CLI here) — kept as a thin,
-/// mockable seam so the driver's turn-taking is unit-tested against a fake; the live end-to-end run requires Raymond's
+/// mockable seam so the driver's turn-taking is unit-tested against a fake; the live end-to-end run requires a
 /// logged-in environment.
 /// </remarks>
 internal sealed class ProcessClaudeSdkSubprocess : IClaudeSdkSubprocess

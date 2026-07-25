@@ -1,6 +1,8 @@
+using Cockpit.App;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -40,15 +42,35 @@ public class SessionHeaderUsagePillItemsTests
         vm.UsagePillItems.Should().ContainSingle().Which.DisplayText.Should().Be("5h 64%");
     }
 
+    /// <summary>
+    /// With no declared threshold — a figure that reached the header without a provider saying when it matters —
+    /// the pill falls back to <see cref="UsageSeverity.FallbackThreshold"/>: amber from there, red halfway on.
+    /// </summary>
     [Theory]
-    [InlineData(90, "CockpitStatusErrorBrush")]
-    [InlineData(70, "CockpitStatusWaitingBrush")]
+    [InlineData(95, "CockpitStatusErrorBrush")]
+    [InlineData(88, "CockpitStatusWaitingBrush")]
     [InlineData(30, "CockpitTextSecondaryBrush")]
-    public void ACtxPill_TakesItsSeverityColourFromThePercent(double percent, string expectedKey)
+    public void ACtxPill_WithNoDeclaredThreshold_FallsBackToTheHostDefault(double percent, string expectedKey)
     {
         var vm = new SessionViewModel { ContextUsedPercent = percent, UsagePillVisibleFields = [UsagePillField.Context] };
 
         vm.UsagePillItems.Should().ContainSingle().Which.SeverityBrushKey.Should().Be(expectedKey);
+    }
+
+    /// <summary>
+    /// Once a provider has declared one, the pill colours at the point that provider chose (AC-229/AC-232) — the
+    /// same number the warning speaks at. Claude calls a context window worth mentioning at half full, so 70%
+    /// is amber there where the host's own fallback would still call it unremarkable.
+    /// </summary>
+    [Fact]
+    public void ACtxPill_ColoursAtTheThresholdItsProviderDeclared()
+    {
+        var vm = new SessionViewModel { UsagePillVisibleFields = [UsagePillField.Context] };
+        var context = new PluginUsageSignal("context", "ctx", PluginUsageSignalKind.Fill, DefaultThresholdPercent: 50);
+
+        vm.ApplyUsage([context], [new PluginUsageReading("context", 70, null)]);
+
+        vm.UsagePillItems.Should().ContainSingle().Which.SeverityBrushKey.Should().Be("CockpitStatusWaitingBrush");
     }
 
     [Fact]

@@ -17,7 +17,6 @@ public sealed class ExampleWorkspacePlugin : ICockpitPlugin
         Id: "example-workspace",
         DisplayName: "Example Workspace",
         // Kept in lockstep with plugin.json's "version": the manifest gates loading, this shows in the plugin list.
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "A full-surface workspace a plugin draws end to end, with a real host session embedded in it.");
 

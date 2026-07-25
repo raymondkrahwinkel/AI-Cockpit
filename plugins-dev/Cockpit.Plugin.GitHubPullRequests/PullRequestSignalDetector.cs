@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 internal static class PullRequestSignalDetector
 {
-    // e.g. https://github.com/raymondkrahwinkel/AI-Cockpit/pull/5 — the url gh prints on create, and what
+    // e.g. https://github.com/acme/webshop/pull/5 — the url gh prints on create, and what
     // Claude quotes when it opens/reviews a PR.
     private static readonly Regex PullUrl = new(
         @"github\.com/[^/\s]+/[^/\s]+/pull/\d+",

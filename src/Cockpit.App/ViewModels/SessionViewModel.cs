@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -35,7 +37,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
     private IReadOnlyDictionary<string, string>? _launchOptions;
+
+    /// <summary>
+    /// Tool names this session auto-allows without an operator prompt (AC-215) — an autonomous embedded run's own
+    /// control tools (Autopilot's <c>autopilot_step_done</c>, <c>autopilot_validate</c>, …), pre-authorized at embed
+    /// time so a self-driving run does not stall mid-run on a permission prompt it has no one to answer. Empty for an
+    /// ordinary session, which keeps prompting as before. Only the plugin's own endpoint tools are ever placed here;
+    /// file/shell/egress tools are never pre-approved and stay gated by the permission mode and the ConsentBroker.
+    /// </summary>
+    private IReadOnlySet<string> _preApprovedTools = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether this session auto-allows every tool call without a prompt (AC-215, Raymond 2026-07-23) — the "worktree is
+    /// the boundary" stance for an autonomous run isolated in a throwaway worktree, which must run its work tools (Bash,
+    /// edits, git) with no one to answer a prompt. False for an ordinary session, which keeps prompting. Set from the
+    /// embedded request's <see cref="EmbeddedSessionRequest.PreApproveAllTools"/>.
+    /// </summary>
+    private bool _preApproveAllTools;
+
     private TranscriptEntryViewModel? _currentAssistantEntry;
+
+    /// <summary>The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors <see cref="_currentAssistantEntry"/>: contiguous thinking deltas append onto one row rather than spawning a row per delta.</summary>
+    private TranscriptEntryViewModel? _currentThinkingEntry;
+
+    /// <summary>The provider block index of <see cref="_currentThinkingEntry"/>; a delta from a different block (e.g. Codex's raw reasoning vs. its summary) starts a fresh row so the two never concatenate.</summary>
+    private int _currentThinkingBlockIndex = -1;
 
     /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
@@ -101,6 +127,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// (T8) rather than being disabled, so you can keep typing ahead without losing input.
     /// </summary>
     public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0;
+
+    /// <summary>
+    /// Whether the operator can type into this session's composer (AC-174). An autonomous embedded run (an Autopilot
+    /// step agent) starts with this false so the input box reads as off — the run drives itself — and the surface's
+    /// "intervene" affordance flips it true to hand the keyboard back. It gates only the <em>view</em> (the input box
+    /// is disabled), deliberately not <see cref="CanSend"/>: the host still submits the run's opening brief through the
+    /// send path programmatically, which must work even while the composer is off. Defaults to true for every ordinary
+    /// session.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isInputEnabled = true;
 
     /// <summary>
     /// Permission modes offered in the running panel: the three live-switchable modes
@@ -210,6 +247,144 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // ContextUsedPercent, RateLimits and LimitsTooltip now live on the shared SessionPanelViewModel base (AC-37),
     // so the one SessionHeaderBar control reads the same usage data for every session kind.
 
+    // --- Reading level (AC-138) -------------------------------------------------------------------------------
+
+    /// <summary>The three reading levels offered by this SDK session's header "View" dropdown.</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    /// <summary>
+    /// This SDK session's current reading level (AC-138) — Developer/Focus/Simple. Seeded at start from the
+    /// per-session override or the profile's default view, and switchable live from the header "View" dropdown.
+    /// Only the SDK session carries one; a TTY session is a raw terminal with no reading level.
+    /// </summary>
+    [ObservableProperty]
+    private ReadingLevel _readingLevel = ReadingLevel.Developer;
+
+    /// <summary>Focus and Simple hide the standalone "$" token/cost meter (AC-138), leaving usage on the subscription-friendly pill.</summary>
+    protected override bool SuppressCostMeter => ReadingLevel != ReadingLevel.Developer;
+
+    /// <summary>Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.</summary>
+    public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
+
+    partial void OnReadingLevelChanged(ReadingLevel value)
+    {
+        // The level lives on the session, but each transcript row renders itself from its own copy — push the new
+        // level down, re-fold the Focus groups for it, and re-announce the header figures the level shows or hides.
+        foreach (var entry in Transcript)
+        {
+            entry.ReadingLevel = value;
+        }
+
+        _RecomputeReadingGroups();
+        OnPropertyChanged(nameof(ShowTokenMeter));
+        OnPropertyChanged(nameof(ShowKindChip));
+    }
+
+    // Assigns the session's reading level to each row as it arrives, watches a tool row for a permission decision
+    // (which changes whether it folds), and re-forms the fold groups — the one place the transcript's structure is
+    // read to group rows, since a single row cannot see its neighbours.
+    private void _OnTranscriptChanged(NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (TranscriptEntryViewModel entry in e.NewItems)
+            {
+                entry.ReadingLevel = ReadingLevel;
+                entry.PropertyChanged += _OnEntryPermissionChanged;
+            }
+        }
+
+        _RecomputeReadingGroups();
+    }
+
+    private void _OnEntryPermissionChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // A tool row is added as auto and can turn into a consent row a beat later (the permission request lands after
+        // the tool-use event), which pulls it out of any auto-fold run — so re-fold when either flag flips.
+        if (e.PropertyName is nameof(TranscriptEntryViewModel.IsPendingPermission) or nameof(TranscriptEntryViewModel.PermissionDecision))
+        {
+            _RecomputeReadingGroups();
+        }
+    }
+
+    // Re-forms the Focus "N steps run" fold groups (AC-138): a group is a maximal run of two or more consecutive
+    // auto tool calls, its first row the anchor that carries the expand toggle and the rest folding under it. Only
+    // Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row is
+    // simply un-grouped. Walks the rows once and preserves an anchor's expanded state, so a run growing mid-turn does
+    // not snap shut under the operator.
+    private void _RecomputeReadingGroups()
+    {
+        if (ReadingLevel != ReadingLevel.Focus)
+        {
+            foreach (var entry in Transcript)
+            {
+                _ClearGroup(entry);
+            }
+
+            return;
+        }
+
+        var index = 0;
+        while (index < Transcript.Count)
+        {
+            if (!Transcript[index].IsAutoTool)
+            {
+                _ClearGroup(Transcript[index]);
+                index++;
+                continue;
+            }
+
+            var runStart = index;
+            while (index < Transcript.Count && Transcript[index].IsAutoTool)
+            {
+                index++;
+            }
+
+            var runLength = index - runStart;
+            if (runLength < 2)
+            {
+                // A lone auto tool call is not worth a fold line — it stays as its own compact chip.
+                _ClearGroup(Transcript[runStart]);
+                continue;
+            }
+
+            var members = new List<TranscriptEntryViewModel>(runLength);
+            for (var i = runStart; i < index; i++)
+            {
+                members.Add(Transcript[i]);
+            }
+
+            var expanded = members[0].IsGroupExpanded;
+            for (var i = 0; i < members.Count; i++)
+            {
+                var member = members[i];
+                member.IsGroupAnchor = i == 0;
+                member.GroupCount = runLength;
+                member.IsGroupExpanded = expanded;
+                member.GroupToggleRequested = i == 0 ? () => _ToggleGroup(members) : null;
+                member.IsInGroup = true;
+            }
+        }
+    }
+
+    private static void _ClearGroup(TranscriptEntryViewModel entry)
+    {
+        entry.IsInGroup = false;
+        entry.IsGroupAnchor = false;
+        entry.GroupCount = 0;
+        entry.GroupToggleRequested = null;
+        // IsGroupExpanded is left as-is: an un-grouped row never reads it, and keeping it makes a later re-fold stable.
+    }
+
+    private static void _ToggleGroup(IReadOnlyList<TranscriptEntryViewModel> members)
+    {
+        var expanded = members.Count > 0 && !members[0].IsGroupExpanded;
+        foreach (var member in members)
+        {
+            member.IsGroupExpanded = expanded;
+        }
+    }
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -294,7 +469,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(HasPendingAttachments));
             OnPropertyChanged(nameof(CanSend));
         };
-        Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
+        Transcript.CollectionChanged += (_, e) =>
+        {
+            OnPropertyChanged(nameof(HasTranscript));
+            _OnTranscriptChanged(e);
+        };
         QueuedMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueuedMessages));
         LiveControls.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLiveControls));
     }
@@ -308,12 +487,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null, IReadOnlyList<string>? preApprovedTools = null, bool preApproveAllTools = false)
     {
         if (_runtime is not null)
         {
             return;
         }
+
+        // The reading level (AC-138) opens on the per-session override chosen in the New-session dialog, else the
+        // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
+        ReadingLevel = readingLevel ?? profile?.Defaults?.DefaultReadingLevel ?? ReadingLevel.Developer;
 
         // Set the live selectors before starting: the session has no event loop yet, so these do not
         // fire a live control request — they are the launch values StartWithProfileAsync reads. For
@@ -326,6 +509,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LiveModelText = model.Value;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
+        // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
+        // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
+        _preApprovedTools = preApprovedTools is { Count: > 0 }
+            ? new HashSet<string>(preApprovedTools, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        _preApproveAllTools = preApproveAllTools;
 
         // AC-13: hand the provider this session's own pane id, which its plugin turns into COCKPIT_PANE_ID in the
         // child's environment, so the agent can name its own session to the cockpit-session MCP's set_status tool.
@@ -790,6 +979,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : images.Count == 0 ? text : $"{text}  {imageSuffix}";
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
         _currentAssistantEntry = null;
+        _CloseThinkingRow();
         IsBusy = true;
         IsAwaitingResponse = true;
         _needsAttention = false;
@@ -976,6 +1166,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // runtime marshals nothing.
     private void _OnSessionEvent(SessionEvent evt) => Dispatcher.UIThread.Post(() => Apply(evt));
 
+    /// <summary>
+    /// Raised when the session makes real tool progress — a tool call surfacing or a tool result landing (AC-215/stall).
+    /// An embedder that fails a silent step on a stall deadline (Autopilot) resets that deadline on this, so a step that
+    /// is slow because it is working hard is not mistaken for a stuck one. Not raised on text/thinking on purpose.
+    /// </summary>
+    public event Action? ToolActivity;
+
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="_OnSessionEvent"/>.</summary>
     internal void Apply(SessionEvent evt)
     {
@@ -992,6 +1189,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         else if (evt is ToolResult)
         {
             IsAwaitingResponse = true;
+        }
+
+        // Real tool progress (AC-215/stall): a tool call surfacing or a tool result landing is the agent actually
+        // working — the signal that distinguishes a busy-but-progressing step from a genuinely stuck one (AC-192: a
+        // turn that emits text describing a tool it never runs, so no tool event ever fires). An embedder that fails a
+        // silent step on a stall deadline (Autopilot) resets that deadline on this, so a long, hard-working step is not
+        // failed for being slow. Deliberately NOT raised on text/thinking — a stuck agent still produces those.
+        if (evt is ToolUseRequested or ToolResult)
+        {
+            ToolActivity?.Invoke();
         }
 
         switch (evt)
@@ -1023,6 +1230,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextDelta delta:
+                // Visible prose has started, so the reasoning block that preceded it is done: close the thinking
+                // row (AC-213) so a later thinking block opens a fresh row instead of appending onto this one.
+                _CloseThinkingRow();
                 if (_currentAssistantEntry is null)
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
@@ -1034,6 +1244,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextCompleted completed:
+                _CloseThinkingRow();
                 if (_currentAssistantEntry is not null)
                 {
                     // Streaming deltas already built the text; nothing further to append.
@@ -1056,6 +1267,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
                 _currentAssistantEntry = null;
+                _CloseThinkingRow();
                 Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
@@ -1102,6 +1314,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             case PermissionRequested permission:
                 var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
+
+                // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a prompt
+                // the autonomous run has no one to answer — that stall left the run stuck first on its own
+                // autopilot_step_done, then on the Bash its work needs. Either the named control-tool set (the narrow
+                // default) or the "worktree is the boundary" stance (Raymond 2026-07-23), where an autonomous run
+                // isolated in a throwaway worktree auto-allows every tool so it can actually run its work — the run's
+                // isolation is the containment, not the per-call gate. Sends the same allow the Allow button does, but
+                // fire-and-forget: Apply is a synchronous event handler, so it cannot await the driver call the way the
+                // command can (a driver fault here is rare and would surface as the run stalling on this one permission).
+                if ((_preApproveAllTools || _preApprovedTools.Contains(permission.ToolName)) && _runtime is not null)
+                {
+                    if (entry is not null)
+                    {
+                        entry.PermissionDecision = "Allowed";
+                        entry.IsPendingPermission = false;
+                    }
+
+                    _ = _runtime.RespondToPermissionAsync(permission.ToolUseId, allow: true);
+                    break;
+                }
+
                 if (entry is not null)
                 {
                     entry.IsPendingPermission = true;
@@ -1134,6 +1367,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _currentTurnAssistantEntries.Clear();
                 _readAloudFlushedLength = 0;
                 _currentAssistantEntry = null;
+                _CloseThinkingRow();
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
@@ -1180,15 +1414,43 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
-            // Reasoning/thinking deltas still arrive from providers that stream them, but the transcript no
-            // longer renders a "Thinking…" row (AC-144): a literal thinking line said little, and the pulsing
-            // indicator above the composer already signals the model is working. The event still flows through
-            // the pipeline (ConsumeEventsAsync delivers it to any subscriber); here it is ignored for rendering.
-            case AssistantThinkingDelta:
+            // Reasoning/thinking deltas stream into their own dimmed, collapsible row (AC-213, revising AC-144).
+            // The row is added at every reading level but only *renders* at Developer — its IsRowVisible gates it
+            // off at Focus/Simple, which stay calm (AC-138). Contiguous deltas of the same provider block append
+            // onto one row (like assistant prose); a new block index starts a fresh row. The "Thinking…" indicator
+            // is left untouched (thinking is deliberately absent from the clear-set above), so the pulse still
+            // signals the model is working and this row does not double it. Empty deltas (a bare block_start) add
+            // nothing.
+            case AssistantThinkingDelta thinkingDelta:
+                if (!string.IsNullOrEmpty(thinkingDelta.Thinking))
+                {
+                    if (_currentThinkingEntry is null || thinkingDelta.BlockIndex != _currentThinkingBlockIndex)
+                    {
+                        _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)
+                        {
+                            IsExpanded = true,
+                        };
+                        _currentThinkingBlockIndex = thinkingDelta.BlockIndex;
+                        Transcript.Add(_currentThinkingEntry);
+                    }
+
+                    _currentThinkingEntry.AppendText(thinkingDelta.Thinking);
+                }
+
+                break;
+
             case RateLimitInfo:
             case UnknownEvent:
                 break;
         }
+    }
+
+    // Ends the currently-streaming reasoning row (AC-213) so the next thinking block, or the next turn, opens a
+    // fresh row instead of appending onto a stale one. Called wherever the assistant text row is likewise reset.
+    private void _CloseThinkingRow()
+    {
+        _currentThinkingEntry = null;
+        _currentThinkingBlockIndex = -1;
     }
 
     /// <summary>
@@ -1216,6 +1478,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         HasUsage = _usage.HasData;
         UsageSummary = _usage.Summary;
         UsageTooltip = _usage.Tooltip;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> SendPromptAsync(string prompt)
+    {
+        if (_runtime is null)
+        {
+            return false;
+        }
+
+        await _runtime.SendUserMessageAsync(prompt).ConfigureAwait(false);
+
+        return true;
     }
 
     // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:

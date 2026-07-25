@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,6 +7,7 @@ using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
@@ -210,8 +212,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
-    /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
-    protected override void OnVoiceTextReady(string text) => VoiceTranscriptReady?.Invoke(text);
+    /// <summary>
+    /// No cleanup — the terminal has no input box to proofread in, so the text goes straight to the pty like a typed
+    /// keystroke. Typed is all it may be: it is reduced to <see cref="_AsTypedText"/> first, so nothing in it can act
+    /// as a key. Sending stays its own gesture — the operator's Enter, or <see cref="OnVoiceSubmitRequested"/>'s
+    /// carriage return. Text that was nothing but keys writes nothing at all.
+    /// </summary>
+    protected override void OnVoiceTextReady(string text)
+    {
+        var typed = _AsTypedText(text);
+        if (typed.Length > 0)
+        {
+            VoiceTranscriptReady?.Invoke(typed);
+        }
+    }
 
     /// <summary>
     /// Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing —
@@ -687,13 +701,134 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// Starts reading this session's limits from the file the provider plugin's statusline writes.
+    /// Where a prompt goes when something other than the operator sends one (a scheduled resume, AC-234): the same
+    /// pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
+    /// to own; null before that, and the session then reports it cannot take a prompt yet.
+    /// </summary>
+    public Action<string>? PromptSink { get; set; }
+
+    /// <inheritdoc/>
+    public override Task<bool> SendPromptAsync(string prompt)
+    {
+        if (PromptSink is not { } sink)
+        {
+            return Task.FromResult(false);
+        }
+
+        // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in
+        // the composer looking sent, which is the failure that looks like success. The prompt itself is typed only —
+        // the trailing carriage return is the one byte here that is meant to act as a key.
+        sink(_AsTypedText(prompt) + "\r");
+
+        return Task.FromResult(true);
+    }
+
+    private const char Escape = '\u001b';
+    private const char Bell = '\u0007';
+
+    // Text on its way into a pty, reduced to what a person could type into the composer: every control byte becomes a
+    // space, and escape sequences are dropped whole. A pty has no notion of "just text" — a carriage return in it is
+    // Enter, a tab is completion, 0x03 is Ctrl+C, and an escape sequence drives the TUI and the emulator instead of
+    // filling the composer. So text that nobody typed (a voice transcript, a scheduled resume, an issue body a plugin
+    // handed over from a tracker anyone can write into) can fill the composer and do nothing else; sending it stays a
+    // deliberate, separate act.
+    //
+    // The line layout of a multi-line prompt is the price, and it is the right one: the alternative is that its first
+    // line submits itself and the rest arrives as input to whatever the session did next. Bracketed paste would keep
+    // the layout, but whether the hosted TUI honours it is the TUI's choice, not ours — a filter that only sometimes
+    // holds is not a filter.
+    private static string _AsTypedText(string text)
+    {
+        var typed = new StringBuilder(text.Length);
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == Escape)
+            {
+                index = _EndOfEscapeSequence(text, index);
+                continue;
+            }
+
+            // A space rather than nothing, so the words either side of a dropped line break stay apart.
+            typed.Append(char.IsControl(text[index]) ? ' ' : text[index]);
+        }
+
+        // Collapse the runs of spaces that leaves, so a prompt written over a few lines reads as the one sentence it
+        // was meant to be.
+        return string.Join(' ', typed.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    // The index of the last character of the escape sequence that starts at start, so the caller's own increment
+    // lands just past it. An unterminated or unrecognised sequence swallows the rest of the text:
+    // leaving the introducer behind is the one outcome worth avoiding, and text trailing an escape that never ends is
+    // not text anybody typed. Whatever this misses still cannot reach the pty — the caller turns every remaining
+    // control byte into a space, so a gap here costs legibility, never safety.
+    private static int _EndOfEscapeSequence(string text, int start)
+    {
+        if (start + 1 >= text.Length)
+        {
+            return text.Length - 1;
+        }
+
+        switch (text[start + 1])
+        {
+            // CSI (ESC [) runs over parameter and intermediate bytes until a final byte in 0x40-0x7E.
+            case '[':
+            {
+                var index = start + 2;
+                while (index < text.Length && text[index] is >= ' ' and < '@')
+                {
+                    index++;
+                }
+
+                return Math.Min(index, text.Length - 1);
+            }
+
+            // The string-payload family (OSC, DCS, SOS, PM, APC) runs until a BEL or an ESC \.
+            case ']' or 'P' or 'X' or '^' or '_':
+                return _EndOfEscapeString(text, start + 2);
+
+            // A charset designator (ESC ( B) takes one character more than a two-character escape does.
+            case '(' or ')' or '*' or '+':
+                return Math.Min(start + 2, text.Length - 1);
+
+            default:
+                return start + 1;
+        }
+    }
+
+    private static int _EndOfEscapeString(string text, int from)
+    {
+        for (var index = from; index < text.Length; index++)
+        {
+            if (text[index] == Bell)
+            {
+                return index;
+            }
+
+            if (text[index] == Escape && index + 1 < text.Length && text[index + 1] == '\\')
+            {
+                return index + 1;
+            }
+        }
+
+        return text.Length - 1;
+    }
+
+    /// <summary>
+    /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it
+    /// with that provider's own reader (AC-229) — the host polls, the plugin says what the contents mean.
     /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
     /// filesystem watcher on a write-then-rename fires more often than it tells you anything.
     /// </summary>
-    public void TrackLimits(string? statusFile)
+    /// <param name="statusFile">Where the provider's statusline drops its snapshots; nothing is tracked without one.</param>
+    /// <param name="signals">What the provider says its sessions can run out of, which names and describes each reading.</param>
+    /// <param name="readUsage">The provider's reader, turning a snapshot's contents into readings.</param>
+    public void TrackLimits(
+        string? statusFile,
+        IReadOnlyList<PluginUsageSignal> signals,
+        Func<string, IReadOnlyList<PluginUsageReading>>? readUsage)
     {
-        if (string.IsNullOrWhiteSpace(statusFile))
+        if (string.IsNullOrWhiteSpace(statusFile) || readUsage is null || signals.Count == 0)
         {
             return;
         }
@@ -708,31 +843,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                 {
                     try
                     {
-                        if (File.Exists(statusFile)
-                            && SessionLimits.TryParse(await File.ReadAllTextAsync(statusFile, cancellation)) is { HasAny: true } limits)
+                        if (File.Exists(statusFile))
                         {
-                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            var readings = readUsage(await File.ReadAllTextAsync(statusFile, cancellation));
+                            if (readings.Count > 0)
                             {
-                                ContextUsedPercent = limits.ContextUsedPercent;
-                                RateLimits.Clear();
-                                if (limits.FiveHourUsedPercent is { } fiveHour)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("5h", fiveHour, limits.FiveHourResetsAt));
-                                }
-
-                                if (limits.SevenDayUsedPercent is { } sevenDay)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("wk", sevenDay, limits.SevenDayResetsAt));
-                                }
-
-                                LimitsTooltip = DescribeLimits(limits);
-                            });
+                                await Dispatcher.UIThread.InvokeAsync(() => ApplyUsage(signals, readings));
+                            }
                         }
                     }
                     catch (Exception)
                     {
-                        // A file caught mid-rename, a session that just ended. The next tick sorts it out; a status
-                        // bar must never be a reason for a session to fall over.
+                        // A file caught mid-rename, a session that just ended, a reader that choked on a snapshot
+                        // written half-way. The next tick sorts it out; a status bar must never be a reason for a
+                        // session to fall over.
                     }
 
                     await Task.Delay(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false);
@@ -740,13 +864,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             },
             cancellation);
     }
-
-    /// <summary>
-    /// The hover text: what the bars mean, spelled out, plus when each window rolls over — which is the one thing
-    /// a bar cannot say and the thing you actually want when it is nearly full. Only the numbers Claude reported,
-    /// so nothing here is invented.
-    /// </summary>
-    internal static string DescribeLimits(SessionLimits limits) => limits.Describe();
 
     protected override ValueTask DisposeCoreAsync()
     {

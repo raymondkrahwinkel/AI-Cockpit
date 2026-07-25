@@ -8,8 +8,8 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// <see cref="PluginSessionEvent"/>s (Fase 4, SDK route) — a port of the host's <c>ClaudeStreamJsonParser</c>
 /// onto the narrower plugin event vocabulary. Delta-based like the Codex plugin driver: the streaming
 /// <c>stream_event</c> text/thinking deltas carry the progressive output, so the <c>assistant</c> snapshot's own
-/// text block is not re-emitted (it would double-render); its tool_use and thinking blocks are, since the deltas
-/// do not carry those. Rate-limit and status-change lines the plugin vocabulary has no event for are handled off
+/// text and thinking blocks are not re-emitted (they would double-render, AC-213); only its tool_use blocks are,
+/// since the deltas do not carry those. Rate-limit and status-change lines the plugin vocabulary has no event for are handled off
 /// the parser (limits ride the driver's status feed); an unrecognised line yields nothing rather than throwing.
 /// </summary>
 internal static class ClaudeStreamJson
@@ -69,8 +69,9 @@ internal static class ClaudeStreamJson
         yield return new PluginSessionInitialized { SessionId = sessionId, Cwd = cwd, Tools = tools };
     }
 
-    // The assistant snapshot carries complete blocks; the text is already streamed by the deltas, so only tool_use
-    // (which the deltas do not carry) and thinking are surfaced here.
+    // The assistant snapshot carries complete blocks; both text and thinking are already streamed by the
+    // stream_event deltas (--include-partial-messages is always passed), so re-emitting them here would double
+    // the rendered content (AC-213). Only tool_use — which the deltas do not carry — is surfaced from the snapshot.
     private static IEnumerable<PluginSessionEvent> _ParseAssistant(JsonElement root, string? sessionId)
     {
         if (!root.TryGetProperty("message", out var message)
@@ -99,9 +100,9 @@ internal static class ClaudeStreamJson
                     };
                     break;
 
-                case "thinking":
-                    yield return new PluginAssistantThinkingDelta { SessionId = sessionId, BlockIndex = 0, Thinking = _String(block, "thinking") };
-                    break;
+                // A "thinking" block is deliberately not re-emitted here: the stream_event thinking_delta path
+                // (_ParseStreamEvent) already streamed it incrementally, so emitting the full snapshot too would
+                // render the reasoning twice (AC-213).
             }
         }
     }

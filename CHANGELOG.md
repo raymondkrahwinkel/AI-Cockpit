@@ -41,13 +41,133 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   is the way there; the settings say that too instead of offering a key that will not fire.
 - added: screenshots work in a terminal session too. A terminal carries text and nothing else, but the agent
   running in it reads your clipboard itself when it sees a paste — so the capture goes on the clipboard and the
-  paste key goes to the terminal, which is exactly what you would do by hand. Note that it does replace whatever
-  you had copied; there is no private way to hand a terminal an image. A session whose provider cannot see
+  terminal is asked to perform its own paste, which is exactly what you would do by hand. Note that it does replace
+  whatever you had copied; there is no private way to hand a terminal an image. A session whose provider cannot see
   images at all still says so on the button and in a notice, rather than taking the screenshot and losing it.
 - added: a warning when two desktop-wide keys want the same key. Push-to-talk and the screenshot key are
   registered together, so one of them would otherwise simply stop working the moment you gave them the same
   key — with nothing anywhere connecting the two. Options names both features and the key while you are
   typing it, not after saving.
+- added: the plugin SDK is downloadable. Every release and nightly now carries the plugin contract as a NuGet
+  package plus a zip of the bare assembly, so a plugin can be built in its own repository instead of inside
+  this one — the guide's "Getting the SDK outside the repo" has the two lines of project setup that takes.
+- added: the cockpit now says when a session is running out of something — its context window filling up, or a
+  usage allowance nearly spent — in a bar above the session, once when it crosses the line rather than on every
+  refresh. Each provider decides what its sessions can run out of and when it is worth mentioning, so the numbers
+  come from whoever knows what the window means; you can override them per provider, or per profile for one you
+  use differently.
+- added: pick a session up again later. When an allowance is spent, the warning offers to continue the moment it
+  rolls over — the time is taken from the provider's own reset, and the prompt is yours to edit before it is set.
+  Any session can also be scheduled by hand from its context menu. It is one prompt at one moment, nothing that
+  runs on by itself, and a waiting resume says so on the session until it fires or you cancel it. A resume whose
+  moment passed while the cockpit was closed is reported rather than fired hours late, and one whose session has
+  since been closed is reported too rather than sent somewhere it does not belong.
+- changed: the bundled Claude provider needs this version of AI-Cockpit — it reports what a session is running out
+  of through host abstractions that older builds do not have.
+
+- added: projects — a reusable answer to what a session works on. A project holds a folder (picked or cloned), the
+  profile its sessions run under, whether they are isolated in a git worktree, which MCP servers they get, and
+  optional instructions for how to behave on that work, so a second codebase no longer means a second nearly
+  identical profile. It can carry a logo and a memory location too, and it is managed in a window of its own.
+- added: starting a session from a project — a Projects section in the sidebar whose ▶ starts one on the project's
+  own defaults without a dialog, and a right-click menu for the slower routes (a pre-filled New-session dialog, the
+  project's folder, its settings). Pick a project at the top of the New-session dialog to fill folder, profile,
+  worktree choice and MCP selection in one go; every field stays changeable, and the dialog is unchanged for anyone
+  with no projects.
+- added: a Projects workspace — "What do you want to work on?" over your projects as cards, most recently worked on
+  first, each showing its logo, what it is, when you last opened it and one Start button, with Open folder, Edit and
+  a new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
+  how many sessions are open. It is always there, as its own tab, and cannot be closed or opened twice. Built for
+  someone who would rather not know what a profile or an MCP server is.
+- added: one MCP-server list everywhere it appears — the profile editor, the New-session dialog and the project
+  editor — collapsed by default behind a live "MCP servers · 8 of 11 selected" count, so a dozen checkboxes stop
+  filling three dialogs that are about something else.
+- changed: a project can no longer switch a server back on that you had turned off in the global MCP configuration —
+  a project narrows what its sessions get, it never widens it.
+- changed: projects are managed in a window of their own, reached from the sidebar or the overview, instead of a tab
+  inside Options — a project is the work the cockpit is pointed at, not a setting of it.
+- changed: the sidebar lists the five most recently worked-on projects rather than all of them, with the rest one
+  click away in the overview.
+- added: a memory location per project — a folder, kept apart from the source folder. A session starting on the
+  project is told where it is, so it can look things up instead of being told again.
+- changed: a project card offers "Finish setting up" instead of "Start" while the project names no profile. Start
+  would have fallen through to the same dialog as the button beside it, which made the two look identical.
+- added: a logo per project, from a file or a link — SVG included, which is what most logos are; it is stored as the
+  picture it draws to. The cockpit keeps a copy of its own, so moving or renaming the original does not lose it, and
+  the card shows the project's initial while it has none.
+- added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
+  provider's own system prompt says, with a project's instructions added under them when a session starts on one.
+  Both apply; the more specific one is read last.
+- changed: the cockpit-session server (which lets a session report what it is working on) is mounted into every
+  session instead of being an item to tick, and is no longer offered in the MCP checklists — a status line going
+  missing because a box was left unticked was a cost with nothing to weigh against it.
+- added: an hourly background update re-check while the app is open, so a window left running for a workday still
+  learns about a build cut hours after it opened — not just at startup. It reuses the same toast/banner and dedup as
+  the startup check (a release is announced once, a dismissed build stays quiet), is gated by the same "check on
+  startup" setting, and never surfaces an error toast for a background poll that could not reach GitHub.
+- added: Autopilot templates — reusable goal/brief starting points for a run. Manage them in the Autopilot settings
+  (a Templates section: create your own, edit any, delete your own, and reset a built-in or plugin one to its default),
+  with placeholder help for the tokens you can use ({{issue.title}}, {{issue.url}}, {{input.…}} and more). When you
+  start a run you pick a template or plan free; a chosen template's text — with its placeholders filled from the
+  triggering issue — becomes the CEO's kickoff. The YouTrack and GitHub Issues plugins ship "Bug fix" and "Feature"
+  templates out of the box.
+- added: a startup banner and a persistent badge on the "Plugin store" button for plugins sitting at
+  awaiting-approval — new, or their bytes changed since you last approved them — so that state is visible from
+  the main window instead of only as a row in Plugin store → Installed. Both clear once every such plugin is
+  approved or disabled; the banner can also be dismissed on its own.
+- added: a persistent "Needs you" badge on the Autopilot bar while any run is waiting for your answer, so you
+  notice a waiting run even when you are looking at another run or the history — not just the moment's toast.
+  It clears once you answer.
+- added: a "CEO is working…" cue in the Plan-with-the-CEO dialog while the CEO is planning, so a long
+  planning turn no longer looks like the dialog is stuck — shown only on the CEO session, the rest of the
+  app's sessions are unaffected. It is a bar across the top of the chat, the same accent bar the run shows
+  when work returns to the CEO for validation.
+- added: Autopilot takes a code run all the way to a merge-ready pull request — it commits the run's work on
+  its branch, pushes it, and opens the PR for you (you still do the merge). When it cannot — a plain folder,
+  no git remote, or no GitHub CLI — it says so up front and leaves the work on its branch to publish by hand.
+- added: an Epic template for a YouTrack epic — it reads the epic's child issues (its "parent for" links) and
+  plans them as one coherent run that lands as a single pull request naming every issue it closes.
+- added: extended thinking is shown again at the Developer reading level — a dimmed, collapsible "Thinking"
+  section that streams the model's reasoning as it comes, and stays hidden at Focus and Simple so those levels
+  keep calm.
+- changed: an autonomous Autopilot run no longer stops for permission prompts it has no one to answer — its own
+  control tools are pre-authorized, and a run isolated in a throwaway worktree runs its work tools (edits, shell,
+  git) without prompting, with the worktree as the boundary. A step that is slow because it is working hard is no
+  longer mistaken for a stuck one and failed: the stall timer only trips when a step makes no tool progress at all.
+- added: a "Stop run" button on a running Autopilot run, so you can end a run mid-flight instead of only
+  intervening on a step or closing the whole workspace. A stopped run settles cleanly and is recorded in the
+  history as "Stopped" — a neutral outcome, not a failure — with any unmerged work left as-is.
+- added: an Autopilot run now raises a toast the moment it needs your answer, so you notice a run waiting on
+  you even while you are working elsewhere in the app — before, it only showed inline on the run surface and
+  was easy to miss.
+- added: Autopilot — take a piece of work all the way to a merge-ready pull request. A CEO agent plans the
+  run with you (from a YouTrack or GitHub issue, or a goal you type), resolves the open questions up front,
+  and once you approve the plan it runs the steps autonomously — each in the run's own isolated git
+  worktree, on the model you or the CEO pick for it, including free local models kept confined to that
+  worktree. It reviews and security-reviews its own work behind hard gates before reporting merge-ready,
+  posts progress and questions back on the source issue and moves its stage, and asks you when it hits a
+  decision only you can make. You can queue several runs and see a history of what each did and why it
+  passed or failed. You approve once and always do the merge yourself — Autopilot stops at merge-ready and
+  never merges.
+- added: SDK chat sessions now have a reading level — Developer, Focus or Simple — so one session can be read
+  by a developer or handed to a non-technical viewer without changing what the agent does. Developer shows
+  everything; Focus stays complete but calm (runs of auto-executed tool calls fold into one "N steps run" line
+  you can expand, and the running cost moves onto the usage pill instead of a "$" figure); Simple drops the tool
+  noise, the cost and the model chip and puts jargon in plain words. Tool calls that asked for your approval —
+  waiting, or already allowed or denied — stay visible at every level, in human language at Simple ("✓ Changed a
+  file — you approved this"). Pick the default per profile ("Default view"), override it when starting a session,
+  or switch it live from the session header. Terminal (TTY) sessions are a raw terminal and have no reading level.
+- added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
+  tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
+  heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.
+  It counts the tools portion only (labelled as an estimate), is cached so it does not re-count on every tick,
+  and a Refresh re-reads a server whose toolset changed. A server that can't be reached shows as unknown, with a
+  hover that explains why (offline, needs a sign-in, or its plugin isn't loaded) rather than reading as a zero.
+- added: when an agent delegates a task, it can now restrict that one task to a subset of the target
+  profile's MCP servers — so a sub-agent runs with just the tools its job needs. It can only narrow within
+  what the profile already allows, never grant more: asking for a server the profile does not have refuses
+  the delegation outright. The available servers per profile are listed alongside the profiles, so the choice
+  is an informed one.
 - added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
   but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
   Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the
@@ -93,9 +213,42 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   a single follow-up, sent together when the turn finishes — so a few quick follow-ups reach the agent as
   one turn instead of each getting its own. Off by default, which keeps today's one-turn-per-message
   behaviour.
+- added: "New session" on an issue in the YouTrack and GitHub Issues dialogs. It opens the ordinary New-session
+  dialog with the issue's prompt and its number already filled in, so you still pick the profile and the folder
+  yourself; the issue is tracked against the session the moment it starts. Cancelling starts and tracks nothing.
+- added: an issue's description is now shown the way the cockpit shows any other text — headings, lists, links
+  and code as they are meant to look, instead of the raw `##` and `**` the tracker stores.
 
 ### Changed
 
+- changed: an Autopilot run started from a YouTrack or GitHub issue now moves that issue's stage itself as it
+  progresses — to an in-progress stage when it starts, and a review stage when it reaches merge-ready —
+  instead of relying on the CEO to move it by hand (which it did not always do, so a run could sit on the
+  backlog while it worked). A blocked or stopped run is left where it is, and the final merge stage still
+  stays yours. Each tracker maps these to its own stage names.
+- changed: when an Autopilot worker gets stuck it now consults the run's CEO first, instead of interrupting
+  you directly. The CEO — which has the plan and can read the code — answers most questions itself (a
+  convention to follow, a reasonable default, a design call within the plan), relayed straight back to the
+  worker so the run keeps going without you. Only a decision that genuinely needs you — an irreversible
+  choice, a missing credential, a business preference — is escalated to you, and better phrased. A per-step
+  limit stops a weak model looping on questions.
+- changed: Autopilot is more reliable and faster to plan. An approved run no longer stops mid-way to ask a
+  question it could answer itself — for anything the plan did not spell out, the step agent now makes a
+  reasonable assumption that follows the codebase's existing conventions and notes it, keeping the run
+  autonomous rather than waiting on you. The CEO also plans quicker: it is handed only the tools it needs
+  instead of every tool in the cockpit, and searches the code deliberately (a scoped read) instead of
+  sweeping the whole repository, so planning uses less context and stalls less.
+- changed: an Autopilot run now lets you name the folder it works in, right where you name the run — pick a
+  recent or pinned folder (the same ones the New-session dialog remembers) or browse to one. A run planned
+  from a YouTrack or GitHub issue no longer needs a session open on a repository to know where to work, and
+  the CEO can propose the folder for you to confirm. A folder that is a git repository still isolates each
+  step in its own worktree; a plain folder — an admin task with no repository — now runs in it directly
+  instead of failing at the first step.
+- changed: a local model whose runtime can't do tool-calling no longer just fails a tool-enabled turn. When
+  the model rejects the request because its chat template can't handle tools (seen with some LM Studio GGUFs),
+  the session says so plainly and retries that turn once without tools, so a plain question still gets an
+  answer — with a visible note that tools were off for that turn. Turn the profile's MCP servers off to stop
+  offering them at all.
 - changed: the plugins that ship with the cockpit (the Claude provider and the rest) are now ordinary,
   store-updatable plugins that simply come pre-installed. They are put in place once, the first time
   they appear, and after that a newer version arrives through the plugin store like any other plugin's —
@@ -126,9 +279,90 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - changed: when message timestamps are on, the time for your own messages and for each tool step now sits on
   the same line as the "You" label or the tool name, instead of stacked on a separate line above the row — so
   the transcript reads tighter.
+- changed: the YouTrack and GitHub Issues dialogs open wider, with a divider you can drag between the list and
+  the details. The details side now leads with the issue itself — title, its state and repository as chips, a
+  link button, and the description — with the actions in one fixed row that no longer rearranges itself
+  depending on what happens to be installed or running. The prompt that will be handed to a session sits under a
+  "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
 
+- fixed: right-clicking a session in the sidebar, or a workspace tab, no longer starts dragging it. Both strips
+  armed their reorder on any mouse button, so opening the context menu and moving the pointer to what it opened —
+  Rename, typically — quietly moved the session or the workspace to a different position on the way there. They
+  now reorder on the left button only, and a drag lets go as soon as the button is up instead of staying stuck to
+  the pointer until the next click lands somewhere.
+
+- fixed: a finished session's worktree is cleaned up again once its work has landed. The panel judged this by
+  walking history — which a squash merge rewrites — so a worktree whose pull request had been squashed stayed
+  behind forever, "Clean up finished" could never sweep it, and every finished session left another one on the
+  pile. It now asks whether removing the folder could actually lose anything: work that is in the base branch,
+  or pushed to a remote, or already in the base under a rewritten commit, is safe to remove. The pill says what
+  is genuinely left, "N commit(s) only here", instead of counting commits that live somewhere else too. It also
+  no longer measures against a base branch that has not been pulled since the merge landed. A released
+  worktree's branch is deleted only when its work is in the base branch itself — a branch that is safe merely
+  because it was pushed is kept, since a remote can be force-pushed or its branch deleted.
+- fixed: an Autopilot run whose autonomy mode was left on a permission-bypassing setting no longer has its
+  Claude steps refused for "the profile does not confine to the worktree". The run now coerces that setting
+  back to the safe "acceptEdits" mode for every step — the implementation step and both review gates alike —
+  so a run started from an older saved setting proceeds instead of blocking on its first Claude step. The
+  refusal message, when it does appear, now names the fix: switch the autonomy mode to "acceptEdits", or route
+  steps that need autonomous shell to a Codex profile.
+- fixed: the CEO can no longer plan an Autopilot step on a model the chosen profile cannot run — a model that
+  is not one the profile offers, or any model on a local profile that pins its own. The plan is turned down at
+  emit with a clear message so the CEO corrects it before you approve, and a mismatched step is caught again
+  just before it runs instead of failing later with a misleading isolation error.
+- fixed: the Autopilot run queue no longer stops starting queued runs after one fails to start — a run that
+  errored while starting used to permanently consume a concurrency slot.
+- fixed: answering an Autopilot run's blockade with an empty reply, or a step that reports an empty summary,
+  no longer leaves the run stalled or shows the CEO a blank block.
+- fixed: the three internal Autopilot endpoints (autopilot-plan, autopilot-run, autopilot-ceo) no longer
+  appear in the New-session MCP checklist or a profile's MCP pre-selection. They are the cockpit's own
+  endpoints that only an Autopilot run's own agents use, so an ordinary session should never see or tick
+  them — a run still mounts them internally.
+- fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
+  run. Some local models write their tool calls as plain text instead of the structured form the runtime
+  can run, so the call was never executed and the step waited forever while appearing to "succeed". Those
+  text tool-calls are now recognised and run like any other; a step that still goes silent is failed after a
+  hard timeout instead of hanging indefinitely; and a tool-call that slips through as text surfaces as a
+  clear error rather than a stuck run.
+- fixed: an Autopilot run started from a YouTrack or GitHub issue moves that issue's stage as it progresses
+  again — the stage and note calls were addressed to the wrong tool endpoint and silently did nothing, so a
+  tracker-triggered run stopped keeping its issue in sync. The run name now also carries the ticket key
+  ("AC-191 - …") in the queue and history instead of only the bare summary, so a tracker-triggered run is
+  recognisable at a glance.
+- fixed: the history and Browse buttons in the Autopilot run's working-directory row now line up with the
+  text box beside them instead of stretching to different heights.
+- fixed: an isolated Autopilot step on Claude is now genuinely confined to its worktree. If such a step is
+  set to a bypass-permissions mode — which switches off the permission guard its confinement relies on — it
+  is no longer allowed to run, because it could otherwise write outside its worktree (reachable via a
+  malicious issue title/description). The default remains safe, and Codex, confined by a real OS sandbox, is
+  unaffected in every mode.
+- fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
+  runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
+  down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation
+  degrades instead of failing outright.
+- fixed: a finished worktree whose work was already merged no longer lingers in the Managed worktrees
+  panel. Its commits were counted against the point it forked from, so once the branch was merged it still
+  read as "N commit(s) ahead" forever and neither "Clean up finished" nor the automatic cleanup when a
+  session closes would remove it — merged, session-gone trees just piled up. A worktree is now measured
+  against its base branch's current tip, so a merged one reads as clean and is swept away, while one that
+  still holds unmerged commits is kept for review as before.
+- fixed: a delegated task now starts with only the MCP servers its profile has selected, instead of every
+  enabled server. A profile's per-server pre-selection was honoured when you opened a session from the dialog
+  but ignored when the same profile ran a delegated task, so a sub-agent could reach servers you had unticked
+  for it; the delegation path now applies the profile's selection too (an unset selection still means all
+  enabled, and a sub-agent still never gets the orchestrator unless its profile may delegate further).
+- fixed: a local model (Ollama / LM Studio) that rejects a request no longer drops the turn silently. A failed
+  request — an exceeded context window, a template the server can't parse — used to make the "thinking"
+  indicator simply vanish with nothing shown; the session now surfaces a red error row with the server's actual
+  reason (read from the response body), a genuine interrupt still ends cleanly with no error, and a turn that
+  comes back with nothing at all leaves a visible notice instead of quietly nothing.
+- fixed: the terminal no longer garbles lines that mix em-dashes, arrows or emoji. Characters like `—`, `→`
+  and `✅` advance wider than a monospace cell, and they used to push the rest of the line off its columns —
+  so `store` could read `stuore`, a version like `0.22.0→0.22.1` collapse into `0.22.0.0.22.1`, and checks
+  run together — most visibly while scrolling a unicode-heavy transcript or diff. Each cell is now painted on
+  its own column, so such output stays aligned.
 - fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
   its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
   processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
@@ -136,6 +370,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   defaults, and lost the session's workspace trust — which silently disables every injected MCP server. The
   cockpit now updates that file atomically, skips the write entirely when nothing needs changing, and never
   replaces an unreadable file with an empty one, so interleaving TTY and SDK sessions keep their MCP servers.
+- fixed: reordering sessions by dragging them in the left sidebar no longer rearranges the panes in the
+  Sessions workspace. The sidebar strip and the workspace grid now keep their own order — drag the strip to
+  sort your list, drag a pane's grip to arrange the grid — so tidying one never disturbs the other.
+- fixed: closing a session no longer leaves a gap in the workspace grid. When you close one of three or four
+  tiled sessions, the panes that remain re-flow to the tightest layout — two left fall back to a side-by-side
+  (or stacked) pair instead of sitting in a 2×2 with an empty cell.
 - fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers
@@ -162,6 +402,24 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   it is still working toward its answer.
 - fixed: a long item in a bulleted or numbered list in an assistant reply no longer runs off the edge and gets
   cut off — list items now wrap onto the next line like ordinary paragraphs.
+- fixed: opening an issue in the YouTrack or GitHub Issues dialog no longer hangs the cockpit and eats memory
+  until it is killed. The prompt preview now scrolls sideways for a long line instead of trying to re-wrap text
+  whose own line breaks are part of it.
+- fixed: the issue you were reading no longer disappears from under you. Typing in the filter, changing the
+  state or repository filter, toggling "Assigned to me" and refreshing all keep the issue selected instead of
+  dropping back to the placeholder.
+- fixed: what an action reported on an issue — started, moved, added to the prompt — stays on screen instead of
+  being wiped a moment later by the refresh the action itself triggered. It still clears when you move to
+  another issue.
+- fixed: "Add to prompt" now explains why it is greyed out when there is no session running, and comes back to
+  life as soon as "New session" has started one — it used to stay inert until you clicked the issue again.
+- fixed: pressing "New session" twice in a row no longer opens a second dialog, and a second session with it.
+  The button goes inert until the dialog you already have is closed.
+- fixed: starting a session from an issue now tells a workflow where that session works, so a flow that cuts a
+  branch or a worktree when an issue is picked gets the folder instead of an empty path.
+- fixed: "Open in browser" on a GitHub issue says so when the browser will not start, instead of silently doing
+  nothing; the YouTrack side now checks the address it built from your instance URL is a web address at all
+  before handing it to the desktop.
 
 ### Removed
 

@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:Cockpit.App.Converters"
+             x:Class="Cockpit.App.Controls.ProjectLogoBadge"
+             x:Name="Root">
+
+    <!-- A project's logo in the one shape every surface shows it in — the overview's cards, the manager's rows and
+         the editor's preview (AC-162). Three hand-copied wells drifted in size and corner radius; this is the one
+         they share. A project without a logo shows its initial, so a card keeps its shape either way. -->
+    <Border Width="{Binding #Root.Size}" Height="{Binding #Root.Size}"
+            CornerRadius="8" ClipToBounds="True"
+            Background="{Binding #Root.WellBackground}"
+            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+        <Panel>
+            <TextBlock Text="{Binding #Root.ProjectName, Converter={x:Static conv:ProjectInitialConverter.Instance}}"
+                       FontSize="{Binding #Root.InitialFontSize}" FontWeight="SemiBold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding #Root.ShowsInitial}"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Image Source="{Binding #Root.LogoPath, Converter={x:Static conv:ProjectLogoConverter.Instance}}"
+                   Stretch="UniformToFill"/>
+        </Panel>
+    </Border>
+</UserControl>

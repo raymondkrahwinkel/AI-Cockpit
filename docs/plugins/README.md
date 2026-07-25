@@ -17,7 +17,9 @@
   Actions workflow that builds, hashes and opens a PR against the official store, with a host-version gate that
   refuses to publish a plugin ahead of the app it needs. For pushing *this* repo's plugins to the official store.
 
-Start with the [Quickstart](PLUGIN-SDK.md#quickstart) in the SDK guide if you just want a plugin running, or
+Start with the [Quickstart](PLUGIN-SDK.md#quickstart) in the SDK guide if you just want a plugin running,
+["Getting the SDK outside the repo"](PLUGIN-SDK.md#getting-the-sdk-outside-the-repo) if your plugin lives in its
+own repository rather than under `plugins-dev/`, or
 ["How do I set up my own store?"](PLUGIN-SDK.md#the-index--indexjson) if you're publishing a catalogue.
 
 The official plugin store is

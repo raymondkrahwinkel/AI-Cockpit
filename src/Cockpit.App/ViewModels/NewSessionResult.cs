@@ -1,5 +1,6 @@
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -39,6 +40,21 @@ namespace Cockpit.App.ViewModels;
 /// <see cref="WorkingDirectory"/> is a git repository — a per-session choice made in the dialog next to the
 /// folder, not a profile setting. Ignored for a non-repository folder.
 /// </param>
+/// <param name="ReadingLevel">
+/// The reading level (AC-138) this SDK session opens with, overriding the profile's default view for this one
+/// session — chosen in the dialog and shown only for an SDK session. <see langword="null"/> keeps the profile
+/// default (the New-session dialog seeds it from there). Ignored for a TTY session, which has no reading level.
+/// </param>
+/// <param name="ProjectId">
+/// The project this session works on (AC-163), or <see langword="null"/> for one belonging to none. Carried so the
+/// running session can resolve its project's MCP overlay — everything downstream picks servers by name out of the
+/// catalog, and which names exist depends on the project.
+/// </param>
+/// <param name="SystemPrompt">
+/// The standing instructions to append to the provider's own system prompt: the profile's identity (AC-142) with
+/// the project's behaviour under it, already resolved by <c>SessionStartDefaults</c>. <see langword="null"/>
+/// appends nothing.
+/// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
     SessionProfile Profile,
@@ -51,4 +67,35 @@ public sealed record NewSessionResult(
     SessionResume? Resume = null,
     IReadOnlyDictionary<string, string>? PluginTtyOptions = null,
     IReadOnlyDictionary<string, string>? SdkLaunchOptions = null,
-    bool IsolateInWorktree = false);
+    bool IsolateInWorktree = false,
+    ReadingLevel? ReadingLevel = null,
+    string? ProjectId = null,
+    string? SystemPrompt = null)
+{
+    /// <summary>The SDK provider's launch options with <see cref="SystemPrompt"/> folded in (AC-142).</summary>
+    public IReadOnlyDictionary<string, string>? SdkLaunchOptionsWithInstructions => _WithSystemPrompt(SdkLaunchOptions);
+
+    /// <summary>The TTY provider's launch options with <see cref="SystemPrompt"/> folded in (AC-142).</summary>
+    public IReadOnlyDictionary<string, string>? TtyLaunchOptionsWithInstructions => _WithSystemPrompt(PluginTtyOptions);
+
+    /// <summary>
+    /// <paramref name="options"/> carrying the resolved instructions under the well-known append-system-prompt key,
+    /// which every provider already honours (Claude TTY and SDK, the OpenAI-compatible drivers, Codex) — the same
+    /// channel the delegation and Autopilot briefs use, so a profile's identity needs no per-provider plumbing of
+    /// its own. Returns the options untouched when there is nothing to say.
+    /// </summary>
+    private IReadOnlyDictionary<string, string>? _WithSystemPrompt(IReadOnlyDictionary<string, string>? options)
+    {
+        if (string.IsNullOrWhiteSpace(SystemPrompt))
+        {
+            return options;
+        }
+
+        var merged = options is null
+            ? []
+            : new Dictionary<string, string>(options, StringComparer.Ordinal);
+
+        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = SystemPrompt.Trim();
+        return merged;
+    }
+}

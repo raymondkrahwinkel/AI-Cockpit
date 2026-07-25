@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
-/// Starting an issue, as Raymond works: move it to "in progress" and put his name on it. Which value that is
+/// Starting an issue: move it to "in progress" and put the token owner's name on it. Which value that is
 /// depends on the board — an ordinary field calls it "In Progress", a workflow-governed one fires an event
 /// called something like "start progress" — so the target is picked from what the project actually offers
 /// (<see cref="YouTrackStateField.AvailableTargets"/>) instead of being written into the cockpit.

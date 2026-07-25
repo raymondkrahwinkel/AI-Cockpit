@@ -11,9 +11,11 @@ using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -33,6 +35,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
+    private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalMcpProviders;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
@@ -43,6 +46,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
+    private readonly IProjectStore _projectStore;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -50,6 +54,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IMcpServerCatalog mcpServerCatalog,
+        IMcpToolTokenEstimator tokenEstimator,
         IEnumerable<ICockpitInternalMcpProvider> internalMcpProviders,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
@@ -59,7 +64,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IPluginTtyProviderRegistry ttyProviderRegistry,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
-        IVerifyRunnerRegistry verifyRunnerRegistry)
+        IVerifyRunnerRegistry verifyRunnerRegistry,
+        IProjectStore projectStore)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -68,6 +74,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
+        _tokenEstimator = tokenEstimator;
         _internalMcpProviders = [.. internalMcpProviders];
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
@@ -76,11 +83,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _worktreeManager = worktreeManager;
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
+        _projectStore = projectStore;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        // Topmost window, not always the main one (AC-297): a plugin can open this dialog from its own modal —
+        // an issue dialog's "New session" button — and that modal blocks the main window. Owned by the main window
+        // this would open behind the very dialog that asked for it, and it would not block that dialog either, so a
+        // second click would stack another one. Same reasoning as PluginDialogHost's owner pick.
+        if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
         }
@@ -89,8 +101,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
+            _projectStore);
         await viewModel.LoadAsync();
+
+        // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
+        // instance: selecting it runs the dialog's own project handling (folder, profile, worktree, MCP overlay), and
+        // a prefill naming a field explicitly is the more specific answer, so it is applied over the result.
+        if (project is not null)
+        {
+            viewModel.SelectedProject = viewModel.Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
+
+            // Selecting a project rebuilds the checklist from its overlay, and that is a read. Await it before the
+            // dialog is on screen: a dialog that can be started while the rebuild is in flight can start a session
+            // on the servers of no project at all.
+            await viewModel.McpChecklistRefresh;
+        }
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
         // and setting properties earlier would be overwritten by the load's own defaulting. Every field is optional
@@ -112,6 +138,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             if (!string.IsNullOrWhiteSpace(prefill.SessionName))
             {
                 viewModel.SessionName = prefill.SessionName;
+            }
+
+            // The prompt is seeded to be *read*, not to be started with: nothing carries it out of the dialog (the
+            // caller injects its own prefill into the started session). Without it the dialog asked the operator to
+            // confirm a session while hiding the one field that can hold text written outside the cockpit.
+            if (!string.IsNullOrWhiteSpace(prefill.InitialPrompt))
+            {
+                viewModel.InitialPrompt = prefill.InitialPrompt;
             }
 
             // Only a Claude profile keeps a resumable history; the dialog hides the resume controls for every other
@@ -181,6 +215,49 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
     }
 
+    public async Task ShowProjectsDialogAsync(ProjectsViewModel projects)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // The one shared manager, so what this window shows is what the sidebar and the overview show.
+        await projects.LoadAsync();
+        await new ProjectsDialog { DataContext = projects }.ShowDialog(owner);
+    }
+
+    public async Task<Project?> ShowProjectDialogAsync(Project? project)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog);
+        var dialog = new ProjectDialog { DataContext = viewModel };
+
+        // Cloning is answered here rather than in the dialog's code-behind: the clone flow owns a dialog of its
+        // own and the manager that runs it, both of which live on this service.
+        viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
+
+        return await dialog.ShowDialog<Project?>(owner);
+    }
+
+    // Keeps the URL beside the path: a project shows where its folder came from, which the clone dialog's own
+    // result (a local path) cannot say on its own.
+    private async Task _CloneIntoProjectAsync(ProjectDialogViewModel viewModel, Window owner)
+    {
+        var clonesRoot = await _cloneManager.GetEffectiveClonesRootAsync();
+        var cloneViewModel = new CloneFromGitUrlDialogViewModel(_cloneManager, clonesRoot);
+        var dialog = new CloneFromGitUrlDialog { DataContext = cloneViewModel };
+
+        if (await dialog.ShowDialog<string?>(owner) is { Length: > 0 } clonePath)
+        {
+            viewModel.ApplyPickedDirectory(clonePath, cloneViewModel.Url.Trim());
+        }
+    }
+
     // Shows the clone-from-URL dialog over the New-session dialog and returns the local clone path, or null if the
     // operator cancelled. The dialog runs the clone itself (through the injected manager) and surfaces its own
     // failures, so this only ever hands back a directory that is actually on disk.
@@ -196,7 +273,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task ShowManageProfilesAsync(Window owner)
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };
@@ -259,7 +336,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false)
+    public async Task<(DateTimeOffset Moment, string Prompt)?> ShowScheduleResumeDialogAsync(DateTimeOffset suggested, string prompt)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = new ScheduleResumeDialogViewModel(suggested, prompt);
+        var dialog = new ScheduleResumeDialog { DataContext = viewModel };
+
+        return await dialog.ShowDialog<ScheduleResumeDialogViewModel?>(owner) is { } chosen
+            ? (chosen.Moment, chosen.Prompt)
+            : null;
+    }
+
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -267,12 +359,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var dialog = new OptionsDialog { DataContext = viewModel };
-        if (selectPluginsTab)
-        {
-            dialog.SelectPluginsTab();
-        }
 
         await dialog.ShowDialog(owner);
+
+        // AC-233: the usage thresholds are edited in place like every other option here, so they are written when
+        // the dialog closes. Sessions already open keep the numbers they were started with; the ones started after
+        // this take the new ones.
+        if (viewModel.UsageThresholdSettings is { } thresholds)
+        {
+            await thresholds.SaveAsync();
+            viewModel.UsageThresholds = await thresholds.ReloadAsync();
+        }
     }
 
     // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust

@@ -42,6 +42,17 @@ public sealed record SessionCapabilities(
     /// </summary>
     public bool SupportsEnvVars { get; init; }
 
+    /// <summary>
+    /// Whether this driver's own file-affecting tools stay within the session's working directory (AC-174) — the
+    /// guarantee worktree isolation rests on. A driver that spawns a process in the working directory and edits
+    /// files with cwd-bound native tools (Claude, Codex) confines them; an HTTP/in-process driver (a local model)
+    /// has no process cwd and reaches files only through out-of-process MCP servers rooted at a fixed folder, so it
+    /// does <em>not</em>. The host reads this after start to refuse an isolate-in-worktree embedded run on a
+    /// non-confining provider rather than let it write the operator's real checkout. Defaults to
+    /// <see langword="false"/> so a provider that has not vouched for confinement fails closed, not open.
+    /// </summary>
+    public bool ConfinesFileAccessToWorkingDirectory { get; init; }
+
     /// <summary>The Claude-CLI driver: native tools, permission prompts, live model/permission control, plan mode, thinking, image input, and resuming an earlier conversation.</summary>
     public static SessionCapabilities ClaudeCli { get; } = new(
         SupportsTools: true,
@@ -55,5 +66,8 @@ public sealed record SessionCapabilities(
     {
         // The TTY route injects a profile's variables host-side (TtyLauncher), so a Claude session honours them.
         SupportsEnvVars = true,
+        // Claude spawns in the session's working directory and edits with cwd-bound native tools, so an isolated
+        // run stays inside its worktree (AC-174).
+        ConfinesFileAccessToWorkingDirectory = true,
     };
 }

@@ -274,6 +274,33 @@
     <Style Selector="ToggleButton:checked:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
+    <!-- Collapser toggle: a chevron and a line of text that open a section — a heading you can click, not a
+         button. It needs its own styling because the checked state above fills a ToggleButton with the accent,
+         which would make the quietest row in a dialog the loudest thing on the screen the moment it is opened.
+         Note the selector is by exact type: Button.Subtle does not reach a ToggleButton. -->
+    <Style Selector="ToggleButton.Collapser">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="ToggleButton.Collapser /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Collapser:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Collapser:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ToggleButton.Collapser:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+
     <!-- Compact toggle: same dense footprint as Button.Compact, so a toggle sitting in a compact control
          row (e.g. the TTY header's Read aloud beside Redraw) lines up at the same height. -->
     <Style Selector="ToggleButton.Compact">

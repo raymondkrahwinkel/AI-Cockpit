@@ -320,6 +320,21 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_ExcludesInternalEndpoints_FromTheChecklist()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var vm = NewVmWithMcp(out _, [profile],
+            new McpServerConfig { Name = "server-a" },
+            // An internal-only endpoint (AC-204, the Autopilot CEO/step tools) is enabled and mountable but must not
+            // appear in the operator's checklist. Red without the fix, which offered every enabled catalog server.
+            new McpServerConfig { Name = "cockpit-autopilot-ceo", Url = "http://127.0.0.1:1/mcp", Internal = true });
+
+        await vm.LoadAsync();
+
+        vm.McpServers.Select(server => server.Name).Should().Equal("server-a");
+    }
+
+    [Fact]
     public async Task LoadAsync_WithNoRegistryServers_HasMcpServersIsFalse()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
@@ -562,11 +577,11 @@ public class NewSessionDialogViewModelTests
     {
         var row = new PluginTtyOptionSelectionViewModel(
             "model", "Model", ["opus", "sonnet", "custom-snapshot"], "sonnet",
-            new Dictionary<string, string> { ["opus"] = "Opus 4.8", ["sonnet"] = "Sonnet" });
+            new Dictionary<string, string> { ["opus"] = "Opus", ["sonnet"] = "Sonnet" });
 
         // Fase 4 step 1: a value with a provider label reads friendly; an unlabelled value (a pinned snapshot) falls
         // back to showing itself, and the picked value is always the raw CLI value regardless of its label.
-        row.ChoiceItems.Select(choice => choice.Label).Should().Equal("Opus 4.8", "Sonnet", "custom-snapshot");
+        row.ChoiceItems.Select(choice => choice.Label).Should().Equal("Opus", "Sonnet", "custom-snapshot");
         row.ChoiceItems.Single(choice => choice.Value == "sonnet").Label.Should().Be("Sonnet");
         row.Value.Should().Be("sonnet");
     }
@@ -930,6 +945,33 @@ public class NewSessionDialogViewModelTests
             ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
     }
 
+    [Fact]
+    public async Task InitialPrompt_WhenAPrefillCarriesOne_IsShownForTheOperatorToRead()
+    {
+        var vm = NewVm(out _, new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")));
+        await vm.LoadAsync();
+
+        vm.HasInitialPrompt.Should().BeFalse();
+
+        vm.InitialPrompt = "## Crash on login\r\nSteps to reproduce...";
+
+        // The dialog is the gate a prefill passes through, so the field that can hold text written outside the
+        // cockpit has to be on it — otherwise the operator confirms a prompt they were never shown.
+        vm.HasInitialPrompt.Should().BeTrue();
+        vm.InitialPrompt.Should().Be("## Crash on login\r\nSteps to reproduce...");
+    }
+
+    [Fact]
+    public async Task InitialPrompt_WhenBlank_LeavesTheRowHidden()
+    {
+        var vm = NewVm(out _, new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")));
+        await vm.LoadAsync();
+
+        vm.InitialPrompt = "   ";
+
+        vm.HasInitialPrompt.Should().BeFalse();
+    }
+
     private static NewSessionDialogViewModel NewVm(out IProfileLoginChecker loginChecker, params SessionProfile[] profiles)
     {
         var store = Substitute.For<ISessionProfileStore>();
@@ -976,6 +1018,9 @@ public class NewSessionDialogViewModelTests
         }
 
         var mcpServerCatalog = Substitute.For<IMcpServerCatalog>();
+        // The dialog asks per project (AC-163) — with no project selected that is the plain catalog, which is what
+        // the real McpServerCatalog returns for a null id.
+        mcpServerCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
         mcpServerCatalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
 
         return new NewSessionDialogViewModel(store, loginChecker, mcpServerCatalog);

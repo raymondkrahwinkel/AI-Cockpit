@@ -10,6 +10,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Delegation;
@@ -51,6 +52,7 @@ using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Core.Terminal;
@@ -89,6 +91,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
+
+    /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
+    private readonly ProjectQuickStart? _projectQuickStart;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -152,6 +157,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _allSessionsIdleNotified = true;
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
+
+    /// <summary>
+    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Handed in by the app at
+    /// startup rather than taken through the constructor, so the unit-test and design-time graphs — which build
+    /// this view-model from the container — never construct a scheduler, never touch the config file, and never
+    /// leave one running behind a test.
+    /// </summary>
+    public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
+
+    /// <summary>
+    /// The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
+    /// Null in the graphs that never load them, and every signal then warns where its provider said.
+    /// </summary>
+    public UsageThresholdSettings? UsageThresholds { get; set; }
+
+    /// <summary>
+    /// The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
+    /// app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
+    /// without one and touch no config.
+    /// </summary>
+    public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
+
+    /// <summary>
+    /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
+    /// grid binds straight to <see cref="Sessions"/> and keeps its own positional cell layout, so reordering the
+    /// strip must never touch <see cref="Sessions"/> — moving an item there rebuilds its pane (a fresh TTY with no
+    /// pty → a black terminal) and drags the grid tiles along with the strip. This list is reconciled against
+    /// <see cref="Sessions"/> on read: new sessions append, closed ones drop out, and a drag only re-slots it here.
+    /// In-memory only, like the sessions it orders.
+    /// </summary>
+    private readonly List<SessionPanelViewModel> _sidebarOrder = [];
 
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
@@ -244,6 +280,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
     public WorktreesViewModel Worktrees { get; }
+
+    /// <summary>The operator's projects (AC-161): the Options tab that manages them and the sidebar section that starts them read this one shared view model.</summary>
+    public ProjectsViewModel Projects { get; }
 
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
@@ -374,6 +413,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPluginFailures;
 
+    /// <summary>A dismissible banner (AC-208) shown when one or more plugins are sitting at awaiting-approval — new, or their bytes changed since last approved — so that state is visible without opening Plugin store → Installed.</summary>
+    [ObservableProperty]
+    private string _pendingApprovalBanner = string.Empty;
+
+    /// <summary>True while the pending-approval banner should be shown.</summary>
+    [ObservableProperty]
+    private bool _hasPendingApprovals;
+
     /// <summary>Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes. Errors (a plugin that did not load) and warnings (one that loaded but is flagged, e.g. built against a newer SDK) read differently, since the operator can do different things about them.</summary>
     public void RefreshPluginFailures()
     {
@@ -391,10 +438,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             (0, _) => $"{warnings.Count} plugins may be incompatible with this app. See the Plugin store → Installed for details.",
             _ => $"{errors.Count} plugins failed to load and {warnings.Count} may be incompatible. See the Plugin store → Installed for details.",
         };
+
+        var pending = _pluginDiagnostics?.PendingApprovals ?? [];
+        HasPendingApprovals = pending.Count > 0;
+        PendingApprovalBanner = pending.Count switch
+        {
+            0 => string.Empty,
+            1 => $"1 plugin is awaiting approval: {pending[0].DisplayName}. See Plugin store → Installed to review it.",
+            _ => $"{pending.Count} plugins are awaiting approval. See Plugin store → Installed to review them.",
+        };
+
+        // AC-208: seeds the sidebar "Plugin store" badge with the same count, so it is visible right from
+        // startup — Plugins.LoadAsync (the badge's live source once the operator opens the manager) has not run
+        // yet at this point, called as this is right after plugin phase-2 completes.
+        Plugins.SeedPendingApprovalCount(pending.Count);
     }
 
     [RelayCommand]
     private void DismissPluginFailures() => HasPluginFailures = false;
+
+    [RelayCommand]
+    private void DismissPendingApprovals() => HasPendingApprovals = false;
 
     void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));
@@ -719,6 +783,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// dismissed from the banner. A nightly has no version — its commit is its whole identity — so both go in.</summary>
     private string _offeredRelease = string.Empty;
     private string _dismissedRelease = string.Empty;
+
+    // How often the background re-check for a newer build runs while the cockpit is open (AC-188) — the startup look
+    // is a single shot, this catches a release cut hours after the window opened.
+    private static readonly TimeSpan PeriodicUpdateCheckInterval = TimeSpan.FromHours(1);
+
+    // The hourly update-check timer (AC-188), on the same DispatcherTimer footing as the plugin/managed-CLI check in
+    // App; null until StartPeriodicUpdateChecks runs, stopped in DisposeAsync.
+    private DispatcherTimer? _periodicUpdateTimer;
 
     public bool CanCheckForUpdates => _updates is not null;
 
@@ -2056,14 +2128,52 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         // A dashboard shows no sessions at all; and a session with no workspace — created before workspaces
-        // existed, or in the design-time graph — belongs to the first one rather than to nothing.
+        // existed, or in the design-time graph — belongs to the first desk that can actually show one. By
+        // position it would belong to whatever happens to sit at index 0, and since the projects overview is a
+        // fixture that survives every close, a cockpit whose session desks were all closed would leave such a
+        // session belonging to a surface that shows no sessions at all: invisible everywhere.
+        var firstSessionsWorkspace = Workspaces.Settings.Workspaces
+            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions);
+
         return active.Type == WorkspaceType.Sessions
             && (session.WorkspaceId == active.Id
-                || (session.WorkspaceId.Length == 0 && Workspaces.Settings.Workspaces[0].Id == active.Id));
+                || (session.WorkspaceId.Length == 0 && firstSessionsWorkspace?.Id == active.Id));
     }
 
-    /// <summary>The sessions on the workspace now showing — what the sidebar lists, so it never offers a session the grid is hiding.</summary>
-    public IEnumerable<SessionPanelViewModel> VisibleSessions => Sessions.Where(BelongsToActiveWorkspace);
+    /// <summary>
+    /// The sessions on the workspace now showing, in the sidebar's own order — what the strip lists, so it never
+    /// offers a session the grid is hiding. Reads from <see cref="_sidebarOrder"/> (reconciled on access) rather
+    /// than from <see cref="Sessions"/>, so a drag-reorder of the strip leaves the grid's tiles where they are.
+    /// Returns a snapshot rather than a deferred query: the getter reconciles <see cref="_sidebarOrder"/> as a
+    /// side effect, so handing back a live view over that same field would risk a "collection modified" the moment
+    /// a later read reconciles again mid-enumeration.
+    /// </summary>
+    public IEnumerable<SessionPanelViewModel> VisibleSessions
+    {
+        get
+        {
+            _ReconcileSidebarOrder();
+            return _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
+        }
+    }
+
+    /// <summary>
+    /// Brings <see cref="_sidebarOrder"/> back in line with <see cref="Sessions"/>: drops sessions that have
+    /// closed and appends any that appeared, keeping the operator's chosen order for everything already tracked.
+    /// Idempotent and cheap (a handful of sessions), so it is safe to run on every <see cref="VisibleSessions"/>
+    /// read — no dependency on when <see cref="Sessions"/>'s change event happens to fire.
+    /// </summary>
+    private void _ReconcileSidebarOrder()
+    {
+        _sidebarOrder.RemoveAll(session => !Sessions.Contains(session));
+        foreach (var session in Sessions)
+        {
+            if (!_sidebarOrder.Contains(session))
+            {
+                _sidebarOrder.Add(session);
+            }
+        }
+    }
 
     /// <summary>
     /// Ties the session content to the strip: which workspace is active decides which panes belong on screen
@@ -2114,6 +2224,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
         Worktrees = new WorktreesViewModel();
+        Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
@@ -2207,6 +2318,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISecretKeyHolder? secretKeyHolder = null,
         IWorktreeManager? worktreeManager = null,
         WorktreesViewModel? worktrees = null,
+        ProjectsViewModel? projects = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         ICloneSettingsStore? cloneSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
@@ -2216,6 +2328,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
+        IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
+        ProjectQuickStart? projectQuickStart = null,
         IScreenshotSettingsStore? screenshotSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
@@ -2224,7 +2338,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The toast host goes in so a refused save is said rather than dropped: the strip's changes are all
         // fire-and-forget, so without somewhere to report to, a write the config gate turned down would be
         // silence and a lost arrangement.
-        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost);
+        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
@@ -2251,6 +2365,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _terminals = terminals;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
+        Projects = projects ?? new ProjectsViewModel();
+        _projectQuickStart = projectQuickStart;
+
+        // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
+        // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
+        // startup read here; the section simply stays hidden until it lands.
+        _ = Projects.LoadAsync();
         // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
         // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
         // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
@@ -2366,7 +2487,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
             // PaneId) surfaces on the active session. Either way, if there is nowhere to show it, deny — never hang.
             var pane = prompt.Request.Source.PaneId is { } paneId
-                ? Sessions.FirstOrDefault(session => session.PaneId == paneId)
+                ? FindSession(paneId)
                 : SelectedSession;
             if (pane is null)
             {
@@ -2395,8 +2516,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
         Dispatcher.UIThread.Post(() =>
         {
-            var pane = Sessions.FirstOrDefault(session => session.PendingConsent?.Id == promptId);
-            if (pane is not null)
+            // Search embedded panes too (AC-152): a consent shown over an embedded Autopilot session is cleared here,
+            // and missing it would leave the overlay stuck and block every later consent on that pane.
+            if (_AllSessions().FirstOrDefault(session => session.PendingConsent?.Id == promptId) is { } pane)
             {
                 pane.PendingConsent = null;
             }
@@ -3006,9 +3128,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool CanBackUp => _backupService is not null;
 
     /// <summary>
-    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup. A
-    /// failed check is silent here: the cockpit has just opened, and a toast saying GitHub was unreachable is noise
-    /// about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
+    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup — the
+    /// single first look; <see cref="StartPeriodicUpdateChecks"/> keeps looking every hour after this while the window
+    /// stays open. A failed check is silent here: the cockpit has just opened, and a toast saying GitHub was
+    /// unreachable is noise about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
     /// </summary>
     public async Task InitialiseUpdatesAsync()
     {
@@ -3040,15 +3163,92 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _Announce(release);
 
-        // The toast is the whole point of checking on startup: a newer build nobody is told about is a newer build
-        // nobody installs. Raised on the host this view model already owns rather than through IToastService —
-        // that service is built *from* this view model, and injecting it here would be a circle the container walks
-        // in forever.
-        ToastHost.Add(
-            $"{release.Name} is out. You are on {CurrentBuild}.",
-            ToastSeverity.Information,
-            "Open it",
-            OpenUpdate);
+        // The toast is the whole point of checking on startup: a newer build nobody is told about is one nobody
+        // installs. Raised on the host this view model owns, not through IToastService — that service is built *from*
+        // this view model, so injecting it here would be a circle the container never resolves.
+        _ToastUpdate(release);
+    }
+
+    // The "a newer build is out" toast, shared by the startup check and the hourly re-check (AC-188) so the two never
+    // drift. Raised on ToastHost for the same circular-dependency reason as the startup toast above.
+    private void _ToastUpdate(AppRelease release) =>
+        ToastHost.Add($"{release.Name} is out. You are on {CurrentBuild}.", ToastSeverity.Information, "Open it", OpenUpdate);
+
+    /// <summary>
+    /// One background re-check for a newer build (AC-188), on the hourly cadence set by <see cref="StartPeriodicUpdateChecks"/>.
+    /// Gated by the same <see cref="CheckForUpdatesOnStartup"/> setting as the startup look, and toasts a given release
+    /// only once — a build already on offer, or one the operator dismissed, stays quiet. Silent on a failed check.
+    /// </summary>
+    public async Task RunPeriodicUpdateCheckAsync()
+    {
+        if (_updates is not { } updates || !CheckForUpdatesOnStartup)
+        {
+            return;
+        }
+
+        UpdateCheckResult result;
+        try
+        {
+            result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+        }
+        catch (Exception)
+        {
+            // A background poll that cannot reach GitHub says nothing — an error toast for a look nobody asked for is noise.
+            return;
+        }
+
+        if (result.Release is not { } release)
+        {
+            return;
+        }
+
+        // Captured before _Announce overwrites it, so a release already on offer does not re-toast every hour; the
+        // same key builder keeps this comparison and _Announce from drifting.
+        var isNewRelease = _offeredRelease != _ReleaseKey(release);
+
+        _Announce(release);
+
+        // A genuinely new build that is actually on screen — a dismissed one that keeps turning up stays quiet.
+        if (isNewRelease && UpdateBannerVisible)
+        {
+            _ToastUpdate(release);
+        }
+    }
+
+    /// <summary>
+    /// Starts the hourly re-check for a newer build (AC-188) while the window stays open, so a long-running cockpit
+    /// does not miss a release cut hours after it opened. No-op without an update service, and idempotent — a second
+    /// call is ignored rather than starting a second timer. Stopped in <see cref="DisposeAsync"/>. Rides a
+    /// DispatcherTimer, like the plugin/managed-CLI check in <c>App</c>: it ticks on the UI thread, so the check
+    /// touches its bound state directly without marshalling.
+    /// </summary>
+    /// <summary>
+    /// Starts watching for resumes that have come due (AC-234), and reports whatever lapsed while the cockpit was
+    /// closed. Teaches the coordinator how to find a live session, which only the cockpit knows. Idempotent, and a
+    /// no-op in the graphs that have no coordinator (unit tests, the designer).
+    /// </summary>
+    public Task StartScheduledResumesAsync()
+    {
+        if (ScheduledResumes is not { } coordinator)
+        {
+            return Task.CompletedTask;
+        }
+
+        coordinator.ResolveSession = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId);
+
+        return coordinator.StartAsync();
+    }
+
+    public void StartPeriodicUpdateChecks()
+    {
+        if (_updates is null || _periodicUpdateTimer is not null)
+        {
+            return;
+        }
+
+        _periodicUpdateTimer = new DispatcherTimer { Interval = PeriodicUpdateCheckInterval };
+        _periodicUpdateTimer.Tick += (_, _) => _ = RunPeriodicUpdateCheckAsync();
+        _periodicUpdateTimer.Start();
     }
 
     /// <summary>Looks now, because the operator asked (#71). Unlike the startup check, this one says when it could not look at all.</summary>
@@ -3118,12 +3318,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = $"{release.Name} is available (published {release.PublishedAt.ToLocalTime():d MMMM yyyy}).";
         OnPropertyChanged(nameof(HasUpdate));
 
-        // The banner shows unless the operator already dismissed this exact build. A release's identity is its
-        // version and commit — for a nightly the version is empty and the commit is the whole of it (a rolling
-        // tag has no number), so a newer build always has a different key and the banner returns on its own.
-        _offeredRelease = $"{release.Version} {release.Commit}";
+        // The banner shows unless the operator already dismissed this exact build; a newer build always has a
+        // different key (see _ReleaseKey) and so returns on its own.
+        _offeredRelease = _ReleaseKey(release);
         UpdateBannerVisible = _offeredRelease != _dismissedRelease;
     }
+
+    // The dedup identity of a release — version + commit (a nightly's version is empty, so the commit carries it). One
+    // source of truth: _Announce and the hourly check must key off the same string, or dedup silently breaks.
+    private static string _ReleaseKey(AppRelease release) => $"{release.Version} {release.Commit}";
 
     partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();
 
@@ -4028,6 +4231,93 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return paneId;
     }
 
+    /// <summary>
+    /// Starts a session on <paramref name="project"/> with the project's own defaults and no dialog (AC-164) — the
+    /// sidebar's ▶ and the launcher's Start. What it opens with is <see cref="ProjectQuickStart"/>'s to answer; this
+    /// only launches it, through the same path the dialog's result takes.
+    /// </summary>
+    [RelayCommand]
+    private async Task StartProjectSessionAsync(Project? project)
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        if (_projectQuickStart is not null && await _projectQuickStart.ComposeAsync(project) is { } result)
+        {
+            // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
+            // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
+            // numbering exists to prevent.
+            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            return;
+        }
+
+        // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
+        // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
+        await NewSessionForProjectAsync(project);
+    }
+
+    /// <summary>
+    /// Opens the New-session dialog on <paramref name="project"/> (AC-164) — the "New session…" next to the quick
+    /// start, for when the operator wants to change something the project would otherwise decide.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewSessionForProjectAsync(Project? project)
+    {
+        if (project is null || _dialogService is null)
+        {
+            return;
+        }
+
+        if (await _dialogService.ShowNewSessionDialogAsync(project: project) is { } result)
+        {
+            await _LaunchSessionFromResultAsync(result);
+        }
+    }
+
+    /// <summary><paramref name="title"/> if no session carries it, else "<paramref name="title"/> 2", "… 3" — the first free one.</summary>
+    private string _UniqueSessionTitle(string title)
+    {
+        var taken = Sessions.Select(session => session.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(title))
+        {
+            return title;
+        }
+
+        var suffix = 2;
+        while (taken.Contains($"{title} {suffix}"))
+        {
+            suffix++;
+        }
+
+        return $"{title} {suffix}";
+    }
+
+    /// <summary>Opens <paramref name="project"/>'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.</summary>
+    [RelayCommand]
+    private void OpenProjectFolder(Project? project)
+    {
+        if (project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // No handler to open a folder (a headless or unusual environment) — better to do nothing than crash.
+        }
+    }
+
+    /// <summary>Opens the project editor for <paramref name="project"/> from the sidebar, persisting through the same manager the Options tab uses.</summary>
+    [RelayCommand]
+    private Task EditProjectAsync(Project? project) =>
+        project is null ? Task.CompletedTask : Projects.EditAsync(project);
+
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
     // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId
     // (#AC-96) so a caller that opened the dialog on a plugin's behalf can hand that id back — null when nothing
@@ -4058,7 +4348,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return null;
             }
 
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions);
+            session.ProjectId = result.ProjectId;
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
             paneId = session.PaneId;
         }
         else
@@ -4083,6 +4374,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
             // both for the same launch (see NewSessionResult.PluginTtyOptions).
             var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
+            session.ProjectId = result.ProjectId;
             session.LaunchConfigured(
                 result.Profile,
                 isClaudeProfile ? result.Mode.Value : null,
@@ -4090,7 +4382,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Effort.Value : null,
                 workingDirectory,
                 result.Resume,
-                result.PluginTtyOptions,
+                result.TtyLaunchOptionsWithInstructions,
                 // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
                 // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
                 result.EnabledMcpServerNames);
@@ -4099,6 +4391,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
+
+        // Record that this project was worked on, whichever door the session came through, so the overview can
+        // lead with what is actually used. Fire-and-forget like the worktree count: a small config write must not
+        // hold up a session that has already started, and a failed one costs an ordering, not the work.
+        if (result.ProjectId is { Length: > 0 } projectId
+            && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
+        {
+            _ = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+        }
+
         return paneId;
     }
 
@@ -4207,6 +4509,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
+    /// choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
+    /// </summary>
+    [RelayCommand]
+    private async Task ScheduleSessionResumeAsync(SessionPanelViewModel session)
+    {
+        if (_dialogService is null || ScheduledResumes is not { } scheduler)
+        {
+            return;
+        }
+
+        var chosen = await _dialogService.ShowScheduleResumeDialogAsync(DateTimeOffset.Now.AddHours(1), "continue");
+        if (chosen is not { } picked)
+        {
+            return;
+        }
+
+        await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
+        session.PendingResumeLabel = $"Resuming {picked.Moment.ToLocalTime():ddd HH:mm}";
+    }
+
+
     /// <summary>Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.</summary>
     [RelayCommand]
     private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;
@@ -4217,11 +4542,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// both the drag-reorder (AC-115) and the Move up/down menu items.
     /// </summary>
     /// <remarks>
-    /// The backing <see cref="Sessions"/> collection is global and can interleave other workspaces' sessions, so
-    /// the move is anchored to the target visible row's real position in <see cref="Sessions"/> rather than to a
-    /// raw ±1 index — otherwise a step could swap with a session hidden on another workspace and do nothing (or the
-    /// wrong thing) on screen. Order is kept only in this in-memory collection: sessions themselves do not survive
-    /// a restart (there is no persisted session list), so neither does their order — by design for AC-115.
+    /// The reorder lands in <see cref="_sidebarOrder"/>, never in <see cref="Sessions"/>: the session grid binds to
+    /// <see cref="Sessions"/> and keeps its own positional cell layout, so touching that collection would rebuild
+    /// panes and drag the grid tiles along with the strip — the very coupling this separation removes. The order is
+    /// global and can interleave other workspaces' sessions, so the move anchors to the target visible row's real
+    /// position rather than a raw ±1 index — otherwise a step could swap with a session hidden on another workspace
+    /// and do nothing (or the wrong thing) on screen. Order is kept only in this in-memory list: sessions
+    /// themselves do not survive a restart (there is no persisted session list), so neither does their order — by
+    /// design for AC-115.
     /// </remarks>
     public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
     {
@@ -4235,11 +4563,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var from = Sessions.IndexOf(session);
-        var to = Sessions.IndexOf(visible[targetVisibleIndex]);
+        var from = _sidebarOrder.IndexOf(session);
+        var to = _sidebarOrder.IndexOf(visible[targetVisibleIndex]);
         if (from >= 0 && to >= 0)
         {
-            Sessions.Move(from, to);
+            _sidebarOrder.RemoveAt(from);
+            _sidebarOrder.Insert(to, session);
+            OnPropertyChanged(nameof(VisibleSessions));
         }
     }
 
@@ -4314,7 +4644,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
-    private async Task OptionsAsync()
+    private Task OptionsAsync() => _ShowOptionsAsync();
+
+    /// <summary>Opens the projects manager (AC-161) — its own window, not a corner of Options.</summary>
+    [RelayCommand]
+    private async Task ManageProjectsAsync()
+    {
+        if (_dialogService is not null)
+        {
+            await _dialogService.ShowProjectsDialogAsync(Projects);
+        }
+    }
+
+    /// <summary>
+    /// Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
+    /// so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
+    /// </summary>
+    [RelayCommand]
+    private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
+
+    private async Task _ShowOptionsAsync()
     {
         if (_dialogService is null)
         {
@@ -4546,6 +4895,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _SeedSessionPreferences(SessionPanelViewModel session)
     {
         session.ShowTimestamps = ShowTimestamps;
+
+        // AC-231: the one scheduler, so a session can offer to pick itself up when its allowance returns. Null in
+        // the graphs that have none, and the offer simply never appears there.
+        session.Resumes = ScheduledResumes;
+
+        // AC-233: what the operator set for themselves, on top of what each provider declared. Null until loaded,
+        // and every signal then follows its provider.
+        session.UsageThresholds = UsageThresholds;
+
+        // AC-231: how a session asks for a different moment than the one its allowance dictates. The cockpit owns
+        // the dialogs, so it hands the asking down rather than the session reaching for one.
+        session.AskForResumeMoment = _dialogService is { } dialogs
+            ? (suggested, prompt) => dialogs.ShowScheduleResumeDialogAsync(suggested, prompt)
+            : null;
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;
@@ -4574,7 +4937,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public bool SetSessionStatusline(string paneId, string statusline)
     {
-        if (Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } target)
+        if (FindSession(paneId) is not { } target)
         {
             return false;
         }
@@ -4582,6 +4945,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         target.Statusline = statusline ?? string.Empty;
         return true;
     }
+
+    /// <summary>
+    /// A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
+    /// own <c>set_status</c>, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),
+    /// not only grid sessions. Read the collections on the UI thread, like its callers do.
+    /// </summary>
+    public SessionPanelViewModel? FindSession(string paneId) =>
+        _AllSessions().FirstOrDefault(session => session.PaneId == paneId);
+
+    // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
+    // both the pane-id lookup and the consent open/close routing search, so an embedded pane is never half-reached.
+    private IEnumerable<SessionPanelViewModel> _AllSessions() =>
+        Sessions.Concat(_embeddedSessions.Values.SelectMany(owned => owned));
 
     /// <summary>
     /// Renames a session — the title in its header and sidebar — by its <see cref="SessionPanelViewModel.PaneId"/>
@@ -4805,6 +5181,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // by the plugin workspace that owns them, and tears them down when that workspace (or the app) closes.
     private readonly Dictionary<string, List<SessionPanelViewModel>> _embeddedSessions = new(StringComparer.Ordinal);
 
+    // The end-signal behind each embedded session's IEmbeddedSession.Completion, keyed by the session it belongs to.
+    // Completed by _TeardownEmbeddedSessionAsync whatever ends the session — a workspace close, an explicit close, a
+    // self-close, or the isolation refusal below — so an embedder (Autopilot) awaiting the session can tell it died
+    // rather than hang. Same UI-thread affinity as _embeddedSessions.
+    private readonly Dictionary<SessionPanelViewModel, TaskCompletionSource<string?>> _embeddedSessionEnded = [];
+
     public IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request)
     {
         // Null only in a graph with no session machinery (design-time/tests); a real host has both. The registry
@@ -4837,6 +5219,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         owned.Add(session);
 
+        // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason when
+        // the host ended it itself — the isolation refusal in the start below), so an embedder awaiting the session is
+        // never left hanging and can show why it ended.
+        var ended = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _embeddedSessionEnded[session] = ended;
+
+        // An autonomous run asks for its composer off from the first render (AC-174) so the operator does not type into
+        // a session that drives itself; the surface's Intervene affordance re-enables it. Set before the view is built.
+        if (request.StartWithInputDisabled)
+        {
+            session.IsInputEnabled = false;
+        }
+
         // ViewLocator resolves SessionViewModel -> SessionView; the plugin body places this one Control. Because the
         // VM is not in Sessions, no second grid container fights it for the same pty.
         var view = new ContentControl { Content = session };
@@ -4845,7 +5240,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
         _ = _StartEmbeddedSessionAsync(session, request);
 
-        return new EmbeddedSession(view, session.PaneId);
+        return new EmbeddedSession(view, session, ended.Task, enabled => _SetEmbeddedInputEnabled(session, enabled), () => _CloseEmbeddedSessionAsync(session));
     }
 
     public void CloseForWorkspace(string workspaceId)
@@ -4864,13 +5259,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void OnEmbeddedSessionCloseRequested(object? sender, EventArgs e)
     {
-        if (sender is not SessionPanelViewModel session)
+        // A self-closing embedded session (an "exit" turn with auto-close on) ends through the same path a body's
+        // explicit IEmbeddedSession.CloseAsync uses, so whichever fires first tears it down and the other is a no-op.
+        if (sender is SessionPanelViewModel session)
         {
-            return;
+            _ = _CloseEmbeddedSessionAsync(session);
         }
+    }
 
-        // A self-closing embedded session (an "exit" turn with auto-close on) drops out of its workspace's list here,
-        // so a later CloseForWorkspace does not try to tear down an already-disposed session.
+    // Ends one embedded session: drop it from its workspace's list and tear it down. Idempotent — a session that is
+    // no longer listed (already closed, whether by CloseForWorkspace, a self-close, or an earlier CloseAsync) is not
+    // torn down twice, which is what lets the body's CloseAsync and the session's own CloseRequested both fire safely.
+    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
+    {
         foreach (var (workspaceId, owned) in _embeddedSessions)
         {
             if (owned.Remove(session))
@@ -4880,11 +5281,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
-                break;
+                return _TeardownEmbeddedSessionAsync(session, endReason);
             }
         }
 
-        _ = _TeardownEmbeddedSessionAsync(session);
+        return Task.CompletedTask;
     }
 
     private async Task _StartEmbeddedSessionAsync(SessionViewModel session, EmbeddedSessionRequest request)
@@ -4917,40 +5318,262 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            // An SDK session on app-default mode/model/effort, with the profile's own start defaults in the generic
-            // OptionDefaults map — the same shape StartSessionForPluginAsync builds.
+            // Isolate first when asked (AC-85): an embedded run that edits files — Autopilot — gets its own worktree
+            // and branch rather than the operator's real checkout, keyed on this session's pane like the dialog path.
+            string? workingDirectory;
+            try
+            {
+                workingDirectory = await _ResolveEmbeddedWorkingDirectoryAsync(session, request, profile);
+            }
+            catch (Exception isolationFailure)
+            {
+                // Isolation was asked for and could not be done. Never fall back to the operator's real checkout — that
+                // is the contamination isolation exists to prevent. Say why, then stand the session down through the
+                // same close path the refusal below uses: that releases any worktree and completes its Completion with
+                // the reason, so an awaiting run (Autopilot's step wait) treats it as a failed step it can explain rather
+                // than hanging on a session that never reports.
+                var reason = $"Could not isolate this run: {isolationFailure.Message}";
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
+                return;
+            }
+
+            // An SDK session on the requested permission mode (default "ask"), the requested model where the profile
+            // offers a choice (AC-174 — a CEO plan picks one per step; null keeps the app default), and app-default
+            // effort, with the profile's own start defaults in the generic OptionDefaults map — the same shape
+            // StartSessionForPluginAsync builds. When the request names an MCP set, the session is restricted to exactly
+            // those servers (AC-174 minimal-MCP-per-step: fewer tokens, tighter least-privilege); an empty set keeps the
+            // host's usual selection. A self-driving run (AC-152) asks for a more autonomous mode, and when it opts into
+            // the "worktree is the boundary" stance (PreApproveAllTools, AC-215) its SDK tool permissions — including
+            // shell and edits — are auto-allowed here rather than prompted; the host's ConsentBroker still gates the
+            // host's own MCP tools (terminal, worktree, verify), which are never in the pre-approval set.
             await session.StartConfiguredAsync(
                 profile,
-                SessionOptionCatalog.DefaultPermissionMode,
-                SessionOptionCatalog.DefaultModel,
+                _ResolveEmbeddedPermissionMode(request),
+                SessionOptionCatalog.ModelForValue(request.Model),
                 SessionOptionCatalog.DefaultEffort,
-                enabledMcpServerNames: null,
-                workingDirectory: string.IsNullOrWhiteSpace(request.WorkingDirectory) ? null : request.WorkingDirectory,
+                enabledMcpServerNames: request.McpServers is { Count: > 0 } servers
+                    ? servers.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    : null,
+                workingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
                 resume: null,
-                launchOptions: profile.Defaults?.OptionDefaults);
+                launchOptions: _EmbeddedLaunchOptions(profile, request),
+                // Pre-authorize the run's own control tools (AC-215) so a self-driving step never stalls mid-run on a
+                // permission prompt for autopilot_step_done / autopilot_validate it has no one to answer — and, when the
+                // run opts into "worktree is the boundary" (Raymond 2026-07-23), auto-allow every tool so an autonomous
+                // isolated run can run its work (Bash, edits, git) without a prompt it cannot answer.
+                preApprovedTools: request.PreApprovedTools,
+                preApproveAllTools: request.PreApproveAllTools);
 
             // Closed while the driver was launching: the teardown that ran then disposed a session whose runtime did
             // not exist yet, so tear it down now that it does — or its pty and child process outlive the workspace.
             if (!_IsEmbeddedSessionLive(session))
             {
                 await _TeardownEmbeddedSessionAsync(session);
+                return;
+            }
+
+            // Isolation was asked for, so run the agent only when the session actually started AND its provider confines
+            // its file tools to the worktree. Two ways this fails, both refused: (1) the provider does not confine (a
+            // local model reaches files through MCP servers rooted outside the worktree, AC-174) — handing it the brief
+            // would edit the operator's real checkout; (2) the start failed, which leaves Capabilities at their pre-start
+            // default (SessionPanelViewModel seeds the fullest-featured set, whose confines flag is true), so a stale
+            // "confined" reading must never be taken as licence to run — check readiness first. Either way: refuse rather
+            // than risk contamination (Raymond: safety over function), close the session (releasing the worktree and
+            // completing its Completion so an awaiting embedder unblocks), and say why. The check precedes the brief, so
+            // the agent never runs.
+            if (request.IsolateInWorktree && (!session.IsSessionReady || !session.Capabilities.ConfinesFileAccessToWorkingDirectory))
+            {
+                var reason = session.IsSessionReady
+                    ? $"Could not isolate this run: the \"{profile.Label}\" profile does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout. A Claude profile stops confining in a permission-bypassing mode — set the Autopilot autonomy mode to \"acceptEdits\" — and a local model never confines, so route steps that need autonomous shell to a Codex profile."
+                    : "Could not isolate this run: its session did not start, so it was refused rather than run unisolated.";
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
+                return;
+            }
+
+            // The runtime is up now (StartConfiguredAsync awaited it), so an opening turn submitted here cannot race the
+            // "session has not started yet" gate a message sent right after EmbedSession would hit (AC-174). This is how
+            // an autonomous embedded run — an Autopilot step agent — is set going without a human: its task brief is the
+            // first turn. The CEO planning round leaves this null and waits for the operator instead.
+            if (request.InitialUserMessage is { Length: > 0 } opening && session.IsSessionReady)
+            {
+                session.InjectAndSubmit(opening);
             }
         }
         catch (Exception)
         {
-            // A failed embedded start must not take the app down; the session surfaces its own failed state.
+            // A failed embedded start must not take the app down — and it must not leave the session's Completion
+            // unresolved either, or an embedder awaiting it (an Autopilot step) hangs forever. If this session is still
+            // one we own, close it with a reason so its Completion resolves and the awaiting run records a failed step
+            // instead of hanging until the workspace is closed. Best-effort: the start's own failure handler never
+            // rethrows, even if the teardown itself faults.
+            try
+            {
+                if (_IsEmbeddedSessionLive(session))
+                {
+                    await _CloseEmbeddedSessionAsync(session, "The embedded session failed to start.");
+                }
+            }
+            catch (Exception)
+            {
+                // Nothing more to do; the session surfaces its own failed state.
+            }
         }
     }
+
+    // The launch options an embedded session starts with: the profile's own defaults, plus the request's hidden system
+    // prompt (AC-180) folded in under its well-known key so it rides the options map to whichever driver runs the
+    // session — each applies it its own way. A blank prompt leaves the profile defaults untouched. When the request
+    // names its own permission mode, the profile's stored permission-mode default is dropped so the explicit request
+    // mode is the one that reaches the driver (see the comment on dropProfilePermissionMode below).
+    // Internal (not private) so a test can drive the request-mode-vs-profile-default precedence directly.
+    internal static IReadOnlyDictionary<string, string>? _EmbeddedLaunchOptions(SessionProfile profile, EmbeddedSessionRequest request)
+    {
+        var defaults = profile.Defaults?.OptionDefaults;
+        var addPrompt = !string.IsNullOrWhiteSpace(request.AppendSystemPrompt);
+        // An isolated embedded run asks its driver to confine file tools to the worktree (AC-174): a CLI provider that
+        // already confines ignores it; a local model honours it by re-rooting its file servers there and refusing every
+        // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
+        // it reaches every provider without a signature change.
+        var addConfine = request.IsolateInWorktree || request.ConfineFileToolsToWorkingDirectory;
+        // The embedded run's explicit permission mode (an Autopilot step's autonomy mode, AC-152) is a deliberate
+        // per-run choice and must win over the profile's own stored permission-mode default. The host carries that
+        // explicit mode as the typed StartAsync permissionMode, but the driver's launch-option merge
+        // (PluginSessionDriverAdapter._MergePermissionMode) keeps a permission-mode already present in the launch options
+        // over that typed fold — by design, so an operator's launch-time dropdown choice is never overridden. If the
+        // profile's stored permission-mode (e.g. a "work" profile saved on bypassPermissions) were left in these launch
+        // options, it would defeat the explicit request mode (acceptEdits): the driver would start in bypass, the session
+        // would report unconfined, and an isolate-in-worktree run's fail-closed confinement gate would be unpassable on
+        // that profile — so Autopilot could never run on it. Drop the profile's permission-mode default here whenever the
+        // request names its own mode, leaving the explicit request mode the one that reaches the driver. Provider-neutral:
+        // keyed on the well-known permission-mode option, not on any one provider or brand.
+        var dropProfilePermissionMode = !string.IsNullOrWhiteSpace(request.PermissionMode) && defaults is { Count: > 0 };
+        if (!addPrompt && !addConfine && !dropProfilePermissionMode)
+        {
+            return defaults;
+        }
+
+        var options = defaults is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase);
+        if (dropProfilePermissionMode)
+        {
+            options.Remove(Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.PermissionMode);
+        }
+
+        if (request.AppendSystemPrompt is { } prompt && !string.IsNullOrWhiteSpace(prompt))
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = prompt.Trim();
+        }
+
+        if (addConfine)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true";
+        }
+
+        return options;
+    }
+
+    // Embedded isolation (AC-85/AC-174), the automated counterpart of _ResolveIsolatedWorkingDirectoryAsync. A run that
+    // does not ask to be isolated runs in the folder as given. A run that does asks for a promise it must not silently
+    // break: when no worktree can be made — no worktree manager, no directory, or a directory that is not a git
+    // repository — this throws to the start's own catch, which stands the run down with the reason rather than let it
+    // edit the operator's real checkout. A worktree that fails to create throws the same way (Raymond: safety over
+    // function — an isolated run that cannot be isolated must not run).
+    private async Task<string?> _ResolveEmbeddedWorkingDirectoryAsync(SessionPanelViewModel session, EmbeddedSessionRequest request, SessionProfile profile)
+    {
+        if (!request.IsolateInWorktree)
+        {
+            return request.WorkingDirectory;
+        }
+
+        // A run's shared worktree (AC-174, Raymond 2026-07-22): the run already created one worktree and every step runs
+        // in it so their work accumulates on one branch. Run there as-is — do not create a per-step worktree, and do not
+        // set WorktreeBranch (this session does not own the worktree; the run does, and the run's lifetime keeps it), so
+        // closing the step does not tear the shared worktree down. The isolation gate still runs (the caller kept
+        // IsolateInWorktree true), so a non-confining provider is still refused here.
+        if (!string.IsNullOrWhiteSpace(request.WorktreePath))
+        {
+            return request.WorktreePath;
+        }
+
+        if (_worktreeManager is null)
+        {
+            throw new InvalidOperationException("worktree isolation is not available here (no worktree manager).");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.WorkingDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(request.WorkingDirectory) is null)
+        {
+            throw new InvalidOperationException("the working directory is not a git repository, so no isolated worktree can be created.");
+        }
+
+        var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, profile.Label, request.WorkingDirectory);
+        session.WorktreeBranch = worktree.Branch;
+        return worktree.Path;
+    }
+
+    /// <summary>
+    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
+    /// <see cref="Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync"/>. Returns its path and branch, or
+    /// null when there is no worktree manager or <paramref name="repositoryDirectory"/> is not a git repository. Keyed to
+    /// a fresh id (not a session pane), so it is the run's to reuse across every step and persists as the merge-ready
+    /// deliverable after the run.
+    /// </summary>
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken)
+    {
+        if (_worktreeManager is null
+            || string.IsNullOrWhiteSpace(repositoryDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(repositoryDirectory, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken);
+        return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
+    }
+
+    // The permission mode an embedded run starts in: the request's named mode (matched case-insensitively), else the
+    // app default ("ask"). A named mode that is not recognised falls back to the default rather than failing the start.
+    private static PermissionModeOption _ResolveEmbeddedPermissionMode(EmbeddedSessionRequest request) =>
+        string.IsNullOrWhiteSpace(request.PermissionMode)
+            ? SessionOptionCatalog.DefaultPermissionMode
+            : SessionOptionCatalog.AllPermissionModes.FirstOrDefault(mode => string.Equals(mode.Value, request.PermissionMode, StringComparison.OrdinalIgnoreCase))
+                ?? SessionOptionCatalog.DefaultPermissionMode;
 
     /// <summary>Whether <paramref name="session"/> is still an embedded session this host owns — false once its workspace closed and it was torn down, which is how a start racing that teardown knows to stand down.</summary>
     private bool _IsEmbeddedSessionLive(SessionPanelViewModel session) =>
         _embeddedSessions.Values.Any(owned => owned.Contains(session));
 
-    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session)
+    // Backs IEmbeddedSession.SetInputEnabled (AC-174): toggles the embedded session's composer, marshalled to the UI
+    // thread since a plugin (the Autopilot run's Intervene affordance) can call it from anywhere.
+    private static void _SetEmbeddedInputEnabled(SessionViewModel session, bool enabled)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            session.IsInputEnabled = enabled;
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => session.IsInputEnabled = enabled);
+        }
+    }
+
+    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnEmbeddedSessionCloseRequested;
         _lastStatus.Remove(session);
+
+        // Signal the session's end to anyone awaiting its Completion (Autopilot's step wait) before disposing it, so a
+        // waiter unblocks whether the session finished its work or is being torn down for any other reason — carrying the
+        // reason when the host ended it itself (isolation refused), else null. Idempotent: a second teardown finds none.
+        if (_embeddedSessionEnded.Remove(session, out var ended))
+        {
+            ended.TrySetResult(endReason);
+        }
+
         await session.DisposeAsync();
 
         // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings and the session's worktree.
@@ -5013,6 +5636,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Stop the hourly update timer (AC-188) so it does not keep ticking against a disposed view model.
+        _periodicUpdateTimer?.Stop();
+
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
         // past its window (AC-41).
         _secretKeyHolder.UnprotectedSecretsWritten -= OnUnprotectedSecretsWritten;

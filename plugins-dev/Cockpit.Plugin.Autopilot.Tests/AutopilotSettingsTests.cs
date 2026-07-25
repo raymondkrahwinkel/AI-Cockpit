@@ -1,0 +1,151 @@
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
+using FluentAssertions;
+
+namespace Cockpit.Plugin.Autopilot.Tests;
+
+/// <summary>
+/// <see cref="AutopilotSettings"/>: every field resolves project override → global → default, and a change raises the
+/// signal a live surface listens to.
+/// </summary>
+public class AutopilotSettingsTests
+{
+    /// <summary>An in-memory <see cref="IPluginStorage"/> that round-trips through JSON, the way the host's real storage does — so a null override reads back as "not set".</summary>
+    private sealed class FakeStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
+
+        public T? Get<T>(string key) => _data.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
+
+        public void Set<T>(string key, T value) => _data[key] = JsonSerializer.Serialize(value);
+
+        public void SetSecret(string key, string value) => Set(key, value);
+
+        public string? GetSecret(string key) => Get<string>(key);
+    }
+
+    [Fact]
+    public void GlobalValues_FallBackToDefaults_ThenRoundTrip()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.MaxSelfFixAttempts().Should().Be(2);
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
+        settings.CeoProfileLabel().Should().BeNull();
+        settings.CeoModel().Should().BeNull();
+
+        settings.SetMaxSelfFixAttempts(4);
+        settings.SetCostStrategy(AutopilotCostStrategy.CostFirst);
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoModel("opus");
+
+        settings.MaxSelfFixAttempts().Should().Be(4);
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.CostFirst);
+        settings.CeoProfileLabel().Should().Be("work");
+        settings.CeoModel().Should().Be("opus");
+    }
+
+    [Fact]
+    public void MaxConsultsPerStep_DefaultsToThree_ThenRoundTrips()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        // AC-201 loop-cap default.
+        settings.MaxConsultsPerStep().Should().Be(3);
+
+        settings.SetMaxConsultsPerStep(5);
+        settings.MaxConsultsPerStep().Should().Be(5);
+
+        const string project = "/home/me/repo";
+        settings.SetMaxConsultsPerStep(1, project);
+        settings.MaxConsultsPerStep(project).Should().Be(1);
+        settings.MaxConsultsPerStep().Should().Be(5);
+    }
+
+    [Fact]
+    public void ProjectOverride_WinsOverGlobal()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+        const string project = "/home/me/repo";
+
+        settings.SetCostStrategy(AutopilotCostStrategy.Balanced);
+        settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, project);
+
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
+        settings.CostStrategy(project).Should().Be(AutopilotCostStrategy.QualityFirst);
+    }
+
+    [Fact]
+    public void AnUnsetProject_FollowsTheGlobalValue()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+        settings.SetMaxSelfFixAttempts(7);
+
+        settings.MaxSelfFixAttempts("/some/other/repo").Should().Be(7);
+    }
+
+    [Fact]
+    public void ABlankProjectStringOverride_DoesNotBlankTheGlobal()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+        const string project = "/home/me/repo";
+        settings.SetCeoProfileLabel("work");
+
+        settings.SetCeoProfileLabel(null, project);
+
+        settings.CeoProfileLabel(project).Should().Be("work");
+    }
+
+    [Fact]
+    public void AutonomyMode_DefaultsToAcceptEdits_ThenRoundTripsAConfiningMode()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.AutonomyMode().Should().Be(AutopilotSettings.DefaultAutonomyMode);
+        AutopilotSettings.DefaultAutonomyMode.Should().Be("acceptEdits");
+
+        settings.SetAutonomyMode("plan");
+        settings.AutonomyMode().Should().Be("plan");
+    }
+
+    [Fact]
+    public void AutonomyMode_CoercesAStoredBypassPermissions_ToTheConfiningDefault()
+    {
+        // AC-209: a legacy stored bypassPermissions (from the AC-152 era) would disable a Claude step's worktree
+        // confinement and get every Claude step of the run refused by the isolation gate — so it is coerced away.
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.SetAutonomyMode("bypassPermissions");
+
+        settings.AutonomyMode().Should().Be(AutopilotSettings.DefaultAutonomyMode);
+    }
+
+    [Fact]
+    public void AutonomyMode_CoercesABypassPermissions_ProjectOverrideToo()
+    {
+        // AC-209: the coercion holds for a per-project override, not just the global value — no persisted bypass, at any
+        // scope, can silently block a run.
+        var settings = new AutopilotSettings(new FakeStorage());
+        const string project = "/home/me/repo";
+
+        settings.SetAutonomyMode("acceptEdits");
+        settings.SetAutonomyMode("bypassPermissions", project);
+
+        settings.AutonomyMode(project).Should().Be(AutopilotSettings.DefaultAutonomyMode);
+        settings.AutonomyMode().Should().Be("acceptEdits");
+    }
+
+    [Fact]
+    public void Changed_FiresOnEverySet()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+        var fired = 0;
+        settings.Changed += () => fired++;
+
+        settings.SetMaxSelfFixAttempts(9);
+        settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, "/repo");
+        settings.SetCeoProfileLabel("work");
+
+        fired.Should().Be(3);
+    }
+}

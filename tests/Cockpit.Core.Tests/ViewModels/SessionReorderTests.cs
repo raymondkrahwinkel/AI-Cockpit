@@ -28,6 +28,23 @@ public class SessionReorderTests
     }
 
     [Fact]
+    public void MoveSessionToVisibleIndex_ReordersTheSidebarOnly_LeavingTheGridCollectionAlone()
+    {
+        // The session grid binds straight to Sessions and keeps its own positional cell layout, so a sidebar
+        // drag must reorder only the strip (VisibleSessions) — never Sessions, or the workspace tiles would shuffle
+        // with the strip and their panes would rebuild (Raymond, 2026-07-21).
+        var cockpit = _Create(out var workspaces);
+        var a = _AddSession(cockpit, workspaces.Active!.Id);
+        var b = _AddSession(cockpit, workspaces.Active!.Id);
+        var c = _AddSession(cockpit, workspaces.Active!.Id);
+
+        cockpit.MoveSessionToVisibleIndex(a, 2);
+
+        cockpit.VisibleSessions.Should().Equal(b, c, a);
+        cockpit.Sessions.Should().Equal(a, b, c);
+    }
+
+    [Fact]
     public void MoveSessionToVisibleIndex_IsRelativeToTheVisibleRows_NotTheGlobalCollection()
     {
         // Global Sessions interleaves the two desks: [onFirst1, onSecond, onFirst2]. A move on the first desk

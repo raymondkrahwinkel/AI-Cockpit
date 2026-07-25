@@ -39,19 +39,6 @@ public partial class OptionsDialog : Window
         Closed += (_, _) => (DataContext as CockpitViewModel)?.StopMicTest();
     }
 
-    /// <summary>Opens straight to the Plugins tab. Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one.</summary>
-    public void SelectPluginsTab()
-    {
-        foreach (var item in Tabs.Items)
-        {
-            if (item is TabItem { Header: "Plugins" })
-            {
-                Tabs.SelectedItem = item;
-                return;
-            }
-        }
-    }
-
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
     private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>

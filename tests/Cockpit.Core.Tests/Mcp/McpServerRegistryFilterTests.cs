@@ -12,12 +12,39 @@ public class McpServerRegistryFilterTests
     private static readonly McpServerConfig ServerA = new() { Name = "server-a", Command = "npx" };
     private static readonly McpServerConfig ServerB = new() { Name = "server-b", Command = "npx" };
 
+    // An internal-only endpoint (AC-204, the Autopilot CEO/step tools): hosted and mountable, but hidden from every
+    // user-facing selection and the no-selection fan-out.
+    private static readonly McpServerConfig InternalServer = new() { Name = "cockpit-autopilot-ceo", Url = "http://127.0.0.1:1/mcp", Internal = true };
+
     [Fact]
     public void ApplySessionSelection_WithNullSelection_ReturnsTheFullRegistry()
     {
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, ServerB], enabledServerNames: null);
 
         result.Should().Equal(ServerA, ServerB);
+    }
+
+    [Fact]
+    public void ApplySessionSelection_WithNullSelection_DropsInternalEndpoints_FromTheAllEnabledFanOut()
+    {
+        // No selection means "every enabled server", but an internal-only endpoint (AC-204) must never fan into a
+        // session that did not name it — an unrelated no-selection session started while an Autopilot run is live
+        // must not inherit the CEO/step tools. Red without the fix, which returned the registry verbatim here.
+        var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, InternalServer, ServerB], enabledServerNames: null);
+
+        result.Should().Equal(ServerA, ServerB);
+    }
+
+    [Fact]
+    public void ApplySessionSelection_WithAnExplicitSelectionNamingAnInternalEndpoint_StillMountsIt()
+    {
+        // The autopilot mount: the run's CEO/step sessions scope their MCP servers to the endpoint by name
+        // (McpServers = [AutopilotCeoTools.EndpointName]), so an explicit selection must keep reaching it even
+        // though the no-selection path hides it.
+        var result = McpServerRegistryFilter.ApplySessionSelection(
+            [ServerA, InternalServer, ServerB], new HashSet<string> { InternalServer.Name });
+
+        result.Should().ContainSingle().Which.Should().Be(InternalServer);
     }
 
     [Fact]

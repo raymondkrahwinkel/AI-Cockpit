@@ -19,6 +19,9 @@ internal sealed class WorktreeRegistryEntry
 
     public string BaseCommit { get; set; } = string.Empty;
 
+    /// <summary>The branch the worktree forked from, when known; absent on entries written before this was tracked (they deserialize to null and the status check falls back to detecting the default branch).</summary>
+    public string? BaseBranch { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public bool IsLocked { get; set; }
@@ -32,6 +35,7 @@ internal sealed class WorktreeRegistryEntry
         Path = record.Path,
         Branch = record.Branch,
         BaseCommit = record.BaseCommit,
+        BaseBranch = record.BaseBranch,
         CreatedAt = record.CreatedAt,
         IsLocked = record.IsLocked,
         IsRetained = record.IsRetained,
@@ -39,6 +43,7 @@ internal sealed class WorktreeRegistryEntry
 
     public WorktreeRecord ToDomain() => new(SessionId, RepositoryRoot, Path, Branch, BaseCommit, CreatedAt)
     {
+        BaseBranch = BaseBranch,
         IsLocked = IsLocked,
         IsRetained = IsRetained,
     };

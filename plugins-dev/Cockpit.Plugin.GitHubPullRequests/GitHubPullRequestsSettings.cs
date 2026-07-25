@@ -126,8 +126,8 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Repositories or owners to watch, one per line (or comma-separated): <c>EVE-Workbench</c> for every repo of
-    /// that user/org, <c>EVE-Workbench/Eveworkbench</c> for the one.
+    /// Repositories or owners to watch, one per line (or comma-separated): <c>acme</c> for every repo of
+    /// that user/org, <c>acme/webshop</c> for the one.
     /// <para>
     /// The rest of this list answers "which pull requests are mine" — authored by me, assigned to me, waiting on my
     /// review. A repository you are responsible for asks a different question: what is open here, whoever opened it.

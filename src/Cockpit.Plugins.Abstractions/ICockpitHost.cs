@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -188,8 +189,51 @@ public interface ICockpitHost
     /// </summary>
     bool CanSendIntent(string targetPluginId, string action) => false;
 
+    /// <summary>
+    /// The plugins the host has loaded, each with its manifest id and human-readable name (AC-189) — what a plugin uses
+    /// to turn another plugin's id (a template's <see cref="RegisteredAutopilotTemplate.OwnerPluginId"/>, an intent
+    /// caller's <see cref="PluginIntent.CallerPluginId"/>) into a name to show, instead of the bare id. The
+    /// <see cref="PluginMetadata.Id"/> is the same host-stamped id those carry, so a lookup by it is exact. Default empty
+    /// so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host reports the real list.
+    /// </summary>
+    IReadOnlyList<PluginMetadata> InstalledPlugins => [];
+
+    /// <summary>
+    /// Registers an Autopilot goal/brief template this plugin contributes (AC-189) — the template equivalent of
+    /// <see cref="AddWorkflowTemplate"/>. The Autopilot plugin collects every registered template (with the host
+    /// stamping this plugin's own id as its owner, the same way <see cref="RegisterIntentHandler"/> does) into the
+    /// list an operator picks a run's brief from. Registrations live only in memory — call this from
+    /// <see cref="ICockpitPlugin.Initialize"/> on every start. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void RegisterAutopilotTemplate(PluginAutopilotTemplate template)
+    {
+    }
+
+    /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
+    IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+
+    /// <summary>
+    /// Renders <paramref name="markdown"/> the way the cockpit's own transcript does (AC-296) — the seam that
+    /// gives a plugin's own dialog (an issue's description, say) the host's markdown look instead of showing raw
+    /// <c>##</c>/<c>**</c> syntax or forcing the plugin to bundle a second parser. A factory rather than a
+    /// stateful presenter, deliberately: it mirrors <see cref="ShowDialogAsync"/>'s own <c>Func&lt;Control&gt;</c>
+    /// shape, so a caller that wants the rendering to change — the operator picked a different issue — just calls
+    /// this again and swaps the result into its own <see cref="ContentControl.Content"/>, the same way it would
+    /// swap any other control. There is no update contract to implement and nothing to dispose.
+    /// <para>
+    /// Default returns the raw text in a wrapping <see cref="SelectableTextBlock"/> — exactly the plain-text
+    /// behaviour every plugin had before this seam existed — so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling and rendering unchanged; only the app's
+    /// own host renders real markdown.
+    /// </para>
+    /// </summary>
+    Control CreateMarkdownView(string markdown) =>
+        new SelectableTextBlock { Text = markdown, TextWrapping = TextWrapping.Wrap };
 
     /// <summary>
     /// Opens this plugin's own settings — the view it registered with <see cref="AddSettings"/>, in the same
@@ -296,6 +340,55 @@ public interface ICockpitHost
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Sends <paramref name="text"/> to the session named by <paramref name="paneId"/> as a submitted turn — the seam
+    /// a plugin uses to hand a started session (including one it embedded in its own workspace) a prompt without a
+    /// human turn, e.g. an Autopilot run's work brief once the operator has approved the run. A paneId that matches no
+    /// live session is a no-op, never an error. Marshals to the UI thread itself. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+    /// <summary>
+    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) and returns its path and branch, or
+    /// null when <paramref name="repositoryDirectory"/> is not a git repository or the host has no worktree manager. An
+    /// Autopilot run creates one at its start and passes the returned <see cref="Workspaces.PluginWorktreeInfo.Path"/> to
+    /// every step's <see cref="Workspaces.EmbeddedSessionRequest.WorktreePath"/>, so the steps share it and their work
+    /// accumulates on the one branch instead of a throwaway worktree per step. The worktree persists after the run — it
+    /// is the merge-ready deliverable — and is managed from the Worktrees panel like any other. Default null so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older builds) keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<Workspaces.PluginWorktreeInfo?>(null);
+
+    /// <summary>
+    /// Reports whether <paramref name="directory"/> is a git repository (AC-174), so a plugin can decide up front whether
+    /// work there can be isolated in a worktree — a run in a real repo isolates each step, a run in a plain folder (an
+    /// admin task with no repo) cannot, and must be handled deliberately rather than failing at the first step. The
+    /// default is <see cref="Workspaces.GitDirectoryStatus.Unknown"/>, not a bool, so the decision stays fail-closed: an
+    /// older host (or a failed probe) returns Unknown, which a caller treats as "isolate / do not run free", and only a
+    /// host that positively answers <see cref="Workspaces.GitDirectoryStatus.NotARepository"/> licenses running without
+    /// isolation. Default Unknown so existing hosts (test fakes, older builds) keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Workspaces.GitDirectoryStatus.Unknown);
+
+    /// <summary>
+    /// The working directories the cockpit remembers for its New-session quick-pick (AC-174), so a plugin that asks the
+    /// operator to name a working directory can offer the same pinned favorites and recents instead of a blank field.
+    /// Default <see cref="Workspaces.PluginRememberedWorkingPaths.Empty"/> so existing hosts keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.PluginRememberedWorkingPaths> GetRememberedWorkingPathsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(Workspaces.PluginRememberedWorkingPaths.Empty);
+
+    /// <summary>
+    /// Records <paramref name="directory"/> as most-recently-used in the shared working-directory history (AC-174), so a
+    /// folder the operator picked in a plugin (Autopilot's plan) shows up in the same quick-pick next time — here and in
+    /// the New-session dialog. A blank path is a no-op. Default no-op so existing hosts keep compiling untouched.
+    /// </summary>
+    Task RememberWorkingPathAsync(string directory, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
     /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
     /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field
@@ -328,10 +421,30 @@ public interface ICockpitHost
     /// its own tools (workflows, say) without any Kestrel code. The endpoint is the cockpit's own and is not written
     /// to the operator's MCP-servers registry (AC-40); the session fan-out sees it live. Idempotent per name.
     /// <paramref name="isEnabled"/> gates it on the plugin's own setting — read each time servers are gathered, so a
-    /// toggle takes effect live; <see langword="null"/> means always on. Call it fire-and-forget from
-    /// <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host implementations keep compiling.
+    /// toggle takes effect live; <see langword="null"/> means always on. <paramref name="isInternal"/> marks the
+    /// endpoint internal-only (AC-204): hidden from every user-facing MCP selection (the New-session checklist, the
+    /// profile preselection and its token estimate) and from the no-selection fan-out, yet still mountable when a
+    /// launch names it explicitly in its per-session selection — for an endpoint only a specific spawn should mount
+    /// (say the Autopilot CEO/step tools its own run agents scope to by name), never an ordinary operator's to tick.
+    /// Call it fire-and-forget from <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host
+    /// implementations keep compiling.
     /// </summary>
-    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) => Task.CompletedTask;
+    /// <remarks>
+    /// This <c>isInternal</c> overload is kept binary-separate from the three-argument one below: adding an
+    /// optional parameter to the original signature would have been source-compatible but binary-breaking —
+    /// a plugin compiled against the old three-argument method throws <see cref="MissingMethodException"/> at
+    /// load time on a host that only exposes the four-argument shape. Keeping both signatures lets pre-AC-204
+    /// plugin binaries (workflows, kubernetes, …) resolve their three-argument call against a real method.
+    /// </remarks>
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled, bool isInternal) => Task.CompletedTask;
+
+    /// <summary>
+    /// Three-argument <see cref="AddMcpEndpoint(string, object, Func{bool}?, bool)"/> — the original signature,
+    /// preserved verbatim for binary compatibility with plugins compiled before the <c>isInternal</c> flag
+    /// existed. Registers a non-internal endpoint (visible to user-facing MCP selection).
+    /// </summary>
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) =>
+        AddMcpEndpoint(serverName, tools, isEnabled, isInternal: false);
 
     /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
@@ -424,6 +537,32 @@ public interface ICockpitHost
     /// not building that menu has no reason to call this. Default empty.
     /// </summary>
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
+
+    /// <summary>
+    /// Brings the workspace of type <paramref name="workspaceTypeId"/> — one the plugin registered with
+    /// <see cref="AddWorkspaceType"/> — to the front, opening one when none is present, and makes it the active
+    /// workspace. The programmatic half of the operator picking that type from the "+" menu: a plugin that has just
+    /// received an intent (say "Start in Autopilot", AC-150) uses it to surface its own workspace so the operator
+    /// lands on the run instead of having to open it by hand. An existing workspace of the type is activated in
+    /// place rather than duplicated. What the body then shows is the plugin's business; this only puts it on screen.
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host opens a workspace.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers a tracker a plugin can post back to (AC-154) — the writing half of an issue tracker (YouTrack, GitHub
+    /// Issues), so a consumer (Autopilot) can leave evidence and move an issue's stage tracker-neutrally. First
+    /// registration for a <see cref="Tracking.ITrackerProvider.TrackerId"/> wins; a later one for the same id is
+    /// ignored. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds)
+    /// keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddTrackerProvider(Tracking.ITrackerProvider provider)
+    {
+    }
+
+    /// <summary>The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.</summary>
+    IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds

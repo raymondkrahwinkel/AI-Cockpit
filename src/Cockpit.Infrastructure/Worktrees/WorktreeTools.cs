@@ -60,7 +60,7 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_list")]
-    [Description("List the git worktrees the cockpit is managing, each with its branch, path, repository, owning session, and git state (clean, whether it has uncommitted changes, and how many commits it is ahead of its base).")]
+    [Description("List the git worktrees the cockpit is managing, each with its branch, path, repository, owning session, and git state (clean, whether it has uncommitted changes, and how many commits exist only here — not in the base branch and not pushed anywhere).")]
     public async Task<string> ListAsync()
     {
         var statuses = await _worktreeManager.GetStatusesAsync();
@@ -72,7 +72,7 @@ internal sealed class WorktreeTools
             session = status.Record.SessionId,
             clean = status.IsClean,
             uncommittedChanges = status.HasUncommittedChanges,
-            commitsAhead = status.CommitsAhead,
+            commitsOnlyHere = status.StrandableCommits,
             retained = status.Record.IsRetained,
         });
 

@@ -176,6 +176,16 @@ jobs:
           mv artifacts/appimage/*.AppImage "artifacts/ai-cockpit-nightly-x86_64.AppImage"
           rm -rf artifacts/appimage
 
+      # The plugin SDK for the contract this build actually carries, so an out-of-repo author can follow main
+      # rather than wait for a release. Packed on the Linux leg only: a library package is platform-independent.
+      # The run number becomes a prerelease suffix (1.27.0-nightly.42) because NuGet caches a package by
+      # id+version — re-publishing changed bytes as plain 1.27.0 every night would restore from cache and be
+      # silently stale, and the suffix also says out loud that this contract is not a released one.
+      - name: Plugin SDK
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: scripts/pack-sdk.sh artifacts "nightly.${GITHUB_RUN_NUMBER}"
+
       # Hand the build to the release job rather than publishing from here. Three jobs each uploading into one
       # rolling release means a platform that fails leaves its predecessor's bytes sitting next to the others:
       # the release page then looks complete while being a mixture of two builds, which is worse than a nightly

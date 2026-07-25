@@ -147,6 +147,28 @@ public sealed record TtyProviderRegistration(
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginTtyLaunchOption>>>? ResolveOptionsAsync { get; init; }
 
     /// <summary>
+    /// What sessions under this provider can run out of (AC-229) — a context window, a rolling cap, whatever it
+    /// measures — so the host can warn about it and offer to resume against it. Empty (the default) when the
+    /// provider measures nothing, and then no pill, no warning and no setting appears for it. Init-only, so an
+    /// already-compiled plugin keeps its constructor and simply declares none.
+    /// </summary>
+    public IReadOnlyList<PluginUsageSignal> UsageSignals { get; init; } = [];
+
+    /// <summary>
+    /// Turns the contents of the session's status snapshot file into readings for the signals declared above.
+    /// <para>
+    /// The host owns the polling — it knows about files, timers and when a session is alive — and the provider
+    /// owns the meaning, because the shape of that file is the provider's business and has moved between versions
+    /// before. Handed the whole file as text; returns a reading per signal it could make out, and an empty list
+    /// for a snapshot it cannot use. It must not throw: a half-written file caught mid-flush is ordinary, and the
+    /// next poll brings a whole one.
+    /// </para>
+    /// <see langword="null"/> (the default) when this provider writes no such file, and the host then polls
+    /// nothing for it. Init-only for the same reason as everything else here.
+    /// </summary>
+    public Func<string, IReadOnlyList<PluginUsageReading>>? ReadUsage { get; init; }
+
+    /// <summary>
     /// Builds the provider's transcript reader for the host's read-aloud (#35b) and status (#39) — the piece that
     /// tails this provider's own on-disk conversation record, keeping the host free of any transcript format. The
     /// host resolves this once from the container and dispatches to it for a session under this provider.

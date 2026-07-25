@@ -1,11 +1,11 @@
 {
   "id": "cli-agent-provider",
   "name": "CLI Agent Provider (Codex)",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "entryAssembly": "Cockpit.Plugin.CliAgentProvider.dll",
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.1.0",
+  "minHostVersion": "0.3.0",
   "description": "Adds the Codex CLI as a provider, in two ways. As a TTY session it runs the real interactive Codex TUI in a pane, the same as Claude's — its own interface, its own approval prompts, which the cockpit cannot see into. As an SDK session it is driven headless, a subprocess per turn (`codex exec --json`); that route has no in-band permission channel at all, because Codex sets approval-policy to never in headless mode. Configure the sandbox per profile. Requires the codex CLI installed and authenticated (`codex login`) on the machine running Cockpit.",
   "author": "Cockpit"
 }
