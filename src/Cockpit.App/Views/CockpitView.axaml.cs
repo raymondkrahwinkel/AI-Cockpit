@@ -407,6 +407,14 @@ public partial class CockpitView : UserControl
             return;
         }
 
+        // Only the left button reorders. Arming on any press meant a right-click armed it too, and the row then
+        // followed the pointer all the way to whatever the context menu opened — the rename box being the case that
+        // showed it (AC-277). The selection above already happened, so a right-click still targets the row it hit.
+        if (!e.GetCurrentPoint(sender as Control).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
         // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did what a
         // click does, rather than the row needing two gestures to both select and move.
         _draggingSession = session;
@@ -424,6 +432,14 @@ public partial class CockpitView : UserControl
     {
         if (_draggingSession is null || SessionListStrip?.ItemsPanelRoot is not { } panel || DataContext is not CockpitViewModel cockpit)
         {
+            return;
+        }
+
+        // A move with the button up means the gesture ended somewhere this handler never saw — let go rather than
+        // leaving a row glued to the pointer, the same rule the widget drag applies.
+        if (!e.GetCurrentPoint(panel).Properties.IsLeftButtonPressed)
+        {
+            _draggingSession = null;
             return;
         }
 
