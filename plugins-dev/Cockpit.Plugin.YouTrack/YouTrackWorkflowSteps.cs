@@ -52,11 +52,11 @@ internal static class YouTrackWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["ticket"] = "EVE-14",
+            ["ticket"] = "WEB-14",
             ["summary"] = "Fix the login redirect",
-            ["branch"] = "eve-14-fix-the-login-redirect",
+            ["branch"] = "web-14-fix-the-login-redirect",
             ["state"] = "Backlog",
-            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+            ["directory"] = "/home/you/projects/webshop",
         };
     }
 
@@ -85,12 +85,12 @@ internal static class YouTrackWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["ticket"] = "EVE-14",
+            ["ticket"] = "WEB-14",
             ["summary"] = "Fix the login redirect",
             ["state"] = "Review",
             ["previous_state"] = "In Progress",
-            ["branch"] = "eve-14-fix-the-login-redirect",
-            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+            ["branch"] = "web-14-fix-the-login-redirect",
+            ["directory"] = "/home/you/projects/webshop",
         };
     }
 
@@ -161,7 +161,7 @@ internal static class YouTrackWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["ticket"] = "EVE-14",
+            ["ticket"] = "WEB-14",
             ["state"] = "In Progress",
         };
 
@@ -170,7 +170,7 @@ internal static class YouTrackWorkflowSteps
             var ticket = context.Parameter("Ticket").Trim();
             if (ticket.Length == 0)
             {
-                throw new InvalidOperationException("This step has no ticket. Write one (EVE-14), or {ticket} to take it from the step before.");
+                throw new InvalidOperationException("This step has no ticket. Write one (WEB-14), or {ticket} to take it from the step before.");
             }
 
             var instance = _Instance(settings, context.Parameter("Instance"));

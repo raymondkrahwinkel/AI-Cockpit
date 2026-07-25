@@ -14,7 +14,7 @@ internal sealed record AutopilotPlan(
     IReadOnlyList<AutopilotStep> Steps)
 {
     /// <summary>
-    /// A short operator-facing label for the run (Raymond 2026-07-22): the CEO proposes it while planning and the
+    /// A short operator-facing label for the run: the CEO proposes it while planning and the
     /// operator can override it, but it must be non-empty before the run is approved — so a queue of several runs is
     /// recognisable, and history reads by name rather than by goal sentence. Falls back to <see cref="Goal"/> when unset.
     /// </summary>
@@ -44,7 +44,7 @@ internal sealed record AutopilotPlan(
     public string Label => _WithSourcePrefix(string.IsNullOrWhiteSpace(Name) ? Goal : Name);
 
     /// <summary>
-    /// The best available name to pre-fill the approval field with (Raymond 2026-07-22): the CEO's proposed
+    /// The best available name to pre-fill the approval field with: the CEO's proposed
     /// <see cref="Name"/> when it gave one, else the <see cref="Goal"/>, else the first step's title. The CEO does not
     /// always pass a name (or even a goal) through the plan tool, so this always yields something concrete for the
     /// operator to accept or edit rather than leaving the field — and the approval gate — empty on a planned run.

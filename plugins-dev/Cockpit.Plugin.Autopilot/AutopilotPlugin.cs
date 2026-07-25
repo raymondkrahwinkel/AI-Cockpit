@@ -39,7 +39,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         var queue = new AutopilotRunQueue(host.Storage);
         var manager = new AutopilotRunManager(queue, settings);
 
-        // The history of settled runs (persistent, Raymond 2026-07-22): a run that finishes leaves the live surface, so
+        // The history of settled runs (persistent): a run that finishes leaves the live surface, so
         // it is recorded here to be shown in the history section rather than vanishing.
         var history = new AutopilotRunHistory(host.Storage);
 
@@ -66,7 +66,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // executing; dark when none is.
         _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
-        // The CEO validator's own tools (AC-174, Raymond 2026-07-22): validate a step, keep the source issue in sync. A
+        // The CEO validator's own tools (AC-174): validate a step, keep the source issue in sync. A
         // separate endpoint from the step agents' one above, so a step agent is never handed the CEO's tools — tighter
         // least-privilege, and a weaker local model is not distracted into calling a validate/tracker tool. Same
         // pane-scoping and live-only gating; the CEO validator session is given this endpoint, the step agents are not.
@@ -102,7 +102,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
         });
 
-        // Open the Autopilot workspace from the side menu (Raymond 2026-07-22): just add it if it is not open yet and
+        // Open the Autopilot workspace from the side menu: just add it if it is not open yet and
         // navigate to it — it does not force a planning round. From the surface the operator starts a run with New run
         // (which is where the CEO-profile guard now lives), so the workspace and its history are reachable without a
         // profile set. A triggered run still opens straight into a planning round through the "plan" intent above.
@@ -114,7 +114,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     }
 
     // A planning round needs a CEO profile: without one the host falls back to whatever the first configured profile is
-    // — which may be a local/plugin model that cannot plan (Raymond 2026-07-21). Rather than start a round that quietly
+    // — which may be a local/plugin model that cannot plan. Rather than start a round that quietly
     // misbehaves, tell the operator and offer the settings where they pick one. Returns whether a profile is set.
     private static bool _RequireCeoProfile(ICockpitHost host, AutopilotSettings settings)
     {

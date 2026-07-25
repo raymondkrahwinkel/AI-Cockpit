@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// Runs approved plans from the queue, up to <see cref="AutopilotSettings.MaxConcurrentRuns"/> at once (AC-174, Raymond):
+/// Runs approved plans from the queue, up to <see cref="AutopilotSettings.MaxConcurrentRuns"/> at once (AC-174):
 /// an approved plan is submitted here, executes now if there is a free slot, else waits in the <see cref="AutopilotRunQueue"/>
 /// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
 /// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying

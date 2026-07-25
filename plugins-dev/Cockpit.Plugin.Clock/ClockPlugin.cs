@@ -12,8 +12,8 @@ namespace Cockpit.Plugin.Clock;
 /// <para>
 /// It ships with the app because a Dashboard workspace with nothing to put on it is a worse first impression
 /// than one that already has a clock. Its former other half, the system monitor, is now its own plugin from the
-/// store (Raymond, 2026-07-15: "als ik wel de clock wil maar niet de system monitor, wil ik dus alleen de clock
-/// downloaden en installeren") — one plugin per widget is what makes that possible. Between them they still
+/// store (wanting the clock but not the system monitor means being able to download and install just the clock)
+/// — one plugin per widget is what makes that possible. Between them they still
 /// prove the ⚙ is really gated: this one has no settings, that one has.
 /// </para>
 /// </summary>

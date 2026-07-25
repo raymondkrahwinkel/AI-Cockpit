@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Workflows.Engine;
 /// <summary>
 /// Opens a session on a profile and hands it a prompt — the step that makes this a cockpit's workflow engine rather
 /// than a general one. A flow that cuts a branch, moves a ticket and then puts an agent to work on it in the right
-/// directory is the whole of Raymond's morning, and this is the step in the middle of it.
+/// directory is the whole of the operator's morning, and this is the step in the middle of it.
 /// </summary>
 internal sealed class StartSessionRunner(ICockpitHost host) : IStepRunner
 {

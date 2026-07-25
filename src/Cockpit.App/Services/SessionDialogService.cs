@@ -88,7 +88,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        // Topmost window, not always the main one (AC-297): a plugin can open this dialog from its own modal —
+        // an issue dialog's "New session" button — and that modal blocks the main window. Owned by the main window
+        // this would open behind the very dialog that asked for it, and it would not block that dialog either, so a
+        // second click would stack another one. Same reasoning as PluginDialogHost's owner pick.
+        if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
         }
@@ -134,6 +138,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             if (!string.IsNullOrWhiteSpace(prefill.SessionName))
             {
                 viewModel.SessionName = prefill.SessionName;
+            }
+
+            // The prompt is seeded to be *read*, not to be started with: nothing carries it out of the dialog (the
+            // caller injects its own prefill into the started session). Without it the dialog asked the operator to
+            // confirm a session while hiding the one field that can hold text written outside the cockpit.
+            if (!string.IsNullOrWhiteSpace(prefill.InitialPrompt))
+            {
+                viewModel.InitialPrompt = prefill.InitialPrompt;
             }
 
             // Only a Claude profile keeps a resumable history; the dialog hides the resume controls for every other

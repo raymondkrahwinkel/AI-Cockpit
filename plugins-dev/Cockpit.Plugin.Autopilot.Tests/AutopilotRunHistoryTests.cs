@@ -5,7 +5,7 @@ using FluentAssertions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
-/// The history of settled runs (Raymond 2026-07-22): a finished run is recorded here newest-first so it does not vanish
+/// The history of settled runs: a finished run is recorded here newest-first so it does not vanish
 /// from the surface, survives a restart through the plugin's storage, and is capped so it cannot grow without bound.
 /// </summary>
 public class AutopilotRunHistoryTests

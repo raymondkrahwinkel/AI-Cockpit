@@ -46,7 +46,7 @@ internal static class AutopilotStepBrief
             + "manager, who answers you or escalates to the operator. Never stop for an ordinary judgement call you can "
             + "make yourself.";
 
-        // The execution mandate (Raymond 2026-07-23): a lighter/local model handed a coding step too often "analyses" the
+        // The execution mandate: a lighter/local model handed a coding step too often "analyses" the
         // repo, summarises what could be done, or asks what the goal is — and ends its turn without ever writing the code,
         // which stalls the step. This is provider-neutral and holds for any model: the task is to BUILD, not to analyse.
         // The concrete end state is spelled out (make the change, run tests, commit in the worktree, report done) so even a
@@ -77,7 +77,7 @@ internal static class AutopilotStepBrief
     }
 
     /// <summary>
-    /// The one reminder a step agent gets if it goes quiet without reporting done (Raymond 2026-07-22): weaker/local
+    /// The one reminder a step agent gets if it goes quiet without reporting done: weaker/local
     /// models sometimes end their turn with a text summary instead of calling the tool, which strands the step. Nudges
     /// the tool call without disrupting an agent that is genuinely still working.
     /// </summary>

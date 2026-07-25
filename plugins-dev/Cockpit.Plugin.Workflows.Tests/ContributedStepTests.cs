@@ -19,28 +19,28 @@ public class ContributedStepTests
         var node = _Node(("Ticket", "{ticket}"));
 
         await new ContributedStep(step).RunAsync(
-            new StepContext(node, [WorkflowItem.Of("ticket", "EVE-14")], _Nothing),
+            new StepContext(node, [WorkflowItem.Of("ticket", "WEB-14")], _Nothing),
             CancellationToken.None);
 
-        step.Seen!.Parameter("Ticket").Should().Be("EVE-14");
+        step.Seen!.Parameter("Ticket").Should().Be("WEB-14");
     }
 
     [Fact]
     public async Task WhatItProduces_FlowsOnAsItems()
     {
         var outcome = await new ContributedStep(new FakeStep()).RunAsync(
-            new StepContext(_Node(("Ticket", "EVE-14")), [], _Nothing),
+            new StepContext(_Node(("Ticket", "WEB-14")), [], _Nothing),
             CancellationToken.None);
 
         outcome.Items.Should().ContainSingle();
         outcome.Items[0].Json["state"]!.ToString().Should().Be("In Progress");
-        outcome.Output.Should().Be("EVE-14 → In Progress");
+        outcome.Output.Should().Be("WEB-14 → In Progress");
     }
 
     [Fact]
     public async Task AStepThatProducesNothing_PassesOnWhatCameIn_RatherThanEmptyingTheFlowBehindIt()
     {
-        var incoming = new[] { WorkflowItem.Of("ticket", "EVE-14") };
+        var incoming = new[] { WorkflowItem.Of("ticket", "WEB-14") };
 
         var outcome = await new ContributedStep(new SilentStep()).RunAsync(
             new StepContext(_Node(), incoming, _Nothing),
@@ -156,7 +156,7 @@ public class ContributedStepTests
 
             return Task.FromResult(new WorkflowStepResult(
                 [new Dictionary<string, string> { ["state"] = "In Progress" }],
-                "EVE-14 → In Progress"));
+                "WEB-14 → In Progress"));
         }
     }
 

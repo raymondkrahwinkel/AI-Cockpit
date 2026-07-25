@@ -26,11 +26,11 @@ public class DelegationWorkspaceTests
         // The profile allows nothing of its own — which used to mean "nowhere", and refused every delegation that
         // carried a working directory at all.
         var service = _ServiceWith(
-            workspaces: ["/home/raymond/RiderProjects/Eveworkbench"],
+            workspaces: ["/home/you/projects/webshop"],
             _Target("qwen"));
 
         var task = await service.DelegateAsync(
-            new DelegationRequest("qwen", "review the frontend diff", WorkingDirectory: "/home/raymond/RiderProjects/Eveworkbench"));
+            new DelegationRequest("qwen", "review the frontend diff", WorkingDirectory: "/home/you/projects/webshop"));
 
         task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
     }
@@ -39,11 +39,11 @@ public class DelegationWorkspaceTests
     public async Task ADirectoryUnderOneASessionIsWorkingIn_IsAllowedToo()
     {
         var service = _ServiceWith(
-            workspaces: ["/home/raymond/RiderProjects/Eveworkbench"],
+            workspaces: ["/home/you/projects/webshop"],
             _Target("qwen"));
 
         var task = await service.DelegateAsync(
-            new DelegationRequest("qwen", "look at the frontend", WorkingDirectory: "/home/raymond/RiderProjects/Eveworkbench/src"));
+            new DelegationRequest("qwen", "look at the frontend", WorkingDirectory: "/home/you/projects/webshop/src"));
 
         task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
     }
@@ -54,7 +54,7 @@ public class DelegationWorkspaceTests
     public async Task ADirectoryNoSessionIsIn_IsStillRefused()
     {
         var service = _ServiceWith(
-            workspaces: ["/home/raymond/RiderProjects/Eveworkbench"],
+            workspaces: ["/home/you/projects/webshop"],
             _Target("qwen"));
 
         var delegate_ = async () => await service.DelegateAsync(
@@ -69,14 +69,14 @@ public class DelegationWorkspaceTests
     public async Task ARefusal_NamesTheDirectoriesThatAreAllowed()
     {
         var service = _ServiceWith(
-            workspaces: ["/home/raymond/RiderProjects/Eveworkbench"],
+            workspaces: ["/home/you/projects/webshop"],
             _Target("qwen"));
 
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
 
         (await delegate_.Should().ThrowAsync<DelegationRejectedException>())
-            .WithMessage("*Eveworkbench*");
+            .WithMessage("*webshop*");
     }
 
     [Fact]
@@ -96,10 +96,10 @@ public class DelegationWorkspaceTests
     {
         var service = _ServiceWith(
             workspaces: [],
-            _Target("qwen", policy => policy with { AllowedWorkingDirs = ["/home/raymond/RiderProjects"] }));
+            _Target("qwen", policy => policy with { AllowedWorkingDirs = ["/home/you/projects"] }));
 
         var task = await service.DelegateAsync(
-            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/RiderProjects/Eveworkbench"));
+            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/you/projects/webshop"));
 
         task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
     }

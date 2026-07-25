@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 /// the turn-taking and, above all, the in-band permission round-trip that replaces the host's HTTP MCP permission
 /// server: a <c>can_use_tool</c> control_request surfaces as <see cref="PluginPermissionRequested"/>, and the
 /// operator's answer is written back as a <c>control_response</c> echoing the request's own <c>request_id</c>.
-/// The live CLI end (that it emits <c>can_use_tool</c> for this spawn) is Raymond's eyeball item; everything the
+/// The live CLI end (that it emits <c>can_use_tool</c> for this spawn) needs a manual eyeball check; everything the
 /// cockpit does with the line is proven here.
 /// </summary>
 public class ClaudeSdkSessionDriverTests : IDisposable

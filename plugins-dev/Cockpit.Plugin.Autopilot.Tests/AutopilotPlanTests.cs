@@ -3,7 +3,7 @@ using FluentAssertions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
-/// The plan's operator-facing label (Raymond 2026-07-22): a run carries a name the operator recognises it by, falling
+/// The plan's operator-facing label: a run carries a name the operator recognises it by, falling
 /// back to the goal until one is set, and <see cref="AutopilotPlan.WithName"/> is a value-copy so the living plan stays
 /// immutable.
 /// </summary>

@@ -112,6 +112,18 @@
                          PlaceholderText="Optional — defaults to the profile name"/>
             </Grid>
 
+            <!-- The first prompt a plugin pre-filled (NewSessionPrefill.InitialPrompt): shown because confirming this
+                 dialog confirms that text too, and it is the one field that can carry words nobody here wrote — an
+                 issue body from a tracker anyone can post to. Read-only: the operator's answer is Start or Cancel,
+                 not an edit. Hidden entirely when nothing pre-filled a prompt. -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding HasInitialPrompt}">
+                <TextBlock Grid.Column="0" Text="Prompt" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBox Grid.Column="1" Text="{Binding InitialPrompt, Mode=OneWay}" IsReadOnly="True"
+                         AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="132"
+                         ToolTip.Tip="The first prompt this session is given once it starts — read it before you start."/>
+            </Grid>
+
             <!-- Optional per-session working directory: launch this session in a project folder instead of the
                  app directory. Browse picks one; the star pins the current one; the picker offers previously-used
                  folders (favorites first). Blank keeps the global default. -->

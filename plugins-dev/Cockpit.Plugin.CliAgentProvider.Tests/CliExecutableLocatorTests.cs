@@ -4,7 +4,7 @@ namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
 /// <summary>
 /// <see cref="CliExecutableLocator"/> (#45 fase B1). B2 caveat: the "found via PATH" branch is only
-/// exercised here against a temp directory this test controls, not Raymond's real npm-global install — see
+/// exercised here against a temp directory this test controls, not a real npm-global install — see
 /// the class's own remarks for why cross-platform npm-shim discovery still needs live verification.
 /// </summary>
 public class CliExecutableLocatorTests

@@ -30,7 +30,7 @@ public static class ClaudeUsageSignals
     private const string ResumePrompt = "continue";
 
     /// <summary>
-    /// The three signals a Claude session reports, with the thresholds Raymond chose (2026-07-24): a context
+    /// The three signals a Claude session reports, with the chosen thresholds: a context
     /// window worth mentioning at half full, and allowances worth mentioning when nearly gone. An operator can
     /// override any of them per provider, and a profile can override that again.
     /// </summary>

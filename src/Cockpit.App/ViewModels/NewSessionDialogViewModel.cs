@@ -182,6 +182,20 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private string _sessionName = string.Empty;
 
     /// <summary>
+    /// The first prompt a plugin pre-filled the dialog with (<c>NewSessionPrefill.InitialPrompt</c>), shown read-only
+    /// so the operator reads the text before it reaches an agent. The dialog is the confirmation gate for a prefill,
+    /// and this is the one field whose contents can come from outside the cockpit entirely — an issue body written by
+    /// a stranger — so it is the last field that should be invisible on it. Blank for an operator-opened dialog.
+    /// </summary>
+    [ObservableProperty]
+    private string _initialPrompt = string.Empty;
+
+    /// <summary>Only a pre-filled prompt has anything to show; an operator who opened the dialog themselves has no prompt yet.</summary>
+    public bool HasInitialPrompt => !string.IsNullOrWhiteSpace(InitialPrompt);
+
+    partial void OnInitialPromptChanged(string value) => OnPropertyChanged(nameof(HasInitialPrompt));
+
+    /// <summary>
     /// Whether this session picks up an earlier conversation instead of starting fresh — the answer to "the app
     /// crashed and I want to go on where I was". Only the Claude CLI keeps a history to resume from, so the
     /// controls are hidden for a local provider rather than offered and then ignored.

@@ -22,7 +22,7 @@ internal sealed record AutopilotRunEnvironment(string RepositoryDirectory, strin
     public bool HasRunBranch => RunWorktreePath is { Length: > 0 } && RunWorktreeBranch is { Length: > 0 };
 
     /// <summary>
-    /// Whether a run in a folder with the given git status isolates its steps (AC-174, Raymond 2026-07-22) — the
+    /// Whether a run in a folder with the given git status isolates its steps (AC-174) — the
     /// fail-closed rule, in one place so it is testable and cannot drift. Isolate unless the host <em>positively</em>
     /// reported the folder is not a git repository: <see cref="GitDirectoryStatus.Unknown"/> (an older host, a failed
     /// probe) stays isolated, so the confinement guard is never dropped by an inconclusive answer. Only

@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// from <c>npm i -g</c> — a <c>.cmd</c> shim on Windows, a plain script on *nix. <see cref="Process"/> with
 /// <c>UseShellExecute=false</c> does not consult <c>PATHEXT</c> the way a shell does, so a bare <c>"codex"</c>
 /// will fail to launch a <c>codex.cmd</c> shim even though it is on PATH. This best-effort resolver probes for
-/// <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> siblings on Windows; it has not been verified against Raymond's real
+/// <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> siblings on Windows; it has not been verified against a real
 /// npm-global install location — B2 is to confirm/adjust the discovered path there, not restructure this class.
 /// </remarks>
 internal static class CliExecutableLocator

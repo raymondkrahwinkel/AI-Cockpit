@@ -42,11 +42,11 @@ public class GitWorkflowStepsTests : IDisposable
     [Fact]
     public async Task SwitchingToABranchThatDoesNotExist_CreatesIt()
     {
-        var result = await _Run("git.branch", ("Branch", "eve-14-fix-it"), ("Working directory", _repo));
+        var result = await _Run("git.branch", ("Branch", "web-14-fix-it"), ("Working directory", _repo));
 
         result.Items[0]["created"].Should().Be("true");
-        result.Items[0]["branch"].Should().Be("eve-14-fix-it");
-        _Git("rev-parse", "--abbrev-ref", "HEAD").Trim().Should().Be("eve-14-fix-it");
+        result.Items[0]["branch"].Should().Be("web-14-fix-it");
+        _Git("rev-parse", "--abbrev-ref", "HEAD").Trim().Should().Be("web-14-fix-it");
     }
 
     [Fact]

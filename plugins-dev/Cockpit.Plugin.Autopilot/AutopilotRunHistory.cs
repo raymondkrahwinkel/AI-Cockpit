@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The history of settled runs (Raymond 2026-07-22): a run that finishes — merge-ready or blocked — is dropped from the
+/// The history of settled runs: a run that finishes — merge-ready or blocked — is dropped from the
 /// live surface, so without a record it simply vanishes ("de run knippert en is dan weg"). Each settled run is recorded
 /// here, newest first, so the surface can show what was run and how it ended. Persisted through the plugin's storage so
 /// history survives a restart, and capped at <see cref="MaxEntries"/> so it cannot grow without bound.

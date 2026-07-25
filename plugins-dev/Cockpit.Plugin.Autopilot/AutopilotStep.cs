@@ -27,21 +27,21 @@ internal sealed record AutopilotStep(
 {
     /// <summary>
     /// The MCP servers this step's session is launched with — deliberately the <em>minimal</em> set the step needs, not
-    /// everything (Raymond 2026-07-21): a smaller MCP surface is fewer tool definitions in the agent's context (tokens)
+    /// everything: a smaller MCP surface is fewer tool definitions in the agent's context (tokens)
     /// and tighter least-privilege (AC-117). The CEO scopes it per step; empty means the step needs no extra MCP beyond
     /// what Autopilot's own report endpoint gives it. Server ids as the host advertises them (e.g. <c>cockpit-verify</c>).
     /// </summary>
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
     /// <summary>
-    /// How many times this step has been started (AC-174, Raymond 2026-07-21). The CEO validates a step's output against
+    /// How many times this step has been started (AC-174). The CEO validates a step's output against
     /// its <see cref="Acceptance"/>; a step that does not pass is sent back to rework and re-run — but only while it has
     /// attempts left under the run's cap, so a rework loop is bounded and never becomes an endless loop.
     /// </summary>
     public int Attempts { get; init; }
 
     /// <summary>
-    /// How many agents work this step at once (AC-174, Raymond 2026-07-21). Default 1. The CEO decides where parallel
+    /// How many agents work this step at once (AC-174). Default 1. The CEO decides where parallel
     /// work is safe — e.g. splitting code work across two or three agents whose parts will not touch the same files —
     /// and the operator can force it back to a single agent ("no multitasking here"). Agents in a parallel step run
     /// isolated (their own worktrees) so they do not get in each other's way; the CEO is what keeps their parts disjoint.

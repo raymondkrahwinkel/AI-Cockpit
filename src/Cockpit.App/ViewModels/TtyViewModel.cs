@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -207,8 +208,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
-    /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
-    protected override void OnVoiceTextReady(string text) => VoiceTranscriptReady?.Invoke(text);
+    /// <summary>
+    /// No cleanup — the terminal has no input box to proofread in, so the text goes straight to the pty like a typed
+    /// keystroke. Typed is all it may be: it is reduced to <see cref="_AsTypedText"/> first, so nothing in it can act
+    /// as a key. Sending stays its own gesture — the operator's Enter, or <see cref="OnVoiceSubmitRequested"/>'s
+    /// carriage return. Text that was nothing but keys writes nothing at all.
+    /// </summary>
+    protected override void OnVoiceTextReady(string text)
+    {
+        var typed = _AsTypedText(text);
+        if (typed.Length > 0)
+        {
+            VoiceTranscriptReady?.Invoke(typed);
+        }
+    }
 
     /// <summary>
     /// Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing —
@@ -603,20 +616,103 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in
-        // the composer looking sent, which is the failure that looks like success.
-        //
-        // The text is flattened to a single line first. A terminal reads any carriage return or newline in it as
-        // "send now", so a two-line prompt would submit its first line and leave the rest typed into whatever the
-        // session did next — the instruction arrives cut in half and something acts on the half.
-        sink(_SingleLine(prompt) + "\r");
+        // the composer looking sent, which is the failure that looks like success. The prompt itself is typed only —
+        // the trailing carriage return is the one byte here that is meant to act as a key.
+        sink(_AsTypedText(prompt) + "\r");
 
         return Task.FromResult(true);
     }
 
-    // Every line break becomes a space, and the runs that leaves collapse — so a prompt written over a few lines
-    // reads as the one sentence it was meant to be rather than arriving as several submissions.
-    private static string _SingleLine(string text) =>
-        string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    private const char Escape = '\u001b';
+    private const char Bell = '\u0007';
+
+    // Text on its way into a pty, reduced to what a person could type into the composer: every control byte becomes a
+    // space, and escape sequences are dropped whole. A pty has no notion of "just text" — a carriage return in it is
+    // Enter, a tab is completion, 0x03 is Ctrl+C, and an escape sequence drives the TUI and the emulator instead of
+    // filling the composer. So text that nobody typed (a voice transcript, a scheduled resume, an issue body a plugin
+    // handed over from a tracker anyone can write into) can fill the composer and do nothing else; sending it stays a
+    // deliberate, separate act.
+    //
+    // The line layout of a multi-line prompt is the price, and it is the right one: the alternative is that its first
+    // line submits itself and the rest arrives as input to whatever the session did next. Bracketed paste would keep
+    // the layout, but whether the hosted TUI honours it is the TUI's choice, not ours — a filter that only sometimes
+    // holds is not a filter.
+    private static string _AsTypedText(string text)
+    {
+        var typed = new StringBuilder(text.Length);
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == Escape)
+            {
+                index = _EndOfEscapeSequence(text, index);
+                continue;
+            }
+
+            // A space rather than nothing, so the words either side of a dropped line break stay apart.
+            typed.Append(char.IsControl(text[index]) ? ' ' : text[index]);
+        }
+
+        // Collapse the runs of spaces that leaves, so a prompt written over a few lines reads as the one sentence it
+        // was meant to be.
+        return string.Join(' ', typed.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    // The index of the last character of the escape sequence that starts at start, so the caller's own increment
+    // lands just past it. An unterminated or unrecognised sequence swallows the rest of the text:
+    // leaving the introducer behind is the one outcome worth avoiding, and text trailing an escape that never ends is
+    // not text anybody typed. Whatever this misses still cannot reach the pty — the caller turns every remaining
+    // control byte into a space, so a gap here costs legibility, never safety.
+    private static int _EndOfEscapeSequence(string text, int start)
+    {
+        if (start + 1 >= text.Length)
+        {
+            return text.Length - 1;
+        }
+
+        switch (text[start + 1])
+        {
+            // CSI (ESC [) runs over parameter and intermediate bytes until a final byte in 0x40-0x7E.
+            case '[':
+            {
+                var index = start + 2;
+                while (index < text.Length && text[index] is >= ' ' and < '@')
+                {
+                    index++;
+                }
+
+                return Math.Min(index, text.Length - 1);
+            }
+
+            // The string-payload family (OSC, DCS, SOS, PM, APC) runs until a BEL or an ESC \.
+            case ']' or 'P' or 'X' or '^' or '_':
+                return _EndOfEscapeString(text, start + 2);
+
+            // A charset designator (ESC ( B) takes one character more than a two-character escape does.
+            case '(' or ')' or '*' or '+':
+                return Math.Min(start + 2, text.Length - 1);
+
+            default:
+                return start + 1;
+        }
+    }
+
+    private static int _EndOfEscapeString(string text, int from)
+    {
+        for (var index = from; index < text.Length; index++)
+        {
+            if (text[index] == Bell)
+            {
+                return index;
+            }
+
+            if (text[index] == Escape && index + 1 < text.Length && text[index + 1] == '\\')
+            {
+                return index + 1;
+            }
+        }
+
+        return text.Length - 1;
+    }
 
     /// <summary>
     /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it

@@ -111,7 +111,7 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_ForANonGitFolder_EmbedsTheStepUnisolatedInTheWorkingDirectory()
     {
-        // AC-174 (Raymond 2026-07-22): a run whose folder the host reported is not a git repository runs its steps
+        // AC-174: a run whose folder the host reported is not a git repository runs its steps
         // without worktree isolation, directly in that folder — an admin task with no repo, not refused at the first step.
         var plan = _RunningPlan(_HardStep("1"));
         var context = _Context(_Session("step-pane"));
@@ -248,7 +248,7 @@ public class AutopilotRunCoordinatorTests
     [Fact]
     public async Task RunAsync_StepMakesToolProgress_IsNotStalled_EvenPastTheStallWindow()
     {
-        // Raymond 2026-07-23: a step that is slow because it is working hard — a long turn with many tool calls — keeps
+        // A step that is slow because it is working hard — a long turn with many tool calls — keeps
         // resetting the stall window through its tool activity, so it is never failed as stalled (unlike AC-192, the
         // silent agent above). Tool progress is raised across a span well past the stall window; the step is then handed
         // to the CEO to validate rather than failed. Timing-based: the 30ms progress gap is well under the 100ms stall

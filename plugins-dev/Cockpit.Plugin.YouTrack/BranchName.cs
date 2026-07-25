@@ -14,7 +14,7 @@ namespace Cockpit.Plugin.YouTrack;
 /// </summary>
 internal static class BranchName
 {
-    /// <summary>What the operator gets unless they say otherwise — Raymond's own convention.</summary>
+    /// <summary>What the operator gets unless they say otherwise.</summary>
     public const string DefaultPattern = "{id}-{summary}";
 
     // Long enough to stay recognisable, short enough to keep the ref readable in a prompt or a terminal.
@@ -44,13 +44,13 @@ internal static class BranchName
             .Replace("{summary}", name, StringComparison.OrdinalIgnoreCase);
 
         // A pattern with no summary in it, or an issue with no summary, must not leave the separator dangling:
-        // "EVE-14-" is a name someone typed wrong, and it looks like one.
+        // "WEB-14-" is a name someone typed wrong, and it looks like one.
         branch = _Tidy(branch);
 
         return branch.Length == 0 ? id : branch;
     }
 
-    // Slashes survive (feature/EVE-14 is a branch), everything else that git or a shell would argue with does not.
+    // Slashes survive (feature/WEB-14 is a branch), everything else that git or a shell would argue with does not.
     // Repeated or trailing separators are collapsed: a pattern is written once and used on a hundred tickets, and one
     // of them will have an empty summary.
     private static string _Tidy(string value)

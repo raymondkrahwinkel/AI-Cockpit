@@ -92,7 +92,7 @@ public class AutopilotStepBriefTests
 
         var brief = AutopilotStepBrief.For(step, 1, 1);
 
-        // The execution mandate (Raymond 2026-07-23): every model, however light, is told to BUILD — write the code, run
+        // The execution mandate: every model, however light, is told to BUILD — write the code, run
         // the tests, commit in the worktree — and explicitly not to analyse, summarise, ask, or reply with a plan, which
         // is the failure that strands a step on a lighter model.
         brief.Should().Contain("execution task, not an analysis or planning task");

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -36,9 +37,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
 
-    // The window-level status line: fetch/load/refresh state, and the guard messages ("no repository set") that
-    // fire before any issue is even selected. Once the detail panel is open, _detailStatus takes over reporting
-    // what an action on that issue did — the two never cover the same ground.
+    // The window-level status line, along the bottom edge of the dialog: fetch/load/refresh state and the guard
+    // messages ("no repository set") that fire before any issue is even selected. Always present; what an action
+    // on a selected issue did is reported by _detailStatus, inside the panel that issue is shown in, so the two
+    // sit in different places and never carry the same message.
     private readonly TextBlock _status;
     private readonly ProgressBar _loading = LoadingBar.Build();
     private readonly DataGrid _grid;
@@ -47,7 +49,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly DockPanel _detailContent;
     private readonly TextBlock _detailId;
     private readonly TextBlock _detailTitle;
-    private readonly Button _openLink;
     private readonly WrapPanel _detailChips;
     private readonly Button _inject;
     private readonly Button _newSession;
@@ -62,6 +63,12 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     private IReadOnlyList<GitHubIssue> _all = [];
     private string _renderedPrompt = string.Empty;
+
+    // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
+    // the grid event that happened to be in flight: a reload raises SelectionChanged twice — once on the empty
+    // grid, once back on the same issue — and clearing on every selection change wiped the message before the
+    // operator could read it (AC-292, the same defect the YouTrack dialog had).
+    private string? _detailStatusFor;
 
     public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitHost host, SessionIssueLinks links)
     {
@@ -125,18 +132,18 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         // only the rendered prompt still carries it, because that copy is the literal text a session receives.
         _detailId = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Opacity = 0.65 };
         _detailTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
-        _openLink = new Button
+        var openLink = new Button
         {
             Content = new MaterialIcon { Kind = MaterialIconKind.OpenInNew, Width = 15, Height = 15 },
             Padding = new Thickness(5),
             VerticalAlignment = VerticalAlignment.Top,
         };
-        ToolTip.SetTip(_openLink, "Open in browser");
-        _openLink.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubIssue);
+        ToolTip.SetTip(openLink, "Open in browser");
+        openLink.Click += (_, _) => _OpenInBrowser();
 
         var titleRow = new DockPanel();
-        DockPanel.SetDock(_openLink, Dock.Right);
-        titleRow.Children.Add(_openLink);
+        DockPanel.SetDock(openLink, Dock.Right);
+        titleRow.Children.Add(openLink);
         titleRow.Children.Add(new StackPanel { Children = { _detailId, _detailTitle } });
 
         // A single chip, replacing the old "{repo} · #{number} · {url}" meta line: Repository is the only field
@@ -145,10 +152,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _detailChips = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
 
         _inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
+
+        // Without this the button's own explanation of why it is inert never appears: Avalonia shows no tooltip
+        // on a disabled control unless asked to.
+        ToolTip.SetShowOnDisabled(_inject, true);
         _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
 
         _newSession = new Button { Content = "New session" };
-        _newSession.Click += (_, _) => _StartNewSession(_grid.SelectedItem as GitHubIssue);
+        _newSession.Click += async (_, _) => await _StartNewSessionAsync();
 
         _overflow = new Button
         {
@@ -156,12 +167,15 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             Padding = new Thickness(8, 4),
         };
         ToolTip.SetTip(_overflow, "More actions");
-        _overflow.Click += (_, _) => _ShowOverflowMenu(_grid.SelectedItem as GitHubIssue);
+        _overflow.Click += (_, _) => _ShowOverflowMenu();
 
         // A fixed row: the same controls, in the same order, whether or not Autopilot is installed or a session
         // is active — only the overflow menu's contents vary. GitHub has no "Set state" equivalent (a workflow
         // step already covers assign-and-label — see GitHubWorkflowSteps), so there is no third toolbar button
         // between New session and the overflow the way YouTrack's Set state sits.
+        // The whole toolbar lives inside the detail panel, which is hidden until an issue is selected — which is
+        // why the handlers behind these buttons read the selection and simply exit if it is somehow empty, rather
+        // than telling the operator to select an issue they have plainly already selected.
         var toolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -171,17 +185,25 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         };
 
         // Description gets its own scroll area rather than sharing one with the prompt preview below it, so a
-        // long body does not push the preview and status line out of view together with it. Capped to a
-        // readable measure rather than stretching edge-to-edge on the wider dialog.
+        // long body does not push the preview and status line out of view together with it. The width cap does
+        // nothing at the default 3:2 split — the details column is nowhere near 680 there — it is the ceiling for
+        // an operator who drags the splitter over, so the text stays a readable measure instead of running the
+        // full width of the dialog.
         _detailBody = new ContentControl();
         var descriptionScroll = new ScrollViewer
         {
+            Name = "descriptionScroll",
             Content = new Border { MaxWidth = 680, Margin = new Thickness(0, 10, 0, 0), Child = _detailBody },
         };
 
+        // Deliberately not wrapped, for two reasons that point the same way. The preview shows the prompt exactly
+        // as it will be sent, and re-flowing it would misrepresent a text whose own line breaks are part of it.
+        // And wrapping is not merely unwanted here but unsafe: Avalonia 12.0.5 never finishes laying out a
+        // wrapped run that contains line breaks — it allocates until the process is killed, and this template
+        // always contains them. Long lines scroll sideways instead (see promptScroll).
         _promptPreview = new SelectableTextBlock
         {
-            TextWrapping = TextWrapping.Wrap,
+            TextWrapping = TextWrapping.NoWrap,
             FontSize = 11,
             FontFamily = _MonoFont(),
         };
@@ -224,6 +246,18 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             Padding = new Thickness(0),
         };
 
+        // The preview quotes the whole body back inside the rendered template, so it is always taller than the
+        // body it repeats. Docked at the bottom of the panel with nothing to bound it, it took every pixel and
+        // left the body none. It gets a fixed reading height and scrolls within it: the body is what the panel is
+        // for, the preview is a check on what Add to prompt is about to send.
+        var promptScroll = new ScrollViewer
+        {
+            Name = "promptScroll",
+            MaxHeight = 180,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _promptPreview,
+        };
+
         var promptBlock = new Border
         {
             Background = _Brush("CockpitSecondaryBgBrush"),
@@ -232,7 +266,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 4, 0, 0),
-            Child = _promptPreview,
+            Child = promptScroll,
             IsVisible = false,
         };
         promptToggle.Click += (_, _) =>
@@ -251,6 +285,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         _detailStatus = new TextBlock
         {
+            Name = "detailStatus",
             FontSize = 11,
             FontWeight = FontWeight.SemiBold,
             Foreground = _Brush("CockpitAccentBrush"),
@@ -334,11 +369,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _SetStatus("Loading…");
         _loading.IsVisible = true;
 
-        // Captured before the fetch so the freshly reloaded list (a brand-new ObservableCollection<GitHubIssue>
-        // each time — see _ApplyFilter) can be matched back to whichever issue was selected, by identity rather
-        // than by the DataGrid finding an equal object on its own — it does not (the same defect YouTrack's
-        // dialog had, AC-299 bug 2).
-        var previousSelection = _grid.SelectedItem as GitHubIssue;
         try
         {
             var assignedToMe = _assignedToMe.IsChecked == true;
@@ -359,7 +389,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
             _PopulateRepoFilter();
             _ApplyFilter();
-            _RestoreSelection(previousSelection?.Repository, previousSelection?.Number);
             _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
         }
         catch (Exception exception)
@@ -412,14 +441,15 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 || issue.Number.ToString().Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        _grid.ItemsSource = new ObservableCollection<GitHubIssue>(filtered);
-    }
-
-    // See the field doc on _RestoreSelection's caller (_LoadAsync) for why this matches by Repository+Number
-    // instead of relying on the DataGrid to keep a selection across an ItemsSource swap.
-    private void _RestoreSelection(string? repository, int? number)
-    {
-        if (IssueSelection.Restore(_grid.ItemsSource as IEnumerable<GitHubIssue> ?? [], repository, number) is { } match)
+        // Every rebuild goes through here — a keystroke in the filter, a repository-filter change, the "Assigned
+        // to me" toggle and the reload behind Refresh — and every one of them hands the grid a brand-new
+        // collection, which drops its selection outright: it does not go looking through the new items for one
+        // that compares equal. So the issue the operator was reading is put back by identity, here, rather than
+        // at each call site (AC-292).
+        var previousSelection = _grid.SelectedItem as GitHubIssue;
+        var items = new ObservableCollection<GitHubIssue>(filtered);
+        _grid.ItemsSource = items;
+        if (IssueSelection.Restore(items, previousSelection?.Repository, previousSelection?.Number) is { } match)
         {
             _grid.SelectedItem = match;
         }
@@ -427,12 +457,19 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     private void _ShowDetail(GitHubIssue? issue)
     {
-        _detailStatus.Text = string.Empty;
         if (issue is null)
         {
+            // The result line is deliberately left alone: an empty selection is also what a grid rebuild passes
+            // through on its way back to the same issue, and the panel holding that line is hidden here anyway.
             _detailContent.IsVisible = false;
             _detailPlaceholder.IsVisible = true;
             return;
+        }
+
+        if (!string.Equals(_detailStatusFor, _IdentityOf(issue), StringComparison.Ordinal))
+        {
+            _detailStatus.Text = string.Empty;
+            _detailStatusFor = null;
         }
 
         _detailPlaceholder.IsVisible = false;
@@ -447,14 +484,30 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _renderedPrompt = _RenderPrompt(issue);
         _promptPreview.Text = _renderedPrompt;
 
-        // Add to prompt only makes sense with a live session; it stays put and just goes inert with a tooltip
-        // explaining why, rather than disappearing and letting the fixed row jump — New session is the route
-        // offered in its place.
+        _UpdateInjectAvailability();
+    }
+
+    // Add to prompt only makes sense with a live session; it stays put and just goes inert with a tooltip
+    // explaining why, rather than disappearing and letting the fixed row jump — New session is the route offered
+    // in its place. Re-read on every selection, and again the moment New session hands back a pane: that pane is
+    // the very session the button was missing (AC-292).
+    private void _UpdateInjectAvailability()
+    {
         _inject.IsEnabled = _actions.HasActiveSession;
         ToolTip.SetTip(_inject, _actions.HasActiveSession
             ? "Inject this issue's prompt into the active session."
             : "No active session — start one, or use New session.");
     }
+
+    // The result of an action, tied to the issue it was produced for — see _detailStatusFor. A number alone is
+    // not an identity here: it is only unique within a repository, and CLI mode lists every repo an owner has.
+    private void _SetDetailStatus(GitHubIssue issue, string text)
+    {
+        _detailStatus.Text = text;
+        _detailStatusFor = _IdentityOf(issue);
+    }
+
+    private static string _IdentityOf(GitHubIssue issue) => $"{issue.Repository}#{issue.Number}";
 
     private Control _BuildChip(string text) => new Border
     {
@@ -469,17 +522,12 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
     // title and body as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(GitHubIssue? issue)
+    private async Task _PlanInAutopilotAsync(GitHubIssue issue)
     {
-        if (issue is null)
-        {
-            return;
-        }
-
         var data = new Dictionary<string, string>
         {
             ["tracker"] = "github-issues",
-            ["issue"] = $"{issue.Repository}#{issue.Number}",
+            ["issue"] = _IdentityOf(issue),
             ["title"] = issue.Title,
             ["description"] = issue.Body ?? string.Empty,
             ["repository"] = issue.Repository,
@@ -500,11 +548,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     // New session: hands the same rendered prompt Add to prompt and the preview already use to the cockpit's own
     // New-session dialog, prefilled with this issue's number as the session name. The operator still sees and
     // confirms every field there — nothing starts until they press Start; on cancel, nothing is linked either.
-    private void _StartNewSession(GitHubIssue? issue)
+    private async Task _StartNewSessionAsync()
     {
-        if (issue is null)
+        if (_grid.SelectedItem is not GitHubIssue issue)
         {
-            _SetStatus("Select an issue first.");
             return;
         }
 
@@ -512,46 +559,62 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             InitialPrompt: _RenderPrompt(issue),
             SessionName: $"#{issue.Number}");
 
-        _ = _host.ShowNewSessionDialogAsync(
-            prefill,
-            onStarted: paneId =>
-            {
-                _LinkIssue(paneId, issue);
-                _detailStatus.Text = $"Started a new session for #{issue.Number}, linked to it.";
-            },
-            onCancelled: () => _detailStatus.Text = "New session cancelled.");
+        // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
+        // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert
+        // until the dialog the operator already has in front of them is gone (AC-292).
+        _newSession.IsEnabled = false;
+        try
+        {
+            await _host.ShowNewSessionDialogAsync(
+                prefill,
+                onStarted: paneId =>
+                {
+                    _LinkIssue(paneId, issue);
+
+                    // That pane is a live session, which is what Add to prompt was waiting for.
+                    _UpdateInjectAvailability();
+                    _SetDetailStatus(issue, $"Started a new session for #{issue.Number}, linked to it.");
+                },
+                onCancelled: () => _SetDetailStatus(issue, "New session cancelled."));
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not open the New-session dialog: {exception.Message}");
+        }
+        finally
+        {
+            _newSession.IsEnabled = true;
+        }
     }
 
     // The one place that actually calls SessionIssueLinks.Link — shared by "Link to session" (the active pane)
     // and New session's onStarted callback (the pane it just created), so the two do not each keep their own copy.
-    private void _LinkIssue(string paneId, GitHubIssue issue) => _links.Link(paneId, issue);
+    // The working directory travels with the link: a flow that cuts a branch or a worktree when an issue is picked
+    // is given the path to do it in, instead of an empty string (AC-292).
+    private void _LinkIssue(string paneId, GitHubIssue issue) =>
+        _links.Link(paneId, issue, _host.Sessions.ActiveSessionWorkingDirectory);
 
-    // Ties the issue to the session pane that is selected right now. Returns the resulting message rather than
-    // setting _detailStatus directly, so a future caller with something else to report could combine both into
-    // one line instead of one overwriting the other (the same shape as YouTrack's Start work / link combination).
-    private string _LinkToActiveSession(GitHubIssue? issue)
+    // Ties the issue to the session pane that is selected right now, and says what came of it. The pane is the
+    // one the operator has in front of them — the dialog itself belongs to no session.
+    private void _LinkToActiveSession(GitHubIssue issue)
     {
-        if (issue is null)
-        {
-            return string.Empty;
-        }
-
         if (_host.Sessions.ActivePaneId is not { Length: > 0 } paneId)
         {
-            return "No active session to link this issue to.";
+            _SetDetailStatus(issue, "No active session to link this issue to.");
+            return;
         }
 
         _LinkIssue(paneId, issue);
-        return $"#{issue.Number} linked to the active session.";
+        _SetDetailStatus(issue, $"#{issue.Number} linked to the active session.");
     }
 
     // Conditional entries live only here, never as toolbar buttons that would appear and disappear: Plan in
     // Autopilot only when the plugin is installed and listening for the intent, Link to session only with an
     // active pane to link to. Open in browser and Copy prompt need no such gate — the calls behind them already
     // guard a missing issue or an empty render.
-    private void _ShowOverflowMenu(GitHubIssue? issue)
+    private void _ShowOverflowMenu()
     {
-        if (issue is null)
+        if (_grid.SelectedItem is not GitHubIssue issue)
         {
             return;
         }
@@ -568,12 +631,12 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         if (_host.Sessions.ActivePaneId is { Length: > 0 })
         {
             var linkItem = new MenuItem { Header = "Link to session" };
-            linkItem.Click += (_, _) => _detailStatus.Text = _LinkToActiveSession(issue);
+            linkItem.Click += (_, _) => _LinkToActiveSession(issue);
             items.Add(linkItem);
         }
 
         var openItem = new MenuItem { Header = "Open in browser" };
-        openItem.Click += (_, _) => _OpenInBrowser(issue);
+        openItem.Click += (_, _) => _OpenInBrowser();
         items.Add(openItem);
 
         var copyItem = new MenuItem { Header = "Copy prompt" };
@@ -594,34 +657,38 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         if (!_actions.HasActiveSession)
         {
-            _detailStatus.Text = "No active session — use Copy to put the prompt on the clipboard.";
+            _SetDetailStatus(issue, "No active session — use Copy to put the prompt on the clipboard.");
             return;
         }
 
         _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(issue));
-        _detailStatus.Text = $"Added issue #{issue.Number} to the active session's prompt.";
+        _SetDetailStatus(issue, $"Added issue #{issue.Number} to the active session's prompt.");
     }
 
     private async Task _CopyPromptAsync()
     {
-        if (string.IsNullOrEmpty(_renderedPrompt))
+        if (_grid.SelectedItem is not GitHubIssue issue || string.IsNullOrEmpty(_renderedPrompt))
         {
             return;
         }
 
         await _actions.SetClipboardTextAsync(_renderedPrompt);
-        _detailStatus.Text = "Prompt copied to the clipboard.";
+        _SetDetailStatus(issue, "Prompt copied to the clipboard.");
     }
 
-    private void _OpenInBrowser(GitHubIssue? issue)
+    private void _OpenInBrowser()
     {
-        if (issue is null || string.IsNullOrWhiteSpace(issue.Url))
+        if (_grid.SelectedItem is not GitHubIssue issue)
         {
-            _SetStatus("Select an issue first.");
             return;
         }
 
-        GitHubBrowser.Open(issue.Url);
+        // A launch that does not happen is said out loud rather than swallowed — the operator otherwise clicks
+        // "Open in browser" and gets nothing at all, with no way to tell that from a slow browser.
+        if (GitHubBrowser.Open(issue.Url) is { } failure)
+        {
+            _SetDetailStatus(issue, failure);
+        }
     }
 
     private static FontFamily _MonoFont() =>

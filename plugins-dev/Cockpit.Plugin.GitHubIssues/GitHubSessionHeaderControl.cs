@@ -158,7 +158,13 @@ internal sealed class GitHubSessionHeaderControl : UserControl
         items.Add(branch);
 
         var open = new MenuItem { Header = "Open in browser" };
-        open.Click += (_, _) => GitHubBrowser.Open(issue.Url);
+        open.Click += (_, _) =>
+        {
+            if (GitHubBrowser.Open(issue.Url) is { } failure)
+            {
+                _host.ShowToast(failure, PluginToastSeverity.Error);
+            }
+        };
         items.Add(open);
 
         var unlink = new MenuItem { Header = "Stop tracking it here" };

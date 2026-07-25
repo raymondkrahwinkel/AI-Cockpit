@@ -194,6 +194,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   a single follow-up, sent together when the turn finishes — so a few quick follow-ups reach the agent as
   one turn instead of each getting its own. Off by default, which keeps today's one-turn-per-message
   behaviour.
+- added: "New session" on an issue in the YouTrack and GitHub Issues dialogs. It opens the ordinary New-session
+  dialog with the issue's prompt and its number already filled in, so you still pick the profile and the folder
+  yourself; the issue is tracked against the session the moment it starts. Cancelling starts and tracks nothing.
+- added: an issue's description is now shown the way the cockpit shows any other text — headings, lists, links
+  and code as they are meant to look, instead of the raw `##` and `**` the tracker stores.
 
 ### Changed
 
@@ -255,6 +260,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - changed: when message timestamps are on, the time for your own messages and for each tool step now sits on
   the same line as the "You" label or the tool name, instead of stacked on a separate line above the row — so
   the transcript reads tighter.
+- changed: the YouTrack and GitHub Issues dialogs open wider, with a divider you can drag between the list and
+  the details. The details side now leads with the issue itself — title, its state and repository as chips, a
+  link button, and the description — with the actions in one fixed row that no longer rearranges itself
+  depending on what happens to be installed or running. The prompt that will be handed to a session sits under a
+  "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
 
@@ -373,6 +383,24 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   it is still working toward its answer.
 - fixed: a long item in a bulleted or numbered list in an assistant reply no longer runs off the edge and gets
   cut off — list items now wrap onto the next line like ordinary paragraphs.
+- fixed: opening an issue in the YouTrack or GitHub Issues dialog no longer hangs the cockpit and eats memory
+  until it is killed. The prompt preview now scrolls sideways for a long line instead of trying to re-wrap text
+  whose own line breaks are part of it.
+- fixed: the issue you were reading no longer disappears from under you. Typing in the filter, changing the
+  state or repository filter, toggling "Assigned to me" and refreshing all keep the issue selected instead of
+  dropping back to the placeholder.
+- fixed: what an action reported on an issue — started, moved, added to the prompt — stays on screen instead of
+  being wiped a moment later by the refresh the action itself triggered. It still clears when you move to
+  another issue.
+- fixed: "Add to prompt" now explains why it is greyed out when there is no session running, and comes back to
+  life as soon as "New session" has started one — it used to stay inert until you clicked the issue again.
+- fixed: pressing "New session" twice in a row no longer opens a second dialog, and a second session with it.
+  The button goes inert until the dialog you already have is closed.
+- fixed: starting a session from an issue now tells a workflow where that session works, so a flow that cuts a
+  branch or a worktree when an issue is picked gets the folder instead of an empty path.
+- fixed: "Open in browser" on a GitHub issue says so when the browser will not start, instead of silently doing
+  nothing; the YouTrack side now checks the address it built from your instance URL is a web address at all
+  before handing it to the desktop.
 
 ### Removed
 

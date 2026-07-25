@@ -580,17 +580,17 @@ internal sealed class AutopilotRunCoordinator(
                     // Pre-authorize the step worker's own control tools (AC-215) — report-done and consult-CEO — so an
                     // autonomous step never stops mid-run to ask the operator to allow autopilot_step_done.
                     PreApprovedTools = AutopilotRunToolNames.ForStepWorker,
-                    // "Worktree is the boundary" (Raymond 2026-07-23): an autonomous step must run its real work tools
+                    // "Worktree is the boundary": an autonomous step must run its real work tools
                     // (Bash to build/test/grep, edits, git) with no one to answer a prompt, so it auto-allows every tool.
                     // The step's isolation in a throwaway worktree is the containment, not the per-call gate — the
                     // operator accepts a run can reach outside its worktree (prompt-injection), bounded to the run.
                     PreApproveAllTools = true,
                     // Isolate each step in a worktree for a git repository (the fail-closed default — the confinement
                     // guarantee holds, and a non-confining provider is refused by the host gate). False only for a
-                    // folder the host reported is not a git repository (Raymond 2026-07-22): an admin task with no repo
+                    // folder the host reported is not a git repository: an admin task with no repo
                     // runs directly in the working directory instead of being refused for "no git repository".
                     IsolateInWorktree = environment.IsolateSteps,
-                    // The run's shared worktree for a single-agent isolated step (Raymond 2026-07-22): steps run in it so
+                    // The run's shared worktree for a single-agent isolated step: steps run in it so
                     // their work accumulates on one branch. A parallel step keeps each agent isolated (stepWorktreePath
                     // null → a fresh worktree per agent). Null when the run does not isolate.
                     WorktreePath = stepWorktreePath,
@@ -637,12 +637,12 @@ internal sealed class AutopilotRunCoordinator(
             var summaries = await Task.WhenAll(reports);
 
             // The agent(s) reported done, but the step is not settled until the CEO validates it — that window used to
-            // read as a plain "Running…" with no sign the work was already done (Raymond: "haiku zegt klaar, maar de
-            // status is nog running"). Say so on the block, so the operator sees the run has moved on to validation.
+            // read as a plain "Running…" with no sign the work was already done (the model says it's finished, but the
+            // status still shows running). Say so on the block, so the operator sees the run has moved on to validation.
             plan.NoteStep(step.Id, "Work reported — the CEO is validating it against the acceptance…");
 
             // Swap the surface to the CEO session for the validation window so it is clear the CEO is now reviewing the
-            // step, not the finished worker still sitting there (Raymond 2026-07-22). Cleared in the finally, whatever
+            // step, not the finished worker still sitting there. Cleared in the finally, whatever
             // the outcome.
             setValidating(true);
 
@@ -735,7 +735,7 @@ internal sealed class AutopilotRunCoordinator(
     // rework-or-fail the driver already handles, never a hung run. Cancellation (the surface closed) is honoured
     // through WaitAsync; the losing task is left to complete on its own and neither faults, so nothing is unobserved.
     // How long a step agent may go quiet — no done-report, session still live — before it gets one reminder to call the
-    // tool (Raymond 2026-07-22). A weaker/local model sometimes does the work but ends its turn with a text summary
+    // tool. A weaker/local model sometimes does the work but ends its turn with a text summary
     // instead of calling autopilot_step_done, which would otherwise leave the step waiting forever. One nudge is enough:
     // a model still working just gets a harmless "call it when you finish", a model that already finished gets the tool
     // call it forgot. Deliberately generous, so a legitimately long turn is not nagged early.
@@ -770,7 +770,7 @@ internal sealed class AutopilotRunCoordinator(
             await host.SendToSessionAsync(agent.PaneId, AutopilotStepBrief.StepDoneReminder());
 
             // Wait for the report or the session ending, but measure the stall deadline from the agent's last real tool
-            // progress rather than from the reminder (Raymond 2026-07-23): a step that is slow because it is working
+            // progress rather than from the reminder: a step that is slow because it is working
             // hard — a long single turn with many edits and a build — keeps resetting that deadline through
             // agent.Activity, so it is never failed for being slow. Only an agent that makes no tool progress at all for
             // the whole window (AC-192 — a turn that emits text describing a tool it never runs) hits the deadline.
@@ -797,7 +797,7 @@ internal sealed class AutopilotRunCoordinator(
     }
 
     // Waits for the step's done-report or its session ending, returning true only when the agent makes no tool progress
-    // for the whole stall window (Raymond 2026-07-23). Each agent.Activity — a tool call surfacing or a tool result
+    // for the whole stall window. Each agent.Activity — a tool call surfacing or a tool result
     // landing — restarts the window, so a step that is genuinely working (however slowly) is never failed; a stuck one
     // that only emits text (AC-192) makes no tool events and times out. Returns false when the report landed or the
     // session ended first — the caller reads which. The stall delay carries no token so it cannot throw an unobserved
@@ -843,7 +843,7 @@ internal sealed class AutopilotRunCoordinator(
         return false;
     }
 
-    // The MCP set a step agent is launched with (AC-117, Raymond 2026-07-22): the step's own report endpoint, plus
+    // The MCP set a step agent is launched with (AC-117): the step's own report endpoint, plus
     // whatever minimal set the CEO scoped it to. When the CEO scoped nothing, the step gets ONLY its report endpoint —
     // not the host's whole selection, which would hand it the CEO's own endpoint (its validate/tracker tools) and every
     // other server. Restricting to the report endpoint keeps the step least-privilege and, for a local model, keeps its
