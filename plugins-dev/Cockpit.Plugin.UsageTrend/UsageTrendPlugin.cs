@@ -19,7 +19,6 @@ public sealed class UsageTrendPlugin : ICockpitPlugin
         DisplayName: "Usage Trend",
         // Kept in lockstep with plugin.json's "version": the manifest gates loading, this shows in the plugin list,
         // and a mismatch would have the two disagree about what is installed.
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Charts the context / 5h / weekly usage of your sessions over time, per profile, on a Dashboard workspace.");
 

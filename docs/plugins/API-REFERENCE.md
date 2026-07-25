@@ -826,20 +826,20 @@ public sealed class MySettingsControl : UserControl, IPluginSettingsView
 The identity you return from `ICockpitPlugin.Metadata`.
 
 ```csharp
-public sealed record PluginMetadata(string Id, string DisplayName, string Version, string? Author, string? Description);
+public sealed record PluginMetadata(string Id, string DisplayName, string Version = "", string? Author = null, string? Description = null);
 ```
 
 | Field | Type | Meaning |
 |---|---|---|
 | `Id` | `string` | Stable identity (match your `plugin.json` `id`). |
 | `DisplayName` | `string` | Shown in the Plugins manager. |
-| `Version` | `string` | Your plugin's version. |
+| `Version` | `string` | **Do not set this.** Your version lives in `plugin.json`; the host fills this in from the manifest when it reports your plugin through `InstalledPlugins`. |
 | `Author` | `string?` | Optional. |
 | `Description` | `string?` | Optional one-liner. |
 
 ```csharp
 public PluginMetadata Metadata { get; } =
-    new("github-issues", "GitHub Issues", "1.0.0", "You", "Browse and inject GitHub issues.");
+    new(Id: "github-issues", DisplayName: "GitHub Issues", Author: "You", Description: "Browse and inject GitHub issues.");
 ```
 
 ---
@@ -1090,7 +1090,7 @@ using Cockpit.Plugins.Abstractions;
 
 public sealed class MyPlugin : ICockpitPlugin
 {
-    public PluginMetadata Metadata { get; } = new("my-plugin", "My Plugin", "1.0.0", "You", "Does a thing.");
+    public PluginMetadata Metadata { get; } = new(Id: "my-plugin", DisplayName: "My Plugin", Author: "You", Description: "Does a thing.");
 
     public void ConfigureServices(IServiceCollection services) { /* optional */ }
 

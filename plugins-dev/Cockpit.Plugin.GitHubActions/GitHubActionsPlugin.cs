@@ -14,7 +14,6 @@ public sealed class GitHubActionsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-actions",
         DisplayName: "GitHub Actions",
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Shows the GitHub Actions status of the branch a session is working in, in that session's header: "
             + "a coloured icon (green pass, red fail, amber running) for the latest workflow run on the current branch, "

@@ -22,7 +22,6 @@ public sealed class ClockPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "clock",
         DisplayName: "Clock",
-        Version: "1.0.1",
         Author: "Cockpit",
         Description: "The time and date, for a Dashboard workspace.");
 

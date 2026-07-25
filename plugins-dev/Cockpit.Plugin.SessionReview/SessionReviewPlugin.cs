@@ -16,7 +16,6 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "session-review",
         DisplayName: "Session Review",
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "A \"Review changes\" action in each session's header opens a panel showing what that session "
             + "changed (the git diff of its working directory, coloured for reading), with one click to ask the session "

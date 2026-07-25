@@ -21,7 +21,6 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "gemini-provider",
         DisplayName: "Gemini / OpenAI Provider",
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Adds Gemini and OpenAI as selectable session providers, both over an OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Configure an API key and model per profile in Manage profiles.");
 

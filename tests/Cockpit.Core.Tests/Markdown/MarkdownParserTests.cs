@@ -96,6 +96,27 @@ public class MarkdownParserTests
         runs.Should().OnlyContain(r => r.Kind == MarkdownInlineKind.Text);
     }
 
+    /// <summary>
+    /// The line after one containing a pipe is tested against the table-separator pattern, and that pattern's
+    /// adjacent <c>\s*</c> runs backtrack quadratically over a line of nothing but whitespace: a body of
+    /// <c>"|\n" + 65_000 spaces</c> — well inside a GitHub issue's 65_536-character limit — took 2.4 seconds on a
+    /// developer machine, on the UI thread, every time the operator selected that issue (AC-303). The budget here
+    /// is two orders of magnitude above what a non-backtracking match costs and an order below what the
+    /// backtracking one did, so it fails on the defect without being a stopwatch on a busy build agent.
+    /// </summary>
+    [Fact]
+    public void ALineOfWhitespaceAfterAPipe_DoesNotSendTheTableSeparatorPatternQuadratic()
+    {
+        var payload = "|\n" + new string(' ', 65_000) + "x";
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        MarkdownParser.Parse(payload);
+        elapsed.Stop();
+
+        elapsed.ElapsedMilliseconds.Should().BeLessThan(250,
+            "an issue body is third-party text and parsing runs synchronously on the UI thread");
+    }
+
     [Fact]
     public void MixedDocument_ProducesBlocksInOrder()
     {

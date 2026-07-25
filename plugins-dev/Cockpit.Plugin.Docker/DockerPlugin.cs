@@ -22,7 +22,6 @@ public sealed class DockerPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "docker",
         DisplayName: "Docker",
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Register the local Docker daemon and give agents scoped, human-approved access to containers " +
             "through a cockpit-docker MCP server. The plugin talks to the Docker Engine API itself and keeps the " +

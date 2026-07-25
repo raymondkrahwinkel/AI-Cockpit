@@ -26,7 +26,6 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.19.0",
         Author: "Cockpit",
         Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes three workflow steps — a ticket picked for a session, a ticket whose status you moved, and a step that moves one — so a flow can run the ticket half of your working day. Screenshots you send with a message are attached automatically to the issue the agent creates or updates that turn (a global setting, on by default).");
 

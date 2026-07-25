@@ -242,7 +242,24 @@ internal sealed class CockpitHost(
                 : null);
 
     /// <summary>Delegates to the cockpit's own <see cref="MarkdownView"/> — no second parser, one markdown idiom for both the transcript and every plugin dialog.</summary>
-    public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = markdown };
+    public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
+
+    // What comes through here is an issue body somebody else wrote, and rendering it is synchronous: a pipe-heavy
+    // 65 KB description — the size a GitHub body is allowed to be — becomes tens of thousands of controls in an
+    // all-Auto grid while the operator waits. The cap sits on this seam rather than inside MarkdownView because the
+    // transcript renders through that same control, and cutting the cockpit's own output short would be a defect
+    // rather than a guard (AC-303).
+    private const int MaxPluginMarkdownCharacters = 64 * 1024;
+
+    // Nullable although the contract says otherwise: the caller is plugin code, which may well be compiled with
+    // nullable disabled, and passing null here used to render an empty view rather than throw. Dereferencing it
+    // would move that into an exception on the host's UI thread — the very shape AC-304 is about.
+    private static string? _CapForRendering(string? markdown) =>
+        markdown is { Length: > MaxPluginMarkdownCharacters }
+            ? string.Concat(
+                markdown.AsSpan(0, MaxPluginMarkdownCharacters),
+                "\n\n*(truncated — open the item in its tracker to read the rest)*")
+            : markdown;
 
     public void OnSettingsSaved(Action callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);

@@ -53,6 +53,14 @@ internal sealed class FakeCockpitHost : ICockpitHost
 
     public Action? OnSessionCancelled { get; private set; }
 
+    /// <summary>
+    /// What the markdown seam should throw instead of rendering, if anything. A <see cref="MissingMethodException"/>
+    /// stands in for a cockpit older than this plugin's <c>minHostVersion</c> — one whose contract has no
+    /// <c>CreateMarkdownView</c>, so the call the plugin compiled against finds no method to bind to. Any other
+    /// exception stands in for the rest of the ways rendering a body can fail (AC-304).
+    /// </summary>
+    public Exception? MarkdownFailure { get; set; }
+
     public IServiceProvider Services => throw new NotSupportedException();
 
     public ICockpitActions Actions => FakeActions;
@@ -86,4 +94,8 @@ internal sealed class FakeCockpitHost : ICockpitHost
 
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
         Toasts.Add(message);
+
+    public Control CreateMarkdownView(string markdown) => MarkdownFailure is { } failure
+        ? throw failure
+        : new SelectableTextBlock { Text = markdown, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
 }
