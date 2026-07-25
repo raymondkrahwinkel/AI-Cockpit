@@ -1,6 +1,6 @@
 using Tmds.DBus;
 
-namespace Cockpit.Infrastructure.Voice.GlobalHotkey;
+namespace Cockpit.Infrastructure.Hotkeys;
 
 /// <summary>
 /// Tmds.DBus proxy contract for <c>org.freedesktop.portal.GlobalShortcuts</c>. Method/watch names map
@@ -32,7 +32,7 @@ public interface IGlobalShortcutsPortal : IDBusObject
     Task<IDisposable> WatchDeactivatedAsync(
         Action<(ObjectPath Session, string ShortcutId, ulong Timestamp, IDictionary<string, object> Options)> handler);
 
-    /// <summary>Raised when the operator rebinds the shortcut in their desktop's own settings — so what the cockpit displays keeps up rather than going stale the moment it is changed.</summary>
+    /// <summary>Raised when the operator rebinds a shortcut in their desktop's own settings — so what the cockpit displays keeps up rather than going stale the moment it is changed.</summary>
     Task<IDisposable> WatchShortcutsChangedAsync(
         Action<(ObjectPath Session, (string Id, IDictionary<string, object> Options)[] Shortcuts)> handler);
 }

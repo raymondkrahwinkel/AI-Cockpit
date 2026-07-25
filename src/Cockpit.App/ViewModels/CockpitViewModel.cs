@@ -13,6 +13,10 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.Hotkeys;
+using Cockpit.Core.Screenshots;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Diagnostics;
@@ -104,6 +108,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly IUsagePillSettingsStore? _usagePillSettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
+    private readonly IScreenshotSettingsStore? _screenshotSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
     private readonly IDelegationMcpToggle? _delegationMcpToggle;
@@ -1632,6 +1637,83 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _voiceGlobalHotkeyTrigger = string.Empty;
 
+    /// <summary>
+    /// Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.GlobalHotkeyEnabled"/> (AC-220): whether the
+    /// screenshot key fires while the cockpit has no focus. Off by default — a desktop-wide key is taken from
+    /// every other application, so it is the operator's to grant. The composer button works either way.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private bool _screenshotGlobalHotkeyEnabled;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.HotkeyKeyName"/> — the Avalonia <c>Key</c> name for the screenshot hotkey, e.g. "F8".</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HotkeyConflict))]
+    private string _screenshotHotkeyKeyName = "F8";
+
+    /// <summary>What the screenshot hotkey is really triggered by, in the words of whoever bound it. Read back for the same reason push-to-talk's is; empty while the key is off.</summary>
+    [ObservableProperty]
+    private string _screenshotHotkeyTrigger = string.Empty;
+
+    /// <summary>
+    /// Names two desktop-wide keys that want the same key, or empty when there is no clash (AC-220). Shown live
+    /// while the operator is typing a key rather than after saving, since after saving one of the two features
+    /// has already silently stopped working — which is the whole failure this exists to prevent.
+    /// </summary>
+    public string HotkeyConflict =>
+        GlobalHotkeyConflictCheck.Describe(_ConfiguredGlobalHotkeys()) ?? string.Empty;
+
+    /// <summary>The bindings as the settings screen currently reads — what would be armed if it were saved now.</summary>
+    private IReadOnlyList<GlobalHotkeyBinding> _ConfiguredGlobalHotkeys()
+    {
+        var bindings = new List<GlobalHotkeyBinding>();
+        if (VoiceEnabled && VoiceGlobalPushToTalk)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", VoicePushToTalkKeyName));
+        }
+
+        if (ScreenshotGlobalHotkeyEnabled)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", ScreenshotHotkeyKeyName));
+        }
+
+        return bindings;
+    }
+
+    partial void OnVoiceGlobalPushToTalkChanged(bool value) => OnPropertyChanged(nameof(HotkeyConflict));
+
+    partial void OnVoicePushToTalkKeyNameChanged(string value) => OnPropertyChanged(nameof(HotkeyConflict));
+
+    partial void OnVoiceEnabledChanged(bool value) => OnPropertyChanged(nameof(HotkeyConflict));
+
+    private async Task LoadScreenshotSettingsAsync()
+    {
+        if (_screenshotSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _screenshotSettingsStore.LoadAsync();
+        ScreenshotGlobalHotkeyEnabled = settings.GlobalHotkeyEnabled;
+        ScreenshotHotkeyKeyName = settings.HotkeyKeyName;
+    }
+
+    /// <summary>Persists the screenshot settings edited in Options (AC-220). Re-arming is <c>GlobalHotkeyCoordinator</c>'s, driven by the same saved event push-to-talk uses.</summary>
+    [RelayCommand]
+    private async Task SaveScreenshotSettingsAsync()
+    {
+        if (_screenshotSettingsStore is null)
+        {
+            return;
+        }
+
+        await _screenshotSettingsStore.SaveAsync(new ScreenshotSettings
+        {
+            GlobalHotkeyEnabled = ScreenshotGlobalHotkeyEnabled,
+            HotkeyKeyName = string.IsNullOrWhiteSpace(ScreenshotHotkeyKeyName) ? "F8" : ScreenshotHotkeyKeyName.Trim(),
+        });
+    }
+
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking"/> (AC-9). Off by default — the threshold cannot tell your voice from the cockpit's own coming out of a speaker.</summary>
     [ObservableProperty]
     private bool _voiceStopReadAloudWhenSpeaking;
@@ -1721,6 +1803,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The open-mic coordinator, wired at startup, exposing the runtime on/off toggle bound to the sidebar mic button (open-mic is turned on/off live, not via a settings checkbox).</summary>
     [ObservableProperty]
     private OpenMicCoordinator? _openMic;
+
+    /// <summary>
+    /// The screenshot coordinator, wired at startup (AC-220). Held so every session panel can be handed the
+    /// capture its composer button runs, and so a platform that cannot capture at all is said once rather than
+    /// discovered per button.
+    /// </summary>
+    [ObservableProperty]
+    private ScreenshotCoordinator? _screenshots;
+
+    partial void OnScreenshotsChanged(ScreenshotCoordinator? value)
+    {
+        foreach (var session in Sessions)
+        {
+            _WireScreenshots(session);
+        }
+    }
+
+    /// <summary>Hands a session panel the capture behind its composer button — and, where the platform has none, the sentence that says so.</summary>
+    private void _WireScreenshots(SessionPanelViewModel session)
+    {
+        if (Screenshots is not { } screenshots)
+        {
+            return;
+        }
+
+        session.ScreenshotPlatformRefusal = screenshots.IsSupported
+            ? null
+            : "Screen capture is not available on this platform.";
+        session.ScreenshotCapture = panel => screenshots.CaptureIntoAsync(panel);
+        session.NotifyScreenshotWiringChanged();
+    }
 
     /// <summary>Read-aloud rendering modes (#35) offered by the Options flyout combo box.</summary>
     public IReadOnlyList<ReadAloudModeOption> ReadAloudModes { get; } =
@@ -2102,7 +2215,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
-        ISessionProfileStore? sessionProfileStore = null)
+        ISessionProfileStore? sessionProfileStore = null,
+        IScreenshotSettingsStore? screenshotSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2182,6 +2296,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
         _usagePillSettingsStore = usagePillSettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
+        _screenshotSettingsStore = screenshotSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
@@ -2216,6 +2331,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadUsagePillSettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
+        _ = LoadScreenshotSettingsAsync();
         _ = LoadLayoutSettingsAsync();
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
@@ -4385,6 +4501,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
         await SaveUsagePillSettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
+        // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
+        // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
+        await SaveScreenshotSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
@@ -4430,6 +4549,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;
+        _WireScreenshots(session);
 
         // SDK/chat sessions only — a TTY session has no local send queue (AC-145).
         if (session is SessionViewModel sdkSession)

@@ -230,6 +230,34 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
+    /// <summary>
+    /// A terminal session cannot take a screenshot (AC-220), and says so rather than dropping it the way
+    /// <see cref="FeedVerifyResultAsync"/> may: this one the operator asked for by hand.
+    /// </summary>
+    /// <remarks>
+    /// The reason is the pty: it carries bytes, and there is no byte sequence that means "here is an image" to a
+    /// program reading one. Bracketed paste carries text and only text.
+    /// <para>
+    /// The clipboard candidate — putting the image on the system clipboard and sending the TUI its own paste key —
+    /// was the AC-226 spike, and did not survive it. The claude TUI does read the clipboard itself on Ctrl+V
+    /// (through <c>xclip</c>/<c>wl-paste</c>, not through the terminal), so the idea is not absurd; but it needs the
+    /// key to reach the TUI past this cockpit's own terminal control, and on Wayland it needs a compositor
+    /// clipboard protocol whose KDE support is recent and reported flaky. Fragile and platform-dependent, so not
+    /// shipped.
+    /// </para>
+    /// <para>
+    /// What the spike did turn up is a route this comment used to rule out wrongly: the claude TUI takes an image
+    /// <em>path</em> in the prompt and opens it with its own Read tool, which a pty carries perfectly well. That is
+    /// a different feature from this one — claude-TUI-specific, and it leaves the screenshot on disk for the agent
+    /// to open — so it is Raymond's call rather than a quiet extension of this, and it is written up in AC-226.
+    /// </para>
+    /// </remarks>
+    protected override string? ScreenshotKindRefusal =>
+        "A terminal session cannot receive images — a pty carries text only. Use an SDK session for screenshots.";
+
+    /// <summary>Unreachable while <see cref="ScreenshotKindRefusal"/> stands: nothing gets past that to here.</summary>
+    protected override string? OnScreenshotCaptured(byte[] screenshotPng) => ScreenshotKindRefusal;
+
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 
     /// <summary>Test seam (AC-64): run the auto-submit action inline instead of after the ~60 ms UI-thread gap, so the transcript-then-CR ordering is assertable without a real timer.</summary>

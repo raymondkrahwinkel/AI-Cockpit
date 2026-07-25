@@ -211,6 +211,15 @@
                     ToolTip.Tip="Stop the current turn (interrupt)">
                 <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
             </Button>
+            <!-- Screenshot (AC-220): opens the desktop's own picker and attaches the result to this composer, so
+                 it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
+                 interesting one — the tooltip is where a session that cannot take an image says why — and
+                 Avalonia hides tooltips on disabled controls unless told otherwise. -->
+            <Button DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
+                    Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                    ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
+            </Button>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
                      PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>

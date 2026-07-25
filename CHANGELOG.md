@@ -32,6 +32,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: take a screenshot straight into a session. A button beside the composer — and, if you switch it on,
+  a key that works while the cockpit has no focus — opens your desktop's own screenshot picker (Spectacle or
+  your shell's on Linux, the Snip overlay on Windows, `screencapture` on macOS), so dragging a region, picking
+  a window and grabbing the whole screen all work the way you already know them. What comes back is attached
+  to the composer as a thumbnail, not sent: you type the sentence that goes with it and send when you mean to,
+  and you can attach several or remove one before sending. A session whose provider cannot see images, or a
+  terminal session — which carries text and nothing else — says so on the button and in a notice, rather than
+  taking the screenshot and quietly losing it. macOS has no desktop-wide key at all, so the button is the way
+  there; the settings say that too instead of offering a key that will not fire.
+- added: a warning when two desktop-wide keys want the same key. Push-to-talk and the screenshot key are
+  registered together, so one of them would otherwise simply stop working the moment you gave them the same
+  key — with nothing anywhere connecting the two. Options names both features and the key while you are
+  typing it, not after saving.
 - added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
   but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
   Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the

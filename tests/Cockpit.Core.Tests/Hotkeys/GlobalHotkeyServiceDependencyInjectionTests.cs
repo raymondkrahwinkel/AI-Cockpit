@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure;
-using Cockpit.Infrastructure.Voice.GlobalHotkey;
+using Cockpit.Infrastructure.Hotkeys;
 
-namespace Cockpit.Core.Tests.Voice;
+namespace Cockpit.Core.Tests.Hotkeys;
 
 /// <summary>
 /// Guards the global-push-to-talk platform switch (#34): building the real container the way
