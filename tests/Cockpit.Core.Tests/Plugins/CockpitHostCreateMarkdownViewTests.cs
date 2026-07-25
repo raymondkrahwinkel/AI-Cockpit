@@ -44,6 +44,35 @@ public class CockpitHostCreateMarkdownViewTests
         texts.Should().NotContain(text => text.Contains("##"));
     }
 
+    [Fact]
+    public void ADescriptionWithinTheBudget_IsRenderedWhole()
+    {
+        var body = string.Join("\n\n", Enumerable.Range(1, 200).Select(paragraph => $"Paragraph {paragraph}."));
+
+        var view = _BuildHost().CreateMarkdownView(body);
+
+        var texts = _CollectText((Control)view).ToList();
+        texts.Should().Contain("Paragraph 200.");
+        texts.Should().NotContain(text => text.Contains("truncated"));
+    }
+
+    /// <summary>
+    /// The body is a third party's — a GitHub issue may hold 65 536 characters, and rendering it builds a control per
+    /// cell and per line while the operator waits (AC-303). Cut it, and say so: silently showing two thirds of a
+    /// description in a panel whose next button injects that text into an agent is worse than the delay.
+    /// </summary>
+    [Fact]
+    public void ADescriptionPastTheBudget_IsCutAndSaysSo()
+    {
+        var body = new string('x', 100_000);
+
+        var view = _BuildHost().CreateMarkdownView(body);
+
+        var texts = _CollectText((Control)view).ToList();
+        texts.Sum(text => text.Length).Should().BeLessThan(70_000, "the point of the cap is that the oversized part never becomes controls");
+        texts.Should().Contain(text => text.Contains("truncated"));
+    }
+
     private static IEnumerable<string> _CollectText(Control? control)
     {
         switch (control)

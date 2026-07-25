@@ -13,7 +13,6 @@ public sealed class SamplePlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "sample",
         DisplayName: "Sample",
-        Version: "1.0.0",
         Author: "You",
         Description: "A starter Cockpit plugin — replace this with your own.");
 

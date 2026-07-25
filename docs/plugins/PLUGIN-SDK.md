@@ -161,7 +161,8 @@ public interface IPluginSettingsView
     bool Save(); // return true to close the dialog, false to keep it open (e.g. validation failed)
 }
 
-public sealed record PluginMetadata(string Id, string DisplayName, string Version, string? Author, string? Description);
+// Version is filled in by the host from your plugin.json — leave it unset.
+public sealed record PluginMetadata(string Id, string DisplayName, string Version = "", string? Author = null, string? Description = null);
 ```
 
 ### Two-phase lifecycle
@@ -215,7 +216,7 @@ Minimal shape, from the real Gemini/OpenAI provider plugin:
 ```csharp
 public sealed class MyProviderPlugin : ICockpitPlugin
 {
-    public PluginMetadata Metadata { get; } = new("my-provider", "My Provider", "0.1.0", "You", "...");
+    public PluginMetadata Metadata { get; } = new(Id: "my-provider", DisplayName: "My Provider", Author: "You", Description: "...");
 
     public void ConfigureServices(IServiceCollection services) { } // no shared state — a driver per session
 
@@ -646,8 +647,8 @@ public void Initialize(ICockpitHost host)
 
 ## Build, package, install
 
-> **Bump the version only when you publish.** A plugin's `version` (in `plugin.json` and the `PluginMetadata`)
-> names a *released* build, not a work-in-progress. Leave it on the last published number while you iterate in
+> **Bump the version only when you publish.** A plugin's `version` — which lives in `plugin.json` and nowhere
+> else — names a *released* build, not a work-in-progress. Leave it on the last published number while you iterate in
 > `plugins-dev/` — the dev cockpit loads your plugin by its files, not its version, so raising it mid-development
 > buys nothing and only churns the store's history (a day's worth of debugging should not read as three releases).
 > Raise it once, in the same change that ships the new zip and the `index.json` entry. The source version then

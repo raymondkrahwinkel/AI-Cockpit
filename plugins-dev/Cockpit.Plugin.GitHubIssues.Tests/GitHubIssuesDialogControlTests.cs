@@ -1,5 +1,6 @@
 using System.Reflection;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -228,6 +229,53 @@ public class GitHubIssuesDialogControlTests
         (previewExtent - previewViewport).Should().BeGreaterThan(0, "a preview taller than its box without a scroller is a clipped preview");
     });
 
+    [Fact]
+    public void AHostWithoutTheMarkdownSeam_LeavesNothingOfThePreviousIssueOnScreen() => HeadlessAvalonia.Run(() =>
+    {
+        // A cockpit older than this plugin's minHostVersion loads it anyway (the gate only bites from host 1.0) and
+        // then has no CreateMarkdownView. That exception used to escape _ShowDetail between the title and the prompt,
+        // so the panel showed #42's heading over #41's body — and Add to prompt sent #41 (AC-304).
+        var harness = DialogHarness.Open(First, Second);
+        harness.Select(First);
+        harness.Click("Prompt preview");
+
+        harness.Host.MarkdownFailure = new MissingMethodException("ICockpitHost", "CreateMarkdownView");
+        harness.Select(Second);
+
+        var description = harness.DescriptionText();
+        var preview = harness.PromptPreviewText();
+        _out.WriteLine($"description={description} preview starts={preview?[..Math.Min(40, preview.Length)]}");
+        harness.Close();
+
+        description.Should().Contain(Second.Body, "the operator selected #42, so this is #42's panel");
+        description.Should().NotContain(First.Body);
+        preview.Should().Contain(Second.Number.ToString(), "the button beside this preview injects it into an agent");
+    });
+
+    [Fact]
+    public void ABodyThatFailsToRender_OffersNoPromptForAnIssueItIsNotShowing() => HeadlessAvalonia.Run(() =>
+    {
+        // The fallback above covers the one failure that was found; this covers the shape of the defect. The panel
+        // used to swap its heading before building the body, so anything that threw in between left #42's title
+        // over #41's body — and left #41's prompt loaded while the grid had moved to #42, so "Add to prompt" would
+        // inject an issue the operator was no longer looking at. The panel empties instead.
+        var harness = DialogHarness.Open(First, Second);
+        harness.Select(First);
+        harness.Click("Prompt preview");
+
+        harness.Host.MarkdownFailure = new InvalidOperationException("rendering failed for some other reason");
+        var selectSecond = () => harness.Select(Second);
+
+        selectSecond.Should().Throw<InvalidOperationException>("an unknown failure is not this dialog's to swallow");
+        var showsAnIssue = harness.DetailIsVisible();
+        var preview = harness.PromptPreviewText();
+        _out.WriteLine($"detail visible={showsAnIssue} preview={preview ?? "<null>"}");
+        harness.Close();
+
+        showsAnIssue.Should().BeFalse("a panel that could not be built for #42 must not keep standing as #41");
+        preview.Should().BeNullOrEmpty("whatever is in the preview is what Add to prompt injects");
+    });
+
     /// <summary>
     /// One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
     /// kept to hand.
@@ -321,14 +369,38 @@ public class GitHubIssuesDialogControlTests
         public string? DetailMessage() => _window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(text => text.Name == "detailStatus")?.Text;
 
+        /// <summary>The heading of whichever issue the detail panel is currently about.</summary>
+        public string? DetailTitle() => _window.GetVisualDescendants().OfType<TextBlock>()
+            .FirstOrDefault(text => text.Name == "detailTitle")?.Text;
+
+        /// <summary>
+        /// Whether the panel is showing an issue at all, as opposed to its "select an issue" placeholder. Asks the
+        /// heading whether it is effectively visible: hiding the panel leaves its children's own IsVisible untouched,
+        /// so only the answer that walks the parent chain distinguishes the two states.
+        /// </summary>
+        public bool DetailIsVisible() => _window.GetVisualDescendants().OfType<TextBlock>()
+            .FirstOrDefault(text => text.Name == "detailTitle")?.IsEffectivelyVisible == true;
+
         public ScrollViewer? DescriptionScroll() => _Scroller("descriptionScroll");
 
         public ScrollViewer? PromptScroll() => _Scroller("promptScroll");
+
+        /// <summary>Whatever the description panel is currently showing, however the host chose to render it.</summary>
+        public string? DescriptionText() => _TextIn(DescriptionScroll());
+
+        public string? PromptPreviewText() => _TextIn(PromptScroll());
 
         public void Close() => _window.Close();
 
         private ScrollViewer? _Scroller(string name) => _window.GetVisualDescendants().OfType<ScrollViewer>()
             .FirstOrDefault(scroller => scroller.Name == name);
+
+        // Both the rendered and the plain-text rendering end up in SelectableTextBlocks, the first as inline runs and
+        // the second as Text, so read whichever the control carries rather than assuming one shape.
+        private static string? _TextIn(ScrollViewer? scroller) => scroller is null
+            ? null
+            : string.Concat(scroller.GetVisualDescendants().OfType<SelectableTextBlock>()
+                .Select(text => text.Text ?? string.Concat((text.Inlines ?? []).OfType<Run>().Select(run => run.Text))));
 
         private void _PlantLoadedIssues(GitHubIssue[] issues)
         {

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -131,7 +132,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         // button — it used to appear spelled out twice (the meta line and "Open in browser"'s own label); now
         // only the rendered prompt still carries it, because that copy is the literal text a session receives.
         _detailId = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Opacity = 0.65 };
-        _detailTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
+        _detailTitle = new TextBlock { Name = "detailTitle", FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
         var openLink = new Button
         {
             Content = new MaterialIcon { Kind = MaterialIconKind.OpenInNew, Width = 15, Height = 15 },
@@ -471,20 +472,69 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             _detailStatusFor = null;
         }
 
+        // Everything this panel is about to show is built before any of it is shown, and a failure while building it
+        // empties the panel rather than leaving the last issue's content in place. The order is the point: the
+        // heading used to be swapped first, so anything that threw in between left this issue's number and title
+        // standing over the previous issue's body — and over the prompt "Add to prompt" injects. Emptying matters for
+        // the same reason: the grid has already moved to this issue, so a panel still holding the previous one would
+        // offer that one's prompt for injection under this one's selection. The exception itself is not swallowed —
+        // it is not this dialog's to interpret (AC-304).
+        Control description;
+        string prompt;
+        Control chip;
+        try
+        {
+            description = _DescriptionView(string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body);
+            prompt = _RenderPrompt(issue);
+            chip = _BuildChip(issue.Repository);
+        }
+        catch
+        {
+            _renderedPrompt = string.Empty;
+            _promptPreview.Text = string.Empty;
+            _detailContent.IsVisible = false;
+            _detailPlaceholder.IsVisible = true;
+            throw;
+        }
+
         _detailPlaceholder.IsVisible = false;
         _detailContent.IsVisible = true;
         _detailId.Text = $"#{issue.Number}";
         _detailTitle.Text = issue.Title;
 
         _detailChips.Children.Clear();
-        _detailChips.Children.Add(_BuildChip(issue.Repository));
+        _detailChips.Children.Add(chip);
 
-        _detailBody.Content = _host.CreateMarkdownView(string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body);
-        _renderedPrompt = _RenderPrompt(issue);
+        _detailBody.Content = description;
+        _renderedPrompt = prompt;
         _promptPreview.Text = _renderedPrompt;
 
         _UpdateInjectAvailability();
     }
+
+    // ICockpitHost.CreateMarkdownView arrived in host 0.7.0, and this plugin's manifest says so — but the host only
+    // enforces minHostVersion from 1.0 onwards, so an older cockpit loads this plugin and then has no such member.
+    // Falling back to what the contract's own default renders keeps that host usable rather than emptying the panel
+    // on every selection (AC-304). MissingMemberException rather than MissingMethodException alone: the same absence
+    // is what both report, and only that absence is caught — a parser fault or a null still travels.
+    private Control _DescriptionView(string description)
+    {
+        try
+        {
+            return _RenderMarkdown(description);
+        }
+        catch (MissingMemberException)
+        {
+            return new SelectableTextBlock { Text = description, TextWrapping = TextWrapping.Wrap };
+        }
+    }
+
+    // The seam call sits in its own method, uninlined, so the missing member is resolved while this frame is on the
+    // stack and the caller's handler is the one that catches it. Inlined into the try above, the runtime could raise
+    // the resolution failure as that method is prepared — before its own handler is live — and the fallback would
+    // never run on the host it exists for.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Control _RenderMarkdown(string description) => _host.CreateMarkdownView(description);
 
     // Add to prompt only makes sense with a live session; it stays put and just goes inert with a tooltip
     // explaining why, rather than disappearing and letting the fixed row jump — New session is the route offered

@@ -21,7 +21,6 @@ public sealed class SystemMonitorPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "system-monitor",
         DisplayName: "System Monitor",
-        Version: "1.0.1",
         Author: "Cockpit",
         Description: "CPU, memory and disk usage for a Dashboard workspace. You pick which of the three in its settings.");
 

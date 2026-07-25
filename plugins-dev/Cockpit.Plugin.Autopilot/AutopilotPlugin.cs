@@ -18,7 +18,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         Id: "autopilot",
         DisplayName: "Autopilot",
         // In lockstep with plugin.json's version: the manifest gates loading, this shows in the plugin list.
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
 

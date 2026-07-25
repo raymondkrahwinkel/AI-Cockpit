@@ -22,7 +22,6 @@ public sealed class GitHubModelsProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-models-provider",
         DisplayName: "GitHub Models",
-        Version: "0.1.0",
         Author: "Cockpit",
         Description: "Experimental: adds GitHub Models as a selectable session provider, over its OpenAI-compatible chat-completions endpoint via Microsoft.Extensions.AI. Configure a GitHub personal access token (models:read scope) and model per profile in Manage profiles.");
 
