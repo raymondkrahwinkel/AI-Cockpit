@@ -189,7 +189,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
-            _viewModel.PasteRequested -= _OnPasteRequested;
+            _viewModel.PasteAsync = null;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
@@ -198,7 +198,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
             _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
-            _viewModel.PasteRequested += _OnPasteRequested;
+            _viewModel.PasteAsync = _OnPasteRequestedAsync;
             _viewModel.PropertyChanged += _OnViewModelPropertyChanged;
             // The profile may already have been configured (dialog confirmed) before this view existed;
             // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
@@ -324,8 +324,30 @@ public partial class TtyView : UserControl
     /// Raising the event drives whatever the control already does, without this code having to know what that is.
     /// The control is focused first — a key event on an unfocused terminal is one it has no reason to act on.
     /// </remarks>
-    private void _OnPasteRequested() => Dispatcher.UIThread.Post(() =>
-        DispatcherTimer.RunOnce(_PasteIntoTerminal, PasteAfterPickerDelay));
+    /// <remarks>
+    /// Returns a task that completes once the paste has actually happened, not once it has been scheduled. The
+    /// caller releases its one-capture-at-a-time guard on that task, and a second capture arriving inside the
+    /// delay would overwrite the clipboard the first one is still waiting to paste from.
+    /// </remarks>
+    private Task _OnPasteRequestedAsync()
+    {
+        var pasted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(
+            () =>
+            {
+                try
+                {
+                    _PasteIntoTerminal();
+                }
+                finally
+                {
+                    pasted.TrySetResult();
+                }
+            },
+            PasteAfterPickerDelay));
+
+        return pasted.Task;
+    }
 
     /// <summary>
     /// How long to let the OS picker finish closing before the paste. Not about the clipboard — the capture has

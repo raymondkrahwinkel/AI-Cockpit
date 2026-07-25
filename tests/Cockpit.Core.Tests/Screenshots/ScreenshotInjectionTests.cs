@@ -45,8 +45,8 @@ public class ScreenshotInjectionTests
 
     /// <summary>
     /// A pty carries bytes and no byte sequence means "here is an image" — but the TUI reads the system clipboard
-    /// itself when it sees a paste key (AC-226). So the image goes on the clipboard and the single byte 0x16 goes
-    /// down the pty: exactly what an operator does by hand, which is how this route was found.
+    /// itself when it sees a paste (AC-226). So the image goes on the clipboard and the terminal is asked to
+    /// perform its own paste: exactly what an operator does by hand, which is how this route was found.
     /// </summary>
     [Fact]
     public async Task ATerminalSession_PutsItOnTheClipboard_AndAsksTheTerminalToPaste()
@@ -54,7 +54,7 @@ public class ScreenshotInjectionTests
         var clipboard = new FakeScreenshotClipboard();
         var session = _CreateTtySession(clipboard);
         var pastes = 0;
-        session.PasteRequested += () => pastes++;
+        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
 
         var reason = await session.InjectScreenshotAsync(Png);
 
@@ -75,7 +75,7 @@ public class ScreenshotInjectionTests
         var clipboard = new FakeScreenshotClipboard { ReadResult = Png };
         var session = _CreateTtySession(clipboard);
         var pastes = 0;
-        session.PasteRequested += () => pastes++;
+        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
 
         var reason = await session.InjectScreenshotAsync(Png);
 
@@ -95,13 +95,58 @@ public class ScreenshotInjectionTests
         var clipboard = new FakeScreenshotClipboard { AcceptsWrites = false };
         var session = _CreateTtySession(clipboard);
         var pastes = 0;
-        session.PasteRequested += () => pastes++;
+        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
         reason.Should().Contain("clipboard");
         pastes.Should().Be(0, "asking the TUI to paste an image that is not there is worse than saying so");
+    }
+
+    /// <summary>
+    /// A capture that lands after the operator closed the session must not report success into nothing. Closing a
+    /// panel removes it from the collection and takes its container out of the visual tree without the view's own
+    /// DataContext hook ever firing, so the panel has to let go of the paste itself when it is disposed.
+    /// </summary>
+    [Fact]
+    public async Task AfterTheSessionIsClosed_ACaptureIsRefused_RatherThanReportedAsPasted()
+    {
+        var clipboard = new FakeScreenshotClipboard();
+        var session = _CreateTtySession(clipboard);
+        var pastes = 0;
+        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
+
+        await session.DisposeAsync();
+        var reason = await session.InjectScreenshotAsync(Png);
+
+        reason.Should().NotBeNull("the session is gone, and silence is what this whole path exists to prevent");
+        pastes.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The paste is awaited, not merely started. The caller releases its one-capture-at-a-time guard on this task,
+    /// so returning before the paste has happened lets a second capture overwrite the clipboard the first one is
+    /// still waiting to read.
+    /// </summary>
+    [Fact]
+    public async Task TheInjection_WaitsForThePasteToActuallyHappen()
+    {
+        var session = _CreateTtySession(new FakeScreenshotClipboard());
+        var pasteStarted = new TaskCompletionSource();
+        var releasePaste = new TaskCompletionSource();
+        session.PasteAsync = async () =>
+        {
+            pasteStarted.SetResult();
+            await releasePaste.Task;
+        };
+
+        var injection = session.InjectScreenshotAsync(Png);
+        await pasteStarted.Task;
+
+        injection.IsCompleted.Should().BeFalse("the paste is still running");
+        releasePaste.SetResult();
+        (await injection).Should().BeNull();
     }
 
     /// <summary>Design-time and test graphs have no clipboard wired; that is a reason to report, not something to crash on.</summary>

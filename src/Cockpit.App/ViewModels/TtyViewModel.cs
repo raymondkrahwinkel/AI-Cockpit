@@ -247,8 +247,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// <remarks>
     /// A pty carries bytes, and no byte sequence means "here is an image" to a program reading one — bracketed
     /// paste carries text and only text. What makes this work is that the TUI does not read the image off the pty
-    /// at all: it reads the system clipboard itself when it sees the paste key, and all that has to travel down
-    /// the pty is the single byte <c>0x16</c> (Ctrl+V), which is an ordinary keystroke.
+    /// at all: it reads the system clipboard itself when it sees a paste. So the image only has to be on the
+    /// clipboard, and the paste only has to happen — which is <see cref="PasteRequested"/>'s, raised on the
+    /// terminal control rather than written to the pty (see <c>TtyView._PasteIntoTerminal</c>, and the remarks on
+    /// that event for why the pty is the wrong road).
     /// <para>
     /// Deliberately not submitted afterwards, the same as the chat session: the paste lands in the TUI's own
     /// prompt, and the sentence that goes with the screenshot is the operator's to type.
@@ -264,6 +266,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </remarks>
     protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
+        // Unreachable while ScreenshotKindRefusal stands — nothing gets past that to here. Kept because it is
+        // also what narrows the field to non-null for the rest of the method.
         if (_screenshotClipboard is not { } clipboard)
         {
             return ScreenshotKindRefusal;
@@ -280,12 +284,16 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return "The screenshot could not be put on the clipboard, so it was not pasted.";
         }
 
-        if (PasteRequested is null)
+        if (PasteAsync is not { } paste)
         {
             return "This terminal session is not on screen, so there is nothing to paste into.";
         }
 
-        PasteRequested.Invoke();
+        // Awaited, not fired and forgotten: the paste waits for the picker to finish closing, and reporting
+        // success before it has happened lets the caller release its one-capture-at-a-time guard too early. A
+        // second capture would then reach the clipboard first and the earlier image would be pasted — or rather,
+        // the later one would, twice, with both captures logging success.
+        await paste();
         return null;
     }
 
@@ -300,7 +308,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// TUI never saw a paste and nothing arrived. The control handles the key itself. So instead of guessing what
     /// it emits, this drives the control the way a keyboard does and lets it do whatever it already does.
     /// </remarks>
-    public event Action? PasteRequested;
+    /// <remarks>
+    /// A settable delegate rather than an event, for two reasons. It returns a task the injection awaits, which a
+    /// multicast event cannot do meaningfully; and a session panel has exactly one view, so "one subscriber" is
+    /// the truth rather than a restriction. The view clears it when it lets go, and <see cref="DisposeCoreAsync"/>
+    /// clears it when the session closes — a stale delegate would let a capture that lands after the session is
+    /// gone report success into nothing, which is the one outcome this whole path exists to prevent.
+    /// </remarks>
+    public Func<Task>? PasteAsync { get; set; }
 
     /// <summary>
     /// Whether the clipboard already holds exactly this image — true on the Windows route, where the capture read
@@ -746,6 +761,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _limitsPollCancellation?.Dispose();
         _limitsPollCancellation = null;
         _StopStatusTracking();
+
+        // Dropped here rather than left to the view, which is not told when a session closes: the panel is simply
+        // removed from the collection and its container leaves the tree, so the view's own DataContext hook never
+        // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
+        // that no longer exists, and report success with nothing to show for it (AC-226).
+        PasteAsync = null;
         return ValueTask.CompletedTask;
     }
 }

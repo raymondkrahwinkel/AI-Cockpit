@@ -10,15 +10,14 @@ namespace Cockpit.Core.Abstractions.Screenshots;
 /// whether it was cancelled.
 /// <para>
 /// Writing exists because that is how an image reaches a terminal session (AC-226). A pty carries bytes, but the
-/// claude TUI reads the system clipboard itself when it sees a paste key — so putting the image there and
-/// sending the key is precisely what an operator does by hand, and the only part of it a program cannot do
-/// without touching the clipboard.
+/// TUI reads the system clipboard itself when it sees a paste — so getting the image there is the half a program
+/// cannot do without touching the clipboard, and performing the paste is the other half.
 /// </para>
-/// </remarks>
-/// <remarks>
+/// <para>
 /// The clipboard belongs to the windowing layer, so the implementation lives with the views (Avalonia's
 /// <c>IClipboard</c> hangs off a <c>TopLevel</c>) while the capture that needs it lives in Infrastructure.
 /// This interface is the seam between them, and what lets the Windows capture be tested without a desktop.
+/// </para>
 /// </remarks>
 public interface IScreenshotClipboard
 {
