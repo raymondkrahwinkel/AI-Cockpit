@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -22,6 +23,32 @@ internal sealed class AvaloniaScreenshotClipboard : IScreenshotClipboard, ISingl
 {
     public Task<byte[]?> TryReadImageAsync(CancellationToken cancellationToken = default) =>
         Dispatcher.UIThread.InvokeAsync(_ReadAsync).WaitAsync(cancellationToken);
+
+    public Task<bool> TrySetImageAsync(byte[] png, CancellationToken cancellationToken = default) =>
+        Dispatcher.UIThread.InvokeAsync(() => _WriteAsync(png)).WaitAsync(cancellationToken);
+
+    private static async Task<bool> _WriteAsync(byte[] png)
+    {
+        if (_Clipboard() is not { } clipboard)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(png);
+            using var bitmap = new Bitmap(stream);
+            await clipboard.SetBitmapAsync(bitmap);
+            return true;
+        }
+        catch (Exception)
+        {
+            // Another application can hold the clipboard locked, and a capture that will not decode is not an
+            // image to hand on. Either way it did not land, which is what the caller asked — and what it will
+            // tell the operator, rather than sending a paste key for an image that is not there.
+            return false;
+        }
+    }
 
     private static async Task<byte[]?> _ReadAsync()
     {

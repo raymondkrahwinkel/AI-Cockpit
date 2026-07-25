@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
@@ -47,14 +48,25 @@ public class ScreenshotButtonStateTests
         session.ScreenshotTooltip.Should().Contain("image input");
     }
 
+    /// <summary>A terminal session can take one now (AC-226) — it reaches its TUI through the clipboard — so the button is live like any other.</summary>
     [Fact]
-    public void ATerminalSession_HasTheButtonOff_WithTheReasonOnIt()
+    public void ATerminalSessionWithAClipboard_HasTheButtonOn()
     {
-        var session = _CreateTtySession();
+        var session = _CreateTtySession(new FakeScreenshotClipboard());
+        session.ScreenshotCapture = _ => Task.CompletedTask;
+
+        session.CanCaptureScreenshot.Should().BeTrue();
+    }
+
+    /// <summary>No clipboard means no channel at all, and the button says that rather than offering a paste that cannot happen.</summary>
+    [Fact]
+    public void ATerminalSessionWithoutAClipboard_HasTheButtonOff_WithTheReasonOnIt()
+    {
+        var session = _CreateTtySession(clipboard: null);
         session.ScreenshotCapture = _ => Task.CompletedTask;
 
         session.CanCaptureScreenshot.Should().BeFalse();
-        session.ScreenshotTooltip.Should().Contain("terminal");
+        session.ScreenshotTooltip.Should().Contain("clipboard");
     }
 
     /// <summary>A platform with no capture at all is the button's business too — macOS has the button and no hotkey, a hypothetical third OS has neither.</summary>
@@ -110,10 +122,10 @@ public class ScreenshotButtonStateTests
             voiceSettingsStore);
     }
 
-    private static TtyViewModel _CreateTtySession()
+    private static TtyViewModel _CreateTtySession(IScreenshotClipboard? clipboard)
     {
         var resolver = Substitute.For<ITtySessionProviderResolver>();
         resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver);
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver, screenshotClipboard: clipboard);
     }
 }

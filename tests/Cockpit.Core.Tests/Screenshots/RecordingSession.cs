@@ -14,15 +14,15 @@ internal sealed class RecordingSession : SessionPanelViewModel
 
     public List<byte[]> InjectedScreenshots { get; } = [];
 
-    protected override string? OnScreenshotCaptured(byte[] screenshotPng)
+    protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
         if (RefusalReason is not null)
         {
-            return RefusalReason;
+            return Task.FromResult<string?>(RefusalReason);
         }
 
         InjectedScreenshots.Add(screenshotPng);
-        return null;
+        return Task.FromResult<string?>(null);
     }
 
     protected override void OnVoiceTextReady(string text)

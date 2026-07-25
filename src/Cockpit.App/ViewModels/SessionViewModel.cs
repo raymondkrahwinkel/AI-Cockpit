@@ -656,10 +656,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// to <see cref="AddPastedImage"/> — which answers a non-vision provider with a transcript row of its own,
     /// and would mean telling the operator twice.
     /// </remarks>
-    protected override string? OnScreenshotCaptured(byte[] screenshotPng)
+    protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
         PendingAttachments.Add(new ImageAttachmentViewModel(screenshotPng, a => PendingAttachments.Remove(a)));
-        return null;
+        return Task.FromResult<string?>(null);
     }
 
     /// <summary>A provider that never builds an image block would take the attachment and leave without it — so the button is off and the key says why.</summary>

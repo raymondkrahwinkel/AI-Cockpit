@@ -23,7 +23,7 @@ public class PluginSessionUsageObserverTests
 
         public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
-        protected override string? OnScreenshotCaptured(byte[] screenshotPng) => null;
+        protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng) => Task.FromResult<string?>(null);
 
         protected override ValueTask DisposeCoreAsync() => ValueTask.CompletedTask;
     }

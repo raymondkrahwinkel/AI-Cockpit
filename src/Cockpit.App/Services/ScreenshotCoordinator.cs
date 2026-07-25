@@ -112,7 +112,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
                 return;
             }
 
-            if (session.InjectScreenshot(png) is { } reason)
+            if (await session.InjectScreenshotAsync(png).ConfigureAwait(true) is { } reason)
             {
                 _toasts.Show(reason, ToastSeverity.Warning);
             }

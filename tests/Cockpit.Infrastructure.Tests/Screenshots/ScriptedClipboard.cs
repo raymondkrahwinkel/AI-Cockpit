@@ -13,4 +13,8 @@ internal sealed class ScriptedClipboard(params byte[]?[] reads) : IScreenshotCli
 
     public Task<byte[]?> TryReadImageAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_read < reads.Length ? reads[_read++] : reads[^1]);
+
+    /// <summary>The Windows capture only ever reads; writing is the terminal route's, and no test here drives it.</summary>
+    public Task<bool> TrySetImageAsync(byte[] png, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The Windows capture does not write to the clipboard.");
 }

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
@@ -30,12 +31,12 @@ public class ScreenshotInjectionTests
     /// message and simply not be there.
     /// </summary>
     [Fact]
-    public void ANonVisionSession_AttachesNothing_AndSaysWhy()
+    public async Task ANonVisionSession_AttachesNothing_AndSaysWhy()
     {
         var session = _CreateSdkSession();
         session.Capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false };
 
-        var reason = session.InjectScreenshot(Png);
+        var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
         reason.Should().Contain("image input");
@@ -43,19 +44,57 @@ public class ScreenshotInjectionTests
     }
 
     /// <summary>
-    /// A pty carries bytes; there is no byte sequence that means "here is an image" to a program reading one.
-    /// The verify path drops a screenshot here without a word, which is right for a tool call and wrong for a
-    /// key the operator pressed.
+    /// A pty carries bytes and no byte sequence means "here is an image" — but the TUI reads the system clipboard
+    /// itself when it sees a paste key (AC-226). So the image goes on the clipboard and the single byte 0x16 goes
+    /// down the pty: exactly what an operator does by hand, which is how this route was found.
     /// </summary>
     [Fact]
-    public void ATerminalSession_TakesNothing_AndSaysWhy()
+    public async Task ATerminalSession_PutsItOnTheClipboard_AndSendsThePasteKey()
     {
-        var session = _CreateTtySession();
+        var clipboard = new FakeScreenshotClipboard();
+        var session = _CreateTtySession(clipboard);
+        var toPty = new List<string>();
+        session.VoiceTranscriptReady += toPty.Add;
 
-        var reason = session.InjectScreenshot(Png);
+        var reason = await session.InjectScreenshotAsync(Png);
+
+        reason.Should().BeNull();
+        clipboard.Written.Should().ContainSingle().Which.Should().Equal(Png);
+        // ContainSingle().Which rather than Equal(…, because): the params-string overload of Equal would take
+        // the explanation for a second expected element.
+        toPty.Should().ContainSingle("Ctrl+V is what makes the TUI go and read the clipboard")
+            .Which.Should().Be("\u0016");
+    }
+
+    /// <summary>
+    /// A clipboard that would not take the image must not be followed by the paste key: the TUI would go looking,
+    /// find nothing, and answer with its own "no image in clipboard" — an error about the wrong thing, and one the
+    /// operator cannot act on.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalSession_WhoseClipboardRefuses_SendsNoPasteKey_AndSaysWhy()
+    {
+        var clipboard = new FakeScreenshotClipboard { AcceptsWrites = false };
+        var session = _CreateTtySession(clipboard);
+        var toPty = new List<string>();
+        session.VoiceTranscriptReady += toPty.Add;
+
+        var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
-        reason.Should().Contain("terminal");
+        reason.Should().Contain("clipboard");
+        toPty.Should().BeEmpty("asking the TUI to paste an image that is not there is worse than saying so");
+    }
+
+    /// <summary>Design-time and test graphs have no clipboard wired; that is a reason to report, not something to crash on.</summary>
+    [Fact]
+    public async Task ATerminalSessionWithNoClipboardWired_SaysSo()
+    {
+        var session = _CreateTtySession(clipboard: null);
+
+        var reason = await session.InjectScreenshotAsync(Png);
+
+        reason.Should().NotBeNull();
     }
 
     /// <summary>
@@ -63,11 +102,11 @@ public class ScreenshotInjectionTests
     /// nothing — and an empty attachment chip would be exactly that.
     /// </summary>
     [Fact]
-    public void AnEmptyCapture_IsReported_RatherThanAttached()
+    public async Task AnEmptyCapture_IsReported_RatherThanAttached()
     {
         var session = _CreateSdkSession();
 
-        var reason = session.InjectScreenshot([]);
+        var reason = await session.InjectScreenshotAsync([]);
 
         reason.Should().NotBeNull();
         session.PendingAttachments.Should().BeEmpty();
@@ -83,10 +122,10 @@ public class ScreenshotInjectionTests
             voiceSettingsStore);
     }
 
-    private static TtyViewModel _CreateTtySession()
+    private static TtyViewModel _CreateTtySession(IScreenshotClipboard? clipboard)
     {
         var resolver = Substitute.For<ITtySessionProviderResolver>();
         resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver);
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver, screenshotClipboard: clipboard);
     }
 }

@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -31,6 +32,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ITtyLauncher? _launcher;
     private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
+    private readonly IScreenshotClipboard? _screenshotClipboard;
+
+    /// <summary>
+    /// Ctrl+V as the pty sees it: the single control byte <c>0x16</c>, written as an escape rather than typed so
+    /// it stays readable in source and cannot be mangled by an editor. The same byte the terminal control emits
+    /// when the operator presses the key themselves — which is exactly why this route works (AC-226).
+    /// </summary>
+    private const string PasteKeystroke = "\u0016";
     private SessionProfile? _configuredProfile;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -185,11 +194,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ITranscriptCleanupService? cleanupService = null,
         IOptions<CockpitOptions>? options = null,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        IScreenshotClipboard? screenshotClipboard = null)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
+        _screenshotClipboard = screenshotClipboard;
         KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -231,32 +242,49 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
     /// <summary>
-    /// A terminal session cannot take a screenshot (AC-220), and says so rather than dropping it the way
-    /// <see cref="FeedVerifyResultAsync"/> may: this one the operator asked for by hand.
+    /// Puts a captured screenshot on the system clipboard and sends the TUI its own paste key (AC-226) — exactly
+    /// what an operator does by hand, which is how this route was found.
     /// </summary>
     /// <remarks>
-    /// The reason is the pty: it carries bytes, and there is no byte sequence that means "here is an image" to a
-    /// program reading one. Bracketed paste carries text and only text.
+    /// A pty carries bytes, and no byte sequence means "here is an image" to a program reading one — bracketed
+    /// paste carries text and only text. What makes this work is that the TUI does not read the image off the pty
+    /// at all: it reads the system clipboard itself when it sees the paste key, and all that has to travel down
+    /// the pty is the single byte <c>0x16</c> (Ctrl+V), which is an ordinary keystroke.
     /// <para>
-    /// The clipboard candidate — putting the image on the system clipboard and sending the TUI its own paste key —
-    /// was the AC-226 spike, and did not survive it. The claude TUI does read the clipboard itself on Ctrl+V
-    /// (through <c>xclip</c>/<c>wl-paste</c>, not through the terminal), so the idea is not absurd; but it needs the
-    /// key to reach the TUI past this cockpit's own terminal control, and on Wayland it needs a compositor
-    /// clipboard protocol whose KDE support is recent and reported flaky. Fragile and platform-dependent, so not
-    /// shipped.
+    /// Deliberately not submitted afterwards, the same as the chat session: the paste lands in the TUI's own
+    /// prompt, and the sentence that goes with the screenshot is the operator's to type.
     /// </para>
     /// <para>
-    /// What the spike did turn up is a route this comment used to rule out wrongly: the claude TUI takes an image
-    /// <em>path</em> in the prompt and opens it with its own Read tool, which a pty carries perfectly well. That is
-    /// a different feature from this one — claude-TUI-specific, and it leaves the screenshot on disk for the agent
-    /// to open — so it is Raymond's call rather than a quiet extension of this, and it is written up in AC-226.
+    /// Two honest limits. The clipboard really is replaced — there is no private channel to hand a TUI an image,
+    /// so whatever was copied is gone, as it is when you paste one yourself. And what the TUI does with the key
+    /// is the TUI's: <c>claude</c> reads the clipboard, a plain shell treats Ctrl+V as quoted-insert and will
+    /// take its next keystroke literally. Raymond's call (2026-07-25): every terminal session gets it rather than
+    /// gating on the provider, since a terminal session here is a claude session in practice.
     /// </para>
     /// </remarks>
+    /// <summary>Without a clipboard there is no channel at all, so the button says so instead of offering a paste that cannot happen. Null once one is wired — which it is in the real graph.</summary>
     protected override string? ScreenshotKindRefusal =>
-        "A terminal session cannot receive images — a pty carries text only. Use an SDK session for screenshots.";
+        _screenshotClipboard is null
+            ? "This terminal session has no clipboard to pass the screenshot through."
+            : null;
 
-    /// <summary>Unreachable while <see cref="ScreenshotKindRefusal"/> stands: nothing gets past that to here.</summary>
-    protected override string? OnScreenshotCaptured(byte[] screenshotPng) => ScreenshotKindRefusal;
+    protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
+    {
+        if (_screenshotClipboard is null)
+        {
+            return ScreenshotKindRefusal;
+        }
+
+        if (!await _screenshotClipboard.TrySetImageAsync(screenshotPng))
+        {
+            // Sending the paste key now would ask the TUI to paste an image that is not there, and it would
+            // answer with its own "no image in clipboard" — an error about the wrong thing.
+            return "The screenshot could not be put on the clipboard, so it was not pasted.";
+        }
+
+        VoiceTranscriptReady?.Invoke(PasteKeystroke);
+        return null;
+    }
 
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 

@@ -24,7 +24,7 @@ public class ScreenshotAttachmentViewTests
     {
         var session = new SessionViewModel();
 
-        var reason = session.InjectScreenshot(Png);
+        var reason = _Inject(session, Png);
 
         reason.Should().BeNull("nothing needs explaining when it landed");
         session.PendingAttachments.Should().ContainSingle();
@@ -40,7 +40,7 @@ public class ScreenshotAttachmentViewTests
     {
         var session = new SessionViewModel();
 
-        session.InjectScreenshot(Png);
+        _Inject(session, Png);
 
         session.InputText.Should().BeEmpty();
         session.PendingAttachments.Should().ContainSingle("it is queued for the operator to send, not sent");
@@ -52,8 +52,8 @@ public class ScreenshotAttachmentViewTests
     {
         var session = new SessionViewModel();
 
-        session.InjectScreenshot(Png);
-        session.InjectScreenshot(Png);
+        _Inject(session, Png);
+        _Inject(session, Png);
 
         session.PendingAttachments.Should().HaveCount(2);
     });
@@ -63,7 +63,7 @@ public class ScreenshotAttachmentViewTests
     public void AQueuedScreenshot_CanBeRemovedBeforeSending() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
-        session.InjectScreenshot(Png);
+        _Inject(session, Png);
 
         session.PendingAttachments[0].RemoveCommand.Execute(null);
 
@@ -76,7 +76,7 @@ public class ScreenshotAttachmentViewTests
     {
         var session = new SessionViewModel();
 
-        session.InjectScreenshot(Png);
+        _Inject(session, Png);
 
         session.CanSend.Should().BeTrue();
     });
@@ -90,9 +90,21 @@ public class ScreenshotAttachmentViewTests
             Capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false },
         };
 
-        var reason = session.InjectScreenshot(Png);
+        var reason = _Inject(session, Png);
 
         reason.Should().NotBeNull();
         session.PendingAttachments.Should().BeEmpty();
     });
+
+    /// <summary>
+    /// Runs the injection and hands back its answer. The seam is asynchronous because the terminal route writes
+    /// to the clipboard; a chat session queues an attachment and is done, so this asserts that rather than
+    /// blocking on a dispatcher these tests are already running on — which would deadlock if it ever changed.
+    /// </summary>
+    private static string? _Inject(SessionViewModel session, byte[] png)
+    {
+        var injection = session.InjectScreenshotAsync(png);
+        injection.IsCompleted.Should().BeTrue("a chat session attaches without awaiting anything");
+        return injection.GetAwaiter().GetResult();
+    }
 }
