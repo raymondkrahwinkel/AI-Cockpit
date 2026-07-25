@@ -178,7 +178,7 @@ internal sealed class AutopilotPlanController
         _MutateStep(stepId, step => step.WithAttempt().WithStatus(AutopilotStepStatus.Running));
 
     /// <summary>
-    /// Records the CEO's validation of a step's output against its acceptance (AC-174, Raymond 2026-07-21). A pass settles
+    /// Records the CEO's validation of a step's output against its acceptance (AC-174). A pass settles
     /// the step; a fail sends it back to rework (<see cref="AutopilotStepStatus.Pending"/>) while it still has attempts
     /// left under <paramref name="maxAttempts"/>, and settles it <see cref="AutopilotStepStatus.Failed"/> once those run
     /// out — so a rework loop is bounded and never becomes an endless loop. Returns true when the step goes back to

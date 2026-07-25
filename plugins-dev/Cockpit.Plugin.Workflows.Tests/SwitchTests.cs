@@ -51,7 +51,7 @@ public class SwitchTests
     public async Task AValueThatNeverArrived_FailsRatherThanFallingThroughToOtherwise()
     {
         var run = async () => await new SwitchRunner().RunAsync(
-            new StepContext(_Switch("{state}", "Review"), _Items(("ticket", "EVE-14")), _Nothing),
+            new StepContext(_Switch("{state}", "Review"), _Items(("ticket", "WEB-14")), _Nothing),
             CancellationToken.None);
 
         await run.Should().ThrowAsync<InvalidOperationException>().WithMessage("*state*");

@@ -17,7 +17,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.8.1",
+        Version: "1.12.0",
         Author: "Cockpit",
         Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
@@ -35,12 +35,18 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         // tracker-neutrally. A GitHub issue has no status field, so its stage-equivalent is a label.
         host.AddTrackerProvider(new GitHubTrackerProvider());
 
+        // Shared by the dialog (which links an issue to the active session) and the header items (each of which
+        // shows the issue linked to its own session) — see SessionIssueLinks.
+        var links = new SessionIssueLinks();
+
+        // 1280×860, up from 1040×700 — the chip, fixed action toolbar and rendered description all want more
+        // room than the old size gave them, the same reasoning as the YouTrack dialog's resize. PluginDialogHost
+        // clamps this against the cockpit's own window size, so a smaller screen still gets a dialog that fits.
         host.AddSideMenuButton(
             "GitHub Issues",
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host), 1040, 700));
+            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host, links), 1280, 860));
 
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
-        var links = new SessionIssueLinks();
         host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, links, settings));
 
         host.AddSessionHeaderAction(new PluginSessionAction(

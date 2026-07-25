@@ -945,6 +945,33 @@ public class NewSessionDialogViewModelTests
             ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
     }
 
+    [Fact]
+    public async Task InitialPrompt_WhenAPrefillCarriesOne_IsShownForTheOperatorToRead()
+    {
+        var vm = NewVm(out _, new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")));
+        await vm.LoadAsync();
+
+        vm.HasInitialPrompt.Should().BeFalse();
+
+        vm.InitialPrompt = "## Crash on login\r\nSteps to reproduce...";
+
+        // The dialog is the gate a prefill passes through, so the field that can hold text written outside the
+        // cockpit has to be on it — otherwise the operator confirms a prompt they were never shown.
+        vm.HasInitialPrompt.Should().BeTrue();
+        vm.InitialPrompt.Should().Be("## Crash on login\r\nSteps to reproduce...");
+    }
+
+    [Fact]
+    public async Task InitialPrompt_WhenBlank_LeavesTheRowHidden()
+    {
+        var vm = NewVm(out _, new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")));
+        await vm.LoadAsync();
+
+        vm.InitialPrompt = "   ";
+
+        vm.HasInitialPrompt.Should().BeFalse();
+    }
+
     private static NewSessionDialogViewModel NewVm(out IProfileLoginChecker loginChecker, params SessionProfile[] profiles)
     {
         var store = Substitute.For<ISessionProfileStore>();

@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.YouTrack;
 /// session's header), so a flow hears about the move wherever it was made from.
 /// <para>
 /// It carries what a status change actually is: which ticket, where it came from, and where it went. "The ticket
-/// moved" says little; "EVE-14 went from In Progress to Review" is what a flow can decide on — a rule that comments
+/// moved" says little; "WEB-14 went from In Progress to Review" is what a flow can decide on — a rule that comments
 /// on a pull request when a ticket reaches Review has to know it is Review, and that it was not already.
 /// </para>
 /// <para>

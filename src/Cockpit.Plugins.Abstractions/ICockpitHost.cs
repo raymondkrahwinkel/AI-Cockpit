@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -215,6 +216,24 @@ public interface ICockpitHost
 
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+
+    /// <summary>
+    /// Renders <paramref name="markdown"/> the way the cockpit's own transcript does (AC-296) — the seam that
+    /// gives a plugin's own dialog (an issue's description, say) the host's markdown look instead of showing raw
+    /// <c>##</c>/<c>**</c> syntax or forcing the plugin to bundle a second parser. A factory rather than a
+    /// stateful presenter, deliberately: it mirrors <see cref="ShowDialogAsync"/>'s own <c>Func&lt;Control&gt;</c>
+    /// shape, so a caller that wants the rendering to change — the operator picked a different issue — just calls
+    /// this again and swaps the result into its own <see cref="ContentControl.Content"/>, the same way it would
+    /// swap any other control. There is no update contract to implement and nothing to dispose.
+    /// <para>
+    /// Default returns the raw text in a wrapping <see cref="SelectableTextBlock"/> — exactly the plain-text
+    /// behaviour every plugin had before this seam existed — so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling and rendering unchanged; only the app's
+    /// own host renders real markdown.
+    /// </para>
+    /// </summary>
+    Control CreateMarkdownView(string markdown) =>
+        new SelectableTextBlock { Text = markdown, TextWrapping = TextWrapping.Wrap };
 
     /// <summary>
     /// Opens this plugin's own settings — the view it registered with <see cref="AddSettings"/>, in the same

@@ -50,7 +50,7 @@ public class MergedPullRequestsTests
 
     [Fact]
     public void TheSameNumberInAnotherRepository_IsAnotherPullRequest() =>
-        MergedPullRequests.KeyOf(_Pr(1)).Should().NotBe(MergedPullRequests.KeyOf(_Pr(1, "raymondkrahwinkel/Eveworkbench")));
+        MergedPullRequests.KeyOf(_Pr(1)).Should().NotBe(MergedPullRequests.KeyOf(_Pr(1, "acme/webshop")));
 
     [Fact]
     public void TheQueryAsksForYourOwnMergedPullRequests() =>

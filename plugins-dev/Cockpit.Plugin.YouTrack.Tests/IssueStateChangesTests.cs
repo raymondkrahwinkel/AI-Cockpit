@@ -18,7 +18,7 @@ public class IssueStateChangesTests
         changes.Moved(Instance, Issue, previousState: "In Progress", newState: "Review", workingDirectory: "/repo");
 
         heard.Should().NotBeNull();
-        heard!.Issue.IdReadable.Should().Be("EVE-14");
+        heard!.Issue.IdReadable.Should().Be("WEB-14");
         heard.PreviousState.Should().Be("In Progress");
         heard.NewState.Should().Be("Review");
         heard.WorkingDirectory.Should().Be("/repo");
@@ -37,5 +37,5 @@ public class IssueStateChangesTests
 
     private static YouTrackInstance Instance => new("Work", "https://youtrack.example.com", "token", "EVE");
 
-    private static YouTrackIssue Issue => new("1", "EVE-14", "Fix the login redirect", null, "EVE", "In Progress");
+    private static YouTrackIssue Issue => new("1", "WEB-14", "Fix the login redirect", null, "EVE", "In Progress");
 }

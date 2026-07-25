@@ -18,7 +18,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// control channel, and every tool needing approval arrives as a <c>can_use_tool</c> control_request which this driver
 /// surfaces as <see cref="PluginPermissionRequested"/> and answers with a control_response — the exact same in-band
 /// shape Codex's app-server route uses for <c>item/*/requestApproval</c>. No logged-in <c>claude</c> exists in this
-/// sandbox, so the live end (the CLI emitting <c>can_use_tool</c> for this spawn) is Raymond's eyeball item; the
+/// sandbox, so the live end (the CLI emitting <c>can_use_tool</c> for this spawn) needs a manual eyeball check; the
 /// turn-taking and the parse/respond round-trip are unit-tested against a fake subprocess.
 /// </remarks>
 internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver

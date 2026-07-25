@@ -13,6 +13,16 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <!-- Full refs (unlike the plugin's compile-only ones): the tests build GitHubIssuesDialogControl for real, so
+         the Avalonia stack, the DataGrid and MaterialIconKind all need a runtime copy present, which the host
+         would otherwise supply. Avalonia.Headless is the platform those controls ask for a cursor and a font
+         from — see HeadlessAvalonia. The same set the YouTrack plugin's test project carries; the two dialogs are
+         separate copies by design (plugins ship and version on their own), so each proves its own. -->
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />

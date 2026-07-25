@@ -143,7 +143,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     SettingsHelpRow.Build(_watchInvolved, "Every open pull request in every repository you own, collaborate on, or reach through one of your organisations — whoever opened it. gh works out which repositories those are, so there is no list to keep up to date. Off by default: it is a wider net than \"what is mine\"."),
                     _Hint("The rest of this list answers \"which pull requests are mine\" — authored by you, assigned to you, waiting on your review. A project you are responsible for asks a different question: what is open here, whoever opened it."),
                     _Label("Watch these repositories as well (optional)"),
-                    SettingsHelpRow.Build(_watchedRepos, "For repositories you are NOT involved with. One owner (EVE-Workbench: every repo of that user or org) or owner/repo (just the one) per line. Unnecessary when the box above is ticked."),
+                    SettingsHelpRow.Build(_watchedRepos, "For repositories you are NOT involved with. One owner (acme: every repo of that user or org) or owner/repo (just the one) per line. Unnecessary when the box above is ticked."),
                     _Label("Only these repositories (optional)"),
                     SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),

@@ -186,7 +186,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         DockPanel.SetDock(bar, Dock.Top);
         surface.Children.Add(bar);
 
-        // History docks at the bottom (Raymond 2026-07-22), under the running run, so a settled run that left the live
+        // History docks at the bottom, under the running run, so a settled run that left the live
         // surface is still visible — what it was and how it ended — rather than vanishing. Only shown once there is any.
         if (_history.Count > 0)
         {
@@ -202,7 +202,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return surface;
     }
 
-    // The history section (Raymond 2026-07-22): a header with a Clear, then the settled runs newest-first in a bounded
+    // The history section: a header with a Clear, then the settled runs newest-first in a bounded
     // scroll — each row its name, outcome and step summary — so the operator sees what has run without it cluttering the
     // live pipeline. Capped in height so a long history does not push the running run off-screen.
     private Control _BuildHistorySection()
@@ -262,7 +262,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // One settled run in history: an outcome dot, its name and finish time, the outcome line (flagging any failed steps
     // even on a merge-ready run so a green dot never hides them), and each step with its mark and — for a step that
     // failed or was blocked — the reason it carried, so history explains why a step did not pass, not just that it did
-    // not (Raymond 2026-07-22).
+    // not.
     private Control _BuildHistoryRow(AutopilotRunRecord record)
     {
         var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
@@ -533,7 +533,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // fresh empty draft, which the render turns into an opened pop-out.
     private void _StartPlanningRound()
     {
-        // A planning round needs a CEO profile — the guard moved here from the side-menu button (Raymond 2026-07-22) so
+        // A planning round needs a CEO profile — the guard moved here from the side-menu button so
         // that button only opens the workspace, and the profile is required at the point a run is actually planned,
         // whichever entry point starts it.
         if (_popoutOpen || !_RequireCeoProfile())
@@ -605,7 +605,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     }
 
     // A run finished: record it in history (unless it was cancelled — a closed workspace, still Running — where there is
-    // nothing to record) and raise a toast (Raymond 2026-07-22). Every settled run gets its own done/blocked toast; when
+    // nothing to record) and raise a toast. Every settled run gets its own done/blocked toast; when
     // that empties both the running set and the queue after more than one run, an extra "whole queue finished" summary
     // follows, so a single run is one toast and a staged queue ends with a clear all-done.
     // Whether a run's final phase is one that gets recorded in history and toasted (AC-196): merge-ready, blocked, or
@@ -985,7 +985,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         var planHost = new ContentControl { Content = _BuildBlocks(_plan.Plan) };
 
-        // The run name field (Raymond 2026-07-22): the CEO proposes a name and it pre-fills here, but the operator can
+        // The run name field: the CEO proposes a name and it pre-fills here, but the operator can
         // override it, and the field must be non-empty before Approve — so a run always carries a recognisable name into
         // the queue and history. A "mirroring" guard tells the CEO's proposal apart from the operator's own typing, so
         // once they edit the name a later CEO re-emit does not overwrite it.
@@ -1152,7 +1152,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
         // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
         // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
-        // untouched. Docked as a full-width bar across the top of the chat pane (AC-214, Raymond's live-test call): the
+        // untouched. Docked as a full-width bar across the top of the chat pane (AC-214, confirmed in a live test): the
         // same accent bar the run shows when work returns to the CEO for validation (_BuildValidatingSurface), so the
         // two read as one visual language — not a floating pill. Collapsed it takes no layout space, so the chat fills
         // the pane until the CEO starts thinking, then the bar drops in at the top and pushes the conversation down.
@@ -1421,7 +1421,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return blocks;
     }
 
-    // The fixed CEO block at the top of the pipeline (Raymond 2026-07-21): the orchestrator, active throughout — it
+    // The fixed CEO block at the top of the pipeline: the orchestrator, active throughout — it
     // plans in the planning phase and validates each step in the run — so it carries the busy dot. Its chip shows the
     // configured CEO profile (and model, when set).
     private Control _BuildCeoBlock()
@@ -1548,7 +1548,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         // The right pane, in priority: a blockade the operator must answer (AC-155); the CEO's validation of a finished
-        // step, shown as the CEO session under a clear banner so it is obvious the CEO is reviewing (Raymond 2026-07-22);
+        // step, shown as the CEO session under a clear banner so it is obvious the CEO is reviewing;
         // the live step session under an intervene bar; or a hint between steps.
         var validating = context.IsValidating && context.CeoView is not null;
         var right = new Border
@@ -1626,7 +1626,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // The CEO's validation of a finished step (Raymond 2026-07-22): the CEO session under a prominent accent banner, so it
+    // The CEO's validation of a finished step: the CEO session under a prominent accent banner, so it
     // reads clearly that the CEO is now reviewing the work against its acceptance — not the finished worker still sitting
     // in the pane. The CEO view is a persistent control, reparented each render, so it is detached from its old container
     // first, the same way the step view is.
@@ -1801,7 +1801,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        // A status line so the operator sees where the step is without decoding the dot colour (Raymond) — and, when the
+        // A status line so the operator sees where the step is without decoding the dot colour — and, when the
         // run has something to say (why a step failed, or that it was refused), the note under it, so a failed step is
         // never a silent red dot.
         if (_StepStatusText(step) is { Length: > 0 } statusText)
@@ -1837,7 +1837,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     }
 
     // A short status word for a step, so the operator reads its state as words rather than a dot colour. A running step
-    // on its second-or-later attempt reads as a rework with the attempt number (Raymond 2026-07-22), so a step that is
+    // on its second-or-later attempt reads as a rework with the attempt number, so a step that is
     // re-run after the CEO turned it down does not look like it simply never finished. Empty for a pending step.
     private static string _StepStatusText(AutopilotStep step) => step.Status switch
     {

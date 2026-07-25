@@ -47,9 +47,9 @@ internal static class GitWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["branch"] = "eve-14-fix-the-login-redirect",
+            ["branch"] = "web-14-fix-the-login-redirect",
             ["created"] = "true",
-            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+            ["directory"] = "/home/you/projects/webshop",
         };
 
         public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)
@@ -129,8 +129,8 @@ internal static class GitWorkflowSteps
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
             ["commit"] = "a1b2c3d",
-            ["branch"] = "eve-14-fix-the-login-redirect",
-            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+            ["branch"] = "web-14-fix-the-login-redirect",
+            ["directory"] = "/home/you/projects/webshop",
         };
 
         public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)
@@ -196,9 +196,9 @@ internal static class GitWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["branch"] = "eve-14-fix-the-login-redirect",
+            ["branch"] = "web-14-fix-the-login-redirect",
             ["remote"] = "origin",
-            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+            ["directory"] = "/home/you/projects/webshop",
         };
 
         public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)

@@ -113,11 +113,11 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                 string.IsNullOrWhiteSpace(dto.Acceptance) ? null : dto.Acceptance.Trim(),
                 dto.Hard ? GateMode.Hard : GateMode.Skip)
             {
-                // Minimal MCP set per step (Raymond 2026-07-21): only what the step needs — blanks dropped.
+                // Minimal MCP set per step: only what the step needs — blanks dropped.
                 McpServers = dto.Mcp is { Count: > 0 }
                     ? [.. dto.Mcp.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim())]
                     : [],
-                // How many agents work this step at once (Raymond 2026-07-21); at least 1, the operator can force it back.
+                // How many agents work this step at once; at least 1, the operator can force it back.
                 AgentCount = dto.Agents is { } count && count > 1 ? count : 1,
             });
         }

@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// Drives an approved plan to completion (AC-174) — the bounded agentic loop Raymond described: pick the next pending
+/// Drives an approved plan to completion (AC-174) — the bounded agentic loop: pick the next pending
 /// step, run it, have the CEO validate its output against the step's acceptance, and either advance, send it back to
 /// rework (re-run), or give up once the attempt cap is hit — then settle the run merge-ready or blocked.
 /// <para>

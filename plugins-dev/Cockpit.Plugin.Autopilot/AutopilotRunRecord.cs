@@ -1,7 +1,7 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// One settled run in the history (Raymond 2026-07-22): what it was called, its goal, how it ended (merge-ready or
+/// One settled run in the history: what it was called, its goal, how it ended (merge-ready or
 /// blocked) and why, when it finished, and each step's outcome — so a run that settled and left the surface is not lost
 /// but shown in the history section with what it did. Persisted through the plugin's storage, so history survives a
 /// restart. <see cref="FinishedAt"/> is an ISO-8601 string (formatted for display on render) rather than a DateTime, so

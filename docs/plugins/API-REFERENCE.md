@@ -438,13 +438,13 @@ internal sealed class StartIssueStep(YouTrackSettings settings) : IWorkflowStep
     // Shown before a flow has ever run, so the next step can be configured against your output rather than a guess.
     public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
     {
-        ["ticket"] = "EVE-14",
+        ["ticket"] = "WEB-14",
         ["state"] = "In Progress",
     };
 
     public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)
     {
-        var ticket = context.Parameter("Ticket");  // already resolved: {ticket} became EVE-14 before you saw it
+        var ticket = context.Parameter("Ticket");  // already resolved: {ticket} became WEB-14 before you saw it
         // ... do the work; throw with a sentence the operator can act on if it cannot be done ...
         return WorkflowStepResult.Of("state", "In Progress", $"{ticket} → In Progress");
     }
@@ -467,7 +467,7 @@ Three things the host does for you, so you never write workflow code:
   you took, and only that wire is followed.
 
 Throwing fails the step, and your message is what the operator reads in the run — write it as a sentence they can act
-on ("EVE-14 cannot go to 'Done'. Its board allows: Review, Reopened."). Returning success without having done the work
+on ("WEB-14 cannot go to 'Done'. Its board allows: Review, Reopened."). Returning success without having done the work
 is invisible to the run, so don't.
 
 **Declare `RequiredConsent` (#AC-38).** A non-trigger step **must** say whether running it needs the operator's

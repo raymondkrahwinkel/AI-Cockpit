@@ -960,6 +960,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// Injects text into this session's input surface (chat input box for SDK, raw pty bytes for TTY) —
     /// the public seam plugins use via <c>ICockpitActions.InjectIntoActiveSessionAsync</c>, reusing the
     /// same per-kind path as a finished voice transcript.
+    /// <para>
+    /// Places only: whatever the text contains, it does not send. The TTY path reduces it to text a person could have
+    /// typed before it reaches the pty, so a line break in an injected issue body cannot act as the Enter the operator
+    /// never pressed — that is what separates this from <see cref="InjectAndSubmit"/>.
+    /// </para>
     /// </summary>
     public void InjectText(string text)
     {

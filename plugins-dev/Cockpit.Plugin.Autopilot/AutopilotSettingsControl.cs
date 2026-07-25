@@ -10,8 +10,8 @@ using Cockpit.Plugins.Abstractions.Profiles;
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The settings view (opened from the plugin's gear): kept to the minimum an operator actually fixes (Raymond
-/// 2026-07-21) — the CEO's identity and the safety caps a run must not exceed. Everything a run's shape needs — which
+/// The settings view (opened from the plugin's gear): kept to the minimum an operator actually fixes — the
+/// CEO's identity and the safety caps a run must not exceed. Everything a run's shape needs — which
 /// steps, which profile/model per step, which gates are hard, which tracker stage a phase maps to — is context- or
 /// tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
 /// two trackers, or a non-tracker workload), so none of that is fixed here. Implements <see cref="IPluginSettingsView"/>
@@ -68,7 +68,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             FilterMode = AutoCompleteFilterMode.StartsWith,
             MinimumPrefixLength = 0,
             // Off until a real profile is chosen: the model only means something once the CEO runs on a profile that
-            // offers a choice, so the field stays inert until then (Raymond 2026-07-21).
+            // offers a choice, so the field stays inert until then.
             IsEnabled = false,
         };
 

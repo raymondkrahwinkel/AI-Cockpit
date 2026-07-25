@@ -21,7 +21,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
 
     /// <summary>
     /// The CLI permission mode a self-driving run starts in (AC-152). Default <c>acceptEdits</c>, not <c>bypassPermissions</c>
-    /// (security review, Raymond 2026-07-22): an isolated step's confinement to its worktree must hold. Codex is genuinely
+    /// (security review): an isolated step's confinement to its worktree must hold. Codex is genuinely
     /// OS-sandboxed and maps both modes to <c>workspace-write</c>, so it is unaffected. Claude, though, has no OS sandbox —
     /// its confinement to cwd is enforced by the permission system, and <c>bypassPermissions</c> (<c>--dangerously-skip-permissions</c>)
     /// disables exactly that guard, letting an isolated Claude step write to an absolute path outside its worktree (the
@@ -79,7 +79,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     /// <summary>How hard the CEO leans on cost when choosing a model per step (AC-174) — the operator's cost/quality steer, default <see cref="AutopilotCostStrategy.Balanced"/>.</summary>
     public AutopilotCostStrategy CostStrategy(string? projectId = null) => _ReadValue(projectId, CostStrategyKey, AutopilotCostStrategy.Balanced);
 
-    /// <summary>How many approved runs may execute at once (AC-174, Raymond) — the rest wait in the queue. Default 1 (one
+    /// <summary>How many approved runs may execute at once (AC-174) — the rest wait in the queue. Default 1 (one
     /// at a time); clamped to at least 1 so a stored 0 never stalls the queue.</summary>
     public int MaxConcurrentRuns(string? projectId = null) => Math.Max(1, _ReadValue(projectId, MaxConcurrentRunsKey, 1));
 

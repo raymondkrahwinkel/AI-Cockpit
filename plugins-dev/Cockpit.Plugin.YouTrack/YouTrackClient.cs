@@ -53,7 +53,7 @@ internal sealed class YouTrackClient
     }
 
     /// <summary>
-    /// One issue, by the id a human writes ("EVE-14") — what a workflow step is given, since a flow refers to a
+    /// One issue, by the id a human writes ("WEB-14") — what a workflow step is given, since a flow refers to a
     /// ticket the way you would say it out loud, not by the internal id nobody sees.
     /// </summary>
     public async Task<YouTrackIssue> GetIssueAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)

@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
 /// An Avalonia runtime without a screen (#69). A control cannot be built or attached without a platform, so this gives
-/// the tests one, once, letting the workspace body's render path be observed by a test rather than only by Raymond.
+/// the tests one, once, letting the workspace body's render path be observed by a test rather than only by the operator.
 /// <para>
 /// It runs the real <see cref="Cockpit.App.App"/> (not a bare <see cref="Application"/>) so the workspace body resolves
 /// the actual Cockpit theme brushes and fonts — the render tests then observe the surface as an operator sees it, and

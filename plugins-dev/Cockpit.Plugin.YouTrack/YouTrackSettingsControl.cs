@@ -79,7 +79,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                     SettingsHelpRow.Build(_pickerQuery, "Anything YouTrack's own search understands. Default \"#Unresolved\": showing issues that are done is offering work that is over. Examples: \"State: {In Progress}\", \"#Unresolved -State: Review\", \"#Unresolved Priority: Critical\"."),
 
                     _Label("Branch name pattern"),
-                    SettingsHelpRow.Build(_branchPattern, "How a branch is named for an issue. Placeholders: {id} and {summary}. Default \"{id}-{summary}\" (EVE-14-fix-the-login-redirect); \"feature/{id}\" and \"{id}_{summary}\" work too. Whatever you write, the result is lowercased and made safe for git."),
+                    SettingsHelpRow.Build(_branchPattern, "How a branch is named for an issue. Placeholders: {id} and {summary}. Default \"{id}-{summary}\" (WEB-14-fix-the-login-redirect); \"feature/{id}\" and \"{id}_{summary}\" work too. Whatever you write, the result is lowercased and made safe for git."),
 
                     _Label("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}"),
                     SettingsHelpRow.Build(_template, "Prompt inserted when you click an issue. Placeholders: {id} {idReadable} {summary} {url} {project} {description}."),

@@ -18,7 +18,7 @@ internal static class AutopilotCeoBrief
     /// optional: with none, the brief simply omits the roster and the identity line.
     /// </summary>
     /// <summary>
-    /// The opening turn a tracker-triggered planning round submits to the CEO (Raymond 2026-07-22): it names the source
+    /// The opening turn a tracker-triggered planning round submits to the CEO: it names the source
     /// issue (tracker, id and title) so the visible prompt says which ticket is being planned — not a generic "the issue
     /// in your brief" — and tells the CEO to draft and emit the plan now. Without any opening turn a system prompt alone
     /// leaves the model idle ("the prompt stays empty"); a CEO-first run has no source and sends no kickoff, so the CEO
@@ -160,7 +160,7 @@ internal static class AutopilotCeoBrief
     };
 
     // Two things the CEO must get right for a step to actually get built, independent of the cost strategy above (the
-    // live failure this addresses, Raymond 2026-07-23: a demanding coding step put on the lightest local model and handed
+    // live failure this addresses: a demanding coding step put on the lightest local model and handed
     // a vague brief, where the worker "analyses" the repo instead of writing and committing the code, and the step stalls).
     // Provider-neutral on purpose: it steers on capability and cost, never on a brand or a specific model name.
     private static string _ExecutionFit() =>

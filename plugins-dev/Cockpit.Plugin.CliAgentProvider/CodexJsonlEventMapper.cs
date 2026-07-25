@@ -16,7 +16,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// values are ignored rather than thrown on (forward-compat, exactly <c>ClaudeStreamJsonParser</c>'s
 /// <c>UnknownEvent</c> philosophy, minus a plugin-facing "unknown" event type — <see cref="PluginSessionEvent"/>
 /// has none on the narrow contract), so schema drift degrades gracefully instead of crashing the driver; B2 is
-/// to re-verify every field name/shape against Raymond's real, logged-in <c>codex</c> CLI and adjust only this
+/// to re-verify every field name/shape against a real, logged-in <c>codex</c> CLI and adjust only this
 /// file (and its fixtures) — not restructure the driver around it.
 /// </remarks>
 internal static class CodexJsonlEventMapper

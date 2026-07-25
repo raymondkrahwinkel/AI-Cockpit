@@ -13,7 +13,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// <remarks>
 /// B2 caveat: never exercised against a real <c>codex</c> process in this environment (no logged-in Codex
 /// CLI here) — kept as a thin, mockable seam so <see cref="CliSubprocessPluginSessionDriver"/>'s turn-taking
-/// logic is unit tested against <c>FakeCliSubprocess</c> instead; the live end-to-end run requires Raymond's
+/// logic is unit tested against <c>FakeCliSubprocess</c> instead; the live end-to-end run requires an
 /// environment with <c>codex</c> installed and authenticated.
 /// </remarks>
 internal sealed class ProcessCliSubprocess : ICliSubprocess

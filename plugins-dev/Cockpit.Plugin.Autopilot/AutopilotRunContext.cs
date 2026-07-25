@@ -62,7 +62,7 @@ internal sealed class AutopilotRunContext
     /// <summary>The CEO validator's live session view — shown in place of the step while the CEO validates a finished step.</summary>
     public Control? CeoView => _ceo?.View;
 
-    /// <summary>Whether the CEO is validating a just-finished step right now (Raymond 2026-07-22): the surface swaps the
+    /// <summary>Whether the CEO is validating a just-finished step right now: the surface swaps the
     /// right pane to the CEO session and a clear banner while this is true, so the validation is not a small side note.</summary>
     public bool IsValidating { get; private set; }
 
@@ -100,9 +100,9 @@ internal sealed class AutopilotRunContext
         {
             var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context, plan.WorkingDirectory);
 
-            // Whether the run isolates each step in a worktree (AC-174, Raymond 2026-07-22). A git repository isolates —
+            // Whether the run isolates each step in a worktree (AC-174). A git repository isolates —
             // the confinement guarantee holds. Only a folder the host positively reports is NOT a git repository runs
-            // without isolation (an admin task with no repo, Raymond's choice); Unknown (an older host, a failed probe)
+            // without isolation (an admin task with no repo — a deliberate choice); Unknown (an older host, a failed probe)
             // stays isolated, fail-closed, so the guard is never dropped silently. This keeps "not a git repo → run
             // free" apart from "a git repo whose worktree could not be created", which stays isolated (refused downstream).
             var status = await _host.DetectGitDirectoryStatusAsync(repositoryDirectory, _cts.Token);
@@ -116,7 +116,7 @@ internal sealed class AutopilotRunContext
                 await _host.RememberWorkingPathAsync(repositoryDirectory, _cts.Token);
             }
 
-            // One worktree for the whole run when it isolates (AC-174, Raymond 2026-07-22): every step runs in it so their
+            // One worktree for the whole run when it isolates (AC-174): every step runs in it so their
             // work accumulates on one branch — the merge-ready deliverable — instead of a throwaway worktree per step.
             // Null when the run does not isolate (a plain folder), or when the worktree could not be created (a git-repo
             // run then falls back to per-step isolation, which the fail-closed gate still guards).
@@ -147,12 +147,12 @@ internal sealed class AutopilotRunContext
                     // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
                     // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.
                     PreApprovedTools = AutopilotRunToolNames.ForValidatorCeo,
-                    // "Worktree is the boundary" (Raymond 2026-07-23): the validating CEO runs autonomously too — it may
+                    // "Worktree is the boundary": the validating CEO runs autonomously too — it may
                     // read the diff and run the tests (Bash) to check the work against acceptance — so it auto-allows
                     // every tool rather than stall on a prompt, contained by the run's worktree.
                     PreApproveAllTools = true,
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
-                    // Confine the validator's file tools to whatever directory it is pointed at (Raymond 2026-07-22): the
+                    // Confine the validator's file tools to whatever directory it is pointed at: the
                     // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
                     // could not be created). A Claude/Codex CEO confines natively and ignores this; a local-model CEO
                     // would otherwise reach the operator's home, so it is held to the folder it validates — least

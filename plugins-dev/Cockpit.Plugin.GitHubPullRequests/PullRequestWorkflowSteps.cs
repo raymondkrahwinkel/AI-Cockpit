@@ -50,10 +50,10 @@ internal static class PullRequestWorkflowSteps
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
             ["number"] = "12",
-            ["repository"] = "raymondkrahwinkel/AI-Cockpit",
+            ["repository"] = "acme/webshop",
             ["title"] = "Fix the login redirect",
-            ["url"] = "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/12",
-            ["author"] = "raymondkrahwinkel",
+            ["url"] = "https://github.com/acme/webshop/pull/12",
+            ["author"] = "jenny",
         };
     }
 
@@ -78,9 +78,9 @@ internal static class PullRequestWorkflowSteps
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {
-            ["url"] = "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/12",
+            ["url"] = "https://github.com/acme/webshop/pull/12",
             ["number"] = "12",
-            ["branch"] = "eve-14-fix-the-login-redirect",
+            ["branch"] = "web-14-fix-the-login-redirect",
         };
 
         public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)

@@ -1,25 +1,26 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
 /// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a search box, and a
 /// sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
-/// mode) on the left, and a details panel on the right showing the selected issue's title, repository, body,
-/// a link, and a preview of the prompt it would produce (with a copy button). The repository filter is
-/// populated from the distinct <see cref="GitHubIssue.Repository"/> values in the loaded issues plus an
-/// "All" entry (default); it filters the grid client-side, no extra API calls. "Add to prompt" injects the
-/// prompt into the active session and only shows when one is active; the copy button always works. Built in
-/// code; the DataGrid theme is provided app-wide by the host.
+/// mode) on the left, and a details panel on the right — number, title, a repository chip, a rendered
+/// description, a fixed action toolbar and a collapsible preview of the prompt it would produce (with a copy
+/// button). The repository filter is populated from the distinct <see cref="GitHubIssue.Repository"/> values in
+/// the loaded issues plus an "All" entry; it filters the grid client-side. "Add to prompt" injects into the
+/// active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to the cockpit's own
+/// New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
@@ -28,35 +29,53 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly GitHubIssuesSettings _settings;
     private readonly ICockpitHost _host;
     private readonly ICockpitActions _actions;
+    private readonly SessionIssueLinks _links;
     private readonly GitHubIssuesClient _http = new();
     private readonly GitHubGhClient _gh = new();
 
     private readonly ComboBox _repoFilter;
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
+
+    // The window-level status line, along the bottom edge of the dialog: fetch/load/refresh state and the guard
+    // messages ("no repository set") that fire before any issue is even selected. Always present; what an action
+    // on a selected issue did is reported by _detailStatus, inside the panel that issue is shown in, so the two
+    // sit in different places and never carry the same message.
     private readonly TextBlock _status;
     private readonly ProgressBar _loading = LoadingBar.Build();
-    private readonly Button _configure;
     private readonly DataGrid _grid;
 
     private readonly TextBlock _detailPlaceholder;
     private readonly DockPanel _detailContent;
+    private readonly TextBlock _detailId;
     private readonly TextBlock _detailTitle;
-    private readonly TextBlock _detailMeta;
+    private readonly WrapPanel _detailChips;
     private readonly Button _inject;
-    private readonly Button _planInAutopilot;
-    private readonly SelectableTextBlock _detailBody;
+    private readonly Button _newSession;
+    private readonly Button _overflow;
+    private readonly ContentControl _detailBody;
     private readonly SelectableTextBlock _promptPreview;
+
+    // The detail panel's own status line: the outcome of an action taken on the selected issue (Link to session,
+    // Copy, Add to prompt, New session). Only ever visible while the panel itself is, so it never repeats what
+    // _status already said.
     private readonly TextBlock _detailStatus;
 
     private IReadOnlyList<GitHubIssue> _all = [];
     private string _renderedPrompt = string.Empty;
 
-    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitHost host)
+    // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
+    // the grid event that happened to be in flight: a reload raises SelectionChanged twice — once on the empty
+    // grid, once back on the same issue — and clearing on every selection change wiped the message before the
+    // operator could read it (AC-292, the same defect the YouTrack dialog had).
+    private string? _detailStatusFor;
+
+    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitHost host, SessionIssueLinks links)
     {
         _settings = settings;
         _host = host;
         _actions = host.Actions;
+        _links = links;
 
         _repoFilter = new ComboBox
         {
@@ -81,17 +100,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _search.TextChanged += (_, _) => _ApplyFilter();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-
-        // The one status this dialog reports that the operator cannot act on from here — so it comes with the way to.
-        _configure = new Button
-        {
-            Content = "Configure GitHub…",
-            FontSize = 11,
-            Padding = new Thickness(8, 2),
-            Margin = new Thickness(8, 0, 0, 0),
-            IsVisible = false,
-        };
-        _configure.Click += async (_, _) => await _host.ShowSettingsAsync();
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
@@ -119,33 +127,86 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         topBar.Children.Add(_assignedToMe);
         topBar.Children.Add(_search);
 
-        // Details panel (right).
+        // Details panel (right). Number + title, with the issue's url moved off the text and onto a single icon
+        // button — it used to appear spelled out twice (the meta line and "Open in browser"'s own label); now
+        // only the rendered prompt still carries it, because that copy is the literal text a session receives.
+        _detailId = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Opacity = 0.65 };
         _detailTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
-        _detailMeta = new TextBlock { FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
+        var openLink = new Button
+        {
+            Content = new MaterialIcon { Kind = MaterialIconKind.OpenInNew, Width = 15, Height = 15 },
+            Padding = new Thickness(5),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        ToolTip.SetTip(openLink, "Open in browser");
+        openLink.Click += (_, _) => _OpenInBrowser();
+
+        var titleRow = new DockPanel();
+        DockPanel.SetDock(openLink, Dock.Right);
+        titleRow.Children.Add(openLink);
+        titleRow.Children.Add(new StackPanel { Children = { _detailId, _detailTitle } });
+
+        // A single chip, replacing the old "{repo} · #{number} · {url}" meta line: Repository is the only field
+        // a GitHubIssue carries beyond number/title/body/url — there is no status chip to add, since a GitHub
+        // issue has no status field and this dialog only ever lists open ones.
+        _detailChips = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
 
         _inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
+
+        // Without this the button's own explanation of why it is inert never appears: Avalonia shows no tooltip
+        // on a disabled control unless asked to.
+        ToolTip.SetShowOnDisabled(_inject, true);
         _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
-        var openBrowser = new Button { Content = "Open in browser" };
-        openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubIssue);
 
-        // Hands the issue to the Autopilot CEO planning round (AC-174) — hidden unless Autopilot is installed and
-        // listening for the "plan" intent.
-        _planInAutopilot = new Button { Content = "Plan in Autopilot", IsVisible = false };
-        _planInAutopilot.Click += async (_, _) => await _PlanInAutopilotAsync(_grid.SelectedItem as GitHubIssue);
+        _newSession = new Button { Content = "New session" };
+        _newSession.Click += async (_, _) => await _StartNewSessionAsync();
 
-        var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
-        detailButtons.Children.Add(_inject);
-        detailButtons.Children.Add(_planInAutopilot);
-        detailButtons.Children.Add(openBrowser);
+        _overflow = new Button
+        {
+            Content = new MaterialIcon { Kind = MaterialIconKind.DotsHorizontal, Width = 16, Height = 16 },
+            Padding = new Thickness(8, 4),
+        };
+        ToolTip.SetTip(_overflow, "More actions");
+        _overflow.Click += (_, _) => _ShowOverflowMenu();
 
-        _detailBody = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        // A fixed row: the same controls, in the same order, whether or not Autopilot is installed or a session
+        // is active — only the overflow menu's contents vary. GitHub has no "Set state" equivalent (a workflow
+        // step already covers assign-and-label — see GitHubWorkflowSteps), so there is no third toolbar button
+        // between New session and the overflow the way YouTrack's Set state sits.
+        // The whole toolbar lives inside the detail panel, which is hidden until an issue is selected — which is
+        // why the handlers behind these buttons read the selection and simply exit if it is somehow empty, rather
+        // than telling the operator to select an issue they have plainly already selected.
+        var toolbar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children = { _inject, _newSession, _overflow },
+        };
+
+        // Description gets its own scroll area rather than sharing one with the prompt preview below it, so a
+        // long body does not push the preview and status line out of view together with it. The width cap does
+        // nothing at the default 3:2 split — the details column is nowhere near 680 there — it is the ceiling for
+        // an operator who drags the splitter over, so the text stays a readable measure instead of running the
+        // full width of the dialog.
+        _detailBody = new ContentControl();
+        var descriptionScroll = new ScrollViewer
+        {
+            Name = "descriptionScroll",
+            Content = new Border { MaxWidth = 680, Margin = new Thickness(0, 10, 0, 0), Child = _detailBody },
+        };
+
+        // Deliberately not wrapped, for two reasons that point the same way. The preview shows the prompt exactly
+        // as it will be sent, and re-flowing it would misrepresent a text whose own line breaks are part of it.
+        // And wrapping is not merely unwanted here but unsafe: Avalonia 12.0.5 never finishes laying out a
+        // wrapped run that contains line breaks — it allocates until the process is killed, and this template
+        // always contains them. Long lines scroll sideways instead (see promptScroll).
         _promptPreview = new SelectableTextBlock
         {
-            TextWrapping = TextWrapping.Wrap,
+            TextWrapping = TextWrapping.NoWrap,
             FontSize = 11,
             FontFamily = _MonoFont(),
         };
-        _detailStatus = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitAccentBrush"), Margin = new Thickness(0, 2, 0, 0) };
 
         var copyButton = new Button
         {
@@ -163,10 +224,39 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             Padding = new Thickness(8, 2),
         };
         copyButton.Click += async (_, _) => await _CopyPromptAsync();
-        var promptHeader = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
-        DockPanel.SetDock(copyButton, Dock.Right);
-        promptHeader.Children.Add(copyButton);
-        promptHeader.Children.Add(new TextBlock { Text = "Prompt preview", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+
+        // Collapsed by default: the preview only matters right before Add to prompt or Copy, so it should not
+        // cost vertical room on every selection. Toggle and copy are separate hit targets, deliberately — copying
+        // should not also flip the disclosure.
+        var promptToggleIcon = new MaterialIcon { Kind = MaterialIconKind.ChevronRight, Width = 13, Height = 13 };
+        var promptToggle = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    promptToggleIcon,
+                    new TextBlock { Text = "Prompt preview", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7 },
+                },
+            },
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+        };
+
+        // The preview quotes the whole body back inside the rendered template, so it is always taller than the
+        // body it repeats. Docked at the bottom of the panel with nothing to bound it, it took every pixel and
+        // left the body none. It gets a fixed reading height and scrolls within it: the body is what the panel is
+        // for, the preview is a check on what Add to prompt is about to send.
+        var promptScroll = new ScrollViewer
+        {
+            Name = "promptScroll",
+            MaxHeight = 180,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _promptPreview,
+        };
 
         var promptBlock = new Border
         {
@@ -175,40 +265,48 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(10),
-            Child = _promptPreview,
+            Margin = new Thickness(0, 4, 0, 0),
+            Child = promptScroll,
+            IsVisible = false,
+        };
+        promptToggle.Click += (_, _) =>
+        {
+            promptBlock.IsVisible = !promptBlock.IsVisible;
+            promptToggleIcon.Kind = promptBlock.IsVisible ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
+        };
+
+        var promptHeader = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+        DockPanel.SetDock(copyButton, Dock.Right);
+        promptHeader.Children.Add(copyButton);
+        promptHeader.Children.Add(promptToggle);
+
+        var promptSection = new StackPanel { Children = { promptHeader, promptBlock } };
+        DockPanel.SetDock(promptSection, Dock.Bottom);
+
+        _detailStatus = new TextBlock
+        {
+            Name = "detailStatus",
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = _Brush("CockpitAccentBrush"),
+            Margin = new Thickness(0, 6, 0, 0),
         };
 
         var detailHeader = new StackPanel
         {
-            Children =
-            {
-                _detailTitle,
-                _detailMeta,
-                detailButtons,
-            },
+            Children = { titleRow, _detailChips, toolbar },
         };
         DockPanel.SetDock(detailHeader, Dock.Top);
+        DockPanel.SetDock(_detailStatus, Dock.Bottom);
 
-        var detailScroll = new ScrollViewer
-        {
-            Content = new StackPanel
-            {
-                Margin = new Thickness(0, 10, 0, 0),
-                Spacing = 6,
-                Children =
-                {
-                    new TextBlock { Text = "Description", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7 },
-                    _detailBody,
-                    promptHeader,
-                    promptBlock,
-                    _detailStatus,
-                },
-            },
-        };
-
+        // Added in this order so DockPanel's fill (the last, un-docked child) lands between the header and the
+        // prompt section: _detailStatus first reserves the very bottom edge, promptSection docks above it, and
+        // descriptionScroll — added last — takes whatever is left.
         _detailContent = new DockPanel { IsVisible = false };
         _detailContent.Children.Add(detailHeader);
-        _detailContent.Children.Add(detailScroll);
+        _detailContent.Children.Add(_detailStatus);
+        _detailContent.Children.Add(promptSection);
+        _detailContent.Children.Add(descriptionScroll);
 
         _detailPlaceholder = new TextBlock
         {
@@ -236,40 +334,41 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         listWithLoading.Children.Add(_grid);
         listWithLoading.Children.Add(_loading);
 
-        var split = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,*") };
-        Grid.SetColumn(listWithLoading, 0);
-        Grid.SetColumn(detailPanel, 1);
-        split.Children.Add(listWithLoading);
-        split.Children.Add(detailPanel);
-
-        var statusBar = new StackPanel
+        // A GridSplitter between list and details so the operator can trade width between the two — useful now
+        // that the dialog itself opens wider (1280×860). 3:2 rather than 2:1 in the list's favour: the details
+        // column carries the toolbar, chip and description, the list only needs enough for Title to read.
+        var splitter = new GridSplitter
         {
-            Orientation = Orientation.Horizontal,
-            Children = { _status, _configure },
+            Width = 6,
+            ResizeDirection = GridResizeDirection.Columns,
+            Background = _Brush("CockpitHairlineBrush"),
         };
+        var split = new Grid { ColumnDefinitions = new ColumnDefinitions("3*,6,2*") };
+        Grid.SetColumn(listWithLoading, 0);
+        Grid.SetColumn(splitter, 1);
+        Grid.SetColumn(detailPanel, 2);
+        split.Children.Add(listWithLoading);
+        split.Children.Add(splitter);
+        split.Children.Add(detailPanel);
 
         var root = new DockPanel { Margin = new Thickness(16) };
         DockPanel.SetDock(topBar, Dock.Top);
-        DockPanel.SetDock(statusBar, Dock.Bottom);
+        DockPanel.SetDock(_status, Dock.Bottom);
         root.Children.Add(topBar);
-        root.Children.Add(statusBar);
+        root.Children.Add(_status);
         root.Children.Add(split);
         Content = root;
 
         _ = _LoadAsync(forceRefresh: false);
     }
 
-    /// <summary>The status line, and with it the way into settings when what it reports can only be fixed there.</summary>
-    private void _SetStatus(string text, bool needsConfiguration = false)
-    {
-        _status.Text = text;
-        _configure.IsVisible = needsConfiguration;
-    }
+    private void _SetStatus(string text) => _status.Text = text;
 
     private async Task _LoadAsync(bool forceRefresh)
     {
         _SetStatus("Loading…");
         _loading.IsVisible = true;
+
         try
         {
             var assignedToMe = _assignedToMe.IsChecked == true;
@@ -281,7 +380,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             {
                 if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
                 {
-                    _SetStatus("No repository set, and the GitHub CLI is off.", needsConfiguration: true);
+                    _SetStatus("No repository set, and the GitHub CLI is off.");
                     return;
                 }
 
@@ -342,45 +441,93 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 || issue.Number.ToString().Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        _grid.ItemsSource = new ObservableCollection<GitHubIssue>(filtered);
+        // Every rebuild goes through here — a keystroke in the filter, a repository-filter change, the "Assigned
+        // to me" toggle and the reload behind Refresh — and every one of them hands the grid a brand-new
+        // collection, which drops its selection outright: it does not go looking through the new items for one
+        // that compares equal. So the issue the operator was reading is put back by identity, here, rather than
+        // at each call site (AC-292).
+        var previousSelection = _grid.SelectedItem as GitHubIssue;
+        var items = new ObservableCollection<GitHubIssue>(filtered);
+        _grid.ItemsSource = items;
+        if (IssueSelection.Restore(items, previousSelection?.Repository, previousSelection?.Number) is { } match)
+        {
+            _grid.SelectedItem = match;
+        }
     }
 
     private void _ShowDetail(GitHubIssue? issue)
     {
-        _detailStatus.Text = string.Empty;
         if (issue is null)
         {
+            // The result line is deliberately left alone: an empty selection is also what a grid rebuild passes
+            // through on its way back to the same issue, and the panel holding that line is hidden here anyway.
             _detailContent.IsVisible = false;
             _detailPlaceholder.IsVisible = true;
             return;
         }
 
+        if (!string.Equals(_detailStatusFor, _IdentityOf(issue), StringComparison.Ordinal))
+        {
+            _detailStatus.Text = string.Empty;
+            _detailStatusFor = null;
+        }
+
         _detailPlaceholder.IsVisible = false;
         _detailContent.IsVisible = true;
+        _detailId.Text = $"#{issue.Number}";
         _detailTitle.Text = issue.Title;
-        _detailMeta.Text = $"{issue.Repository}  ·  #{issue.Number}  ·  {issue.Url}";
-        _detailBody.Text = string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body;
+
+        _detailChips.Children.Clear();
+        _detailChips.Children.Add(_BuildChip(issue.Repository));
+
+        _detailBody.Content = _host.CreateMarkdownView(string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body);
         _renderedPrompt = _RenderPrompt(issue);
         _promptPreview.Text = _renderedPrompt;
 
-        // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
-        _inject.IsVisible = _actions.HasActiveSession;
-        _planInAutopilot.IsVisible = _host.CanSendIntent("autopilot", "plan");
+        _UpdateInjectAvailability();
     }
 
-    // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
-    // title and description as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(GitHubIssue? issue)
+    // Add to prompt only makes sense with a live session; it stays put and just goes inert with a tooltip
+    // explaining why, rather than disappearing and letting the fixed row jump — New session is the route offered
+    // in its place. Re-read on every selection, and again the moment New session hands back a pane: that pane is
+    // the very session the button was missing (AC-292).
+    private void _UpdateInjectAvailability()
     {
-        if (issue is null)
-        {
-            return;
-        }
+        _inject.IsEnabled = _actions.HasActiveSession;
+        ToolTip.SetTip(_inject, _actions.HasActiveSession
+            ? "Inject this issue's prompt into the active session."
+            : "No active session — start one, or use New session.");
+    }
 
+    // The result of an action, tied to the issue it was produced for — see _detailStatusFor. A number alone is
+    // not an identity here: it is only unique within a repository, and CLI mode lists every repo an owner has.
+    private void _SetDetailStatus(GitHubIssue issue, string text)
+    {
+        _detailStatus.Text = text;
+        _detailStatusFor = _IdentityOf(issue);
+    }
+
+    private static string _IdentityOf(GitHubIssue issue) => $"{issue.Repository}#{issue.Number}";
+
+    private Control _BuildChip(string text) => new Border
+    {
+        Background = _Brush("CockpitSecondaryBgBrush"),
+        BorderBrush = _Brush("CockpitHairlineBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(4),
+        Padding = new Thickness(7, 2),
+        Margin = new Thickness(0, 0, 6, 0),
+        Child = new TextBlock { Text = text, FontSize = 11 },
+    };
+
+    // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
+    // title and body as the source), the operator approves it once, then it runs autonomously.
+    private async Task _PlanInAutopilotAsync(GitHubIssue issue)
+    {
         var data = new Dictionary<string, string>
         {
             ["tracker"] = "github-issues",
-            ["issue"] = $"{issue.Repository}#{issue.Number}",
+            ["issue"] = _IdentityOf(issue),
             ["title"] = issue.Title,
             ["description"] = issue.Body ?? string.Empty,
             ["repository"] = issue.Repository,
@@ -398,6 +545,108 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         return PromptTemplate.Render(_settings.Template, issue, owner, repo);
     }
 
+    // New session: hands the same rendered prompt Add to prompt and the preview already use to the cockpit's own
+    // New-session dialog, prefilled with this issue's number as the session name. The operator still sees and
+    // confirms every field there — nothing starts until they press Start; on cancel, nothing is linked either.
+    private async Task _StartNewSessionAsync()
+    {
+        if (_grid.SelectedItem is not GitHubIssue issue)
+        {
+            return;
+        }
+
+        var prefill = new NewSessionPrefill(
+            InitialPrompt: _RenderPrompt(issue),
+            SessionName: $"#{issue.Number}");
+
+        // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
+        // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert
+        // until the dialog the operator already has in front of them is gone (AC-292).
+        _newSession.IsEnabled = false;
+        try
+        {
+            await _host.ShowNewSessionDialogAsync(
+                prefill,
+                onStarted: paneId =>
+                {
+                    _LinkIssue(paneId, issue);
+
+                    // That pane is a live session, which is what Add to prompt was waiting for.
+                    _UpdateInjectAvailability();
+                    _SetDetailStatus(issue, $"Started a new session for #{issue.Number}, linked to it.");
+                },
+                onCancelled: () => _SetDetailStatus(issue, "New session cancelled."));
+        }
+        catch (Exception exception)
+        {
+            _SetDetailStatus(issue, $"Could not open the New-session dialog: {exception.Message}");
+        }
+        finally
+        {
+            _newSession.IsEnabled = true;
+        }
+    }
+
+    // The one place that actually calls SessionIssueLinks.Link — shared by "Link to session" (the active pane)
+    // and New session's onStarted callback (the pane it just created), so the two do not each keep their own copy.
+    // The working directory travels with the link: a flow that cuts a branch or a worktree when an issue is picked
+    // is given the path to do it in, instead of an empty string (AC-292).
+    private void _LinkIssue(string paneId, GitHubIssue issue) =>
+        _links.Link(paneId, issue, _host.Sessions.ActiveSessionWorkingDirectory);
+
+    // Ties the issue to the session pane that is selected right now, and says what came of it. The pane is the
+    // one the operator has in front of them — the dialog itself belongs to no session.
+    private void _LinkToActiveSession(GitHubIssue issue)
+    {
+        if (_host.Sessions.ActivePaneId is not { Length: > 0 } paneId)
+        {
+            _SetDetailStatus(issue, "No active session to link this issue to.");
+            return;
+        }
+
+        _LinkIssue(paneId, issue);
+        _SetDetailStatus(issue, $"#{issue.Number} linked to the active session.");
+    }
+
+    // Conditional entries live only here, never as toolbar buttons that would appear and disappear: Plan in
+    // Autopilot only when the plugin is installed and listening for the intent, Link to session only with an
+    // active pane to link to. Open in browser and Copy prompt need no such gate — the calls behind them already
+    // guard a missing issue or an empty render.
+    private void _ShowOverflowMenu()
+    {
+        if (_grid.SelectedItem is not GitHubIssue issue)
+        {
+            return;
+        }
+
+        var items = new List<Control>();
+
+        if (_host.CanSendIntent("autopilot", "plan"))
+        {
+            var planItem = new MenuItem { Header = "Plan in Autopilot" };
+            planItem.Click += async (_, _) => await _PlanInAutopilotAsync(issue);
+            items.Add(planItem);
+        }
+
+        if (_host.Sessions.ActivePaneId is { Length: > 0 })
+        {
+            var linkItem = new MenuItem { Header = "Link to session" };
+            linkItem.Click += (_, _) => _LinkToActiveSession(issue);
+            items.Add(linkItem);
+        }
+
+        var openItem = new MenuItem { Header = "Open in browser" };
+        openItem.Click += (_, _) => _OpenInBrowser();
+        items.Add(openItem);
+
+        var copyItem = new MenuItem { Header = "Copy prompt" };
+        copyItem.Click += async (_, _) => await _CopyPromptAsync();
+        items.Add(copyItem);
+
+        var menu = new ContextMenu { PlacementTarget = _overflow, ItemsSource = items };
+        menu.Open(_overflow);
+    }
+
     private void _AddToPrompt(GitHubIssue? issue)
     {
         if (issue is null)
@@ -408,40 +657,37 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         if (!_actions.HasActiveSession)
         {
-            _detailStatus.Text = "No active session — use Copy to put the prompt on the clipboard.";
+            _SetDetailStatus(issue, "No active session — use Copy to put the prompt on the clipboard.");
             return;
         }
 
         _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(issue));
-        _detailStatus.Text = $"Added issue #{issue.Number} to the active session's prompt.";
+        _SetDetailStatus(issue, $"Added issue #{issue.Number} to the active session's prompt.");
     }
 
     private async Task _CopyPromptAsync()
     {
-        if (string.IsNullOrEmpty(_renderedPrompt))
+        if (_grid.SelectedItem is not GitHubIssue issue || string.IsNullOrEmpty(_renderedPrompt))
         {
             return;
         }
 
         await _actions.SetClipboardTextAsync(_renderedPrompt);
-        _detailStatus.Text = "Prompt copied to the clipboard.";
+        _SetDetailStatus(issue, "Prompt copied to the clipboard.");
     }
 
-    private void _OpenInBrowser(GitHubIssue? issue)
+    private void _OpenInBrowser()
     {
-        if (issue is null || string.IsNullOrWhiteSpace(issue.Url))
+        if (_grid.SelectedItem is not GitHubIssue issue)
         {
-            _SetStatus("Select an issue first.");
             return;
         }
 
-        try
+        // A launch that does not happen is said out loud rather than swallowed — the operator otherwise clicks
+        // "Open in browser" and gets nothing at all, with no way to tell that from a slow browser.
+        if (GitHubBrowser.Open(issue.Url) is { } failure)
         {
-            Process.Start(new ProcessStartInfo(issue.Url) { UseShellExecute = true });
-        }
-        catch (Exception exception)
-        {
-            _detailStatus.Text = $"Could not open the browser: {exception.Message}";
+            _SetDetailStatus(issue, failure);
         }
     }
 

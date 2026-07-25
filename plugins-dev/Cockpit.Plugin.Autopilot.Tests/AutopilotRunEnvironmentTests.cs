@@ -4,7 +4,7 @@ using FluentAssertions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
-/// The fail-closed isolation rule (AC-174, Raymond 2026-07-22): a run isolates its steps in a worktree unless the host
+/// The fail-closed isolation rule (AC-174): a run isolates its steps in a worktree unless the host
 /// <em>positively</em> reported the folder is not a git repository. Kept in one place so a security-relevant decision
 /// cannot drift; an inconclusive answer (an older host, a failed probe) must never drop the confinement guard.
 /// </summary>

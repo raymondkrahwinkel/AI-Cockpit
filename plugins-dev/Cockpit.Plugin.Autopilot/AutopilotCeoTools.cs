@@ -6,8 +6,8 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The in-process MCP tools (<c>mcp__cockpit-autopilot-ceo__*</c>) only the run's CEO validator uses (AC-174, Raymond
-/// 2026-07-22): report a step's validation verdict (<c>autopilot_validate</c>), answer or escalate a worker's mid-step
+/// The in-process MCP tools (<c>mcp__cockpit-autopilot-ceo__*</c>) only the run's CEO validator uses (AC-174):
+/// report a step's validation verdict (<c>autopilot_validate</c>), answer or escalate a worker's mid-step
 /// consult (<c>autopilot_answer_worker</c>/<c>autopilot_escalate_to_operator</c>, AC-201), and keep the source issue in
 /// sync (<c>autopilot_tracker_stage</c>/<c>autopilot_tracker_note</c>). Split off the step agents' own endpoint
 /// (<see cref="AutopilotRunTools"/>) so a step agent never even sees the CEO's tools — tighter least-privilege, and a

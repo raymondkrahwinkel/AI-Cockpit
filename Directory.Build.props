@@ -12,6 +12,9 @@
          what its sessions can run out of and how full is worth mentioning (PluginUsageSignal / PluginUsageSignalKind
          / PluginUsageReading, on TtyProviderRegistration.UsageSignals and SessionProviderRegistration.UsageSignals),
          and a TTY provider reads its own statusline snapshot for the host to poll (TtyProviderRegistration.ReadUsage).
+         Also in 0.7.0 (AC-296): ICockpitHost.CreateMarkdownView — a plugin's own dialog renders an issue description
+         through the cockpit's markdown look instead of showing raw "##"/"**" or bundling a second parser. Default-
+         implemented, so an older host returns the plain text it always did.
          A plugin that uses any of these sets minHostVersion 0.7.0 — an older host has no such members, so a plugin
          compiled against them loads and then fails on the first call. Minor because it is additive host
          functionality, not a break; still 0.x.

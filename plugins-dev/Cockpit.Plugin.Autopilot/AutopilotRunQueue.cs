@@ -3,7 +3,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The queue of approved runs waiting to execute (AC-174, Raymond). The operator can stage several plans up front; up to
+/// The queue of approved runs waiting to execute (AC-174). The operator can stage several plans up front; up to
 /// <see cref="AutopilotSettings.MaxConcurrentRuns"/> execute at once and the rest wait here, in order, to be worked
 /// through one after another. Persisted through the plugin's storage so a staged queue survives a restart. The operator
 /// can reorder entries or drop them before they run.
