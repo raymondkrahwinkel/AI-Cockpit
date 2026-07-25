@@ -577,11 +577,11 @@ public class NewSessionDialogViewModelTests
     {
         var row = new PluginTtyOptionSelectionViewModel(
             "model", "Model", ["opus", "sonnet", "custom-snapshot"], "sonnet",
-            new Dictionary<string, string> { ["opus"] = "Opus 4.8", ["sonnet"] = "Sonnet" });
+            new Dictionary<string, string> { ["opus"] = "Opus", ["sonnet"] = "Sonnet" });
 
         // Fase 4 step 1: a value with a provider label reads friendly; an unlabelled value (a pinned snapshot) falls
         // back to showing itself, and the picked value is always the raw CLI value regardless of its label.
-        row.ChoiceItems.Select(choice => choice.Label).Should().Equal("Opus 4.8", "Sonnet", "custom-snapshot");
+        row.ChoiceItems.Select(choice => choice.Label).Should().Equal("Opus", "Sonnet", "custom-snapshot");
         row.ChoiceItems.Single(choice => choice.Value == "sonnet").Label.Should().Be("Sonnet");
         row.Value.Should().Be("sonnet");
     }

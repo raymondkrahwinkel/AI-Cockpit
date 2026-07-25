@@ -30,7 +30,7 @@ public static class SessionOptionCatalog
 
     public static IReadOnlyList<ModelOption> Models { get; } =
     [
-        new("Opus 4.8", "opus"),
+        new("Opus", "opus"),
         new("Sonnet", "sonnet"),
         new("Haiku", "haiku"),
     ];
