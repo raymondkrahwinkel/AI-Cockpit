@@ -279,6 +279,15 @@
                     ToolTip.Tip="Stop the current turn (interrupt)">
                 <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
             </Button>
+            <!-- Screenshot (AC-220): opens the desktop's own picker and attaches the result to this composer, so
+                 it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
+                 interesting one — the tooltip is where a session that cannot take an image says why — and
+                 Avalonia hides tooltips on disabled controls unless told otherwise. -->
+            <Button DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
+                    Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                    ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
+            </Button>
             <!-- IsEnabled binds IsInputEnabled (AC-174): an autonomous embedded run starts with its composer off so the
                  operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
                  box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->

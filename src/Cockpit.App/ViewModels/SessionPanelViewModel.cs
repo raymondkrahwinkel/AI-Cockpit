@@ -1022,6 +1022,95 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     }
 
     /// <summary>
+    /// Hands a screenshot the operator just took (AC-220) to this session's own input surface, and says what
+    /// happened: <see langword="null"/> when it landed, otherwise a short reason to show them.
+    /// </summary>
+    /// <remarks>
+    /// The reason is the point. This is the operator asking for something — they pressed a key, they dragged a
+    /// region — so a session kind that cannot carry an image owes them a sentence, not the silence
+    /// <see cref="FeedVerifyResultAsync"/> is allowed (that one is an agent's tool call, and the text snapshot
+    /// already reached it another way).
+    /// </remarks>
+    public Task<string?> InjectScreenshotAsync(byte[] screenshotPng)
+    {
+        if (screenshotPng.Length == 0)
+        {
+            return Task.FromResult<string?>("The capture came back empty.");
+        }
+
+        return ScreenshotRefusalReason is { } refusal
+            ? Task.FromResult<string?>(refusal)
+            : OnScreenshotCapturedAsync(screenshotPng);
+    }
+
+    /// <summary>
+    /// Takes a captured screenshot into this session kind's input surface — only called once
+    /// <see cref="ScreenshotRefusalReason"/> has said it can. Abstract for the reason
+    /// <see cref="OnVoiceTextReady"/> is: a chat session has an input box to hold an attachment, a terminal has a
+    /// pty and reaches its TUI through the clipboard.
+    /// </summary>
+    /// <remarks>
+    /// Asynchronous because the terminal route genuinely is: it writes the image to the system clipboard, and
+    /// that is a round trip through the windowing layer. The chat session completes synchronously and simply
+    /// returns a finished task.
+    /// </remarks>
+    protected abstract Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng);
+
+    /// <summary>
+    /// Why a screenshot cannot go into this session right now, or null when it can (AC-220). One sentence with
+    /// two readers: the hotkey path shows it as a toast, the composer's button disables itself and puts it in
+    /// its tooltip — so the button and the key can never disagree about what works.
+    /// </summary>
+    public string? ScreenshotRefusalReason => ScreenshotPlatformRefusal ?? ScreenshotKindRefusal;
+
+    /// <summary>
+    /// Set by the cockpit when this platform has no screen capture at all, so a session that could otherwise
+    /// take one still says the truth. Null where capture works.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScreenshotRefusalReason))]
+    [NotifyPropertyChangedFor(nameof(CanCaptureScreenshot))]
+    [NotifyPropertyChangedFor(nameof(ScreenshotTooltip))]
+    private string? _screenshotPlatformRefusal;
+
+    /// <summary>Why this session <em>kind</em> cannot take one — a terminal cannot, whatever the platform does. Null when it can.</summary>
+    protected virtual string? ScreenshotKindRefusal => null;
+
+    /// <summary>
+    /// Runs the capture for this session, wired by the cockpit when the session is added. Null in the
+    /// design-time and unit-test graphs, where there is no picker to open — and the button disables itself.
+    /// </summary>
+    public Func<SessionPanelViewModel, Task>? ScreenshotCapture { get; set; }
+
+    /// <summary>Whether the composer's screenshot button does anything: something to run it, and nothing standing in the way.</summary>
+    public bool CanCaptureScreenshot => ScreenshotCapture is not null && ScreenshotRefusalReason is null;
+
+    /// <summary>What the button says on hover — the refusal when there is one, so a disabled button explains itself instead of just being grey.</summary>
+    public string ScreenshotTooltip => ScreenshotRefusalReason ?? "Take a screenshot into this session";
+
+    /// <summary>Opens the desktop's screenshot picker and attaches the result here. The button's command; the global hotkey takes the same path through the coordinator.</summary>
+    [RelayCommand(CanExecute = nameof(CanCaptureScreenshot))]
+    private Task CaptureScreenshotAsync() => ScreenshotCapture?.Invoke(this) ?? Task.CompletedTask;
+
+    /// <summary>Re-evaluates the button once the cockpit has handed this panel its capture — a plain setter, so nothing notifies on its own.</summary>
+    internal void NotifyScreenshotWiringChanged() => _NotifyScreenshotAvailabilityChanged();
+
+    /// <summary>
+    /// The driver settles its capabilities after start, and whether it can see images is one of them — so the
+    /// button follows from the capability itself rather than from the one call site that happens to set it. A
+    /// second setter added later would otherwise leave a button that stays clickable and silently refuses.
+    /// </summary>
+    partial void OnCapabilitiesChanged(SessionCapabilities value) => _NotifyScreenshotAvailabilityChanged();
+
+    private void _NotifyScreenshotAvailabilityChanged()
+    {
+        OnPropertyChanged(nameof(ScreenshotRefusalReason));
+        OnPropertyChanged(nameof(CanCaptureScreenshot));
+        OnPropertyChanged(nameof(ScreenshotTooltip));
+        CaptureScreenshotCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
     /// Pushes a visual verify screenshot (AC-86) into this session as a real user turn — the text snapshot rides the
     /// verify tool result instead, so this is only the image a tool result cannot carry. An SDK session on a vision
     /// provider shows it; a TTY session (no image in a pty) and a non-vision provider ignore it. Returns true only

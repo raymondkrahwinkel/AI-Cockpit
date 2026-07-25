@@ -7,12 +7,14 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Infrastructure.Screenshots;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Voice;
-using Cockpit.Infrastructure.Voice.GlobalHotkey;
+using Cockpit.Infrastructure.Hotkeys;
 
 namespace Cockpit.Infrastructure;
 
@@ -52,6 +54,7 @@ public static class DependencyInjection
         AddNotifications(services);
         AddPtyHost(services);
         AddGlobalHotkey(services);
+        AddScreenshotCapture(services);
         AddScreenLockMonitor(services);
 
         return services;
@@ -113,6 +116,33 @@ public static class DependencyInjection
         else
         {
             services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
+        }
+    }
+
+    // Screen capture (AC-220) is registered by platform for the same reason the hotkey above is: one
+    // registration, three implementations, and the Scrutor marker scan would bind whichever it saw last.
+    //
+    // Unlike the hotkey, Linux does not split on the session type. The Screenshot portal is served by
+    // xdg-desktop-portal on X11 as well as Wayland — it predates GlobalShortcuts and every desktop that ships a
+    // screenshot tool backs it — so there is no X11 hole here to route around. Windows gets the Snip overlay,
+    // macOS screencapture, and anything else says it cannot rather than pretending.
+    private static void AddScreenshotCapture(IServiceCollection services)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IScreenshotCapture, WindowsScreenshotCapture>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            services.AddSingleton<IScreenshotCapture, MacScreenshotCapture>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            services.AddSingleton<IScreenshotCapture, PortalScreenshotCapture>();
+        }
+        else
+        {
+            services.AddSingleton<IScreenshotCapture, UnsupportedScreenshotCapture>();
         }
     }
 

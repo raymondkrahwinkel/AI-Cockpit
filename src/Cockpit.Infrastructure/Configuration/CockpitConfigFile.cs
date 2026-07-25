@@ -79,6 +79,9 @@ internal sealed class CockpitConfigFile
 
     public VoiceSettingsEntry? Voice { get; set; }
 
+    /// <summary>Screenshot capture settings (AC-220) — the desktop-wide key and whether it is armed; owned by the screenshot-settings store.</summary>
+    public ScreenshotSettingsEntry? Screenshots { get; set; }
+
     /// <summary>Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.</summary>
     public TerminalSettingsEntry? Terminal { get; set; }
 

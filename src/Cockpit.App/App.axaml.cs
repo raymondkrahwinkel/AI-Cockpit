@@ -173,9 +173,19 @@ public partial class App : Application
         // when the read completes, rather than the window waiting on file IO to appear.
         _ = cockpitViewModel.Workspaces.InitializeAsync();
 
-        // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
-        // portal/keyboard-hook is only ever touched for an operator who opted in.
-        _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
+        // The feature coordinators are resolved for their constructors: each subscribes to the hotkey
+        // coordinator there, and a singleton nobody asks for is never built — so an unresolved one would
+        // simply not be listening when its key fires.
+        Program.Services.GetRequiredService<VoicePushToTalkCoordinator>();
+
+        // Held on the view model as well as resolved: every session panel is handed the capture its composer
+        // button runs from here, the same way the open-mic coordinator is exposed for the sidebar toggle.
+        cockpitViewModel.Screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();
+
+        // Fire-and-forget (#34, AC-220): arms every desktop-wide key the operator switched on, as one
+        // registration. A no-op when none of them is, so the portal/keyboard-hook is only ever touched for an
+        // operator who opted in.
+        _ = Program.Services.GetRequiredService<GlobalHotkeyCoordinator>().ApplyAsync();
 
         // AC-5: lock the cockpit's UI when the OS screen locks — put the unlock screen in front and ask for the
         // encryption password again — but only when encryption is on and the operator left the option on. A pure UI

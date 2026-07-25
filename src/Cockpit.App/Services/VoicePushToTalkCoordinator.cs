@@ -2,32 +2,35 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
 /// <summary>
-/// Wires the OS-specific <see cref="IGlobalHotkeyService"/> to the currently selected session and the
-/// floating voice overlay (#34): a hold starts, the overlay shows "Listening" and the selected
-/// session's microphone capture begins; the hold ends, the overlay flips to "Transcribing", the
-/// session's own STT+cleanup pipeline runs, and the overlay hides once the text has been injected. Only
-/// starts listening when both voice and <see cref="Cockpit.Core.Voice.VoiceSettings.GlobalPushToTalk"/>
-/// are enabled — otherwise the existing per-view local F9 handlers keep doing the job untouched.
+/// Routes the desktop-wide push-to-talk key to the currently selected session and the floating voice
+/// overlay (#34): a hold starts, the overlay shows "Listening" and the selected session's microphone capture
+/// begins; the hold ends, the overlay flips to "Transcribing", the session's own STT+cleanup pipeline runs,
+/// and the overlay hides once the text has been injected.
 /// </summary>
 /// <remarks>
-/// Threading: <see cref="IGlobalHotkeyService.HoldStarted"/>/<see cref="IGlobalHotkeyService.HoldEnded"/>
+/// Whether the key is armed at all is <see cref="GlobalHotkeyCoordinator"/>'s: it registers only what the
+/// operator switched on, so with global push-to-talk off nothing arrives here and the per-view local F9
+/// handlers keep doing the job untouched.
+/// <para>
+/// Threading: <see cref="GlobalHotkeyCoordinator.Pressed"/>/<see cref="GlobalHotkeyCoordinator.Released"/>
 /// fire on the backend's own thread (the D-Bus loop on Linux, the keyboard-hook thread on Windows),
 /// never the UI thread — every touch of <see cref="CockpitViewModel"/> or the overlay is marshaled onto
 /// the UI thread via <see cref="Dispatcher.UIThread"/> first. <see cref="HandleHoldStarted"/> and
 /// <see cref="HandleHoldEndedAsync"/> are the actual (UI-thread) routing logic and the seam the tests
 /// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
+/// </para>
 /// </remarks>
 public sealed class VoicePushToTalkCoordinator : ISingletonService
 {
-    private readonly IGlobalHotkeyService _hotkeyService;
+    private readonly GlobalHotkeyCoordinator _hotkeys;
     private readonly CockpitViewModel _cockpit;
-    private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly VoiceOverlayCoordinator _overlayCoordinator;
     private readonly IVoicePushToTalkService _pushToTalk;
     private readonly IOpenMicState? _openMicState;
@@ -36,115 +39,49 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// <summary>Whether the hold in progress actually opened a microphone — see <see cref="HandleHoldStarted"/>.</summary>
     private bool _isRecording;
 
-    private bool _subscribed;
-
     public VoicePushToTalkCoordinator(
-        IGlobalHotkeyService hotkeyService,
+        GlobalHotkeyCoordinator hotkeys,
         CockpitViewModel cockpit,
-        IVoiceSettingsStore voiceSettingsStore,
         VoiceOverlayCoordinator overlayCoordinator,
         IVoicePushToTalkService pushToTalk,
         ILogger<VoicePushToTalkCoordinator> logger,
         IOpenMicState? openMicState = null)
     {
-        _hotkeyService = hotkeyService;
+        _hotkeys = hotkeys;
         _cockpit = cockpit;
-        _voiceSettingsStore = voiceSettingsStore;
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
         _openMicState = openMicState;
         _logger = logger;
 
+        // Subscribed once, for the life of the app: the hotkey coordinator re-arms in place rather than handing
+        // out a new event source, so there is no re-subscription here to accidentally do twice and double every
+        // hold. Both events carry the id of the key that fired, and this one only wants push-to-talk's.
+        _hotkeys.Pressed += (_, id) => { if (id == GlobalHotkeys.PushToTalk) { _OnHoldStarted(); } };
+        _hotkeys.Released += (_, id) => { if (id == GlobalHotkeys.PushToTalk) { _OnHoldEnded(); } };
+
         // The key and the on/off flag are read when the hotkey is armed, which happened once at startup. Saving
         // them has to re-arm, or the setting is a field that remembers what you typed and changes nothing.
-        _cockpit.VoiceSettingsSaved += (_, _) => _ = ReapplyAsync();
+        _cockpit.VoiceSettingsSaved += (_, _) => _ = _hotkeys.ApplyAsync();
 
         // The compositor may rebind this from its own shortcut settings at any time, without the cockpit being
         // asked. Following it is the difference between reporting the trigger and reporting a guess.
-        _hotkeyService.TriggerDescriptionChanged += (_, _) => Dispatcher.UIThread.Post(_ReportTrigger);
+        _hotkeys.TriggerDescriptionsChanged += (_, _) => Dispatcher.UIThread.Post(HandleTriggerDescriptionsChanged);
     }
 
-    /// <summary>
-    /// Puts the trigger where the operator can see it — or says why there is none. Three different truths behind
-    /// one line: Windows armed the key it was given, a Wayland compositor bound whatever it chose (or is waiting
-    /// for the operator to choose), and macOS has no global hotkey at all.
-    /// </summary>
-    private void _ReportTrigger() =>
-        _cockpit.VoiceGlobalHotkeyTrigger = _hotkeyService.TriggerDescription
-            ?? (OperatingSystem.IsMacOS()
-                ? "Not available on macOS — the in-window key still works while the cockpit has focus."
-                : "Your desktop has not bound it yet. Look for “Push to talk (hold)” in its own shortcut settings.");
+    /// <summary>Test seam, like the hold handlers below: puts the trigger where the operator can see it — or says why there is none. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
+    internal void HandleTriggerDescriptionsChanged() =>
+        _cockpit.VoiceGlobalHotkeyTrigger = _hotkeys.DescribeTrigger(
+            GlobalHotkeys.PushToTalk,
+            unboundMessage: "Your desktop has not bound it yet. Look for “Push to talk (hold)” in its own shortcut settings.",
+            unsupportedMessage: "Not available on macOS — the in-window key still works while the cockpit has focus.");
 
     /// <summary>The pill's view model. Reports what the hold is doing; what the pill actually shows is <see cref="VoiceOverlayCoordinator"/>'s call, since open-mic and read-aloud want it too.</summary>
     public VoiceOverlayViewModel Overlay => _overlayCoordinator.Overlay;
 
-    /// <summary>Starts listening for the global hotkey. No-op when voice or global push-to-talk is off, so the portal/hook is never touched for an operator who never opted in.</summary>
-    /// <remarks>
-    /// Never throws. Its one caller discards the task (<c>App.axaml.cs</c>: <c>_ = …StartAsync()</c>), so anything
-    /// thrown here used to land on a task nobody observes and be gone — and what it took with it was the hotkey.
-    /// Reading the voice settings goes through the shared <c>cockpit.json</c>, which a write elsewhere in this
-    /// process can briefly lock; on 2026-07-15 that raced at startup and F9 was dead for the whole session with
-    /// not one line in the log to say so. It still cannot start if the read fails — but now it says which.
-    /// </remarks>
-    public async Task StartAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
-            if (!settings.IsEnabled || !settings.GlobalPushToTalk)
-            {
-                _cockpit.VoiceGlobalHotkeyTrigger = string.Empty;
-                return;
-            }
+    private void _OnHoldStarted() => Dispatcher.UIThread.Post(HandleHoldStarted);
 
-            // Subscribed once, however many times this is called: changing the key in Options comes back through
-            // here to re-arm, and a second subscription would double every hold.
-            if (!_subscribed)
-            {
-                _hotkeyService.HoldStarted += _OnHoldStarted;
-                _hotkeyService.HoldEnded += _OnHoldEnded;
-                _subscribed = true;
-            }
-
-            await _hotkeyService.StartAsync(cancellationToken);
-            _ReportTrigger();
-
-            _logger.LogInformation(
-                "Global push-to-talk armed: asked for '{Key}', triggered by '{Trigger}'.",
-                settings.PushToTalkKeyName,
-                _hotkeyService.TriggerDescription ?? "<nothing — this platform or desktop has not bound it>");
-        }
-        catch (Exception exception)
-        {
-            // Leave nothing subscribed to a hook that never armed.
-            _hotkeyService.HoldStarted -= _OnHoldStarted;
-            _hotkeyService.HoldEnded -= _OnHoldEnded;
-            _subscribed = false;
-
-            _logger.LogError(
-                exception,
-                "Global push-to-talk could not start; the hotkey will not fire until the cockpit is restarted.");
-        }
-    }
-
-    /// <summary>
-    /// Re-arms on the key the operator just saved (#34). Changing it used to save the new key and leave the hook
-    /// listening for the old one until a restart, with nothing anywhere saying so — the settings field looked
-    /// like it decided the hotkey and did not.
-    /// </summary>
-    /// <remarks>
-    /// It also stops what a switched-off setting should stop: turning global push-to-talk off used to leave an
-    /// armed hook running for the rest of the session.
-    /// </remarks>
-    public async Task ReapplyAsync(CancellationToken cancellationToken = default)
-    {
-        await _hotkeyService.StopAsync(cancellationToken);
-        await StartAsync(cancellationToken);
-    }
-
-    private void _OnHoldStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleHoldStarted);
-
-    private void _OnHoldEnded(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => _ = HandleHoldEndedAsync());
+    private void _OnHoldEnded() => Dispatcher.UIThread.Post(() => _ = HandleHoldEndedAsync());
 
     private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => _overlayCoordinator.PushLevel(level));
 

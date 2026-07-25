@@ -835,6 +835,26 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     protected override void OnVoiceTextReady(string text) =>
         InputText = string.IsNullOrEmpty(InputText) ? text : $"{InputText} {text}";
 
+    /// <summary>
+    /// Queues a captured screenshot (AC-220) as a pending attachment, the same chip a CTRL+V paste produces —
+    /// so the operator can type a sentence with it and send when they mean to, rather than the image being shot
+    /// off on its own. Deliberately no auto-submit: a screenshot is nearly always "look at this, because…".
+    /// </summary>
+    /// <remarks>
+    /// The vision gate is <see cref="ScreenshotKindRefusal"/>'s and is checked before this runs, rather than left
+    /// to <see cref="AddPastedImage"/> — which answers a non-vision provider with a transcript row of its own,
+    /// and would mean telling the operator twice.
+    /// </remarks>
+    protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
+    {
+        PendingAttachments.Add(new ImageAttachmentViewModel(screenshotPng, a => PendingAttachments.Remove(a)));
+        return Task.FromResult<string?>(null);
+    }
+
+    /// <summary>A provider that never builds an image block would take the attachment and leave without it — so the button is off and the key says why.</summary>
+    protected override string? ScreenshotKindRefusal =>
+        CanPasteImages ? null : "This session's provider does not support image input, so the screenshot was not attached.";
+
     /// <summary>Auto-submit: sends the input box the transcript was just appended to — the same path Enter/Send takes, so a busy session queues it (T8) rather than erroring.</summary>
     protected override void OnVoiceSubmitRequested()
     {

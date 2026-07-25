@@ -194,6 +194,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
+            _viewModel.PasteAsync = null;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
@@ -202,6 +203,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
             _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
+            _viewModel.PasteAsync = _OnPasteRequestedAsync;
             _viewModel.PropertyChanged += _OnViewModelPropertyChanged;
             // The profile may already have been configured (dialog confirmed) before this view existed;
             // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
@@ -315,6 +317,66 @@ public partial class TtyView : UserControl
         _logger.LogInformation(
             "TTY-DIAG [key] input #{Count} ({ByteCount} bytes): {Snapshot}",
             _keyDiagCounter, e.Length, TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
+    }
+
+    /// <summary>
+    /// Performs the terminal's own paste for an injected screenshot (AC-226) by raising the paste keystroke on the
+    /// control, exactly as the keyboard does.
+    /// </summary>
+    /// <remarks>
+    /// Synthesised rather than written to the pty because the control does not forward this key: measured on
+    /// 2026-07-25, pressing Ctrl+V here never puts <c>0x16</c> on the wire, so writing that byte reached nothing.
+    /// Raising the event drives whatever the control already does, without this code having to know what that is.
+    /// The control is focused first — a key event on an unfocused terminal is one it has no reason to act on.
+    /// </remarks>
+    /// <remarks>
+    /// Returns a task that completes once the paste has actually happened, not once it has been scheduled. The
+    /// caller releases its one-capture-at-a-time guard on that task, and a second capture arriving inside the
+    /// delay would overwrite the clipboard the first one is still waiting to paste from.
+    /// </remarks>
+    private Task _OnPasteRequestedAsync()
+    {
+        var pasted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(
+            () =>
+            {
+                try
+                {
+                    _PasteIntoTerminal();
+                }
+                finally
+                {
+                    pasted.TrySetResult();
+                }
+            },
+            PasteAfterPickerDelay));
+
+        return pasted.Task;
+    }
+
+    /// <summary>
+    /// How long to let the OS picker finish closing before the paste. Not about the clipboard — the capture has
+    /// already read the image from it, so it is demonstrably there — but about focus: the snip overlay is still
+    /// tearing down when the capture returns, and a key event on a control that does not have focus yet is one
+    /// nothing acts on. Same reasoning, and the same order of magnitude, as the delay the voice auto-submit uses
+    /// to keep its carriage return out of the transcript's own pty read (AC-64).
+    /// </summary>
+    private static readonly TimeSpan PasteAfterPickerDelay = TimeSpan.FromMilliseconds(200);
+
+    private void _PasteIntoTerminal()
+    {
+        Terminal.Focus();
+        Terminal.RaiseEvent(new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Source = Terminal,
+            Key = Key.V,
+            KeyModifiers = KeyModifiers.Control,
+        });
+
+        _logger?.LogInformation(
+            "TTY-DIAG [paste] raised Ctrl+V on the terminal control for an injected screenshot (focused={Focused}).",
+            Terminal.IsFocused);
     }
 
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>

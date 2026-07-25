@@ -23,4 +23,6 @@ internal sealed class TestSessionPanel : SessionPanelViewModel
     }
 
     public override Task<bool> FeedVerifyResultAsync(string text, byte[] image) => Task.FromResult(false);
+
+    protected override Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng) => Task.FromResult<string?>(null);
 }

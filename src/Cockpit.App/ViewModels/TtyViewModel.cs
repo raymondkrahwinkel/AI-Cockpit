@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -33,6 +34,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ITtyLauncher? _launcher;
     private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
+    private readonly IScreenshotClipboard? _screenshotClipboard;
     private SessionProfile? _configuredProfile;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -187,11 +189,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ITranscriptCleanupService? cleanupService = null,
         IOptions<CockpitOptions>? options = null,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        IScreenshotClipboard? screenshotClipboard = null)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
+        _screenshotClipboard = screenshotClipboard;
         KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -243,6 +247,102 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// breaks submit as stray Enters, so the screenshot is simply dropped for a TTY. Returns false — nothing shown.
     /// </summary>
     public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
+
+    /// <summary>Without a clipboard there is no channel at all, so the button says so instead of offering a paste that cannot happen. Null once one is wired — which it is in the real graph.</summary>
+    protected override string? ScreenshotKindRefusal =>
+        _screenshotClipboard is null
+            ? "This terminal session has no clipboard to pass the screenshot through."
+            : null;
+
+    /// <summary>
+    /// Gets a captured screenshot onto the system clipboard and sends the TUI its own paste key (AC-226) —
+    /// exactly what an operator does by hand, which is how this route was found.
+    /// </summary>
+    /// <remarks>
+    /// A pty carries bytes, and no byte sequence means "here is an image" to a program reading one — bracketed
+    /// paste carries text and only text. What makes this work is that the TUI does not read the image off the pty
+    /// at all: it reads the system clipboard itself when it sees a paste. So the image only has to be on the
+    /// clipboard, and the paste only has to happen — which is <see cref="PasteRequested"/>'s, raised on the
+    /// terminal control rather than written to the pty (see <c>TtyView._PasteIntoTerminal</c>, and the remarks on
+    /// that event for why the pty is the wrong road).
+    /// <para>
+    /// Deliberately not submitted afterwards, the same as the chat session: the paste lands in the TUI's own
+    /// prompt, and the sentence that goes with the screenshot is the operator's to type.
+    /// </para>
+    /// <para>
+    /// Two honest limits. Where the image has to be written, the clipboard really is replaced — there is no
+    /// private channel to hand a TUI an image, so whatever was copied is gone, as it is when you paste one
+    /// yourself. And what the TUI does with the key is the TUI's: <c>claude</c> reads the clipboard, a plain shell
+    /// treats Ctrl+V as quoted-insert and will take its next keystroke literally. Raymond's call (2026-07-25):
+    /// every terminal session gets it rather than gating on the provider, since a terminal session here is a
+    /// claude session in practice.
+    /// </para>
+    /// </remarks>
+    protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
+    {
+        // Unreachable while ScreenshotKindRefusal stands — nothing gets past that to here. Kept because it is
+        // also what narrows the field to non-null for the rest of the method.
+        if (_screenshotClipboard is not { } clipboard)
+        {
+            return ScreenshotKindRefusal;
+        }
+
+        // The Windows capture comes off the clipboard to begin with, so the image is already there and putting it
+        // back is not a no-op: it replaces a clipboard entry the OS wrote with our own re-encoding, and that
+        // re-encoding is not one the TUI can paste. Measured on 2026-07-25 — after a capture even a manual Ctrl+V
+        // no longer pasted, which is worse than not working: it destroyed what was on the clipboard.
+        if (!await _IsAlreadyOnClipboardAsync(clipboard, screenshotPng) && !await clipboard.TrySetImageAsync(screenshotPng))
+        {
+            // Sending the paste key now would ask the TUI to paste an image that is not there, and it would
+            // answer with its own "no image in clipboard" — an error about the wrong thing.
+            return "The screenshot could not be put on the clipboard, so it was not pasted.";
+        }
+
+        if (PasteAsync is not { } paste)
+        {
+            return "This terminal session is not on screen, so there is nothing to paste into.";
+        }
+
+        // Awaited, not fired and forgotten: the paste waits for the picker to finish closing, and reporting
+        // success before it has happened lets the caller release its one-capture-at-a-time guard too early. A
+        // second capture would then reach the clipboard first and the earlier image would be pasted — or rather,
+        // the later one would, twice, with both captures logging success.
+        await paste();
+        return null;
+    }
+
+    /// <summary>
+    /// Asks the view to perform the terminal's own paste — the same thing that happens when the operator presses
+    /// the paste key on the control.
+    /// </summary>
+    /// <remarks>
+    /// An event to the view rather than bytes down the pty, and that distinction is the whole lesson of AC-226.
+    /// Writing <c>0x16</c> into the pty was built on the assumption that the paste key travels that way; measured
+    /// on 2026-07-25, it does not — pressing Ctrl+V on this terminal never puts that byte on the wire, so the
+    /// TUI never saw a paste and nothing arrived. The control handles the key itself. So instead of guessing what
+    /// it emits, this drives the control the way a keyboard does and lets it do whatever it already does.
+    /// </remarks>
+    /// <remarks>
+    /// A settable delegate rather than an event, for two reasons. It returns a task the injection awaits, which a
+    /// multicast event cannot do meaningfully; and a session panel has exactly one view, so "one subscriber" is
+    /// the truth rather than a restriction. The view clears it when it lets go, and <see cref="DisposeCoreAsync"/>
+    /// clears it when the session closes — a stale delegate would let a capture that lands after the session is
+    /// gone report success into nothing, which is the one outcome this whole path exists to prevent.
+    /// </remarks>
+    public Func<Task>? PasteAsync { get; set; }
+
+    /// <summary>
+    /// Whether the clipboard already holds exactly this image — true on the Windows route, where the capture read
+    /// it from there in the first place. Comparing beats trusting the platform: it keeps the terminal route from
+    /// knowing which capture it is talking to, and a write that is not needed is a write that cannot go wrong.
+    /// </summary>
+    private static async Task<bool> _IsAlreadyOnClipboardAsync(IScreenshotClipboard clipboard, byte[] screenshotPng)
+    {
+        var onClipboard = await clipboard.TryReadImageAsync();
+        return onClipboard is not null
+            && onClipboard.Length == screenshotPng.Length
+            && onClipboard.AsSpan().SequenceEqual(screenshotPng);
+    }
 
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 
@@ -778,6 +878,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _limitsPollCancellation?.Dispose();
         _limitsPollCancellation = null;
         _StopStatusTracking();
+
+        // Dropped here rather than left to the view, which is not told when a session closes: the panel is simply
+        // removed from the collection and its container leaves the tree, so the view's own DataContext hook never
+        // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
+        // that no longer exists, and report success with nothing to show for it (AC-226).
+        PasteAsync = null;
         return ValueTask.CompletedTask;
     }
 }
