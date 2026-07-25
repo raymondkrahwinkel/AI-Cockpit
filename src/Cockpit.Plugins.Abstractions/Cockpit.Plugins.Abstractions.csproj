@@ -186,9 +186,20 @@
     <Company>Krahwinkel-IT</Company>
     <Copyright>Copyright (c) 2026 Raymond Krahwinkel / Krahwinkel-IT</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- The package is handed out as a release asset, so its readme is the only usage instruction that travels
+         with the file. It is what a feed would render as the package page, and it is what an author who opens
+         the .nupkg finds — hence the compile-only reference rule and the two version gates are in it, not just
+         in the repo's SDK guide. -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/raymondkrahwinkel/AI-Cockpit/blob/main/docs/plugins/PLUGIN-SDK.md</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/raymondkrahwinkel/AI-Cockpit</RepositoryUrl>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />

@@ -575,7 +575,8 @@ your plugin (the type-identity pitfall — see [Overview](#overview)). Reference
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- In-repo: a project reference. Out-of-repo: <PackageReference Include="Cockpit.Plugins.Abstractions" .../> -->
+    <!-- In-repo: a project reference. Out-of-repo it is a PackageReference to the SDK package from the
+         release page — see "Getting the SDK outside the repo" below for the whole .csproj. -->
     <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
@@ -710,11 +711,120 @@ What actually happens under the hood, so you can reason about the "restart to ap
   contribution that cached settings-derived data at construction (e.g. a side-menu section's already-fetched
   list) needs to explicitly reload — via `host.OnSettingsSaved(...)`, documented in the [API reference](API-REFERENCE.md#icockpithost).
 
-## Publishing the SDK as a NuGet (out-of-repo authors)
+## Getting the SDK outside the repo
 
-From the repo, `dotnet pack src/Cockpit.Plugins.Abstractions -c Release` produces
-`Cockpit.Plugins.Abstractions.<version>.nupkg`. Host it on a feed (or use a local folder feed) and reference
-it with `<PackageReference Include="Cockpit.Plugins.Abstractions" Version="1.x" ExcludeAssets="runtime" />`.
+A plugin under `plugins-dev/` reaches the abstractions through a `ProjectReference`. Outside the repo you need
+the package, and it comes **off the release page, not nuget.org**: the product name is not settled, and a
+package id on nuget.org is public and permanent — claiming one under a name that may still change would leave
+an abandoned id behind and plugin authors switching packages mid-flight. A release asset is retractable, so the
+SDK is available now and moves to a public feed once the name is final. Nothing in your `.csproj` changes when
+it does; you only drop the local source.
+
+Two SDK assets ride along with each build (releases from this change onwards — an older release page has
+neither):
+
+| Asset | What it is |
+|---|---|
+| `Cockpit.Plugins.Abstractions.<version>.nupkg` | **The one to use.** A normal package: it brings the Avalonia, DI-abstractions and Material.Icons versions the host ships along with it, and carries the usage notes as its readme. |
+| `cockpit-plugin-sdk-<version>.zip` | The bare assembly plus its XML docs, for a `<Reference>` with a `HintPath`. No dependency information — you wire those three yourself. |
+
+- [Latest release](https://github.com/raymondkrahwinkel/AI-Cockpit/releases/latest) — a contract version you can
+  pin to. Its version is the SDK's own semver (`1.27.0` today), not the host's release number: the host and the
+  contract move on separate axes.
+- [Nightly](https://github.com/raymondkrahwinkel/AI-Cockpit/releases/tag/nightly) — the contract on `main`,
+  versioned `<version>-nightly.<run>`. Take it only when you need a contribution point that no release carries
+  yet, and expect it to move.
+
+### Point your plugin at the .nupkg
+
+Put the file in a folder beside your plugin — say `packages/` — and add a `nuget.config` next to your `.csproj`
+so anyone who clones your plugin restores it without first running a command:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="cockpit-sdk" value="./packages" />
+  </packageSources>
+</configuration>
+```
+
+Then reference it the way every shared assembly is referenced — compile-only, so your plugin folder ships no
+copy of it:
+
+```xml
+<PackageReference Include="Cockpit.Plugins.Abstractions" Version="1.27.0">
+  <ExcludeAssets>runtime</ExcludeAssets>
+</PackageReference>
+```
+
+`dotnet nuget add source ./packages -n cockpit-sdk` registers the same folder per machine instead of per repo;
+the `nuget.config` is the form that survives a clone.
+
+> **A restored package is cached by id *and* version.** Replace the `.nupkg` with different bytes under the same
+> version number and NuGet keeps building against the copy already in `~/.nuget/packages`. That is why the
+> nightly's package carries a `-nightly.<run>` suffix rather than being republished as plain `1.27.0`. If you hit
+> it anyway: `dotnet nuget locals global-packages --clear`.
+
+### Or reference the DLL from the zip
+
+Unzip it into `lib/` beside your `.csproj` and reference the assembly directly. `Private=false` is what keeps it
+out of your output folder — without it you ship a second copy of the abstractions and the host silently ignores
+your plugin:
+
+```xml
+<Reference Include="Cockpit.Plugins.Abstractions">
+  <HintPath>lib\Cockpit.Plugins.Abstractions.dll</HintPath>
+  <Private>false</Private>
+</Reference>
+```
+
+The XML docs beside it give you IntelliSense. What the zip does *not* give you is the SDK's own dependencies —
+add `Avalonia`, `Microsoft.Extensions.DependencyInjection.Abstractions` and `Material.Icons` yourself, at the
+host's versions, each with `<ExcludeAssets>runtime</ExcludeAssets>`.
+
+### The whole out-of-repo `.csproj`
+
+Identical to the in-repo one in [Project setup](#project-setup) except for the first item — the
+`ProjectReference` becomes a `PackageReference`:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading> <!-- emits the .deps.json the loader needs -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cockpit.Plugins.Abstractions" Version="1.27.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Avalonia" Version="12.0.5"><ExcludeAssets>runtime</ExcludeAssets></PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- Only if your UI uses a DataGrid: the host provides the control + app-wide theme. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+  </ItemGroup>
+</Project>
+```
+
+Set `abstractionsVersion` in your `plugin.json` to this package's **major** (`1`), and `minHostVersion` to the
+first host release that carries the contribution points you call — see [the manifest](#the-manifest--pluginjson)
+and [Match the host's versions](#match-the-hosts-versions).
+
+### Building the assets yourself
+
+`scripts/pack-sdk.sh <output-dir> [version-suffix]` produces both from a clone — the same script the release and
+nightly workflows run, so what you build locally is what the release page hands out.
 
 ## Gotchas
 
