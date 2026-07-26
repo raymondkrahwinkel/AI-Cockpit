@@ -71,6 +71,9 @@ public interface ISessionRuntime : IAsyncDisposable
     /// Throws if the driver cannot be created or started — the caller decides how to surface that.
     /// Worktree isolation (AC-85) is resolved by the cockpit before start and handed in through
     /// <paramref name="workingDirectory"/>, so the runtime launches in whatever directory it is given.
+    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, passed straight to the
+    /// driver so its MCP fan-out resolves against that project's own registry view; <see langword="null"/> for a
+    /// session with no project.
     /// </summary>
     Task StartAsync(
         SessionProfile? profile,
@@ -80,6 +83,7 @@ public interface ISessionRuntime : IAsyncDisposable
         string? workingDirectory = null,
         SessionResume? resume = null,
         IReadOnlyDictionary<string, string>? launchOptions = null,
+        string? projectId = null,
         CancellationToken cancellationToken = default);
 
     Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);

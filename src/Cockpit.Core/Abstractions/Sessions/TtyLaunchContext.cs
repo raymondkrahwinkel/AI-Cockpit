@@ -39,6 +39,15 @@ public sealed record TtyLaunchContext(
     /// compiling; only the launcher fills it in.
     /// </summary>
     public IReadOnlySet<string>? EnabledMcpServerNames { get; init; }
+
+    /// <summary>
+    /// The project this session was started under (AC-218), or <see langword="null"/> for one belonging to none. A
+    /// provider that fans the shared registry into its config (Claude's <c>--mcp-config</c>) resolves it against
+    /// that project's own registry view — its own servers and its by-name overrides — instead of the unscoped
+    /// registry. An init property for the same reason as <see cref="EnabledMcpServerNames"/>: the many existing
+    /// constructor call sites keep compiling; only the launcher fills it in.
+    /// </summary>
+    public string? ProjectId { get; init; }
 }
 
 /// <summary>

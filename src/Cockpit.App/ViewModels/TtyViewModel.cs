@@ -480,7 +480,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             _configuredWorkingDirectory,
             _configuredResume,
             _configuredEnabledMcpServerNames,
-            _configuredContributed));
+            _configuredContributed,
+            // AC-218: set on the panel by CockpitViewModel before LaunchConfigured, so it is already current here.
+            ProjectId));
     }
 
     /// <summary>

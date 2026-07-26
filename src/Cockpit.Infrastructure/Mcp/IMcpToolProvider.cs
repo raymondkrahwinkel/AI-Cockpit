@@ -23,8 +23,14 @@ internal interface IMcpToolProvider
     /// selection. This is how a local model can safely run an isolated Autopilot step in its worktree. <see langword="null"/>
     /// keeps the unconfined behaviour (the home-rooted defaults).
     /// </para>
+    /// <para>
+    /// <paramref name="projectId"/> (AC-218): the project this session was started under, so the registry read below
+    /// is <see cref="IMcpServerCatalog.GetServersForProjectAsync"/> rather than the unscoped
+    /// <see cref="IMcpServerCatalog.GetServersAsync"/> — a project's own servers and its by-name overrides are seen
+    /// here, not just the servers it turned off. <see langword="null"/> for a session with no project.
+    /// </para>
     /// </summary>
-    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, CancellationToken cancellationToken = default);
+    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Connects a single named catalog server on its own, just to read its tool list for the pre-flight token
@@ -32,7 +38,8 @@ internal interface IMcpToolProvider
     /// (filesystem/fetch/git/…) — a count must estimate only the server the operator ticked, not spawn processes
     /// they never chose — and it skips an OAuth server rather than driving its interactive browser sign-in. Returns
     /// null when the server is unknown, disabled, OAuth-gated, or could not be enumerated, so the caller shows it as
-    /// "unknown" rather than a false zero.
+    /// "unknown" rather than a false zero. <paramref name="projectId"/> (AC-218) scopes the lookup to that project's
+    /// registry view, same as <see cref="ConnectAsync"/>; <see langword="null"/> for the unscoped registry.
     /// </summary>
-    Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default);
 }

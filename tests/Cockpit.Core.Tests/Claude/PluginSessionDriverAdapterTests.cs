@@ -530,7 +530,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "youtrack", Transport = McpTransport.Http, Url = "http://127.0.0.1:9000/mcp", Auth = McpServerAuth.ApiKey, ApiKey = "yt-pat-value" },
@@ -558,7 +558,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "filesystem", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Scope = McpServerScope.LocalOnly },
@@ -573,12 +573,48 @@ public class PluginSessionDriverAdapterTests
         inner.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("cockpit-orchestrator");
     }
 
+    // AC-218: the fan-out asks for the servers as the session's project sees them. Asking the unscoped catalog is
+    // what made a project's own server and its overrides invisible to a running session while the checklist that
+    // offered them was already project-scoped.
+    [Fact]
+    public async Task StartAsync_ResolvesTheRegistryAsTheProjectSeesIt()
+    {
+        var inner = new FakePluginSessionDriver();
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<McpServerConfig>());
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
+
+        await adapter.StartAsync(projectId: "project-1");
+
+        await catalog.Received().GetServersForProjectAsync("project-1", Arg.Any<CancellationToken>());
+    }
+
+    // The point of the ticket: a server the project brings itself (ProjectMcpOverlay.AdditionalServers) exists only
+    // in the project-scoped list, so resolving against the unscoped registry dropped it however the operator ticked.
+    [Fact]
+    public async Task StartAsync_AServerTheProjectBringsItself_ReachesTheSession()
+    {
+        var inner = new FakePluginSessionDriver();
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync("project-1", Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "registry", Transport = McpTransport.Http, Url = "http://registry/mcp" },
+            new() { Name = "project-own", Transport = McpTransport.Http, Url = "http://project/mcp" },
+        });
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
+
+        await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "project-own" }, projectId: "project-1");
+
+        inner.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("project-own");
+    }
+
     [Fact]
     public async Task StartAsync_HonoursThePerSessionSelection_WhenOneWasMade()
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
             new() { Name = "b", Transport = McpTransport.Http, Url = "http://b/mcp" },
@@ -595,7 +631,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
             new() { Name = "b", Transport = McpTransport.Http, Url = "http://b/mcp" },
@@ -616,7 +652,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
         });
@@ -635,7 +671,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>())
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new InvalidOperationException("cockpit.json is locked")));
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
 

@@ -35,6 +35,12 @@ public interface ITtyLauncher
     /// own variables and before the host identity and the provider's overlay — the same precedence the SDK route
     /// applies.
     /// </para>
+    /// <para>
+    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, carried onto the
+    /// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config resolves it against
+    /// that project's own registry view instead of the unscoped registry. <see langword="null"/> for a session
+    /// with no project.
+    /// </para>
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -46,5 +52,6 @@ public interface ITtyLauncher
         SessionResume? resume = null,
         string? paneId = null,
         IReadOnlySet<string>? enabledMcpServerNames = null,
-        SessionResources? contributed = null);
+        SessionResources? contributed = null,
+        string? projectId = null);
 }

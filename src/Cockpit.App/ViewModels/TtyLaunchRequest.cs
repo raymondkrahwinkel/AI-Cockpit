@@ -25,6 +25,11 @@ namespace Cockpit.App.ViewModels;
 /// server regardless of the operator's checklist.
 /// </param>
 /// <param name="Contributed">What the plugins give this session (AC-165), or null for nothing contributed.</param>
+/// <param name="ProjectId">
+/// The project this session was started under (AC-218), or null for one belonging to none — carried onto the
+/// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config resolves it against that
+/// project's own registry view instead of the unscoped registry.
+/// </param>
 public sealed record TtyLaunchRequest(
     ITtyLauncher Launcher,
     ITtySessionProvider Provider,
@@ -33,4 +38,5 @@ public sealed record TtyLaunchRequest(
     string? WorkingDirectory,
     SessionResume? Resume,
     IReadOnlySet<string>? EnabledMcpServerNames = null,
-    SessionResources? Contributed = null);
+    SessionResources? Contributed = null,
+    string? ProjectId = null);

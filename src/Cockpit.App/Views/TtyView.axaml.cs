@@ -758,7 +758,9 @@ public partial class TtyView : UserControl
                 // #44: the per-session MCP checklist, so the provider narrows the registry to the operator's selection.
                 _pendingLaunch.EnabledMcpServerNames,
                 // AC-165: what the plugins gave this session, resolved before the launch was configured.
-                _pendingLaunch.Contributed);
+                _pendingLaunch.Contributed,
+                // AC-218: the project this session runs under, so the MCP fan-out resolves against its registry view.
+                _pendingLaunch.ProjectId);
             _pty = pty;
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
