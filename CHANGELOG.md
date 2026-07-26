@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: tying a ticket to a session you already have open now labels it. The session says what it is working on
+  under its name, and takes the ticket as its name if you never gave it one of your own — so the row you are looking
+  for in the sidebar reads "AC-310" instead of "default - 3". A name you chose stays yours, whether you typed it when
+  you started the session, renamed it later, or a flow set it. Works from the issues dialog, from the picker in a
+  session's own header, and for both YouTrack and GitHub issues.
 - added: a project can say where it is tracked. The project editor grows a "Where it is tracked" section with a field
   per installed tracker plugin — YouTrack offers the projects on your configured instances, GitHub Issues offers the
   repositories `gh` can see — so you pick from a real list instead of typing a tag and finding out later it was

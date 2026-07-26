@@ -340,6 +340,18 @@ public interface ICockpitHost
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Names a session the way <see cref="SetSessionName"/> does, but leaves alone a session whose name somebody
+    /// chose — in the New-session dialog or by renaming it in the sidebar (#AC-310). What a plugin calls when it
+    /// ties a ticket to a session that is already running: the session should become recognisable as the one working
+    /// on that ticket, but not at the cost of the name the operator deliberately gave it. Use
+    /// <see cref="SetSessionName"/> when the caller means it regardless. Blank names, unknown pane ids and
+    /// already-named sessions are all no-ops, never errors. Marshals to the UI thread itself. Default no-op so
+    /// existing <see cref="ICockpitHost"/> implementations keep compiling untouched — on a host that predates this,
+    /// the ticket link simply leaves the session's name as it found it.
+    /// </summary>
+    Task SuggestSessionName(string paneId, string name) => Task.CompletedTask;
+
+    /// <summary>
     /// Sends <paramref name="text"/> to the session named by <paramref name="paneId"/> as a submitted turn — the seam
     /// a plugin uses to hand a started session (including one it embedded in its own workspace) a prompt without a
     /// human turn, e.g. an Autopilot run's work brief once the operator has approved the run. A paneId that matches no

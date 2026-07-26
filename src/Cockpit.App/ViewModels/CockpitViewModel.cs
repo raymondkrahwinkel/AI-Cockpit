@@ -4247,7 +4247,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
             // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
             // numbering exists to prevent.
-            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            // Composed here, not chosen: linking a ticket to this session later may still label it, the same as it
+            // would a session that never got a name at all (#AC-310).
+            if (paneId is not null && FindSession(paneId) is { } started)
+            {
+                started.HasGeneratedName = true;
+            }
+
             return;
         }
 
@@ -4600,7 +4607,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (session.LaunchResult is { } result)
         {
-            await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
+            // The copy's name is composed here, so it is only as deliberate as the one it was copied from: a copy of
+            // "default - 3" stays open to a ticket link relabelling it, a copy of a name you typed does not (#AC-310).
+            if (paneId is not null && FindSession(paneId) is { } copy)
+            {
+                copy.HasGeneratedName = session.HasGeneratedName;
+            }
         }
     }
 
@@ -4870,8 +4883,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // show it — invisible rather than absent, which is the worse of the two.
         session.WorkspaceId = Workspaces.EnsureSessionWorkspace();
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
-        // shows which profile — and therefore which provider — each session runs under.
+        // shows which profile — and therefore which provider — each session runs under. Only the fallback is a
+        // name nobody chose, and that is the one a later ticket link may replace (#AC-310).
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
+        session.HasGeneratedName = string.IsNullOrWhiteSpace(name);
         _SeedSessionPreferences(session);
 
         session.CloseRequested += OnSessionCloseRequested;
@@ -4969,8 +4984,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         target.Title = name.Trim();
+        target.HasGeneratedName = false;
         return true;
     }
+
+    /// <summary>
+    /// Names a session the way <see cref="SetSessionName"/> does, but stands down when its name is one somebody
+    /// chose (#AC-310) — how linking a ticket to a running session labels it without erasing the name the operator
+    /// typed. Returns whether the session was renamed, so false covers both "no such session" and "it already has
+    /// a name of its own". A suggested name counts as generated in its turn, so linking a second ticket to the same
+    /// session relabels it rather than leaving it showing the first. Must be called on the UI thread.
+    /// </summary>
+    public bool SuggestSessionName(string paneId, string name) =>
+        Sessions.FirstOrDefault(session => session.PaneId == paneId)?.SuggestName(name) ?? false;
 
     /// <summary>
     /// Edge-triggered attention routing: fires the presence-aware notifier once, on the transition

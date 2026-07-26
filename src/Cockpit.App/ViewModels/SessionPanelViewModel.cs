@@ -33,6 +33,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _title = "Session";
 
     /// <summary>
+    /// Whether <see cref="Title"/> is still one the cockpit composed itself — "&lt;profile&gt; - 3", the project's
+    /// name, "&lt;original&gt; (copy)" — rather than one somebody chose, which is what lets
+    /// <c>ICockpitHost.SuggestSessionName</c> label a session after the ticket just linked to it without erasing a
+    /// name the operator typed (#AC-310). True until the session is named on purpose, which is any of: typed in the
+    /// New-session dialog, an inline rename, an explicit <c>SetSessionName</c>, or a flow naming it through
+    /// <c>ICockpitActions.SetActiveSessionStatusAsync</c>. Every one of those four is a decision; the composed ones
+    /// are placeholders.
+    /// </summary>
+    public bool HasGeneratedName { get; set; } = true;
+
+    /// <summary>
     /// A short free-text line the agent or a plugin sets to say what this session is doing right now — a ticket it
     /// picked up ("AC-13"), a phase, whatever (#AC-13). Shown under the title in the header and the sidebar; blank
     /// hides it. Distinct from <see cref="SessionStatusLabel"/> (the derived Idle/Busy/Needs-attention state) and
@@ -87,6 +98,23 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public NewSessionResult? LaunchResult { get; set; }
 
+    /// <summary>
+    /// Takes a name a plugin proposed — the ticket it just linked to this session (#AC-310) — unless the session
+    /// already carries a name somebody chose, in which case it keeps that one and this reports false. The one place
+    /// the rule lives, so the pane-id surface (<see cref="CockpitViewModel.SuggestSessionName"/>) and the plugin
+    /// host cannot drift apart on what counts as a name worth keeping.
+    /// </summary>
+    public bool SuggestName(string name)
+    {
+        if (!HasGeneratedName || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        Title = name.Trim();
+        return true;
+    }
+
     /// <summary>Starts an inline rename, seeding the editable title from the current one.</summary>
     public void BeginRename()
     {
@@ -101,6 +129,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         if (!string.IsNullOrEmpty(trimmed))
         {
             Title = trimmed;
+            HasGeneratedName = false;
         }
 
         IsRenaming = false;

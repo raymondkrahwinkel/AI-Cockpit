@@ -352,7 +352,7 @@ public class GitHubIssuesDialogControlTests
             var storage = new InMemoryPluginStorage();
             var settings = new GitHubIssuesSettings(storage);
             var host = new FakeCockpitHost();
-            var links = new SessionIssueLinks();
+            var links = new SessionIssueLinks(host);
             var dialog = new GitHubIssuesDialogControl(settings, host, links);
 
             var window = new Window { Width = 1280, Height = 860, Content = dialog };

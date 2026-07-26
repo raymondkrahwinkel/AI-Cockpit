@@ -568,15 +568,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     private static string _IdentityOf(GitHubIssue issue) => $"{issue.Repository}#{issue.Number}";
 
-    // What a session started from this issue is called. The sidebar is a column of names, and "#42" on its own does
-    // not say which repository it came from — open two repos and there are two rows reading "#42" with nothing to
-    // tell them apart, while the working directory that would is not in the name you scan (AC-313). The owner is
-    // left off: it is the same one across nearly every repo an operator has open, so it costs sidebar width to
-    // repeat the half that does not vary. Taking everything past the last separator needs no special case for the
-    // repository gh can leave empty — there is nothing before the "#" then, which is the name this used to have.
-    private static string _SessionNameFor(GitHubIssue issue) =>
-        $"{issue.Repository[(issue.Repository.LastIndexOf('/') + 1)..]}#{issue.Number}";
-
     private Control _BuildChip(string text) => new Border
     {
         Background = _Brush("CockpitSecondaryBgBrush"),
@@ -625,7 +616,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         var prefill = new NewSessionPrefill(
             InitialPrompt: _RenderPrompt(issue),
-            SessionName: _SessionNameFor(issue));
+            SessionName: SessionLabel.Name(issue));
 
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
         // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert

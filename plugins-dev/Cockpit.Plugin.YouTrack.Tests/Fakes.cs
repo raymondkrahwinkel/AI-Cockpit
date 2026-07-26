@@ -98,4 +98,25 @@ internal sealed class FakeCockpitHost : ICockpitHost
     public Control CreateMarkdownView(string markdown) => MarkdownFailure is { } failure
         ? throw failure
         : new SelectableTextBlock { Text = markdown, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+
+    /// <summary>The statusline each pane was last given (#AC-310) — an empty string is a pane whose line was cleared.</summary>
+    public Dictionary<string, string> Statuslines { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The names proposed per pane. Kept apart from a name the plugin would have <em>set</em>: only the host decides whether a suggestion is taken, and the plugin must never be the one to overrule the operator.</summary>
+    public Dictionary<string, string> SuggestedNames { get; } = new(StringComparer.Ordinal);
+
+    public Task SetSessionStatusline(string paneId, string statusline)
+    {
+        Statuslines[paneId] = statusline;
+        return Task.CompletedTask;
+    }
+
+    public Task SetSessionName(string paneId, string name) =>
+        throw new NotSupportedException("Linking must suggest a name, never take one.");
+
+    public Task SuggestSessionName(string paneId, string name)
+    {
+        SuggestedNames[paneId] = name;
+        return Task.CompletedTask;
+    }
 }
