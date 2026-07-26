@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Provider plugin (AC-268): registers "Kimi Code (ACP)" as a selectable session provider, driven as a
+       persistent `kimi acp` subprocess speaking the Agent Client Protocol (JSON-RPC 2.0 over stdio) — see
+       Kimi-ACP-Provider-Design-2026-07-24.md for why the ACP route was chosen over a TTY pane or the
+       Anthropic-compat route. Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean;
+       package its bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins.
+       EnableDynamicLoading emits the .deps.json the host's AssemblyDependencyResolver needs. The shared
+       assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are compile-only
+       (Private=false / ExcludeAssets=runtime) so the host's own copies load and shared types keep one
+       identity — the plugin folder ships only its own DLL + plugin.json. No Cockpit.Infrastructure
+       reference: this plugin's ICliSubprocess/KimiAcpConnection are a copy of the Codex provider's own
+       transport pair (Cockpit.Plugin.CliAgentProvider), not a dependency — plugins reference Abstractions
+       only, so the subprocess-I/O seam lives in this plugin's own assembly. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The transport/driver (KimiAcpConnection, KimiAcpSessionDriver, ProcessCliSubprocess) is real logic
+         worth its own unit tests against a fake ICliSubprocess, mirroring the Codex provider's own
+         CodexAppServerConnectionTests. Its dedicated test project (own solution, not part of Cockpit.slnx)
+         needs this grant since the driver/config types stay internal, matching this plugin's own style. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.KimiProvider.Tests" />
+  </ItemGroup>
+
+</Project>

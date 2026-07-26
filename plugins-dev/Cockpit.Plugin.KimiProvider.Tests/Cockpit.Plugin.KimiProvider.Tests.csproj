@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the Kimi ACP provider plugin's own transport logic (AC-268) — kept OUTSIDE Cockpit.slnx,
+       in its own project alongside the plugin under plugins-dev/, same as Cockpit.Plugin.CliAgentProvider.Tests.
+       Run explicitly with `dotnet test` in this folder (or against this .csproj). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <!-- The plugin project marks these ExcludeAssets="runtime" (the host supplies its own copies at load
+         time) — this test project runs standalone, so it needs its own runtime copies to exercise
+         KimiProviderPlugin.Initialize against an ICockpitHost implementation. -->
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugin.KimiProvider\Cockpit.Plugin.KimiProvider.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -32,6 +32,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: Kimi Code as a session provider, installable from the store. One `kimi` process runs for the whole
+  session and speaks its protocol to the cockpit rather than drawing a terminal, so streaming text and
+  thinking, tool calls with real Allow/Deny prompts, switching model mid-session, cancelling a turn and
+  resuming an earlier one all behave the way they do elsewhere — and the MCP servers the cockpit hosts are
+  handed to it like any other provider gets them. You install and sign in to the `kimi` CLI yourself: put an
+  API key in the provider's settings, or use its login button; the cockpit finds the CLI on your PATH or at a
+  path you pin. Three things it cannot do, and says so rather than pretending: a turn that failed looks
+  exactly like one that succeeded (Kimi reports no difference), there is no allowance or cost to show so you
+  get a context percentage and nothing else, and a profile's system prompt or a project's instructions cannot
+  be handed to it — a session started with one says so in the transcript instead of quietly dropping it.
 - added: take a screenshot straight into a session. A button beside the composer — and, if you switch it on,
   a key that works while the cockpit has no focus — opens your desktop's own screenshot picker (Spectacle or
   your shell's on Linux, the Snip overlay on Windows, `screencapture` on macOS), so dragging a region, picking
