@@ -15,6 +15,14 @@
          Also in 0.7.0 (AC-296): ICockpitHost.CreateMarkdownView — a plugin's own dialog renders an issue description
          through the cockpit's markdown look instead of showing raw "##"/"**" or bundling a second parser. Default-
          implemented, so an older host returns the plain text it always did.
+         Also in 0.7.0 (AC-316): IPluginSettingsSections — a settings view names its sections and the host draws the
+         Options navigation rail beside it instead of one long scroll. This one is an interface the plugin implements
+         rather than a member it calls, and that is worse rather than better for an older host, not the exemption it
+         looks like: a plugin binds to the host's own copy of this assembly (ProjectReference with Private=false /
+         ExcludeAssets=runtime), so a host that predates the interface cannot load the settings control's type at all
+         — TypeLoadException when the control is constructed, i.e. the moment the operator clicks the gear, and
+         silently, because that call is fire-and-forget. So the same rule as the members above: a plugin that
+         implements it sets minHostVersion 0.7.0.
          A plugin that uses any of these sets minHostVersion 0.7.0 — an older host has no such members, so a plugin
          compiled against them loads and then fails on the first call. Minor because it is additive host
          functionality, not a break; still 0.x.

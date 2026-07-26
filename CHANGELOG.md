@@ -32,6 +32,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a plugin's settings dialog can have sections, navigated from a rail down its left side — the same one the
+  cockpit's own Options dialog has. Autopilot's settings use it first: its four groups (CEO, Cost & tokens, Run safety,
+  Templates) are now four pages you pick between instead of one scroll several screens long. Nothing moved and nothing
+  was renamed, Save still saves the lot at once, and a plugin that does not offer sections keeps the dialog it had.
 - added: tying a ticket to a session you already have open now labels it. The session says what it is working on
   under its name, and takes the ticket as its name if you never gave it one of your own — so the row you are looking
   for in the sidebar reads "AC-310" instead of "default - 3". A name you chose stays yours, whether you typed it when

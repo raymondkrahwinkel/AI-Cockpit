@@ -16,8 +16,13 @@ namespace Cockpit.Plugin.Autopilot;
 /// tracker-specific and the CEO decides it dynamically per plan (a global tracker mapping breaks the moment there are
 /// two trackers, or a non-tracker workload), so none of that is fixed here. Implements <see cref="IPluginSettingsView"/>
 /// so the host dialog shows a Save button; <see cref="Save"/> writes the global level.
+/// <para>
+/// The four groups these settings were already written in (AC-316) are also the dialog's pages: implementing
+/// <see cref="IPluginSettingsSections"/> puts them in the host's navigation rail instead of stacking them into one
+/// scroll several screens long. Nothing moved or was renamed — each group is the page it always was.
+/// </para>
 /// </summary>
-internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsView
+internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsView, IPluginSettingsSections
 {
     // The placeholder tokens a template body may carry (AC-189), shown as the placeholder-help under the Templates
     // section and offered as quick-insert chips in the editor. Kept here so the help and the editor stay in lockstep with
@@ -42,6 +47,11 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly NumericUpDown _maxConcurrent;
     private readonly ComboBox _autonomy;
     private readonly StackPanel _templateList = new() { Spacing = 0 };
+
+    // The dialog's pages, filled by _Section in the order they are declared below — the rail shows the titles and
+    // asks for one back by index, so the two lists are built together and cannot drift apart.
+    private readonly List<string> _sectionTitles = [];
+    private readonly List<Control> _sections = [];
 
     // The loaded profiles, so selecting one can look up its provider to decide which model suggestions to offer.
     private IReadOnlyList<PluginProfileInfo> _profiles = [];
@@ -95,26 +105,24 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             SelectedItem = settings.AutonomyMode(),
         };
 
-        var panel = new StackPanel { Margin = new Thickness(4), Spacing = 10 };
+        var ceo = _Section("CEO (planning)");
+        ceo.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
+        ceo.Children.Add(_Row("CEO profile", _ceoProfile));
+        ceo.Children.Add(_Row("CEO model", _ceoModel));
 
-        panel.Children.Add(_Header("CEO (planning)"));
-        panel.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
-        panel.Children.Add(_Row("CEO profile", _ceoProfile));
-        panel.Children.Add(_Row("CEO model", _ceoModel));
+        var cost = _Section("Cost & tokens");
+        cost.Children.Add(_Hint("How hard the CEO leans on cost when it picks a model per step. Balanced is the recommended default; the CEO always fits the model to the work, this only moves where the line between a local free model and a paid one sits."));
+        cost.Children.Add(_Row("Cost strategy", _costStrategy));
 
-        panel.Children.Add(_Header("Cost & tokens"));
-        panel.Children.Add(_Hint("How hard the CEO leans on cost when it picks a model per step. Balanced is the recommended default; the CEO always fits the model to the work, this only moves where the line between a local free model and a paid one sits."));
-        panel.Children.Add(_Row("Cost strategy", _costStrategy));
+        var safety = _Section("Run safety");
+        safety.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
+        safety.Children.Add(_Row("Max rework attempts per step", _maxAttempts));
+        safety.Children.Add(_Row("Runs at once (rest queue up)", _maxConcurrent));
+        safety.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
+        safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
 
-        panel.Children.Add(_Header("Run safety"));
-        panel.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
-        panel.Children.Add(_Row("Max rework attempts per step", _maxAttempts));
-        panel.Children.Add(_Row("Runs at once (rest queue up)", _maxConcurrent));
-        panel.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
-        panel.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
-
-        panel.Children.Add(_Header("Templates"));
-        panel.Children.Add(_Hint("Goal/brief templates you can start a run from in the plan flow. Builtin and plugin templates you can edit (kept as an override) and reset to their default; your own you can also delete."));
+        var templatesSection = _Section("Templates");
+        templatesSection.Children.Add(_Hint("Goal/brief templates you can start a run from in the plan flow. Builtin and plugin templates you can edit (kept as an override) and reset to their default; your own you can also delete."));
         var newTemplate = new Button
         {
             Content = "+ New template",
@@ -124,9 +132,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         newTemplate.Click += (_, _) => _EditTemplate(null);
-        panel.Children.Add(newTemplate);
-        panel.Children.Add(_templateList);
-        panel.Children.Add(_Hint($"Placeholders you can use in a body (filled from the triggering issue and your input): {string.Join("  ", _Placeholders)}"));
+        templatesSection.Children.Add(newTemplate);
+        templatesSection.Children.Add(_templateList);
+        templatesSection.Children.Add(_Hint($"Placeholders you can use in a body (filled from the triggering issue and your input): {string.Join("  ", _Placeholders)}"));
 
         // Re-render the list whenever a template changes (created, edited, deleted, reset) so the section stays in step
         // with the store, the same way the plan surface tracks its queue/history.
@@ -134,8 +142,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         DetachedFromVisualTree += (_, _) => _templates.Changed -= _OnTemplatesChanged;
         _RenderTemplates();
 
-        Content = panel;
+        ShowSection(0);
     }
+
+    public IReadOnlyList<string> SectionTitles => _sectionTitles;
+
+    public void ShowSection(int index) => Content = _sections[index];
 
     private void _OnTemplatesChanged()
     {
@@ -470,6 +482,17 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         row.Children.Add(text);
         row.Children.Add(input);
         return row;
+    }
+
+    // Starts a page, registers it under its rail title, and hands it back to be filled — the page keeps its own
+    // heading, as the Options sub-pages do, so it still says what it is once it is the only thing on screen.
+    private StackPanel _Section(string title)
+    {
+        var section = new StackPanel { Margin = new Thickness(4), Spacing = 10 };
+        section.Children.Add(_Header(title));
+        _sectionTitles.Add(title);
+        _sections.Add(section);
+        return section;
     }
 
     private static TextBlock _Header(string text) =>

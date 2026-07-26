@@ -56,6 +56,11 @@
             <CornerRadius x:Key="CockpitPanelRadius">10</CornerRadius>
             <Thickness x:Key="CockpitHairlineThickness">1</Thickness>
 
+            <!-- The sub-navigation rail's width (Border.subnavRail below). A token rather than a literal on the
+                 setter because a plugin's settings dialog has to widen itself by exactly this before the rail
+                 exists to be measured (PluginDialogHost) — two hand-kept copies of one number would drift. -->
+            <x:Double x:Key="CockpitSubnavRailWidth">184</x:Double>
+
             <!-- Typography: the transcript uses a terminal font so tool blocks and code read as a
                  Claude-TTY surface; the same family the TTY panel renders with. -->
             <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
@@ -535,7 +540,7 @@
          accent bar, the same accent the top tabs use as their selected fill. A ListBox drives it so a
          single-page tab can show a one-item rail today and grow items later without a structural change. -->
     <Style Selector="Border.subnavRail">
-        <Setter Property="Width" Value="184"/>
+        <Setter Property="Width" Value="{StaticResource CockpitSubnavRailWidth}"/>
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="0,0,1,0"/>
