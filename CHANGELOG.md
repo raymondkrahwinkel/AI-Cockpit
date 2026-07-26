@@ -316,6 +316,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: starting a session from a GitHub issue names it after the repository the issue came from — `hello-world#42`
+  rather than `#42`. Issue numbers only mean anything inside one repository, and the cross-repo view lists every repo
+  you have, so two issues could put two identically named sessions in the sidebar with nothing on either to tell them
+  apart. The name is still yours to change in the new-session dialog before anything starts.
 - fixed: a session that produces events far faster than the cockpit can take them in no longer grows the cockpit's
   memory without limit. Each session now holds at most a few thousand unread events; past that, further ones are
   counted and the session's own transcript says how many went missing, so a gap is something you can see rather than

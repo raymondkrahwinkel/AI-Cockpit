@@ -150,6 +150,43 @@ public class GitHubIssuesDialogControlTests
     });
 
     [Fact]
+    public void NewSession_NamesTheSessionAfterTheRepositoryTheIssueCameFrom() => HeadlessAvalonia.Run(() =>
+    {
+        // The sidebar lists sessions by name. "#42" is unique within a repository and nowhere else, and the CLI mode
+        // this plugin is built around lists every repo an owner has — so two repos in view meant two rows reading
+        // "#42" with nothing on either to say which was which (AC-313).
+        var harness = DialogHarness.Open(First, Second);
+        harness.Select(Second);
+
+        harness.Click("New session");
+
+        var sessionName = harness.Host.LastPrefill?.SessionName;
+        _out.WriteLine($"session name={sessionName ?? "<null>"}");
+        harness.Close();
+
+        sessionName.Should().Be("hello-world#42",
+            "a name you scan past in a list has to carry the repository, because the working directory that would tell you is not in it");
+    });
+
+    [Fact]
+    public void AnIssueWhoseRepositoryIsUnknown_IsStillNamedAfterItsNumber() => HeadlessAvalonia.Run(() =>
+    {
+        // gh can return an issue without the repository field, which used to be the only shape this name had. It
+        // stays that shape rather than becoming a name that opens with a stray separator.
+        var orphan = First with { Repository = string.Empty };
+        var harness = DialogHarness.Open("startup", orphan);
+        harness.Select(orphan);
+
+        harness.Click("New session");
+
+        var sessionName = harness.Host.LastPrefill?.SessionName;
+        _out.WriteLine($"session name={sessionName ?? "<null>"}");
+        harness.Close();
+
+        sessionName.Should().Be("#41", "an unknown repository is not a reason to hand the operator a broken name");
+    });
+
+    [Fact]
     public void NewSession_GoesInertWhileItsDialogIsOpen() => HeadlessAvalonia.Run(() =>
     {
         // The new-session dialog is modal to the main window, not to this one, so nothing but this button stops a
@@ -301,7 +338,13 @@ public class GitHubIssuesDialogControlTests
 
         public DataGrid Grid => _window.GetVisualDescendants().OfType<DataGrid>().First();
 
-        public static DialogHarness Open(params GitHubIssue[] issues)
+        public static DialogHarness Open(params GitHubIssue[] issues) => Open("octocat", issues);
+
+        /// <summary>
+        /// Opens with a filter term of the caller's choosing. The grid is filled by typing, and the filter matches
+        /// title, repository or number — so an issue whose repository is empty needs a term that is not the owner.
+        /// </summary>
+        public static DialogHarness Open(string filter, params GitHubIssue[] issues)
         {
             // Settings on their defaults: the CLI is off and no repository is set, so the dialog's own load
             // short-circuits on "No repository set" before any call goes out — nothing is fetched, and the issue
@@ -318,7 +361,7 @@ public class GitHubIssuesDialogControlTests
 
             var harness = new DialogHarness(window, dialog, host, links);
             harness._PlantLoadedIssues(issues);
-            harness.Type("octocat");
+            harness.Type(filter);
             return harness;
         }
 

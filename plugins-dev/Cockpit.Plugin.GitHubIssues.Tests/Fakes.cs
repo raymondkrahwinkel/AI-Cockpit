@@ -48,6 +48,9 @@ internal sealed class FakeCockpitHost : ICockpitHost
     /// <summary>How many times the New-session dialog was asked for — what proves a second click cannot open a second one.</summary>
     public int NewSessionDialogsOpened { get; private set; }
 
+    /// <summary>What the last New-session request asked the dialog to open with — the fields the operator is shown.</summary>
+    public NewSessionPrefill? LastPrefill { get; private set; }
+
     /// <summary>The callbacks the last New-session request handed over, so a test can play the operator pressing Start or Cancel.</summary>
     public Action<string>? OnSessionStarted { get; private set; }
 
@@ -74,6 +77,7 @@ internal sealed class FakeCockpitHost : ICockpitHost
     public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null)
     {
         NewSessionDialogsOpened++;
+        LastPrefill = prefill;
         OnSessionStarted = onStarted;
         OnSessionCancelled = onCancelled;
         _openDialog = new TaskCompletionSource();
