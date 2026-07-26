@@ -347,6 +347,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a session that starts without you opening the new-session window now knows which project it works on, so
+  everything a project decides — the MCP servers it brings, what a plugin hands a session as it starts — reaches it
+  too. Until now only sessions you started by hand had a project, which left it silent exactly where it mattered
+  most: an agent running on its own. A delegated task takes the project of the session that delegated it; a run
+  inside a workspace (an Autopilot step, a workflow) and a session a plugin starts take the project that owns the
+  folder they run in, including when that folder is a worktree the cockpit cut for them. A folder no project claims
+  still belongs to none, and a folder two projects claim equally is left alone rather than guessed at.
+  Worth knowing: an autonomous run now inherits its project's environment as well, so a project linked to a
+  repository other than the one its folder clones will point that run's `gh` commands at the linked one.
+
 - fixed: starting a session from a GitHub issue names it after the repository the issue came from — `hello-world#42`
   rather than `#42`. Issue numbers only mean anything inside one repository, and the cross-repo view lists every repo
   you have, so two issues could put two identically named sessions in the sidebar with nothing on either to tell them

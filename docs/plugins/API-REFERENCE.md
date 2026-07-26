@@ -773,9 +773,18 @@ Rules worth knowing before you rely on it:
   logged and treated as `None` — one plugin's bad day does not stop a session starting.
 - **This is not how you tell a session something.** A sentence for the agent to read belongs in the project's own
   behaviour prompt or information rows; this puts a value in a process.
-- **A session started inside a workspace has no project.** Only the New-session routes set one, so an embedded run
-  (an Autopilot step, a workflow) answers `null` for `ProjectId` today and a project-dependent contribution does not
-  fire there.
+- **Every session has a project where one can be worked out, not only the ones a person starts.** The operator names
+  it in the New-session routes; a delegated task inherits it from the session that delegated it; and a session nobody
+  named a project for — an embedded run (an Autopilot step, a workflow), a session your plugin starts — is placed on
+  the project that owns the folder it runs in, the folder itself or anything inside it. A run pointed straight at a
+  worktree the cockpit made is placed on the project of the repository that worktree was cut from (AC-320). A folder
+  no project claims, or one two projects claim equally, still answers `null` — a session without a project is an
+  ordinary session, and guessing between two would be worse than saying nothing.
+- **A project-dependent contribution reaches autonomous runs too, so weigh what it carries.** An Autopilot step runs
+  with its tool calls pre-approved and its brief taken from an issue you did not write. What you contribute is in that
+  process: `GH_REPO` on a project linked to a repository other than the one its folder clones points that run's `gh`
+  commands at the linked repository. That is the point of the field — but the run's worktree bounds its files, not its
+  reach, so contribute what a project genuinely decides and nothing more.
 
 ### `IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }`
 
