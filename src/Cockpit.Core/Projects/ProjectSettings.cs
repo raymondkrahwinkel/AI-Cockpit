@@ -55,7 +55,38 @@ public sealed record ProjectSettings
             .Where(field => !field.IsBlank)
             .ToList();
 
-        return fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
+        var tidied = fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
+
+        return _TidyLinks(project.PluginFields) is { } links ? tidied with { PluginFields = links } : tidied;
+    }
+
+    /// <summary>
+    /// <paramref name="links"/> trimmed and without the entries that name nothing, or null when there was nothing to
+    /// change — null rather than the same content again for the reason <see cref="_WithTidyInfo"/> explains: a record
+    /// compares a dictionary by reference, so handing back a fresh one that says the same thing would rebuild the whole
+    /// project list on every load. A blank key or value is dropped: a plugin field the operator cleared is a link that
+    /// is gone, and writing it as an empty string would leave a key nothing can be linked under.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? _TidyLinks(IReadOnlyDictionary<string, string> links)
+    {
+        if (links.Count == 0)
+        {
+            return null;
+        }
+
+        var usable = new Dictionary<string, string>(links.Count, StringComparer.Ordinal);
+        foreach (var (key, value) in links)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+            {
+                usable[key.Trim()] = value.Trim();
+            }
+        }
+
+        var unchanged = usable.Count == links.Count
+            && usable.All(link => links.TryGetValue(link.Key, out var original) && original == link.Value);
+
+        return unchanged ? null : usable;
     }
 
     /// <summary>These settings with <paramref name="project"/> appended.</summary>

@@ -168,6 +168,43 @@
                             Command="{Binding AddInfoFieldCommand}"/>
                 </StackPanel>
 
+                <!-- What a plugin needs to look this project up elsewhere (AC-317). Next to the rows above because
+                     both say what a project is, and deliberately not the same thing: a row above is what the operator
+                     wants to remember, a field here is an identifier a plugin queries with. The whole section stays
+                     out when nothing contributes one. -->
+                <StackPanel Spacing="14" IsVisible="{Binding HasPluginFields}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="Where it is tracked"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding PluginFields}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectPluginFieldViewModel">
+                                <StackPanel Spacing="2" Margin="0,0,0,10">
+                                    <TextBlock Classes="FieldLabel" Text="{Binding Title}"/>
+                                    <TextBlock Classes="FieldHint" Text="{Binding Hint}"
+                                               IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    <!-- Typing filters, and what is typed counts: a repository you cannot read is not
+                                         in the list, and refusing it would be refusing the only way to link it. -->
+                                    <AutoCompleteBox ItemsSource="{Binding Options}"
+                                                     Text="{Binding Text}"
+                                                     ValueMemberBinding="{Binding Display}"
+                                                     FilterMode="Contains"
+                                                     MinimumPrefixLength="0"
+                                                     PlaceholderText="{Binding Placeholder}"
+                                                     HorizontalAlignment="Stretch"/>
+                                    <TextBlock Classes="FieldHint" Margin="0,4,0,0" Text="Loading…"
+                                               IsVisible="{Binding IsLoadingOptions}"/>
+                                    <TextBlock Classes="FieldHint" Margin="0,4,0,0"
+                                               Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                               Text="{Binding LoadError}"
+                                               IsVisible="{Binding LoadError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
                 <StackPanel Spacing="14">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="SectionHeading" Text="Where its things live"/>

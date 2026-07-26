@@ -38,6 +38,9 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
 
+    /// <summary>The repository the session's project is linked to (AC-317). Null until asked for, empty string once asked and there was none — so it is asked exactly once.</summary>
+    private string? _linkedRepository;
+
     // The window-level status line, along the bottom edge of the dialog: fetch/load/refresh state and the guard
     // messages ("no repository set") that fire before any issue is even selected. Always present; what an action
     // on a selected issue did is reported by _detailStatus, inside the panel that issue is shown in, so the two
@@ -387,6 +390,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 _all = await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None);
             }
 
+            // AC-317: what the session's own project says it lives in, resolved once so the first population can
+            // open on it. After that the filter keeps whatever the operator chose, link or no link.
+            _linkedRepository ??= await _host.GetProjectFieldValueAsync(GitHubRepositoryField.Key) ?? string.Empty;
+
             _PopulateRepoFilter();
             _ApplyFilter();
             _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
@@ -404,10 +411,13 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     }
 
     // Rebuilds the repository dropdown from the distinct repositories in the freshly loaded issues, keeping
-    // the previous selection if it is still present (otherwise falls back to "All").
+    // the previous selection if it is still present (otherwise falls back to "All"). On the first population there is
+    // no selection yet, and that is where the project's own link (AC-317) gets its one chance to be the answer — a
+    // repository the operator linked on purpose, not a preference this dialog then keeps re-imposing.
     private void _PopulateRepoFilter()
     {
-        var previousSelection = _repoFilter.SelectedItem as string;
+        var previousSelection = _repoFilter.SelectedItem as string
+            ?? (string.IsNullOrWhiteSpace(_linkedRepository) ? null : _linkedRepository);
         var repositories = _all
             .Select(issue => issue.Repository)
             .Where(repository => !string.IsNullOrEmpty(repository))

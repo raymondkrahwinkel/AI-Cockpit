@@ -93,6 +93,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
+| Project field | `host.AddProjectField(registration)` | Adds a field to the **project editor** (AC-317) — "which YouTrack project is this", "which repository" — so a project carries the identifier you resolve, picked from a list you supply. Read it back with `host.GetProjectFieldValueAsync(key)`. See [Project fields](#project-fields--link-a-project-to-your-side-of-the-world). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
 | Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
@@ -138,6 +139,9 @@ public interface ICockpitHost
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
+    void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
+    Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
+                                            CancellationToken cancellationToken = default); // and what it was set to
 }
 
 public interface ICockpitActions
@@ -457,6 +461,52 @@ the underlying URL/token can change — see the YouTrack plugin's `YouTrackMcpRe
 pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-namespace--mcp-server-registration).
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
+
+## Project fields — link a project to your side of the world
+
+A cockpit **project** says what a session works on. Your plugin knows that same thing under a different name: a
+YouTrack project short-name, an `owner/repo`. `host.AddProjectField(...)` puts a field in the project editor so the
+operator says which one, **picked from a list you supply** rather than typed into a box where a misspelling silently
+finds nothing.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddProjectField(new ProjectFieldRegistration(
+        "youtrack.project",                    // stable key — already-linked projects are stored under it
+        "YouTrack project",
+        async cancellationToken => [.. (await client.GetProjectsAsync(cancellationToken))
+            .Select(project => new ProjectFieldOption(project.ShortName, $"{project.Name} — {project.ShortName}"))])
+    {
+        Hint = "Which project in YouTrack this one is tracked in.",
+        Placeholder = "AC",
+    });
+}
+```
+
+Then read it where it changes what you do:
+
+```csharp
+// The issues dialog opens on the project this session is tracked in, instead of on everything.
+var linked = await host.GetProjectFieldValueAsync("youtrack.project");
+```
+
+What is worth knowing before you add one:
+
+- **You describe the field; the host draws it.** That is not a limitation to work around — a plugin drawing its own
+  row would have to remember the editor's label, hint and spacing, and every plugin would remember them differently.
+- **`Value` and `Display` are two different strings.** The operator picks "AI-Cockpit — AC"; you get `AC`. Never store
+  the display text and parse it back apart.
+- **The box keeps what the operator types**, even when your list never returned it. A repository nobody granted them
+  read access to is not in the list, and refusing it would refuse the only way to link it.
+- **Loading may be slow.** `LoadOptionsAsync` runs after the editor is open and usable, off the UI thread; each row
+  shows its own progress. Return `[]` when there is nothing to offer and **throw when the fetch failed** — "no
+  options" and "your token cannot read this" are different messages, and only one of them is the operator's to fix.
+- **Two plugins may share a key.** The GitHub Issues and Pull Requests plugins both mean the same thing by
+  `github.repository`, so either one alone still offers the field and a project linked with one installed stays
+  linked when the other arrives. The first registration wins; a second one for the same key is ignored, not an error.
+- **A link outlives your plugin.** A value under a key nothing currently claims is stored and rewritten untouched, so
+  uninstalling a plugin does not unlink every project that used it.
 
 ## Consent — gate a risky action
 

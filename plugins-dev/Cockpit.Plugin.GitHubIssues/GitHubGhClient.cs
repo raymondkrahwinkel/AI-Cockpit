@@ -17,6 +17,7 @@ internal sealed class GitHubGhClient
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Repositories)> RepositoryCache = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
     {
@@ -72,6 +73,50 @@ internal sealed class GitHubGhClient
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// The owner's repositories, as <c>owner/repo</c> — the source the project editor's repository field offers
+    /// (AC-317). Deliberately <c>gh repo list</c> and not the repositories seen in the loaded issues: a repository with
+    /// no open issue is still a repository this project can live in, and the issue-derived list has never been able to
+    /// say so. Archived ones are left out for the same reason they are left out of the issue list. Cached as long as
+    /// the archived list — a repository created a minute ago does not have to be in a dropdown a minute later.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ListRepositoriesAsync(string owner, CancellationToken cancellationToken)
+    {
+        var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
+
+        lock (CacheGate)
+        {
+            if (RepositoryCache.TryGetValue(normalizedOwner, out var cached) && DateTimeOffset.UtcNow - cached.At < ArchivedTtl)
+            {
+                return cached.Repositories;
+            }
+        }
+
+        var args = new List<string> { "repo", "list" };
+        if (!string.Equals(normalizedOwner, "@me", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add(normalizedOwner);
+        }
+
+        args.AddRange(["--no-archived", "--limit", "1000", "--json", "nameWithOwner"]);
+
+        // Not caught: a failure here is the operator's to see. The archived list fails open because hiding issues is
+        // worse than showing an archived one; an empty repository list is indistinguishable from "you have none".
+        using var document = JsonDocument.Parse(await _RunGhAsync(args.ToArray(), cancellationToken));
+        var repositories = document.RootElement.EnumerateArray()
+            .Select(element => element.TryGetProperty("nameWithOwner", out var name) ? name.GetString() : null)
+            .OfType<string>()
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        lock (CacheGate)
+        {
+            RepositoryCache[normalizedOwner] = (DateTimeOffset.UtcNow, repositories);
+        }
+
+        return repositories;
     }
 
     // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument). Cached

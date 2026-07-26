@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace Cockpit.Core.Projects;
 
 /// <summary>
@@ -90,6 +92,22 @@ public sealed record Project(string Id, string Name)
 
     /// <summary>Whether this project keeps any information of its own, so a surface leaves the block out rather than holding an empty space open.</summary>
     public bool HasAdditionalInfo => AdditionalInfo.Count > 0;
+
+    /// <summary>
+    /// What this project is called elsewhere (AC-317), under the key the plugin that asked registered: the YouTrack
+    /// project it is tracked in, the repository it lives in. Where <see cref="AdditionalInfo"/> is what the operator
+    /// wants to remember, this is what a plugin resolves — a value it queries with, not a note anyone reads.
+    /// <para>
+    /// Held by the host rather than by each plugin because three plugins ask the same question about one project, and
+    /// because a link must survive its plugin being uninstalled: a value under a key nothing claims is carried through
+    /// untouched, so reinstalling the plugin finds the project still linked.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> PluginFields { get; init; } = ReadOnlyDictionary<string, string>.Empty;
+
+    /// <summary>What this project is called under <paramref name="key"/>, or null when nothing linked it there. Keys match exactly, the way plugin ids and intent actions do.</summary>
+    public string? LinkedAs(string key) =>
+        PluginFields.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
 
     /// <summary>A new project with a generated id, mirroring <c>Workspace.Create</c>.</summary>
     public static Project Create(string name) => new(Guid.NewGuid().ToString("n"), name);
