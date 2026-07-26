@@ -40,6 +40,10 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? LastOpenedAt { get; set; }
 
+    /// <summary>Absent for a project that keeps no information of its own, which is most of them.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProjectInfoFieldEntry>? AdditionalInfo { get; set; }
+
     public static ProjectEntry FromDomain(Project project) => new()
     {
         Id = project.Id,
@@ -54,6 +58,9 @@ internal sealed class ProjectEntry
         MemoryRef = project.MemoryRef,
         LogoPath = project.LogoPath,
         LastOpenedAt = project.LastOpenedAt,
+        AdditionalInfo = project.AdditionalInfo.Count == 0
+            ? null
+            : [.. project.AdditionalInfo.Select(ProjectInfoFieldEntry.FromDomain)],
     };
 
     public Project ToDomain() => new(Id, Name)
@@ -68,5 +75,6 @@ internal sealed class ProjectEntry
         MemoryRef = MemoryRef,
         LogoPath = LogoPath,
         LastOpenedAt = LastOpenedAt,
+        AdditionalInfo = AdditionalInfo is null ? [] : [.. AdditionalInfo.Select(entry => entry.ToDomain())],
     };
 }

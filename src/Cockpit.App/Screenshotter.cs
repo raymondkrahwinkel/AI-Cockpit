@@ -35,6 +35,10 @@ internal static class Screenshotter
             "verify-runners" => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
             "verify-runners-edit" => _VerifyRunnersEditing(),
             "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
+            // The project editor and the projects window, both of which show a project's own information rows
+            // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
+            "project-editor" => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
+            "projects" => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
             "plugin-store" => _PluginStore(),
             "manage-stores" => _ManageStores(),
             "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },

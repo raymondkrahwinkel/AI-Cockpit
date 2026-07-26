@@ -83,6 +83,9 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                                    IsVisible="{Binding MemoryRef, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <controls:ProjectInfoList Margin="0,6,0,0"
+                                                                  Fields="{Binding AdditionalInfo}"
+                                                                  IsVisible="{Binding HasAdditionalInfo}"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>

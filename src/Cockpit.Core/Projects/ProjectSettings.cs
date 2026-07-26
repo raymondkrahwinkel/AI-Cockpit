@@ -18,10 +18,10 @@ public sealed record ProjectSettings
         string.IsNullOrEmpty(projectId) ? null : Projects.FirstOrDefault(project => project.Id == projectId);
 
     /// <summary>
-    /// These settings made safe to bind to: nothing without an id or a name, and no id twice. Applied on load and
-    /// before save, so a hand-edited or half-written <c>cockpit.json</c> costs the operator an entry rather than
-    /// the whole list. An entry missing either field cannot be shown or referenced, so keeping it only means a
-    /// blank row nothing can start.
+    /// These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
+    /// row. Applied on load and before save, so a hand-edited or half-written <c>cockpit.json</c> costs the operator
+    /// an entry rather than the whole list. An entry missing either field cannot be shown or referenced, so keeping
+    /// it only means a blank row nothing can start.
     /// </summary>
     public ProjectSettings Normalized()
     {
@@ -29,9 +29,33 @@ public sealed record ProjectSettings
         var usable = Projects
             .Where(project => !string.IsNullOrWhiteSpace(project.Id) && !string.IsNullOrWhiteSpace(project.Name))
             .Where(project => seen.Add(project.Id))
+            .Select(_WithTidyInfo)
             .ToList();
 
-        return usable.Count == Projects.Count ? this : this with { Projects = usable };
+        return usable.SequenceEqual(Projects) ? this : this with { Projects = usable };
+    }
+
+    /// <summary>
+    /// <paramref name="project"/> with its information rows trimmed onto one line and the empty ones gone — a row the
+    /// operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
+    /// <para>
+    /// Returning the <em>same instance</em> when there is nothing to tidy is what makes the caller's
+    /// <c>SequenceEqual</c> safe, and that is worth stating: a record's generated equality compares
+    /// <see cref="Project.AdditionalInfo"/> with the default comparer, which for a list is reference equality, not
+    /// content. Because this method only ever hands back either the original reference or a new project whose rows
+    /// genuinely differ (the inner <c>SequenceEqual</c> compares <see cref="ProjectInfoField"/> by value), there is no
+    /// third case where two references differ while the content matches. Simplify this to an unconditional
+    /// <c>project with</c> and the caller starts rebuilding the whole list on every load.
+    /// </para>
+    /// </summary>
+    private static Project _WithTidyInfo(Project project)
+    {
+        var fields = project.AdditionalInfo
+            .Select(field => field.Tidied())
+            .Where(field => !field.IsBlank)
+            .ToList();
+
+        return fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
     }
 
     /// <summary>These settings with <paramref name="project"/> appended.</summary>

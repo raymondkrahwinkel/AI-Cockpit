@@ -969,6 +969,12 @@
                                                    VerticalAlignment="Top"
                                                    IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <!-- Whatever else the operator keeps with this project (AC-295) — a
+                                             repository, a website, a contact. Here rather than only in the editor:
+                                             its whole point is being read and followed while working, and a link you
+                                             have to open a settings dialog to reach is a link you copy out by hand. -->
+                                        <controls:ProjectInfoList Fields="{Binding AdditionalInfo}"
+                                                                  IsVisible="{Binding HasAdditionalInfo}"/>
                                         <TextBlock Text="{Binding LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
                                                    FontSize="11"
                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>

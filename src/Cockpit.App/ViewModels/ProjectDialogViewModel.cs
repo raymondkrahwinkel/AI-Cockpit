@@ -38,6 +38,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Profiles.Add("personal");
         SelectedProfileLabel = "personal";
         Name = "Cockpit";
+        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Repository", "https://github.com/example/ai-cockpit"));
+        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Customer", "Acme BV — ask for their project lead"));
     }
 
     private ProjectDialogViewModel(Project? project)
@@ -59,6 +61,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
         MemoryRef = project.MemoryRef ?? string.Empty;
         _additionalServers = project.McpOverlay.AdditionalServers;
+
+        foreach (var field in project.AdditionalInfo)
+        {
+            AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value));
+        }
     }
 
     /// <summary>
@@ -158,6 +165,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Every offered MCP server with whether this project's sessions get it. Unticking one is what fills the overlay's disabled list.</summary>
     public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
 
+    /// <summary>
+    /// The project's extra information, in the order the operator put it in (AC-295). Rows they add and leave empty
+    /// cost them nothing: <see cref="ToProject"/> drops them.
+    /// </summary>
+    public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
+
     public bool HasMcpServers => McpServers.Count > 0;
 
     /// <summary>A project needs a name — it is what every other surface shows it by.</summary>
@@ -193,6 +206,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 ],
                 AdditionalServers = _additionalServers,
             },
+            // Tidied here rather than only in the store, so what the caller gets back is what will be saved — an
+            // empty row the operator added and left alone is not information, and a pasted value brings newlines
+            // the single-line row cannot show.
+            AdditionalInfo =
+            [
+                .. AdditionalInfo.Select(field => field.ToDomain().Tidied()).Where(field => !field.IsBlank),
+            ],
         };
 
     [RelayCommand]
@@ -207,6 +227,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.</summary>
     [RelayCommand]
     private void ClearLogo() => LogoSource = string.Empty;
+
+    [RelayCommand]
+    private void AddInfoField() => AdditionalInfo.Add(new ProjectInfoFieldViewModel());
+
+    [RelayCommand]
+    private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
 
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();

@@ -34,6 +34,43 @@ public class ProjectSettingsTests
     }
 
     [Fact]
+    public void Normalized_DropsBlankInformationRowsAndTidiesTheRest()
+    {
+        var settings = new ProjectSettings
+        {
+            Projects =
+            [
+                Project.Create("Cockpit") with
+                {
+                    AdditionalInfo =
+                    [
+                        new ProjectInfoField("  Repository ", " https://github.com/example/repo "),
+                        new ProjectInfoField("  ", "   "),
+                    ],
+                },
+            ],
+        };
+
+        var info = settings.Normalized().Projects.Should().ContainSingle().Subject.AdditionalInfo;
+
+        info.Should().ContainSingle("an empty row carries nothing and would draw a blank line on the card");
+        info[0].Label.Should().Be("Repository");
+        info[0].Value.Should().Be("https://github.com/example/repo");
+    }
+
+    [Fact]
+    public void Normalized_ProjectWithNothingToTidy_IsTheSameInstance()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo = [new ProjectInfoField("Repository", "https://github.com/example/repo")],
+        };
+        var settings = ProjectSettings.Empty.WithProject(project);
+
+        settings.Normalized().Should().BeSameAs(settings, "the common case must not allocate a new list every load");
+    }
+
+    [Fact]
     public void Find_UnknownOrMissingId_ReturnsNull()
     {
         var settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit"));

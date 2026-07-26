@@ -97,6 +97,31 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
     }
 
+    /// <summary>
+    /// A manager holding one sample project, for a headless render of a surface that shows projects — the
+    /// parameterless constructor is deliberately empty, and an empty list renders the "no projects yet" state
+    /// instead of the rows under test. Mirrors <c>TtyViewModel.DesignTerminal</c>.
+    /// </summary>
+    internal static ProjectsViewModel DesignSample()
+    {
+        var viewModel = new ProjectsViewModel();
+        viewModel._settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
+        {
+            Description = "The cockpit itself — the desktop app these sessions run in.",
+            SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
+            DefaultProfileLabel = "personal",
+            LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
+                new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
+            ],
+        });
+        viewModel._Republish();
+
+        return viewModel;
+    }
+
     /// <summary>Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than overwritten.</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
