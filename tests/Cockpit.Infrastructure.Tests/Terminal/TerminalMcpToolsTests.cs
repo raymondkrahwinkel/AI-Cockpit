@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Terminal;
@@ -68,7 +69,7 @@ public class TerminalMcpToolsTests
         // declares. Otherwise an agent could read another session's coupled pane by naming its id (confused deputy).
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
         registry.PaneOpened("term-1", "zsh-5", plainShell: true);
-        registry.Couple("victim-pane", "term-1");             // the pane is coupled to the victim session
+        registry.Couple("victim-pane", "term-1", TerminalCouplingMode.Drive);             // the pane is coupled to the victim session
         registry.CaptureOutput("term-1", "secret output\n");  // captured for the victim
 
         McpRequestContext.Set("attacker-pane");               // this request is verified as a different session
@@ -118,7 +119,7 @@ public class TerminalMcpToolsTests
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
         registry.PaneOpened("term-1", "zsh-5", plainShell: true);
-        registry.Couple("other-agent", "term-1");
+        registry.Couple("other-agent", "term-1", TerminalCouplingMode.Drive);
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
@@ -175,7 +176,7 @@ public class TerminalMcpToolsTests
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
         registry.PaneOpened("term-1", "zsh-5", plainShell: true);
-        registry.Couple(Session, "term-1");
+        registry.Couple(Session, "term-1", TerminalCouplingMode.Drive);
         registry.PaneOpened("term-2", "bash-2", plainShell: true);
 
         var json = JsonNode.Parse(tools.ListTerminals(Session));
@@ -185,6 +186,228 @@ public class TerminalMcpToolsTests
         names.Should().BeEquivalentTo("zsh-5", "bash-2");
         var coupled = json["terminals"]!.AsArray().First(t => t!["name"]!.GetValue<string>() == "zsh-5");
         coupled!["coupled"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ReadTerminal_AsksOnlyToWatch_AndDoesNotGrantTyping()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        await tools.ReadTerminal(Session, "zsh-5");
+
+        asked.Should().ContainSingle();
+        asked[0].Scope.Should().Be("terminal.watch");
+        asked[0].Action.Should().Contain("cannot type");
+        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Watch);
+        registry.SendInput(Session, "term-1", "ls\r"u8.ToArray()).Should().BeFalse("approving a read must not hand over the keyboard");
+        written.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SendTerminal_AfterOnlyWatching_AsksASecondTimeToWiden_ThenTypes()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+        await tools.ReadTerminal(Session, "zsh-5");           // watch only
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "ls", submit: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        asked.Should().HaveCount(2);
+        asked[1].Scope.Should().Be("terminal.drive");
+        asked[1].Title.Should().Contain("now wants to type", "the operator is told this is a widening, not a fresh ask");
+        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("ls\r");
+    }
+
+    [Fact]
+    public async Task SendTerminal_WhenWideningIsDenied_LeavesTheReadAccessItAlreadyHad()
+    {
+        var registry = new TerminalAccessRegistry();
+        var broker = Substitute.For<IConsentBroker>();
+        var outcomes = new Queue<ConsentOutcome>([ConsentOutcome.Approved, ConsentOutcome.Denied]);
+        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ConsentDecision(outcomes.Dequeue()));
+        var tools = new TerminalMcpTools(registry, broker);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        await tools.ReadTerminal(Session, "zsh-5");           // watch approved
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "ls", submit: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("still be able to read");
+        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Watch, "a refused widening does not revoke what was granted");
+    }
+
+    [Fact]
+    public async Task SendTerminal_OnAFreshPane_AsksForTypingOnce_NotTwice()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", _ => { });
+
+        await tools.SendTerminal(Session, "zsh-5", "ls", submit: true);
+
+        asked.Should().ContainSingle("an agent that means to type is asked that question, not the read one first");
+        asked[0].Scope.Should().Be("terminal.drive");
+        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Drive);
+    }
+
+    private const string Osc = "\x1b]133;";
+    private const string Bell = "\a";
+
+    [Fact]
+    public async Task RunInTerminal_WithoutShellIntegration_RefusesWithoutTypingAnything()
+    {
+        // The whole point: no marks means no honest way to say "finished", so it must not run the command and then
+        // hand back whatever happened to be on screen.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        // Named specifically: the at-prompt guard below refuses this same input for its own reason, and asserting on
+        // the shared "Nothing was run" would pass even with this guard gone.
+        json["error"]!.GetValue<string>().Should().Contain("does not publish shell-integration marks");
+        written.Should().BeEmpty("refusing after typing would be the worst of both");
+    }
+
+    [Fact]
+    public async Task RunInTerminal_WhenTheShellIsNotAtAPrompt_RefusesWithoutTypingAnything()
+    {
+        // A command is running or a full-screen program has the pane — typing a command line into vim edits a file.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+        await tools.SendTerminal(Session, "zsh-5", "");            // couple with typing approved
+        written.Clear();
+        registry.CaptureOutput("term-1", $"{Osc}C{Bell}");          // a command started; not at a prompt
+
+        var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("not sitting at a prompt");
+        written.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RunInTerminal_AtAPrompt_RunsAndReturnsTheCommandsOwnOutputAndExitCode()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", _ => { });
+        await tools.SendTerminal(Session, "zsh-5", "");
+        registry.CaptureOutput("term-1", $"{Osc}B{Bell}older output that is not mine\r\n");
+
+        var run = tools.RunInTerminal(Session, "zsh-5", "ls");
+        registry.CaptureOutput("term-1", $"{Osc}C{Bell}file-a  file-b\r\n{Osc}D;0{Bell}");
+        var json = JsonNode.Parse(await run);
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        json["exitCode"]!.GetValue<int>().Should().Be(0);
+        var output = json["output"]!.GetValue<string>();
+        output.Should().Contain("file-a  file-b");
+        output.Should().NotContain("older output", "the read starts where this command did, not at the coupling");
+    }
+
+    [Fact]
+    public async Task RunInTerminal_ThatDoesNotFinishInTime_SaysSo_WithoutClaimingItWasCancelled()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+        await tools.SendTerminal(Session, "zsh-5", "");
+        written.Clear();
+        registry.CaptureOutput("term-1", $"{Osc}B{Bell}");
+
+        var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "sleep 900", timeoutSeconds: 1));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("still running");
+        json["error"]!.GetValue<string>().Should().Contain("not cancelled");
+        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("sleep 900\r");
+    }
+
+    [Fact]
+    public async Task RunInTerminal_DoesNotAcceptAFinishFromACommandItNeverStarted()
+    {
+        // The pane is shared: the operator can hit Enter in the moment between the at-prompt check and the send. A
+        // bare finish counter would read their command's exit code as this command's result.
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", _ => { });
+        await tools.SendTerminal(Session, "zsh-5", "");
+        registry.CaptureOutput("term-1", $"{Osc}B{Bell}");
+
+        var run = tools.RunInTerminal(Session, "zsh-5", "mine", timeoutSeconds: 2);
+        registry.CaptureOutput("term-1", $"{Osc}D;3{Bell}");   // a finish with no start of ours behind it
+        var json = JsonNode.Parse(await run);
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse("a finish alone does not mean the command we sent is done");
+        json["error"]!.GetValue<string>().Should().Contain("still running");
+    }
+
+    [Fact]
+    public async Task ReadTerminal_SaysSoWhenTheBufferCapDroppedPartOfWhatItIsReturning()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        await tools.ReadTerminal(Session, "zsh-5");
+        registry.CaptureOutput("term-1", new string('x', 300 * 1024));
+
+        var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
+
+        json!["truncated"]!.GetValue<bool>().Should().BeTrue("an agent must not read a build as clean when the errors scrolled out of reach");
+    }
+
+    [Fact]
+    public async Task WhenAnotherAgentTakesThePaneWhileTheOperatorDecides_TheRefusalIsAnErrorNotAnException()
+    {
+        // Consent takes as long as the operator takes, and the world moves meanwhile. This used to throw straight
+        // out of the tool call instead of coming back in the shape every other refusal here uses.
+        var registry = new TerminalAccessRegistry();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        var broker = Substitute.For<IConsentBroker>();
+        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                registry.Couple("someone-else", "term-1", TerminalCouplingMode.Drive); // slipped in while we asked
+                return new ConsentDecision(ConsentOutcome.Approved);
+            });
+        var tools = new TerminalMcpTools(registry, broker);
+
+        var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("no longer available");
+    }
+
+    [Fact]
+    public async Task RunInTerminal_NeedsTypingApproval_NotJustReading()
+    {
+        var registry = new TerminalAccessRegistry();
+        var broker = Substitute.For<IConsentBroker>();
+        broker.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new ConsentDecision(ConsentOutcome.Denied));
+        var tools = new TerminalMcpTools(registry, broker);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        written.Should().BeEmpty();
+        registry.CouplingOf(Session, "term-1").Should().BeNull();
     }
 
     [Fact]

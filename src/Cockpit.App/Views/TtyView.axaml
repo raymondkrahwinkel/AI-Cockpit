@@ -109,8 +109,9 @@
         </Border>
 
         <!-- AC-34: the "agent connected" bar — always visible while an agent is coupled to this pane through the
-             terminal-access MCP, the counterpart to both the operator and the agent being able to type. Its
-             Disconnect is the reactive kill-switch: it interrupts a running command and breaks the coupling at once. -->
+             terminal-access MCP, the counterpart to both the operator and the agent being able to type. It says which
+             of the two was approved ("reading" vs "connected"), because those are separate consents. Its Disconnect is
+             the reactive kill-switch: it breaks the coupling at once, interrupting a driving agent's command first. -->
         <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
                 IsVisible="{Binding AgentConnected}"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -119,7 +120,7 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Disconnect" Classes="Compact" Click="OnAgentDisconnect"
                         VerticalAlignment="Center"
-                        ToolTip.Tip="Stop the agent driving this terminal: interrupt whatever it is running (Ctrl-C) and break the connection immediately."/>
+                        ToolTip.Tip="{Binding AgentDisconnectTip}"/>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <materialIcons:MaterialIcon Kind="RobotOutline" Width="15" Height="15"
                                                 Foreground="{StaticResource CockpitAccentBrush}"/>
