@@ -195,7 +195,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // app's, not ours to drop.
         if (keyring is not null && !string.IsNullOrEmpty(paneId))
         {
-            _minted = (paneId, mcpKey);
+            _minted = new MintedToken(paneId, mcpKey);
         }
 
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -405,18 +405,23 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // The session is over, so its MCP identity goes with it rather than staying a valid bearer until the app
         // restarts. Scoped to the token this adapter minted: a restarting pane mints its replacement before the old
         // driver is disposed, and dropping by pane alone would revoke the live session's token instead of this one.
-        if (_minted is { } minted)
+        // Taken and cleared in one step: a close can land while StartAsync is still writing the field on another
+        // continuation (the runtime is registered before its start is awaited), and Interlocked gives both the barrier
+        // that makes the write visible and the guarantee that a second dispose cannot revoke a second time.
+        if (Interlocked.Exchange(ref _minted, null) is { } minted)
         {
             keyring?.Revoke(minted.PaneId, minted.Token);
-            _minted = null;
         }
 
         return inner.DisposeAsync();
     }
 
     // The per-session MCP token this adapter handed its session, so DisposeAsync can revoke exactly that one. Null
-    // when the session runs on the shared app key (no pane id, or no keyring in a test graph).
-    private (string PaneId, string Token)? _minted;
+    // when the session runs on the shared app key (no pane id, or no keyring in a test graph). A reference rather than
+    // a nullable tuple so Interlocked can carry it.
+    private MintedToken? _minted;
+
+    private sealed record MintedToken(string PaneId, string Token);
 
     private async IAsyncEnumerable<SessionEvent> _AdaptEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

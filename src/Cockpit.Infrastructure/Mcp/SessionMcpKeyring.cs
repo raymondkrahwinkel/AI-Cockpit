@@ -49,10 +49,15 @@ internal sealed class SessionMcpKeyring : ISingletonService
 
     /// <summary>
     /// Drops a session's token when it ends, so a dead pane's identity cannot be presented again. Takes the token the
-    /// caller minted, not just the pane: a session that restarts mints a new token for the same pane before the old
-    /// driver is disposed, and revoking by pane alone would drop the live one and leave the running session presenting
-    /// a bearer this keyring no longer knows.
+    /// caller minted, not just the pane, because a revoke arriving late cannot tell by pane alone whether the token it
+    /// means is still the live one — and dropping by pane would then take a running session's bearer with it.
     /// </summary>
+    /// <remarks>
+    /// No current path mints twice for one pane with both drivers alive (a pane id is fixed per session view model and
+    /// a second start is refused while one is running), so this is a guard against a shape the code could grow rather
+    /// than a fix for one it has. It is worth the parameter anyway: the failure it prevents — a live session holding a
+    /// bearer the keyring has forgotten — is silent, and the cost of preventing it is one comparison.
+    /// </remarks>
     public void Revoke(string paneId, string token)
     {
         if (_paneToToken.TryGetValue(paneId, out var current) && string.Equals(current, token, StringComparison.Ordinal))

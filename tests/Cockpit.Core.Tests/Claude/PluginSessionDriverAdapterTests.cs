@@ -204,6 +204,29 @@ public class PluginSessionDriverAdapterTests
     }
 
     /// <summary>
+    /// The restart race at the level it would actually happen: two adapters on one pane sharing a keyring, the second
+    /// already started when the first is disposed. The keyring's own test pins the same rule, but only by calling
+    /// Revoke directly — this is the shape the rule exists for.
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_AfterThePaneHasStartedAgain_LeavesTheLiveSessionsTokenAlone()
+    {
+        var keyring = new SessionMcpKeyring();
+        var closing = new FakePluginSessionDriver();
+        var first = new PluginSessionDriverAdapter(closing, closing.Capabilities, _authKey, keyring: keyring);
+        await first.StartAsync(launchOptions: PaneOptions);
+        var second = new FakePluginSessionDriver();
+        var restarted = new PluginSessionDriverAdapter(second, second.Capabilities, _authKey, keyring: keyring);
+        await restarted.StartAsync(launchOptions: PaneOptions);
+        Assert.NotNull(second.LastEnvironment);
+        var live = second.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey];
+
+        await first.DisposeAsync();
+
+        keyring.PaneFor(live).Should().Be("pane-1", "the session that is still running must keep its bearer");
+    }
+
+    /// <summary>
     /// A session on the shared app key has no token of its own, and the app key is not this adapter's to drop — it is
     /// the whole app's baseline capability, and revoking it would take every other session's access with it.
     /// </summary>
