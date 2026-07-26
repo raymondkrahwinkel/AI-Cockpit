@@ -77,6 +77,20 @@ public sealed record Project(string Id, string Name)
     /// </summary>
     public DateTimeOffset? LastOpenedAt { get; init; }
 
+    /// <summary>
+    /// Whatever else belongs with this project, under labels the operator chose (AC-295): the repository it lives in,
+    /// the customer's website, a contact. Deliberately not a field per kind of information — the cockpit cannot know
+    /// which kinds a project needs, and each new one would otherwise cost a model change.
+    /// <para>
+    /// Empty for most projects. Shown where a project is read rather than where it is started, and a value that is an
+    /// <c>http(s)</c> URL is shown as a link (see <see cref="ProjectInfoField.IsWebLink"/>).
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ProjectInfoField> AdditionalInfo { get; init; } = [];
+
+    /// <summary>Whether this project keeps any information of its own, so a surface leaves the block out rather than holding an empty space open.</summary>
+    public bool HasAdditionalInfo => AdditionalInfo.Count > 0;
+
     /// <summary>A new project with a generated id, mirroring <c>Workspace.Create</c>.</summary>
     public static Project Create(string name) => new(Guid.NewGuid().ToString("n"), name);
 }

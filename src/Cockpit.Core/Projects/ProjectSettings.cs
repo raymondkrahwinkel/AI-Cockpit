@@ -18,10 +18,10 @@ public sealed record ProjectSettings
         string.IsNullOrEmpty(projectId) ? null : Projects.FirstOrDefault(project => project.Id == projectId);
 
     /// <summary>
-    /// These settings made safe to bind to: nothing without an id or a name, and no id twice. Applied on load and
-    /// before save, so a hand-edited or half-written <c>cockpit.json</c> costs the operator an entry rather than
-    /// the whole list. An entry missing either field cannot be shown or referenced, so keeping it only means a
-    /// blank row nothing can start.
+    /// These settings made safe to bind to: nothing without an id or a name, no id twice, and no blank information
+    /// row. Applied on load and before save, so a hand-edited or half-written <c>cockpit.json</c> costs the operator
+    /// an entry rather than the whole list. An entry missing either field cannot be shown or referenced, so keeping
+    /// it only means a blank row nothing can start.
     /// </summary>
     public ProjectSettings Normalized()
     {
@@ -29,9 +29,25 @@ public sealed record ProjectSettings
         var usable = Projects
             .Where(project => !string.IsNullOrWhiteSpace(project.Id) && !string.IsNullOrWhiteSpace(project.Name))
             .Where(project => seen.Add(project.Id))
+            .Select(_WithTidyInfo)
             .ToList();
 
-        return usable.Count == Projects.Count ? this : this with { Projects = usable };
+        return usable.SequenceEqual(Projects) ? this : this with { Projects = usable };
+    }
+
+    /// <summary>
+    /// <paramref name="project"/> with its information rows trimmed onto one line and the empty ones gone — a row the
+    /// operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
+    /// Returns the same instance when there was nothing to tidy, so the common case allocates nothing.
+    /// </summary>
+    private static Project _WithTidyInfo(Project project)
+    {
+        var fields = project.AdditionalInfo
+            .Select(field => field.Tidied())
+            .Where(field => !field.IsBlank)
+            .ToList();
+
+        return fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
     }
 
     /// <summary>These settings with <paramref name="project"/> appended.</summary>

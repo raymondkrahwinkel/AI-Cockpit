@@ -218,6 +218,63 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
+    public async Task CreateAsync_ExistingProject_OpensItsInformationRowsInOrder()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Repository", "https://github.com/example/repo"),
+                new ProjectInfoField("Customer", "Acme BV"),
+            ],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
+
+        viewModel.AdditionalInfo.Select(field => field.Label).Should().Equal("Repository", "Customer");
+        viewModel.AdditionalInfo[0].Value.Should().Be("https://github.com/example/repo");
+    }
+
+    [Fact]
+    public async Task AddAndRemoveInfoField_AppendAnEmptyRowAndTakeItBack()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+
+        viewModel.AddInfoFieldCommand.Execute(null);
+        viewModel.AdditionalInfo.Should().ContainSingle().Which.Label.Should().BeEmpty();
+
+        viewModel.RemoveInfoFieldCommand.Execute(viewModel.AdditionalInfo[0]);
+        viewModel.AdditionalInfo.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ToProject_DropsAnUntouchedRowAndTidiesTheRest()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.AdditionalInfo.Add(new ProjectInfoFieldViewModel("  Repository ", "https://github.com/example/repo\r\n"));
+        viewModel.AdditionalInfo.Add(new ProjectInfoFieldViewModel());
+
+        var saved = viewModel.ToProject();
+
+        saved.AdditionalInfo.Should().ContainSingle("a row the operator added and left alone is not information");
+        saved.AdditionalInfo[0].Should().Be(new ProjectInfoField("Repository", "https://github.com/example/repo"));
+    }
+
+    [Fact]
+    public async Task ToProject_KeepsARowThatHasOnlyAValue()
+    {
+        // Pasting a link and saving is the fastest thing the editor can do; demanding a label first would be exactly
+        // the ceremony this list exists to avoid.
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.AdditionalInfo.Add(new ProjectInfoFieldViewModel(value: "https://example.test"));
+
+        viewModel.CanSave.Should().BeTrue();
+        viewModel.ToProject().AdditionalInfo.Should().ContainSingle().Which.Value.Should().Be("https://example.test");
+    }
+
+    [Fact]
     public async Task CancelCommand_ClosesWithoutAProject()
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());

@@ -51,6 +51,13 @@ public class ProjectStoreTests : IDisposable
                 DisabledServerNames = ["youtrack"],
                 AdditionalServers = [new McpServerConfig { Name = "project-tools", Command = "uvx" }],
             },
+            // In the order they were typed: it is the order the card reads them back in, and a section that came
+            // back alphabetised or reversed would quietly rearrange what the operator laid out.
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
+                new ProjectInfoField("Customer", "Acme BV, contact Marcel"),
+            ],
         };
 
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
@@ -68,6 +75,39 @@ public class ProjectStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         loaded.Projects.Should().ContainSingle().Which.McpOverlay.IsEmpty.Should().BeTrue();
+    }
+
+    /// <summary>Most projects keep no information of their own; their entry should not gain an empty array for it.</summary>
+    [Fact]
+    public async Task SaveAsync_ProjectWithoutInformation_WritesNoSectionForIt()
+    {
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
+
+        var written = await File.ReadAllTextAsync(_configFilePath);
+        written.Should().NotContain("AdditionalInfo");
+    }
+
+    /// <summary>
+    /// A hand-edited information row can be half-written, and the deserializer will hand a null straight through to a
+    /// property the domain declares non-nullable. Loading has to survive that with the project intact.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_InformationRowWithNulls_LoadsTheProjectAndDropsTheRow()
+    {
+        await File.WriteAllTextAsync(
+            _configFilePath,
+            """
+            {"Projects":[{"Id":"kept","Name":"Cockpit","AdditionalInfo":[
+              {"Label":null,"Value":null},
+              {},
+              {"Label":"Repository","Value":"https://github.com/example/repo"}]}]}
+            """);
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+
+        var project = loaded.Projects.Should().ContainSingle().Subject;
+        project.Id.Should().Be("kept");
+        project.AdditionalInfo.Should().ContainSingle().Which.Label.Should().Be("Repository");
     }
 
     /// <summary>A section written by hand, or by a newer build, should cost the operator the bad entry rather than the whole list.</summary>
