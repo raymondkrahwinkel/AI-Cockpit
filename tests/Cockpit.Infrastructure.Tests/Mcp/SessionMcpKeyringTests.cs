@@ -58,7 +58,9 @@ public class SessionMcpKeyringTests
 
         keyring.Revoke("pane-a", old);
 
+        // Only the live token is asserted here: the superseded one stopped resolving at the second mint, not at this
+        // revoke, and TokenFor_MintingAgainForAPane_ReplacesTheOldToken… is what pins that. Asserting it again would
+        // read as coverage this test does not provide.
         keyring.PaneFor(live).Should().Be("pane-a", "the restarted session is still using this one");
-        keyring.PaneFor(old).Should().BeNull();
     }
 }
