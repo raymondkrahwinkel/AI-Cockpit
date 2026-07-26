@@ -99,6 +99,16 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private bool _agentConnected;
 
+    /// <summary>AC-34: whether the coupled agent was approved to type, not only to read. Only drives <see cref="AgentDisconnectTip"/> — a Disconnect on a watching agent must not promise to interrupt something it never started.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AgentDisconnectTip))]
+    private bool _agentCanType;
+
+    /// <summary>What the bar's Disconnect promises, which differs by what the operator approved: a watching agent has nothing running to interrupt, and a Ctrl-C there would land on the operator's own command.</summary>
+    public string AgentDisconnectTip => AgentCanType
+        ? "Stop the agent driving this terminal: interrupt whatever it is running (Ctrl-C) and break the connection immediately."
+        : "Stop the agent reading this terminal: it loses access immediately. Nothing running is interrupted — this agent was never allowed to type.";
+
     /// <summary>The label on the agent-connected bar ("Agent connected — &lt;session&gt;"), or null when no agent is coupled.</summary>
     [ObservableProperty]
     private string? _agentConnectedLabel;

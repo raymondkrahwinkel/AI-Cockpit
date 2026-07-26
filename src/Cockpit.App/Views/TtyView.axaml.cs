@@ -84,6 +84,12 @@ public partial class TtyView : UserControl
     private readonly ITerminalAccessRegistry? _terminals =
         Design.IsDesignMode ? null : Program.Services.GetService<ITerminalAccessRegistry>();
 
+    // AC-34: the operator types on the UI thread while a coupled agent's send_terminal arrives on an MCP request
+    // thread, both into this pane's single pty stdin. A Stream is not thread-safe, so two writes can interleave into
+    // a garbled command line — which is the one thing a shared pane must not do. Every write into the pty goes
+    // through _WriteToPty and takes this lock; the writes are a handful of bytes, so nothing waits for long.
+    private readonly object _ptyWriteLock = new();
+
     // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
     private readonly IPluginTtyProviderRegistry? _ttyProviders =
         Design.IsDesignMode ? null : Program.Services.GetService<IPluginTtyProviderRegistry>();
@@ -138,6 +144,29 @@ public partial class TtyView : UserControl
         }
     }
 
+    /// <summary>
+    /// Writes keystrokes into the pty, serialised against every other writer (see <see cref="_ptyWriteLock"/>).
+    /// Returns false when the write did not land — the pty may have exited between the keystroke and here, which the
+    /// output pump observes and reports; losing a keystroke to a dead shell is not worth taking the cockpit down for.
+    /// </summary>
+    private bool _WriteToPty(IConPtyProcess pty, ReadOnlySpan<byte> bytes)
+    {
+        try
+        {
+            lock (_ptyWriteLock)
+            {
+                pty.InputStream.Write(bytes);
+                pty.InputStream.Flush();
+            }
+
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     // AC-34: a coupling changed on some pane. If it is ours, show or hide the agent bar — on the UI thread, since the
     // event fires from an MCP request thread (couple) or a teardown (decouple).
     private void OnCouplingChanged(TerminalCouplingChange change)
@@ -154,8 +183,16 @@ public partial class TtyView : UserControl
                 return;
             }
 
-            _viewModel.AgentConnected = change.Coupled;
-            _viewModel.AgentConnectedLabel = change.Coupled ? $"Agent connected — {_ResolveAgentSessionName(change.AgentSession)}" : null;
+            // The bar says which of the two the operator granted: an agent that may only read is not "connected" in
+            // the sense the Disconnect tooltip means, and calling it that would overstate what they agreed to.
+            _viewModel.AgentConnected = change.Coupling is not null;
+            _viewModel.AgentConnectedLabel = change.Coupling switch
+            {
+                TerminalCouplingMode.Drive => $"Agent connected — {_ResolveAgentSessionName(change.AgentSession)}",
+                TerminalCouplingMode.Watch => $"Agent reading — {_ResolveAgentSessionName(change.AgentSession)}",
+                _ => null,
+            };
+            _viewModel.AgentCanType = change.Coupling == TerminalCouplingMode.Drive;
         });
     }
 
@@ -394,17 +431,7 @@ public partial class TtyView : UserControl
             return;
         }
 
-        try
-        {
-            var bytes = Encoding.UTF8.GetBytes(text);
-            pty.InputStream.Write(bytes);
-            pty.InputStream.Flush();
-        }
-        catch (Exception)
-        {
-            // The pty may have exited between the text arriving and the write; the output pump already observes
-            // the exit and updates status, same as a dropped keystroke write.
-        }
+        _WriteToPty(pty, Encoding.UTF8.GetBytes(text));
     }
 
     private void WireTerminal()
@@ -797,19 +824,7 @@ public partial class TtyView : UserControl
                     paneId,
                     string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title,
                     _viewModel.IsTerminal);
-                terminals.RegisterInput(paneId, bytes =>
-                {
-                    try
-                    {
-                        pty.InputStream.Write(bytes.Span);
-                        pty.InputStream.Flush();
-                    }
-                    catch (Exception)
-                    {
-                        // The pty may have exited between the agent's send and the write; the output pump observes the
-                        // exit, and SendInput already returned true — a dropped keystroke to a dead shell is not fatal.
-                    }
-                });
+                terminals.RegisterInput(paneId, bytes => _WriteToPty(pty, bytes.Span));
             }
         }
         catch (Exception ex)
@@ -844,15 +859,9 @@ public partial class TtyView : UserControl
             return;
         }
 
-        try
+        // ESC then CR (meta-Enter), built from the bytes so no raw escape sits in this source file.
+        if (!_WriteToPty(pty, [0x1b, 0x0d]))
         {
-            pty.InputStream.Write("\u001b\r"u8);
-            pty.InputStream.Flush();
-        }
-        catch (Exception)
-        {
-            // The pty may have exited; the output pump reports that. Losing a keystroke to a dead session is not
-            // something to take the cockpit down for.
             return;
         }
 
@@ -867,16 +876,7 @@ public partial class TtyView : UserControl
             return;
         }
 
-        try
-        {
-            pty.InputStream.Write(e.Span);
-            pty.InputStream.Flush();
-        }
-        catch (Exception)
-        {
-            // The pty may have exited between the input event and the write; the output pump will
-            // observe the exit and update status.
-        }
+        _WriteToPty(pty, e.Span);
     }
 
     /// <summary>
@@ -921,16 +921,7 @@ public partial class TtyView : UserControl
                     return;
                 }
 
-                try
-                {
-                    var bytes = TtyWheelScrollGate.EncodeArrowKey(e.Delta.Y > 0, buffer.ApplicationCursorKeys);
-                    pty.InputStream.Write(bytes);
-                    pty.InputStream.Flush();
-                }
-                catch (Exception)
-                {
-                    // The pty may have exited; the output pump already handles that.
-                }
+                _WriteToPty(pty, TtyWheelScrollGate.EncodeArrowKey(e.Delta.Y > 0, buffer.ApplicationCursorKeys));
 
                 e.Handled = true;
                 return;

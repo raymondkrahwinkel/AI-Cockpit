@@ -53,7 +53,7 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
 
         if (wasCoupled)
         {
-            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
+            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupling: null, AgentSession: null));
         }
     }
 
@@ -70,7 +70,7 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
         Action<ReadOnlyMemory<byte>>? sink;
         lock (_lock)
         {
-            if (!(_couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId)
+            if (!(_couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId && coupling.Mode == TerminalCouplingMode.Drive)
                 || !_inputSinks.TryGetValue(paneId, out sink))
             {
                 return false;
@@ -85,30 +85,34 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
     public void Disconnect(string paneId)
     {
         Action<ReadOnlyMemory<byte>>? sink;
-        bool wasCoupled;
+        Coupling? dropped;
         lock (_lock)
         {
             _inputSinks.TryGetValue(paneId, out sink);
-            wasCoupled = _couplings.Remove(paneId);
+            _couplings.Remove(paneId, out dropped);
         }
 
-        if (!wasCoupled)
+        if (dropped is null)
         {
             return;
         }
 
-        // Interrupt first, then drop the coupling: a Disconnect must stop a running command, not just deny the next
-        // one. Best-effort — a pane whose pty is already gone still gets decoupled.
-        try
+        // Interrupt first, then drop the coupling: a Disconnect must stop what the agent started, not just deny the
+        // next thing. Only for a driving agent — a watching one never typed, so an interrupt here would land on
+        // whatever the operator themselves is running. Best-effort: a pane whose pty is already gone still decouples.
+        if (dropped.Mode == TerminalCouplingMode.Drive)
         {
-            sink?.Invoke(Interrupt);
-        }
-        catch (Exception)
-        {
-            // The pty may have exited; breaking the coupling is the part that has to land.
+            try
+            {
+                sink?.Invoke(Interrupt);
+            }
+            catch (Exception)
+            {
+                // The pty may have exited; breaking the coupling is the part that has to land.
+            }
         }
 
-        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
+        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupling: null, AgentSession: null));
     }
 
     public void CaptureOutput(string paneId, string text)
@@ -125,7 +129,9 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
                 return; // Not coupled — read-scope has not started, so this output is not the agent's to see.
             }
 
+            coupling.Shell.Feed(text);
             coupling.Buffer.Append(text);
+            coupling.TotalCaptured += text.Length;
             if (coupling.Buffer.Length > MaxCaptureChars)
             {
                 coupling.Buffer.Remove(0, coupling.Buffer.Length - MaxCaptureChars);
@@ -150,7 +156,9 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
                 .Select(pane => new TerminalPaneView(
                     pane.Key,
                     pane.Value.Name,
-                    _couplings.TryGetValue(pane.Key, out var coupling) && coupling.SessionId == sessionId))
+                    _couplings.TryGetValue(pane.Key, out var coupling) && coupling.SessionId == sessionId
+                        ? coupling.Mode
+                        : null))
                 .ToList();
         }
     }
@@ -170,11 +178,13 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
         }
     }
 
-    public bool IsCoupledBy(string sessionId, string paneId)
+    public TerminalCouplingMode? CouplingOf(string sessionId, string paneId)
     {
         lock (_lock)
         {
-            return _couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId;
+            return _couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId
+                ? coupling.Mode
+                : null;
         }
     }
 
@@ -186,7 +196,7 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
         }
     }
 
-    public void Couple(string sessionId, string paneId)
+    public void Couple(string sessionId, string paneId, TerminalCouplingMode mode)
     {
         lock (_lock)
         {
@@ -205,21 +215,57 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
                     throw new InvalidOperationException($"Terminal pane '{paneId}' is already coupled to another agent.");
                 }
 
-                return; // Same session re-couples: idempotent, keep the existing capture and do not re-announce.
-            }
+                // Same session again: keep the capture either way. Widening to Drive is a real change the pane has to
+                // hear about (its bar stops saying "watching"); re-asking for what it already holds is a no-op, and a
+                // Watch request never narrows an existing Drive — consent is not withdrawn by asking for less.
+                if (existing.Mode == mode || mode == TerminalCouplingMode.Watch)
+                {
+                    return;
+                }
 
-            _couplings[paneId] = new Coupling(sessionId);
+                existing.Mode = mode;
+            }
+            else
+            {
+                _couplings[paneId] = new Coupling(sessionId) { Mode = mode };
+            }
         }
 
-        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: true, AgentSession: sessionId));
+        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, mode, AgentSession: sessionId));
     }
 
-    public string? ReadCoupled(string sessionId, string paneId)
+    public TerminalCapturedOutput? ReadCoupled(string sessionId, string paneId, long fromOffset = 0)
+    {
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId))
+            {
+                return null;
+            }
+
+            // The offset counts everything ever captured, not a position in the buffer: the buffer is capped and drops
+            // its oldest text, so a buffer position taken a while ago no longer means what it did. Work back from the
+            // end instead — "how much arrived since then" — and clamp to what survived the cap.
+            var wanted = coupling.TotalCaptured - fromOffset;
+            var since = (int)Math.Clamp(wanted, 0, coupling.Buffer.Length);
+            return new TerminalCapturedOutput(
+                coupling.Buffer.ToString(coupling.Buffer.Length - since, since),
+                Truncated: wanted > since);
+        }
+    }
+
+    public TerminalShellState? ShellStateOf(string sessionId, string paneId)
     {
         lock (_lock)
         {
             return _couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId
-                ? coupling.Buffer.ToString()
+                ? new TerminalShellState(
+                    coupling.Shell.ShellIntegrationSeen,
+                    coupling.Shell.AtPrompt,
+                    coupling.Shell.CommandsStarted,
+                    coupling.Shell.CommandsFinished,
+                    coupling.Shell.LastExitCode,
+                    coupling.TotalCaptured)
                 : null;
         }
     }
@@ -238,7 +284,7 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
 
         foreach (var paneId in dropped)
         {
-            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
+            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupling: null, AgentSession: null));
         }
     }
 
@@ -250,6 +296,18 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
     {
         public string SessionId { get; } = sessionId;
 
+        // Settable so widening from Watch to Drive keeps the same buffer: the operator approving the keyboard should
+        // not cost the agent the output it was already reading. Only ever mutated under the registry lock.
+        public required TerminalCouplingMode Mode { get; set; }
+
         public StringBuilder Buffer { get; } = new();
+
+        // Everything ever captured, buffer cap included — the stable ruler a caller measures "since I sent" against,
+        // which a buffer position cannot be once the cap starts dropping the oldest text.
+        public long TotalCaptured { get; set; }
+
+        // Fed the same bytes as the buffer, so what the shell says about itself and what the agent can read stay in
+        // step. Per coupling rather than per pane: capture starts at the coupling, so the marks do too.
+        public TerminalShellIntegrationTracker Shell { get; } = new();
     }
 }

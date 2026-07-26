@@ -58,6 +58,23 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   earlier stays yours. One agent at a time per pane, and only the shells you opened are on offer — a pane holding
   another agent session is never one of them, whatever you call it. Off until you switch it on in Options: while it is
   off the tools are not handed to sessions at all, so for an agent the whole thing simply does not exist.
+- added: reading a terminal and typing into it are asked separately. An agent that wants to watch a build finish gets
+  a prompt asking exactly that, and cannot type; if it later wants to run something, you get a second prompt that says
+  it is a widening. So "let it look" is a thing you can say, and the bar on the pane says which of the two you granted
+  — "Agent reading" or "Agent connected". Disconnect on a watching agent no longer sends a Ctrl-C, which would have
+  landed on whatever you were running yourself.
+- added: an agent can run one command and wait for it, rather than typing and guessing when it is done. It only works
+  where your shell publishes the standard shell-integration marks — fish 4 has them, bash, zsh and PowerShell need the
+  small snippet your terminal ships, on the remote host too if you are over SSH — because those marks are how the shell
+  says "finished, and this is the exit code". They are invisible, so nothing appears in your terminal that you did not
+  run. Where they are missing, or where a full-screen program like an editor or a pager has the pane, it refuses and
+  says why instead of typing into what is open or guessing from a lull in the output. It is still your terminal: if you
+  run something yourself at the same moment, the agent may be told your command's result — which you can see happen.
+- fixed: what an agent reads from a terminal now says when it has been cut short. A pane keeps a bounded amount of
+  output, so a long or noisy command can push its own earlier lines out of reach; the agent is now told that happened
+  instead of quietly reporting a build as clean when the errors scrolled away.
+- fixed: your keystrokes and an agent's can no longer interleave into a garbled command line. Both go into the same
+  terminal from different threads, and nothing kept them apart.
 - added: a plugin's settings dialog can have sections, navigated from a rail down its left side — the same one the
   cockpit's own Options dialog has. Autopilot's settings use it first: its four groups (CEO, Cost & tokens, Run safety,
   Templates) are now four pages you pick between instead of one scroll several screens long. Nothing moved and nothing
