@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a project's information rows can be handed to its sessions. Tick "Tell sessions" on a row and a session
+  started on that project is told it as it begins — the repository it lives in, who the customer is, whatever you
+  decided is worth its knowing — under your own labels, so nothing is rephrased for you. Off per row and off for every
+  row you already have: a row stays yours to read unless you say otherwise, and a project that keeps notes does not
+  quietly make every session's instructions longer.
 - added: a project can carry whatever else belongs with it — rows you name yourself, with the value beside them: the
   repository it lives in, the customer's website, who to ask. No field per kind of information, so a new kind costs
   nothing: add a row in the project editor, type a label, type a value. The rows show on the project's card and in

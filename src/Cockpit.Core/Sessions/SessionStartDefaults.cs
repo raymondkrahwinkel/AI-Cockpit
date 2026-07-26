@@ -53,7 +53,7 @@ public sealed record SessionStartDefaults(
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project)));
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project), _InformationNote(project)));
 
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
@@ -67,6 +67,28 @@ public sealed record SessionStartDefaults(
         project?.MemoryRef is { Length: > 0 } memory && !string.IsNullOrWhiteSpace(memory)
             ? $"This project's memory lives at {memory.Trim()}. Read it there when you need what this project already knows, and keep it up to date as you work."
             : null;
+
+    /// <summary>
+    /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block. Null when
+    /// none are — which is the default, so a session's prompt does not grow because a project happens to keep notes.
+    /// <para>
+    /// Told as flat <c>label: value</c> lines rather than a sentence per row: the operator wrote these labels, and
+    /// rephrasing them into prose would put words in their mouth. A row they left unlabelled is given as the bare
+    /// value.
+    /// </para>
+    /// </summary>
+    private static string? _InformationNote(Project? project)
+    {
+        var shared = project?.AdditionalInfo.Where(field => field.IsSharedWithSessions).ToList() ?? [];
+        if (shared.Count == 0)
+        {
+            return null;
+        }
+
+        var lines = shared.Select(field => field.HasLabel ? $"- {field.Label}: {field.Value}" : $"- {field.Value}");
+
+        return $"What else you should know about this project:\n{string.Join('\n', lines)}";
+    }
 
     /// <summary>
     /// The profile's standing instructions with the project's appended under them, blank-separated. Both apply and

@@ -133,14 +133,17 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
                     </StackPanel>
                     <TextBlock Classes="FieldHint" Margin="0"
-                               Text="Name a row whatever you like and put the value beside it. A web address becomes a link you can click from the project's card. Not a place for passwords or tokens — those belong in a profile, which stores them encrypted."/>
+                               Text="Name a row whatever you like and put the value beside it. A web address becomes a link you can click from the project's card. Tick &quot;Tell sessions&quot; and a session started here is told that row when it begins — leave it off and the row is only for you to read. Not a place for passwords or tokens: those belong in a profile, which stores them encrypted."/>
                     <ItemsControl ItemsSource="{Binding AdditionalInfo}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProjectInfoFieldViewModel">
-                                <Grid ColumnDefinitions="4*,6*,Auto" ColumnSpacing="6" Margin="0,0,0,6">
+                                <Grid ColumnDefinitions="4*,6*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,6">
                                     <TextBox Grid.Column="0" Text="{Binding Label}" PlaceholderText="Repository"/>
                                     <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="https://github.com/…"/>
-                                    <Button Grid.Column="2" Classes="Subtle" VerticalAlignment="Center"
+                                    <CheckBox Grid.Column="2" IsChecked="{Binding IsSharedWithSessions}"
+                                              Content="Tell sessions" FontSize="11" VerticalAlignment="Center"
+                                              ToolTip.Tip="A session started on this project is told this row as it begins. Off by default: a row is yours to read unless you say otherwise."/>
+                                    <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
                                             ToolTip.Tip="Remove this row"
                                             Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveInfoFieldCommand}"
                                             CommandParameter="{Binding}">

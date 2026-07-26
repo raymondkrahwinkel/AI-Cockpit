@@ -55,7 +55,7 @@ public class ProjectStoreTests : IDisposable
             // back alphabetised or reversed would quietly rearrange what the operator laid out.
             AdditionalInfo =
             [
-                new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
+                new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit") { IsSharedWithSessions = true },
                 new ProjectInfoField("Customer", "Acme BV, via the service desk"),
             ],
         };

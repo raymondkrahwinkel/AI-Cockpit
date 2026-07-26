@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -14,11 +15,19 @@ internal sealed class ProjectInfoFieldEntry
 
     public string? Value { get; set; }
 
+    /// <summary>Absent for a row no session is told about, which is the default and most of them.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsSharedWithSessions { get; set; }
+
     public static ProjectInfoFieldEntry FromDomain(ProjectInfoField field) => new()
     {
         Label = field.Label,
         Value = field.Value,
+        IsSharedWithSessions = field.IsSharedWithSessions,
     };
 
-    public ProjectInfoField ToDomain() => new(Label ?? string.Empty, Value ?? string.Empty);
+    public ProjectInfoField ToDomain() => new(Label ?? string.Empty, Value ?? string.Empty)
+    {
+        IsSharedWithSessions = IsSharedWithSessions,
+    };
 }

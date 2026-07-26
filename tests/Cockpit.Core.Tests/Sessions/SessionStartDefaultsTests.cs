@@ -173,6 +173,45 @@ public class SessionStartDefaultsTests
     }
 
     [Fact]
+    public void Resolve_OnlyTheInformationRowsTheOperatorShared_ReachTheSession()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Repository", "https://github.com/example/repo") { IsSharedWithSessions = true },
+                new ProjectInfoField("Customer", "Acme BV") { IsSharedWithSessions = true },
+                new ProjectInfoField("Invoice reference", "AC-2026-118"),
+                new ProjectInfoField("", "https://example.test/handbook") { IsSharedWithSessions = true },
+            ],
+        };
+
+        var defaults = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude")));
+
+        // The operator's own labels, given as they wrote them; an unlabelled row as the bare value; and the row they
+        // did not tick stays out — it is theirs to read, and a system prompt is not where it belongs.
+        defaults.SystemPrompt.Should().Be(
+            "What else you should know about this project:\n" +
+            "- Repository: https://github.com/example/repo\n" +
+            "- Customer: Acme BV\n" +
+            "- https://example.test/handbook");
+        defaults.SystemPrompt.Should().NotContain("AC-2026-118", "a row nobody shared must not reach the session");
+    }
+
+    [Fact]
+    public void Resolve_InformationRowsNobodyShared_SayNothing()
+    {
+        // A project that keeps notes must not grow every session's prompt just by keeping them.
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo = [new ProjectInfoField("Customer", "Acme BV")],
+        };
+
+        SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude")))
+            .SystemPrompt.Should().BeNull();
+    }
+
+    [Fact]
     public void Resolve_AProjectWithoutOne_SaysNothingAboutMemory()
     {
         var defaults = SessionStartDefaults.Resolve(Project.Create("Cockpit"), new SessionProfile("work", new ClaudeConfig("~/.claude")));

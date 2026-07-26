@@ -19,6 +19,14 @@ namespace Cockpit.Core.Projects;
 public sealed record ProjectInfoField(string Label, string Value)
 {
     /// <summary>
+    /// Whether a session started on this project is told this row (AC-314), off unless the operator says so. Off by
+    /// default on purpose: these rows arrived as reference material for the operator to read (AC-295), so sending
+    /// every one of them into a system prompt would change what already-entered rows do without anyone asking for it
+    /// — and a row costs prompt budget at every session start, which is worth deciding per row rather than in bulk.
+    /// </summary>
+    public bool IsSharedWithSessions { get; init; }
+
+    /// <summary>
     /// Unicode's complete set of mandatory line breaks, not only CR and LF: a value pasted out of a web page or a PDF
     /// can carry a vertical tab, a form feed, a NEL or a line/paragraph separator, and Avalonia's text layout breaks a
     /// line on every one of them. The whole set rather than the ones seen so far, because the point is that no value
@@ -69,7 +77,12 @@ public sealed record ProjectInfoField(string Label, string Value)
     /// read as something it is not. Pasting out of a document brings line breaks the row cannot hold — and a wrapping
     /// text block over a value with newlines in it is what crashed the issue dialogs on Avalonia 12.0.5.
     /// </summary>
-    public ProjectInfoField Tidied() => new(_Tidied(Label), _Tidied(Value));
+    /// <remarks>
+    /// A <c>with</c> rather than a fresh <c>new(Label, Value)</c>: the positional form carries only those two, so it
+    /// silently dropped every other member — and this runs on load and on save, so a row the operator had ticked to
+    /// share would have quietly unticked itself.
+    /// </remarks>
+    public ProjectInfoField Tidied() => this with { Label = _Tidied(Label), Value = _Tidied(Value) };
 
     private static string _Tidied(string text) => _WithoutDeceptiveMarks(
         string.Join(' ', text.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));

@@ -16,11 +16,16 @@ public partial class ProjectInfoFieldViewModel : ViewModelBase
     [ObservableProperty]
     private string _value;
 
-    public ProjectInfoFieldViewModel(string label = "", string value = "")
+    /// <summary>Whether a session started on this project is told this row (AC-314). Off unless the operator ticks it.</summary>
+    [ObservableProperty]
+    private bool _isSharedWithSessions;
+
+    public ProjectInfoFieldViewModel(string label = "", string value = "", bool isSharedWithSessions = false)
     {
         _label = label;
         _value = value;
+        _isSharedWithSessions = isSharedWithSessions;
     }
 
-    public ProjectInfoField ToDomain() => new(Label, Value);
+    public ProjectInfoField ToDomain() => new(Label, Value) { IsSharedWithSessions = IsSharedWithSessions };
 }
