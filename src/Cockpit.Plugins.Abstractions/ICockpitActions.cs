@@ -46,15 +46,18 @@ public interface ICockpitActions
     /// that method's signature, and every plugin zip already published calls the three-argument form (#AC-40).
     /// </para>
     /// <para>
-    /// The default hands an unnamed start to the older overload, so a plugin built against this SDK still starts
-    /// sessions on a host that predates the name — only asking for a name is refused there, and it says which of the
-    /// two it could not do rather than claiming the host cannot start sessions at all.
+    /// There is no falling back to the three-argument form on a host that predates this one. Plugins reference this
+    /// assembly compile-only and bind to the host's copy, so an older host loads an older SDK in which this member
+    /// does not exist at all — the call fails before any default body could run. <c>minHostVersion</c> in the
+    /// manifest is what keeps that plugin off that host; a default cannot.
+    /// </para>
+    /// <para>
+    /// Implement both overloads or neither. Delegating one to the other in an implementation, in the direction
+    /// opposite to whichever the defaults take, is how you get a stack overflow instead of a refusal.
     /// </para>
     /// </summary>
     Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
-        string.IsNullOrWhiteSpace(sessionName)
-            ? StartSessionAsync(profileLabel, prompt, workingDirectory)
-            : throw new NotSupportedException("This host can start a session but cannot name it as it starts.");
+        throw new NotSupportedException("This host cannot start sessions.");
 
     /// <summary>
     /// Sets the statusline shown under the active (selected) session's name — what it is working on — and optionally

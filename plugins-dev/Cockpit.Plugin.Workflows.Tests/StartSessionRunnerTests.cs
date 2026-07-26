@@ -17,7 +17,7 @@ public class StartSessionRunnerTests
     {
         var (host, actions) = _Host();
         var node = _Start("Claude");
-        node.Parameters["Name"] = "{ticket}";
+        node.Parameters["Session name"] = "{ticket}";
 
         await new StartSessionRunner(host).RunAsync(_Context(node, ("ticket", "AC-312")), CancellationToken.None);
 
@@ -41,7 +41,7 @@ public class StartSessionRunnerTests
     {
         var (host, actions) = _Host();
         var node = _Start("Claude");
-        node.Parameters["Name"] = "   ";
+        node.Parameters["Session name"] = "   ";
 
         await new StartSessionRunner(host).RunAsync(_Context(node), CancellationToken.None);
 

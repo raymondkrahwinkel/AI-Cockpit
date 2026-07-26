@@ -124,7 +124,7 @@ public static class NodeCatalog
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Profile", "Name", "Prompt", "Working directory"],
+            ["Profile", "Session name", "Prompt", "Working directory"],
             new Dictionary<string, string> { ["session"] = "webshop" })
         {
             IconKind = MaterialIconKind.Rocket,

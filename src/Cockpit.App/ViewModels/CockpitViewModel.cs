@@ -5002,9 +5002,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public bool SetSessionName(string paneId, string name)
     {
-        // FindSession, not Sessions: an embedded pane is reachable for its statusline and its consent, and a name it
-        // was given is no less its own (AC-152).
-        if (string.IsNullOrWhiteSpace(name) || FindSession(paneId) is not { } target)
+        if (string.IsNullOrWhiteSpace(name) || Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } target)
         {
             return false;
         }
@@ -5021,6 +5019,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// a name of its own". A suggested name counts as generated in its turn, so linking a second ticket to the same
     /// session relabels it rather than leaving it showing the first. Must be called on the UI thread.
     /// </summary>
+    // FindSession, not Sessions: an embedded pane already reaches its statusline and its consent through the same
+    // resolver, and an agent proposing a name for the session it is running in must not miss for being embedded
+    // (AC-152, #AC-312).
     public bool SuggestSessionName(string paneId, string name) =>
         FindSession(paneId)?.SuggestName(name) ?? false;
 

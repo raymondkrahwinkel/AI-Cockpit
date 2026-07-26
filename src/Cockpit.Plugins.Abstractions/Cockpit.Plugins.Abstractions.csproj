@@ -186,10 +186,11 @@
     <!-- 1.29.0 (AC-312): ICockpitActions.StartSessionAsync gains a four-argument overload that names the session it
          opens, so a flow starting one on a ticket need not open "Claude — 14:22" and rename it a step later. A separate
          overload on purpose: a fourth optional parameter would change the existing three-argument method's signature,
-         and every plugin zip already published calls that one (the AC-40 binary-compat rule). The new form's default
-         hands an unnamed start to the old one, so a plugin built against this SDK keeps starting sessions on a host
-         that predates the name and is refused only when it actually asks for one. Additions only — a minor; major and
-         abstractionsVersion stay 1. -->
+         and every plugin zip already published calls that one (the AC-40 binary-compat rule). That protects the old
+         plugin on a new host; the other direction is not a default's to solve — plugins bind to the host's copy of
+         this assembly, so an older host loads an older SDK where the new member is absent and the call fails before
+         any default body runs. A plugin calling it raises its manifest's minHostVersion. Additions only — a minor;
+         major and abstractionsVersion stay 1. -->
     <Version>1.29.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

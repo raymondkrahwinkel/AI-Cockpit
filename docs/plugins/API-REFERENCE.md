@@ -831,7 +831,7 @@ public interface ICockpitActions
     Task<string> StartSessionAsync(string profileLabel, string? prompt = null,
                                    string? workingDirectory = null);                         // default throws
     Task<string> StartSessionAsync(string profileLabel, string? prompt,
-                                   string? workingDirectory, string? sessionName);            // default throws
+                                   string? workingDirectory, string? sessionName);           // default throws
     Task<string> DelegateAsync(string profileLabel, string prompt,
                                string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
 }
@@ -867,6 +867,11 @@ Leave it null and the profile and the clock name it, and that composed name stay
 
 It is a separate overload rather than a fourth optional parameter on the three-argument form, because adding one would
 change that method's signature and every plugin zip already published calls it. `abstractionsVersion` stays `1`.
+
+That protects an old plugin on a new host. The other direction is on you: plugins reference this assembly compile-only
+and bind to the host's copy, so a host older than this member loads an SDK that does not have it and the call fails
+before any default body runs. **A plugin calling this overload must raise its manifest's `minHostVersion`** — no
+interface default can stand in for that.
 
 ### `Task SetClipboardTextAsync(string text)`
 Puts `text` on the system clipboard. Use as a fallback when there is no active session to inject into.
