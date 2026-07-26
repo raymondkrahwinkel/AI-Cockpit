@@ -18,6 +18,11 @@ indent_size = 2
 # EnforceCodeStyleInBuild so the compiler actually reports this one).
 dotnet_diagnostic.IDE0005.severity = error
 
+# A private member nobody calls is dead weight that reads as intent — the kind of thing a reviewer finds
+# instead of the build (AC-315 left one behind and only a reader noticed). Error, like the unused-using rule
+# above, so it cannot accumulate.
+dotnet_diagnostic.IDE0051.severity = error
+
 # File-scoped namespaces, `is null` over `== null`, primary constructors: the house style, stated where the
 # build can see it rather than only in a document.
 csharp_style_namespace_declarations = file_scoped:warning
