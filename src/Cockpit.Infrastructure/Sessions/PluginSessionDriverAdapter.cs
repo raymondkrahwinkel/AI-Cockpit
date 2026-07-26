@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -137,7 +137,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // Programmatic launches only ever take this SDK route (StartSessionForPluginAsync always starts an SDK
         // session), so the fallback belongs here rather than on the dialog-only TTY route.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+
         var mcpServers = await _ResolveMcpServersAsync(selection, cancellationToken).ConfigureAwait(false);
+
+        // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
+        // can depend on the project that pane belongs to.
+        var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
+        var contributed = sessionResources is null
+            ? SessionResources.Empty
+            : await sessionResources.ResolveAsync(paneId, cancellationToken).ConfigureAwait(false);
 
         // The host carries the operator's permission-mode selection as a typed parameter (a Claude concept older than
         // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
@@ -154,7 +162,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // session launched in bypassPermissions then reports unconfined and an isolate-in-worktree run is refused.
         _permissionModeConfines = _PermissionModeConfines(options);
 
-        var environment = _SpawnEnvironment(profile, launchOptions);
+        var environment = _SpawnEnvironment(profile, launchOptions, contributed);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
     }
 
@@ -164,8 +172,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// host-side — a variable on a host-controlled key (an <c>ANTHROPIC_*</c> credential, a nested-agent marker) is
     /// dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
     /// logged by name, never by value.
+    /// <para>
+    /// What the plugins contribute for this session (AC-165) goes on last, so a project's answer beats the
+    /// profile's default — the precedence the rest of the app already follows where a project and a profile answer
+    /// the same question. It cannot reach the key above: that one is host-controlled, and a contribution's
+    /// host-controlled keys are gone before they arrive here.
+    /// </para>
     /// </summary>
-    private IReadOnlyDictionary<string, string> _SpawnEnvironment(SessionProfile? profile, IReadOnlyDictionary<string, string>? launchOptions)
+    private IReadOnlyDictionary<string, string> _SpawnEnvironment(
+        SessionProfile? profile,
+        IReadOnlyDictionary<string, string>? launchOptions,
+        SessionResources contributed)
     {
         // AC-89: hand a session that has a pane id (the App passes it as the cockpit.pane-id launch option) its own
         // per-session token as COCKPIT_MCP_KEY instead of the shared app key, so the consent broker can attribute a
@@ -179,29 +196,32 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             [WellKnownSessionEnvironment.CockpitMcpKey] = mcpKey,
         };
 
-        if (profile?.EnvironmentVariables is not { Count: > 0 } variables)
+        if (profile?.EnvironmentVariables is { Count: > 0 } variables)
         {
-            return environment;
-        }
-
-        var rejected = new List<string>();
-        foreach (var variable in variables)
-        {
-            if (TtyEnvironment.IsHostControlled(variable.Key))
+            var rejected = new List<string>();
+            foreach (var variable in variables)
             {
-                rejected.Add(variable.Key);
-                continue;
+                if (TtyEnvironment.IsHostControlled(variable.Key))
+                {
+                    rejected.Add(variable.Key);
+                    continue;
+                }
+
+                environment[variable.Key] = variable.Value;
             }
 
-            environment[variable.Key] = variable.Value;
+            if (rejected.Count > 0)
+            {
+                logger?.LogWarning(
+                    "Profile {Profile} configures host-controlled environment variables; ignored: {Variables}",
+                    profile.Label,
+                    string.Join(", ", rejected));
+            }
         }
 
-        if (rejected.Count > 0)
+        foreach (var variable in contributed.EnvironmentVariables)
         {
-            logger?.LogWarning(
-                "Profile {Profile} configures host-controlled environment variables; ignored: {Variables}",
-                profile.Label,
-                string.Join(", ", rejected));
+            environment[variable.Key] = variable.Value;
         }
 
         return environment;

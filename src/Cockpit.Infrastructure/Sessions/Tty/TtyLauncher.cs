@@ -30,7 +30,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         string? workingDirectory = null,
         SessionResume? resume = null,
         string? paneId = null,
-        IReadOnlySet<string>? enabledMcpServerNames = null)
+        IReadOnlySet<string>? enabledMcpServerNames = null,
+        SessionResources? contributed = null)
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
@@ -49,6 +50,20 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
             }
 
             baseEnvironment = TtyEnvironment.Compose(baseEnvironment, profileOverlay);
+        }
+
+        // AC-165: what the plugins give this session, on top of the profile's own variables so a project's
+        // answer beats the profile's default — same precedence as the SDK route. Still ahead of the host
+        // identity and the provider's overlay below, which keep the last word.
+        if (contributed is { IsEmpty: false })
+        {
+            var contributedOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in contributed.EnvironmentVariables)
+            {
+                contributedOverlay[key] = value;
+            }
+
+            baseEnvironment = TtyEnvironment.Compose(baseEnvironment, contributedOverlay);
         }
 
         // AC-13: hand the session its own pane id so the agent can name itself to the cockpit-session MCP's

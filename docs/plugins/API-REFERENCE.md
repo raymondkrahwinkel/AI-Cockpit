@@ -103,6 +103,8 @@ public interface ICockpitHost
     IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // default null
+    void AddSessionResourceProvider(ISessionResourceProvider provider);          // default no-op
+    IReadOnlyList<ISessionResourceProvider> SessionResourceProviders { get; }     // default []
     Task SetSessionStatusline(string paneId, string statusline);                 // default no-op
     Task SetSessionName(string paneId, string name);                             // default no-op
     Task SuggestSessionName(string paneId, string name);                         // default no-op
@@ -713,6 +715,59 @@ refusing the only way to link it.
 `LoadOptionsAsync` runs off the UI thread while the editor is already open and usable, so it may reach the network or
 shell out. Return an empty list when there is genuinely nothing to offer, and **throw when the fetch failed** — the
 two say different things to an operator deciding whether their project points at the right place.
+
+### `void AddSessionResourceProvider(ISessionResourceProvider provider)`
+
+Registers something your plugin gives a session **as it starts** (AC-165) — today, environment variables its process
+runs with. The host asks every registered provider once per launch, merges the answers, and hands the result to
+whichever provider is starting, so you contribute once and reach a Claude CLI, a Codex app-server, a Kimi ACP
+connection and a TTY alike without knowing any of them. Default no-op.
+
+The request names the session and the project it belongs to, which is what lets a contribution differ per project —
+the natural partner to a project field you registered above:
+
+```csharp
+internal sealed class RepositorySessionResources(ICockpitHost host) : ISessionResourceProvider
+{
+    public async Task<SessionResourceContribution> GetSessionResourcesAsync(
+        SessionResourceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(request.ProjectId))
+        {
+            return SessionResourceContribution.None;
+        }
+
+        var repository = await host.GetProjectFieldValueAsync("github.repository", request.PaneId, cancellationToken);
+        return string.IsNullOrWhiteSpace(repository)
+            ? SessionResourceContribution.None
+            : new SessionResourceContribution
+            {
+                EnvironmentVariables = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["GH_REPO"] = repository.Trim(),
+                },
+            };
+    }
+}
+```
+
+Pass `request.PaneId` when you read a project field here: the session being started is not the selected one — it does
+not exist on screen yet — so leaving it null reads whichever pane the operator happens to be looking at.
+
+Rules worth knowing before you rely on it:
+
+- **The operator's profile is the floor, not the ceiling.** A contribution is applied over the profile's own
+  variables, so a project's answer beats a profile default. It is applied *under* the cockpit's own variables
+  (`COCKPIT_PANE_ID`, `COCKPIT_MCP_KEY`) and the provider's, which carry isolation you must not be able to break.
+- **Host-controlled keys are refused.** An `ANTHROPIC_*` credential or a nested-agent marker is dropped and logged by
+  name — the same rule a profile's variables meet, applied whether or not you scrubbed first.
+- **First contributor wins a key.** Two plugins setting the same variable is not an error; the one registered first
+  keeps it, so what a session carries does not depend on plugin load order.
+- **Keep it short and do not throw.** It runs while the operator waits for the session to open. A call that throws is
+  logged and treated as `None` — one plugin's bad day does not stop a session starting.
+- **This is not how you tell a session something.** A sentence for the agent to read belongs in the project's own
+  behaviour prompt or information rows; this puts a value in a process.
 
 Two plugins may register the **same key**: that is agreement, not a clash (a repository is a repository), and the
 first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are

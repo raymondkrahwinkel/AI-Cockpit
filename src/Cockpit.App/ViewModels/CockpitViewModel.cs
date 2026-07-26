@@ -117,6 +117,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
     private readonly IDelegationMcpToggle? _delegationMcpToggle;
+    private readonly ISessionResourceResolver? _sessionResourceResolver;
     private readonly IConsentBroker? _consentBroker;
     private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
@@ -2330,7 +2331,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionProfileStore? sessionProfileStore = null,
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
         ProjectQuickStart? projectQuickStart = null,
-        IScreenshotSettingsStore? screenshotSettingsStore = null)
+        IScreenshotSettingsStore? screenshotSettingsStore = null,
+        ISessionResourceResolver? sessionResourceResolver = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2425,6 +2427,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The orchestrator loads its own setting on startup (before the UI), so its live value seeds the toggle here.
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
+        _sessionResourceResolver = sessionResourceResolver;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -4380,6 +4383,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // both for the same launch (see NewSessionResult.PluginTtyOptions).
             var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
             session.ProjectId = result.ProjectId;
+
+            // AC-165: what the plugins give this session, resolved from the pane now that it has a project — the
+            // same contribution the SDK route folds in at start, so a TTY session gets the same answer.
+            var contributed = _sessionResourceResolver is null
+                ? SessionResources.Empty
+                : await _sessionResourceResolver.ResolveAsync(session.PaneId);
+
             session.LaunchConfigured(
                 result.Profile,
                 isClaudeProfile ? result.Mode.Value : null,
@@ -4390,7 +4400,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 result.TtyLaunchOptionsWithInstructions,
                 // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
                 // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
-                result.EnabledMcpServerNames);
+                result.EnabledMcpServerNames,
+                contributed);
             paneId = session.PaneId;
         }
 

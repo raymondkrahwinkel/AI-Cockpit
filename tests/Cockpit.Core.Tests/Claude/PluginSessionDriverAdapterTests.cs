@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -96,6 +97,69 @@ public class PluginSessionDriverAdapterTests
         await adapter.StartAsync(profile);
 
         inner.LastEnvironment.Should().NotContainKey("ANTHROPIC_API_KEY", "a host-controlled variable never crosses");
+    }
+
+    // AC-165: what a plugin gives this session reaches the driver the same way a profile's variables do, so a
+    // provider needs to know nothing about where a variable came from.
+    [Fact]
+    public async Task StartAsync_PassesAPluginsContributedVariablesToTheDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner, inner.Capabilities, _authKey,
+            sessionResources: StubResources(("GH_REPO", "raymondkrahwinkel/AI-Cockpit")));
+
+        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")), launchOptions: PaneOptions);
+
+        inner.LastEnvironment.Should().Contain("GH_REPO", "raymondkrahwinkel/AI-Cockpit");
+    }
+
+    // A contribution is the project's answer and a profile variable is the operator's default for every project, so
+    // the project wins — the precedence SessionStartDefaults already applies wherever the two answer the same question.
+    [Fact]
+    public async Task StartAsync_AContributedVariable_BeatsTheProfilesOwn()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner, inner.Capabilities, _authKey,
+            sessionResources: StubResources(("GH_REPO", "from/project")));
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("GH_REPO", "from/profile")],
+        };
+
+        await adapter.StartAsync(profile, launchOptions: PaneOptions);
+
+        inner.LastEnvironment.Should().Contain("GH_REPO", "from/project");
+    }
+
+    // With no resolver in the graph (every other test here, and any host built before AC-165) the launch is exactly
+    // what it was: the parameter is optional precisely so an existing composition keeps working untouched.
+    [Fact]
+    public async Task StartAsync_WithNoResolverWired_StillPassesTheProfilesVariables()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
+        };
+
+        await adapter.StartAsync(profile, launchOptions: PaneOptions);
+
+        inner.LastEnvironment.Should().Contain("AI_OS_ROOT", "/home/raymond/AI-OS");
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> PaneOptions =
+        new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-1" };
+
+    private static ISessionResourceResolver StubResources(params (string Key, string Value)[] variables)
+    {
+        var resolver = Substitute.For<ISessionResourceResolver>();
+        resolver.ResolveAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new SessionResources(variables.ToDictionary(
+                variable => variable.Key, variable => variable.Value, StringComparer.Ordinal)));
+        return resolver;
     }
 
     // AC-40: every spawned session carries this run's MCP auth key in its environment, so a cockpit-hosted server's

@@ -24,6 +24,7 @@ namespace Cockpit.App.ViewModels;
 /// narrows the shared registry to, or null for no narrowing. Without this a TTY session loaded every eligible
 /// server regardless of the operator's checklist.
 /// </param>
+/// <param name="Contributed">What the plugins give this session (AC-165), or null for nothing contributed.</param>
 public sealed record TtyLaunchRequest(
     ITtyLauncher Launcher,
     ITtySessionProvider Provider,
@@ -31,4 +32,5 @@ public sealed record TtyLaunchRequest(
     IReadOnlyDictionary<string, string> Options,
     string? WorkingDirectory,
     SessionResume? Resume,
-    IReadOnlySet<string>? EnabledMcpServerNames = null);
+    IReadOnlySet<string>? EnabledMcpServerNames = null,
+    SessionResources? Contributed = null);

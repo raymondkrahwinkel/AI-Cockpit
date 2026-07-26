@@ -44,6 +44,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private bool _isLaunchConfigured;
     private SessionResume? _configuredResume;
     private IReadOnlySet<string>? _configuredEnabledMcpServerNames;
+    private SessionResources? _configuredContributed;
     private bool _launched;
 
     /// <summary>
@@ -362,6 +363,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// TTY provider's own declared options (Codex's sandbox policy, say) — a Claude session leaves this
     /// null and uses <paramref name="permissionMode"/>/<paramref name="model"/>/<paramref name="effort"/>
     /// instead; the caller never sends both for the same launch.
+    /// <paramref name="contributed"/> is what the plugins give this session (AC-165), or null for nothing
+    /// contributed.
     /// </summary>
     public void LaunchConfigured(
         SessionProfile? profile,
@@ -371,11 +374,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         string? workingDirectory = null,
         SessionResume? resume = null,
         IReadOnlyDictionary<string, string>? pluginOptions = null,
-        IReadOnlySet<string>? enabledMcpServerNames = null)
+        IReadOnlySet<string>? enabledMcpServerNames = null,
+        SessionResources? contributed = null)
     {
         _configuredProfile = profile;
         _configuredResume = resume;
         _configuredEnabledMcpServerNames = enabledMcpServerNames;
+        _configuredContributed = contributed;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
         // Show and publish the effective working directory: the per-session override when given, else the
         // global resolution. Keeps the header and the read/observe surface pointing where the TUI actually runs.
@@ -474,7 +479,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             _LaunchOptions(),
             _configuredWorkingDirectory,
             _configuredResume,
-            _configuredEnabledMcpServerNames));
+            _configuredEnabledMcpServerNames,
+            _configuredContributed));
     }
 
     /// <summary>

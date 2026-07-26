@@ -38,6 +38,10 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         // editor. Read back below, where the issues dialog opens on it.
         host.AddProjectField(GitHubRepositoryField.Registration(settings, new GitHubGhClient()));
 
+        // AC-165: and carried into the sessions that project starts, so a `gh` command the agent runs is about the
+        // repository the project is linked to rather than whatever its working directory happens to be.
+        host.AddSessionResourceProvider(new GitHubRepositorySessionResources(host));
+
         // Shared by the dialog (which links an issue to the active session) and the header items (each of which
         // shows the issue linked to its own session) — see SessionIssueLinks.
         var links = new SessionIssueLinks(host);
