@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -25,7 +25,7 @@ public partial class AboutDialog : Window
     {
         if (DataContext is AboutInfo info)
         {
-            _OpenUrl(info.GitHubUrl);
+            ExternalLink.TryOpen(info.GitHubUrl);
         }
     }
 
@@ -33,7 +33,7 @@ public partial class AboutDialog : Window
     {
         if (DataContext is AboutInfo info)
         {
-            _OpenUrl(info.IssuesUrl);
+            ExternalLink.TryOpen(info.IssuesUrl);
         }
     }
 
@@ -41,27 +41,7 @@ public partial class AboutDialog : Window
     {
         if (DataContext is AboutInfo info)
         {
-            _OpenUrl(info.PluginStoreUrl);
-        }
-    }
-
-    // Mirrors MarkdownView's link handler: only ever shell out to an http(s) URL, and a failed browser
-    // launch must not crash the UI thread.
-    private static void _OpenUrl(string url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // Best-effort: a failed browser launch must not crash the UI thread.
+            ExternalLink.TryOpen(info.PluginStoreUrl);
         }
     }
 }

@@ -47,4 +47,17 @@ public class ExternalLinkTests
     public void TryOpen_SomethingItRefuses_StartsNothing(string? value) =>
         ExternalLink.TryOpen(value)
             .Should().BeFalse("a false return is the proof nothing was handed to the shell");
+
+    [Theory]
+    [InlineData("file:///C:/Windows/System32/calc.exe")]
+    [InlineData("ms-msdt:/id")]
+    [InlineData("vscode://file/etc/passwd")]
+    public void TryOpen_AParsedAddressWithTheWrongScheme_IsStillRefused(string value)
+    {
+        // The overload for a caller that parsed the address itself re-checks the scheme rather than trusting them: a
+        // rule this class owns but only its callers apply is not a rule, and a caller that reaches the shell this way
+        // writes no shell-out of its own for the source scan to notice.
+        ExternalLink.TryOpen(new Uri(value))
+            .Should().BeFalse("the guard belongs to this class, not to whoever calls it");
+    }
 }

@@ -3289,11 +3289,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo(UpdateUrl) { UseShellExecute = true });
-        }
-        catch (Exception)
+        // Through the shared opener, which also means the release URL now has to be http(s) like every other link the
+        // app follows — a release page always is, and anything else was never something to hand to a shell.
+        if (!ExternalLink.TryOpen(UpdateUrl))
         {
             // A browser that will not open is not worth taking the cockpit down for; the URL is on screen either way.
             UpdateStatus = $"Could not open a browser. The release is at {UpdateUrl}";

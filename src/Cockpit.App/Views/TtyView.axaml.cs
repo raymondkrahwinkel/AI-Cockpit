@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -545,23 +544,30 @@ public partial class TtyView : UserControl
         }
     }
 
-    /// <summary>Opens an http/https URL in the OS browser with a toast; returns whether it was handled (a browsable URL).</summary>
+    /// <summary>
+    /// Opens an http/https URL in the OS browser with a toast; returns whether it was handled (a browsable URL).
+    /// <para>
+    /// Parses first and opens the address it got back, rather than asking <see cref="ExternalLink.TryOpen(string)"/>
+    /// straight away: this is the one caller that has to tell "not a link at all" — which the terminal must leave to
+    /// whatever else wants the click — apart from "a link the browser would not open", which it reports.
+    /// </para>
+    /// </summary>
     private bool _TryOpenLink(string url)
     {
-        if (!_IsBrowsableLink(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        if (!ExternalLink.TryParseWebAddress(url, out var address))
         {
             return false;
         }
 
-        try
+        if (ExternalLink.TryOpen(address))
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-            _toast?.Show($"Opening {uri.Host} in your browser", ToastSeverity.Information);
+            _toast?.Show($"Opening {address.Host} in your browser", ToastSeverity.Information);
         }
-        catch (Exception ex)
+        else
         {
-            // Best-effort: a failed browser launch must not crash the UI thread (mirrors MarkdownView._OpenUrl).
-            _logger?.LogDebug(ex, "TTY hyperlink launch failed for {Url}", uri.AbsoluteUri);
+            // The shared opener swallows the exception, so what is left to log is which URL failed — enough to tell a
+            // missing browser on this machine from a link the terminal mis-detected.
+            _logger?.LogDebug("TTY hyperlink launch failed for {Url}", address.AbsoluteUri);
             _toast?.Show("Could not open the link", ToastSeverity.Warning);
         }
 
@@ -569,9 +575,7 @@ public partial class TtyView : UserControl
     }
 
     /// <summary>The <see cref="TerminalControl.LinkActivationPolicy"/> gate: only http/https URLs are handed to the browser.</summary>
-    private static bool _IsBrowsableLink(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    private static bool _IsBrowsableLink(string url) => ExternalLink.TryParseWebAddress(url, out _);
 
     // AC-2 link hit-test: pixel→cell is TerminalControl.GridPos, which is not public. Cached once; a null here (an
     // Exclr8 version that renamed it) simply means Ctrl+click stops opening links, never a crash.
