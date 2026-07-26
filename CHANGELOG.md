@@ -237,6 +237,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: every link the cockpit opens for you — in a reply, in the terminal, on the About screen, in the plugin
+  store, and the release page behind the update banner — now goes through one place, so all of them apply the same
+  rule: only a plain web address is handed to your browser, and a browser that will not start never takes the
+  cockpit down with it. The release page was the one that had no such check.
 - changed: an Autopilot run started from a YouTrack or GitHub issue now moves that issue's stage itself as it
   progresses — to an in-progress stage when it starts, and a review stage when it reaches merge-ready —
   instead of relying on the CEO to move it by hand (which it did not always do, so a run could sit on the

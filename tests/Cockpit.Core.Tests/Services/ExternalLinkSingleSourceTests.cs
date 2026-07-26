@@ -78,15 +78,14 @@ public partial class ExternalLinkSingleSourceTests
     [GeneratedRegex(@"UseShellExecute\s*=\s*true")]
     private static partial Regex ShellExecuteRegex();
 
-    private static IEnumerable<string> _AppSourceFiles()
-    {
-        var appDirectory = _LocateRepositoryFolder(Path.Combine("src", "Cockpit.App"))
-            ?? throw new InvalidOperationException("No src/Cockpit.App directory above the test output — this test reads the repo it belongs to.");
-
-        return Directory.EnumerateFiles(appDirectory, "*.cs", SearchOption.AllDirectories)
+    private static IEnumerable<string> _AppSourceFiles(string appDirectory) =>
+        Directory.EnumerateFiles(appDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
-    }
+
+    /// <summary>The file's path inside the app project, with forward slashes so the allowlist reads the same on every OS.</summary>
+    private static string _RelativeToApp(string appDirectory, string path) =>
+        Path.GetRelativePath(appDirectory, path).Replace(Path.DirectorySeparatorChar, '/');
 
     private static string? _LocateRepositoryFolder(string relativePath)
     {
