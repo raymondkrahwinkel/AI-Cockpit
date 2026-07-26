@@ -18,7 +18,7 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
         // one per-session token — used for every cockpit-hosted endpoint it connects to — so those endpoints can
@@ -27,8 +27,9 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         // token. No pane id falls back to the shared app key.
         var sessionToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
         // The effective set — registry plus what active plugins provide (AC-11) — so a local model gets a
-        // plugin's MCP servers too, and the per-session selection can narrow them like any other.
-        var registry = await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
+        // plugin's MCP servers too, and the per-session selection can narrow them like any other. Scoped to
+        // projectId (AC-218) so a project's own servers and by-name overrides are seen, not just the unscoped registry.
+        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();
@@ -87,9 +88,9 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return new McpToolSession(clients, tools, connectedNames, toolClasses);
     }
 
-    public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
     {
-        var registry = await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
+        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         var server = registry.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 

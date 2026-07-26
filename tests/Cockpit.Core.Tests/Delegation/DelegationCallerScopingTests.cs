@@ -74,6 +74,7 @@ public class DelegationCallerScopingTests
             Arg.Any<SessionResume?>(),
             Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
                 options != null && options[WellKnownPluginSessionOptions.PaneId] == task.TaskId),
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 

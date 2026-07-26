@@ -579,7 +579,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume, _launchOptions);
+            // AC-218: ProjectId is set on this panel by CockpitViewModel before StartConfiguredAsync runs, so it is
+            // already current here — passed through so the driver's MCP fan-out resolves this project's registry view.
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume, _launchOptions, ProjectId);
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;

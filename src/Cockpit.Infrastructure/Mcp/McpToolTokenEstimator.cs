@@ -43,7 +43,7 @@ internal sealed class McpToolTokenEstimator(IMcpToolProvider toolProvider, ILogg
     {
         try
         {
-            var tools = await toolProvider.EnumerateServerToolsAsync(serverName, CancellationToken.None).ConfigureAwait(false);
+            var tools = await toolProvider.EnumerateServerToolsAsync(serverName, cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
             // Null = the server could not be enumerated (unknown, disabled, OAuth-gated, or unreachable): unknown
             // cost, not zero.

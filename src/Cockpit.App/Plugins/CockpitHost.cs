@@ -7,6 +7,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -176,16 +177,14 @@ internal sealed class CockpitHost(
     {
         // No pane named and none selected means there is no project to read from — not an error, just nothing to say.
         var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane))
         {
             return null;
         }
 
-        // The lookup walks the on-screen session collections, so it happens on the UI thread; a plugin may ask from any.
-        var projectId = Dispatcher.UIThread.CheckAccess()
-            ? cockpit.FindSession(pane)?.ProjectId
-            : await Dispatcher.UIThread.InvokeAsync(() => cockpit.FindSession(pane)?.ProjectId);
-
+        // Which project that pane belongs to is one question with one answer (AC-320), asked here rather than
+        // looked up again.
+        var projectId = await services.GetRequiredService<ISessionProjectResolver>().ProjectIdOfAsync(pane, cancellationToken);
         if (string.IsNullOrEmpty(projectId))
         {
             return null;

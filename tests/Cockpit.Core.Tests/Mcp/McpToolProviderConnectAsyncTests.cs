@@ -95,10 +95,26 @@ public class McpToolProviderConnectAsyncTests
     private static IReadOnlyList<McpServerConfig> _DisableBuiltIns() =>
         [.. McpServerPresets.LocalDefaults.Select(server => server with { Enabled = false })];
 
+    // AC-218: the local-model tool loop is the third fan-out point, and the one whose other tests all pass
+    // Arg.Any for the project — without this, reverting it to the unscoped catalog would leave the suite green.
+    [Fact]
+    public async Task ConnectAsync_ResolvesTheRegistryAsTheProjectSeesIt()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<McpServerConfig>());
+        var provider = new McpToolProvider(
+            catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
+
+        await using var session = await provider.ConnectAsync(projectId: "project-1");
+
+        await catalog.Received().GetServersForProjectAsync("project-1", Arg.Any<CancellationToken>());
+    }
+
     private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
         return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
     }
 }

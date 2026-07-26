@@ -1,7 +1,4 @@
-using Avalonia.Threading;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
@@ -16,13 +13,12 @@ namespace Cockpit.App.Plugins;
 /// interface and this lives here.
 /// </summary>
 /// <remarks>
-/// <paramref name="services"/> rather than a constructor-injected <see cref="CockpitViewModel"/>: the view model
-/// is what launches sessions, so depending on it directly would close a cycle. Resolved lazily at call time, the
-/// same way <see cref="CockpitHost.GetProjectFieldValueAsync"/> reaches it.
+/// Which project a pane belongs to comes from <see cref="ISessionProjectResolver"/> rather than being looked up
+/// here, so the one answer to that question serves every caller (AC-320).
 /// </remarks>
 internal sealed class SessionResourceResolver(
     ISessionResourceProviderRegistry registry,
-    IServiceProvider services,
+    ISessionProjectResolver projects,
     ILogger<SessionResourceResolver> logger)
     : ISessionResourceResolver, ISingletonService
 {
@@ -38,7 +34,7 @@ internal sealed class SessionResourceResolver(
             return SessionResources.Empty;
         }
 
-        var request = new SessionResourceRequest(paneId, await _ProjectIdOfAsync(paneId).ConfigureAwait(false));
+        var request = new SessionResourceRequest(paneId, await projects.ProjectIdOfAsync(paneId, cancellationToken).ConfigureAwait(false));
 
         var contributions = new List<SessionResources>(providers.Count);
         foreach (var provider in providers)
@@ -115,19 +111,5 @@ internal sealed class SessionResourceResolver(
         }
 
         return new SessionResources(contribution.EnvironmentVariables);
-    }
-
-    // The lookup walks the on-screen session collections, so it happens on the UI thread; a launch route may ask
-    // from any.
-    private async Task<string?> _ProjectIdOfAsync(string paneId)
-    {
-        if (services.GetService<CockpitViewModel>() is not { } cockpit)
-        {
-            return null;
-        }
-
-        return Dispatcher.UIThread.CheckAccess()
-            ? cockpit.FindSession(paneId)?.ProjectId
-            : await Dispatcher.UIThread.InvokeAsync(() => cockpit.FindSession(paneId)?.ProjectId);
     }
 }

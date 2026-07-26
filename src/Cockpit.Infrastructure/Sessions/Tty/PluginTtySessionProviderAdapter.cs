@@ -31,7 +31,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
-        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames);
+        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId);
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
         // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var
@@ -63,9 +63,11 @@ internal sealed class PluginTtySessionProviderAdapter(
     /// <see langword="null"/> selection means no narrowing. Delegation is judged on the <em>selected</em> set: if
     /// the operator unchecked the orchestrator server, this session cannot delegate. Sync (the spawn path is
     /// synchronous) and best-effort: no store (a unit test wiring none) or a read failure means no servers and no
-    /// delegation, rather than blocking the launch.
+    /// delegation, rather than blocking the launch. <paramref name="projectId"/> (AC-218) scopes the registry read
+    /// to that project's own view — resolved host-side into the launch context, never a paneId→projectId lookup
+    /// here (that would need a UI-thread hop this synchronous spawn path cannot take).
     /// </summary>
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames)
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId)
     {
         if (mcpServerCatalog is null)
         {
@@ -74,7 +76,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         try
         {
-            var registry = mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
+            var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
             var servers = selected
                 .Where(McpConfigFile.IsAgentEligible)
