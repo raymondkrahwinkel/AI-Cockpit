@@ -1088,6 +1088,13 @@ they exercise the main contribution points:
   <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a
   non-HTTP driver. `SupportsTools: true`, `SupportsPermissions: false` (no in-band tool-permission channel;
   the sandbox/approval mode is fixed per profile). Experimental (0.x).
+- **[Kimi Code Provider (ACP)](../../plugins-dev/Cockpit.Plugin.KimiProvider)** — Kimi Code driven over the
+  **Agent Client Protocol** (`kimi acp`, JSON-RPC 2.0 over stdio): one persistent subprocess for the whole
+  session rather than one per turn, and the reference for a driver that answers **reverse-requests** — the
+  agent calls back into the cockpit for tool permission and blocks until it gets an answer, so
+  `SupportsPermissions: true` here means real Allow/Deny cards. Also shows how a plugin hands its
+  cockpit-hosted MCP servers to the child and how a context percentage can come from a provider that reports
+  no usage on the wire. Experimental (0.x).
 
 They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution

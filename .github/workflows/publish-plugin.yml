@@ -34,6 +34,7 @@ on:
           - github-models-provider
           - github-pull-requests
           - git-status
+          - kimi-provider
           - prompt-library
           - session-review
           - system-monitor

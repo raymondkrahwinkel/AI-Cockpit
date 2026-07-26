@@ -5,7 +5,7 @@
   "entryAssembly": "Cockpit.Plugin.KimiProvider.dll",
   "entryType": "Cockpit.Plugin.KimiProvider.KimiProviderPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.1.0",
-  "description": "Adds Kimi Code as a session provider, driven over the Agent Client Protocol (JSON-RPC 2.0 over stdio) via `kimi acp` — a persistent process for the whole session, with streaming text/thinking, tool calls and live permission prompts. Requires the kimi CLI installed and authenticated on this machine (an API key, or `kimi acp --login`). Known limitation: Kimi maps a failed turn to the same stopReason as a successful one, so this provider cannot tell the two apart from the wire alone.",
+  "minHostVersion": "0.7.0",
+  "description": "Adds Kimi Code as a session provider, driven over the Agent Client Protocol (JSON-RPC 2.0 over stdio) via `kimi acp` — a persistent process for the whole session, with streaming text/thinking, tool calls and live permission prompts. Requires the kimi CLI installed and authenticated on this machine (an API key, or `kimi acp --login`); the cockpit resolves `kimi` from PATH or a pinned path you set, it does not install it for you. Two known limitations: Kimi maps a failed turn to the same stopReason as a successful one, so this provider cannot tell the two apart from the wire alone, and Kimi reports no quota or cost, so the session shows a context percentage but no rate-limit windows.",
   "author": "Cockpit"
 }
