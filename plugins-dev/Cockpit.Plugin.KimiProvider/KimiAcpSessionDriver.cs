@@ -82,6 +82,15 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     private readonly SemaphoreSlim _promptGate = new(1, 1);
     private volatile bool _capturingUsageResponse;
 
+    // How long a /usage capture stays armed after the poll goes out. Generous by design: it only has to outlast
+    // the notification pump's lag behind the poll's own reply continuation (milliseconds), and it exists purely
+    // so an arm that never met a parsable reply cannot stay live for the rest of the session. Settable for tests,
+    // which cannot wait ten seconds to prove a disarm.
+    internal long UsageCaptureWindowMilliseconds { get; init; } = 10_000;
+
+    // Written on the poll's own task alongside _capturingUsageResponse, read on the notification pump's.
+    private long _usageCaptureDeadline;
+
     // True from the moment a cancel goes out until the next turn starts. Written on the caller's thread in
     // InterruptAsync/SendUserMessageAsync and read on the server-request pump's own task, hence volatile.
     private volatile bool _cancelling;
@@ -95,6 +104,13 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // refinement sequence) across the whole session's notification stream.
     private readonly KimiSessionUpdateMapper _toolCallMapper = new();
 
+    // Serialises "decide who owns this toolCallId's one PluginToolUseRequested" with "write it to the channel".
+    // The two pumps below are independent tasks, and the mapper's claim is atomic on its own — but a claim that
+    // has not reached the channel yet is invisible to the other pump, which would then order a permission card
+    // ahead of the tool card it belongs to. Only ever held around synchronous channel writes, never across an
+    // await, so it cannot deadlock the pumps against each other.
+    private readonly object _emitGate = new();
+
     private string? _model;
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
     private JsonElement? _agentCapabilities;
@@ -106,8 +122,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // P1-6: the fire-and-forget tasks SendUserMessageAsync/_SendPromptAsync launch, tracked so DisposeAsync can
     // await them before disposing _promptGate — otherwise a Release() in _PollContextUsageAsync's finally
     // (which has no catch of its own) can race a disposed gate and fault as an unobserved task exception.
-    private Task? _pendingPromptTask;
     private Task? _pendingUsagePollTask;
+
+    // Every fire-and-forget task launched this session, so DisposeAsync can await all of them and not just the
+    // latest of each kind — see the loop there.
+    private readonly ConcurrentBag<Task> _launchedTasks = [];
 
     // Set before the lifetime token is cancelled in DisposeAsync, so the notification pump's shutdown path can
     // tell "we tore this down on purpose" apart from "the process just ended" (D12) — only the latter needs the
@@ -330,7 +349,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // Fire-and-forget: session/prompt only settles at turn end (protocol §3), so awaiting it here would
         // block the caller for the whole turn. The turn's content streams through the notification pump instead.
         // Tracked (P1-6) so DisposeAsync can await it before disposing _promptGate.
-        _pendingPromptTask = _SendPromptAsync(sessionId, text, cancellationToken);
+        _launchedTasks.Add(_SendPromptAsync(sessionId, text, cancellationToken));
         return Task.CompletedTask;
     }
 
@@ -357,6 +376,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             // poll must not delay the turn-completed signal the caller is waiting on. Tracked (P1-6) so
             // DisposeAsync can await it before disposing _promptGate.
             _pendingUsagePollTask = _PollContextUsageAsync(sessionId, _lifetime.Token);
+            _launchedTasks.Add(_pendingUsagePollTask);
         }
         catch (OperationCanceledException)
         {
@@ -390,6 +410,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         }
 
         _capturingUsageResponse = true;
+        _usageCaptureDeadline = Environment.TickCount64 + UsageCaptureWindowMilliseconds;
         try
         {
             var prompt = new object[] { new { type = "text", text = "/usage" } };
@@ -618,23 +639,41 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // see _PollContextUsageAsync) can race ahead of this pump on a different thread-pool thread. Only
         // swallow a chunk that actually parses as the usage line: an ordinary turn chunk that happens to
         // arrive while the flag is set simply falls through to the mapper below untouched, so a race never
-        // loses real transcript content, and the flag staying set past this call is harmless.
-        if (_capturingUsageResponse
-            && _TryExtractAgentMessageText(notification.Params, out var usageChunkText)
-            && KimiUsageParser.ParseContextUsedPercent(usageChunkText) is { } contextUsedPercent)
+        // loses real transcript content.
+        if (_capturingUsageResponse)
         {
-            _capturingUsageResponse = false;
+            if (Environment.TickCount64 > _usageCaptureDeadline)
+            {
+                // The poll it was armed for is long over and nothing ever parsed as usage — a format kimi
+                // changed, a localised reply. Disarm rather than stay armed for the rest of the session: a
+                // still-set flag would eventually meet a genuine assistant message that happens to match the
+                // usage pattern and swallow it, and a silently missing message is worse than a missing
+                // percentage.
+                _capturingUsageResponse = false;
+            }
+            else if (_TryExtractAgentMessageText(notification.Params, out var usageChunkText)
+                && KimiUsageParser.ParseContextUsedPercent(usageChunkText) is { } contextUsedPercent)
+            {
+                _capturingUsageResponse = false;
 
-            // RateLimits stays empty (D13): Kimi's ACP surface has no cost/quota concept, only token
-            // counts — an empty list here is an honest "not applicable", not a missing feature.
-            _status = new PluginSessionStatus(contextUsedPercent, RateLimits: []);
-            return;
+                // RateLimits stays empty (D13): Kimi's ACP surface has no cost/quota concept, only token
+                // counts — an empty list here is an honest "not applicable", not a missing feature.
+                _status = new PluginSessionStatus(contextUsedPercent, RateLimits: []);
+                return;
+            }
         }
 
-        var result = _toolCallMapper.Map(notification.Params);
-        foreach (var evt in result.Events)
+        // Claim and write under the same gate as the permission path (see _emitGate): the mapper decides which
+        // side owns a toolCallId's one PluginToolUseRequested, and whoever wins must have it in the channel
+        // before the other side can write anything about that id.
+        KimiSessionUpdateMapResult result;
+        lock (_emitGate)
         {
-            _events.Writer.TryWrite(evt);
+            result = _toolCallMapper.Map(notification.Params);
+            foreach (var evt in result.Events)
+            {
+                _events.Writer.TryWrite(evt);
+            }
         }
 
         if (result.ConfigOptions is { } configOptions)
@@ -723,14 +762,22 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
         // P1-3, trigger (c): without a prior PluginToolUseRequested for this same id, the permission card the
         // host renders has no matching tool call to attach its buttons to (D3) — emit one now if nothing else
-        // already did.
-        if (_toolCallMapper.EnsureToolUseRequested(toolCallId, _sessionId, toolName) is { } toolUseRequested)
+        // already did. Both the check and the two writes happen under _emitGate, because "already did" is only
+        // true once the other pump's event is actually in the channel: kimi sends the tool_call and the
+        // permission request for the same id back to back, they arrive on two different pumps, and claiming the
+        // id is a separate step from writing the event it produced. Without the gate the notification pump can
+        // win the claim and still be beaten to the channel, and the host then sees the permission card before
+        // the tool card it must hang on — the exact D3 regression.
+        lock (_emitGate)
         {
-            _events.Writer.TryWrite(toolUseRequested);
-        }
+            if (_toolCallMapper.EnsureToolUseRequested(toolCallId, _sessionId, toolName) is { } toolUseRequested)
+            {
+                _events.Writer.TryWrite(toolUseRequested);
+            }
 
-        var toolCallJson = request.Params.TryGetProperty("toolCall", out var toolCall) ? toolCall.GetRawText() : "{}";
-        _events.Writer.TryWrite(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
+            var toolCallJson = request.Params.TryGetProperty("toolCall", out var toolCall) ? toolCall.GetRawText() : "{}";
+            _events.Writer.TryWrite(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
+        }
     }
 
     // AC-273: says out loud that this session's hidden briefing — a profile's identity, a project's instructions,
@@ -854,8 +901,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // P1-6: wait for the fire-and-forget prompt/usage-poll tasks to actually finish releasing _promptGate
         // before disposing it below — both already report their own failures through _events/Status, so any
         // exception surfacing here on the await is not acted on further, only kept from becoming an unobserved
-        // task exception on whichever thread-pool thread eventually ran their continuation.
-        foreach (var pendingTask in new[] { _pendingPromptTask, _pendingUsagePollTask })
+        // task exception on whichever thread-pool thread eventually ran their continuation. Every task launched
+        // this session is awaited, not just the most recent of each kind: nothing in the contract stops a caller
+        // sending a second message before the first turn settles, and the overwritten task would then still hold
+        // the gate while it is disposed underneath it.
+        foreach (var pendingTask in _launchedTasks.ToArray())
         {
             if (pendingTask is not null)
             {

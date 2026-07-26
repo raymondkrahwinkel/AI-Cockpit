@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
@@ -378,6 +379,78 @@ public class KimiAcpSessionDriverTests
 
         var requested = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
         requested.ToolUseId.Should().Be("turn-2:tool-1");
+    }
+
+    // D3, and the reason the emit gate exists: kimi sends a tool_call and the permission request for the same id
+    // back to back, they arrive on two different pumps, and claiming the id is a separate step from writing the
+    // event it produced. A permission card that reaches the host before its tool card has nothing to hang its
+    // buttons on. Many ids in one run because a single pass would only sometimes interleave.
+    [Fact]
+    public async Task ToolCallAndItsPermissionRequest_ArrivingBackToBack_AlwaysReachTheHostToolCardFirst()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        const string toolCallTemplate = """{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"tool_call","toolCallId":"@id@","title":"shell","rawInput":{"command":"ls"}}}}""";
+        const string permissionTemplate = """{"id":@rid@,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"@id@","title":"shell","content":[]}}}""";
+
+        const int calls = 200;
+        for (var index = 0; index < calls; index++)
+        {
+            var toolCallId = $"tool-{index}";
+            await fake.PushStdoutAsync(toolCallTemplate.Replace("@id@", toolCallId, StringComparison.Ordinal));
+            await fake.PushStdoutAsync(permissionTemplate
+                .Replace("@rid@", (1000 + index).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("@id@", toolCallId, StringComparison.Ordinal));
+        }
+
+        var events = await _CollectForAsync(driver, TimeSpan.FromSeconds(2));
+
+        var ordering = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < events.Count; index++)
+        {
+            switch (events[index])
+            {
+                case PluginToolUseRequested toolUse:
+                    ordering.TryAdd(toolUse.ToolUseId!, index);
+                    break;
+                case PluginPermissionRequested permission:
+                    ordering.Should().ContainKey(
+                        permission.ToolUseId!,
+                        "a permission card for {0} reached the host before the tool card it belongs to",
+                        permission.ToolUseId);
+                    break;
+            }
+        }
+
+        ordering.Should().HaveCount(calls, "every tool call should have produced exactly one tool-use request");
+    }
+
+    // A poll whose reply never parses as usage must not leave the capture armed for the rest of the session: the
+    // next genuine assistant message that happens to look like a usage line would be swallowed, and a silently
+    // missing message is worse than a missing percentage.
+    [Fact]
+    public async Task UsageCapture_ThatNeverSawAParsableReply_DisarmsAndStopsSwallowingLaterText()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi") { UsageCaptureWindowMilliseconds = 50 };
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _RespondAsync(fake, "session/prompt", """{"stopReason":"end_turn"}""");
+        await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
+        await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
+
+        // The poll is armed but its reply never arrives in a shape the parser recognises. Once the window has
+        // passed, a genuine assistant message must reach the transcript even when it happens to contain the very
+        // line the parser looks for — an agent quoting a usage report is not a usage report.
+        await Task.Delay(120);
+        await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"The manual's example reads Context: 45,000 / 200,000 (22.5%) — that is the format."}}}}""");
+
+        var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
+        delta.Text.Should().Contain("that is the format");
+        driver.Status.Should().BeNull("the stale arm must not have turned a real message into a status reading");
     }
 
     // D12: a process end that is NOT our own dispose must surface an error and a failed turn before the
