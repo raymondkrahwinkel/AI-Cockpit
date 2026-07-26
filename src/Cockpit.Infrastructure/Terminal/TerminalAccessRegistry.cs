@@ -13,6 +13,10 @@ namespace Cockpit.Infrastructure.Terminal;
 /// scrolled by before an agent connected — an earlier secret echo included — is ever in the buffer it can read. The
 /// buffer is capped so a long-lived coupling on a chatty pane cannot grow without bound.
 /// </para>
+/// <para>
+/// What an agent may reach is narrowed on the way out, not on the way in: every pane registers, but only the
+/// plain-shell ones are listed or resolvable, so the agent-session panes stay out of reach of both.
+/// </para>
 /// </summary>
 internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISingletonService
 {
@@ -23,17 +27,17 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
     private static readonly byte[] Interrupt = [0x03];
 
     private readonly object _lock = new();
-    private readonly Dictionary<string, string> _panes = new(StringComparer.Ordinal); // paneId -> name
+    private readonly Dictionary<string, Pane> _panes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Coupling> _couplings = new(StringComparer.Ordinal); // paneId -> coupling
     private readonly Dictionary<string, Action<ReadOnlyMemory<byte>>> _inputSinks = new(StringComparer.Ordinal); // paneId -> pty writer
 
     public event Action<TerminalCouplingChange>? CouplingChanged;
 
-    public void PaneOpened(string paneId, string name)
+    public void PaneOpened(string paneId, string name, bool plainShell)
     {
         lock (_lock)
         {
-            _panes[paneId] = name;
+            _panes[paneId] = new Pane(name, plainShell);
         }
     }
 
@@ -142,9 +146,10 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
         lock (_lock)
         {
             return _panes
+                .Where(pane => pane.Value.PlainShell)
                 .Select(pane => new TerminalPaneView(
                     pane.Key,
-                    pane.Value,
+                    pane.Value.Name,
                     _couplings.TryGetValue(pane.Key, out var coupling) && coupling.SessionId == sessionId))
                 .ToList();
         }
@@ -156,12 +161,12 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
         {
             if (_panes.TryGetValue(paneRef, out var byId))
             {
-                return new TerminalPane(paneRef, byId);
+                return byId.PlainShell ? new TerminalPane(paneRef, byId.Name) : null;
             }
 
             // Fall back to the operator-facing name, so an agent told "use zsh-5" can name it directly. First match wins.
-            var byName = _panes.FirstOrDefault(pane => string.Equals(pane.Value, paneRef, StringComparison.Ordinal));
-            return byName.Key is null ? null : new TerminalPane(byName.Key, byName.Value);
+            var byName = _panes.FirstOrDefault(pane => pane.Value.PlainShell && string.Equals(pane.Value.Name, paneRef, StringComparison.Ordinal));
+            return byName.Key is null ? null : new TerminalPane(byName.Key, byName.Value.Name);
         }
     }
 
@@ -185,6 +190,14 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
     {
         lock (_lock)
         {
+            // The one place a coupling comes into being, so the plain-shell rule is enforced here rather than trusted
+            // to every caller: reading and typing both need a coupling, so a pane that cannot be coupled cannot be
+            // reached at all — including by a future caller that skips Resolve and passes a pane id it got elsewhere.
+            if (!_panes.TryGetValue(paneId, out var pane) || !pane.PlainShell)
+            {
+                throw new InvalidOperationException($"Terminal pane '{paneId}' is not a plain shell an agent may be coupled to.");
+            }
+
             if (_couplings.TryGetValue(paneId, out var existing))
             {
                 if (existing.SessionId != sessionId)
@@ -228,6 +241,10 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
             CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
         }
     }
+
+    // A pane running an agent CLI is stored like any other — PaneClosed and the coupling teardown still have to work
+    // on it — but PlainShell is what decides whether an agent is ever offered it.
+    private sealed record Pane(string Name, bool PlainShell);
 
     private sealed class Coupling(string sessionId)
     {

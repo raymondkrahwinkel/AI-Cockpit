@@ -1,6 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Terminal;
 using FluentAssertions;
 using NSubstitute;
 
@@ -69,6 +70,30 @@ public class TtyViewModelTests
         vm.TryRaiseLaunch();                  // the view calls this once it has subscribed
 
         launchCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void LaunchConfigured_LeavesIsTerminalFalse_SoAnAgentSessionIsNeverOfferedToAnotherAgent()
+    {
+        // IsTerminal is what the pane registers with for the terminal-access MCP (AC-34): true means "a shell the
+        // operator opened", and only those are listed, resolvable and couplable. If an agent-CLI session ever came
+        // out of this path with it true, its whole transcript would be readable by another agent — so pin it here,
+        // at the flag's source, rather than only where it is consumed.
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+
+        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
+
+        vm.IsTerminal.Should().BeFalse();
+    }
+
+    [Fact]
+    public void LaunchTerminal_SetsIsTerminal_SoAShellTheOperatorOpenedCanBeOffered()
+    {
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+
+        vm.LaunchTerminal(new ShellDescriptor("pwsh", "PowerShell", "pwsh", []));
+
+        vm.IsTerminal.Should().BeTrue();
     }
 
     [Fact]

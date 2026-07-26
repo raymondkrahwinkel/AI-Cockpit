@@ -49,7 +49,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   with `GH_REPO` set to that repository, so a `gh` command the agent runs inside the session is about the repository
   the project is tracked in rather than whichever one its folder happens to be. Nothing changes for a session without
   a project, or for a project you never linked to a repository.
-
+- added: an agent can work in a terminal you already have open — the one where you logged into that server by hand, or
+  set up the environment it needs. Tell it to use `zsh-5` and it asks for that pane; you get an Approve/Deny prompt on
+  the pane itself, and only after you approve can it read what the shell prints and type into it. The point is that you
+  watch it happen: every keystroke lands in the visible terminal instead of a headless shell you only see the result of,
+  and you can type alongside it or press Disconnect — which interrupts whatever is running and cuts the access there and
+  then. It reads only what is printed from the moment you approved, never the scrollback above it, so a token you echoed
+  earlier stays yours. One agent at a time per pane, and only the shells you opened are on offer — a pane holding
+  another agent session is never one of them, whatever you call it. Off until you switch it on in Options: while it is
+  off the tools are not handed to sessions at all, so for an agent the whole thing simply does not exist.
 - added: a plugin's settings dialog can have sections, navigated from a rail down its left side — the same one the
   cockpit's own Options dialog has. Autopilot's settings use it first: its four groups (CEO, Cost & tokens, Run safety,
   Templates) are now four pages you pick between instead of one scroll several screens long. Nothing moved and nothing

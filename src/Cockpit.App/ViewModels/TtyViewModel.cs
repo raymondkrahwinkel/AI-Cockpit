@@ -135,6 +135,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// This pane runs a plain shell, not an agent CLI (#AC-25). Bound in <c>TtyView.axaml</c> to gate off the
     /// Claude-only header chrome — the limits bars, the working-path-as-Claude line and the plugin header items —
     /// which are meaningless for a shell. The terminal grid itself is provider-neutral and rendered unchanged.
+    /// <para>
+    /// It also decides whether an agent may be offered this pane through the terminal-access MCP (AC-34): the pane
+    /// registers with this value, and only a shell is listed, resolvable and couplable. So a change that lets this
+    /// turn true for an agent session opens another session's transcript to an agent — treat it as a gate, not
+    /// only as a chrome flag.
+    /// </para>
     /// </summary>
     [ObservableProperty]
     private bool _isTerminal;

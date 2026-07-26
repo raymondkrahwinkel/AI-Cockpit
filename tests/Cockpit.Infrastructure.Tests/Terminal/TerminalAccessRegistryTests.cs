@@ -14,7 +14,7 @@ public class TerminalAccessRegistryTests
     public void CaptureOutput_BeforeCoupling_IsNotBuffered_SoEarlierScrollbackNeverLeaks()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
 
         // Output printed before the agent coupled — an earlier `cat .env`, say — must not be captured.
         registry.CaptureOutput("pane-1", "SECRET=hunter2\n");
@@ -30,7 +30,7 @@ public class TerminalAccessRegistryTests
     public void Couple_IsExclusive_ASecondAgentIsRefused()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.Couple("session-a", "pane-1");
 
         registry.IsCoupledByAnother("session-b", "pane-1").Should().BeTrue();
@@ -43,7 +43,7 @@ public class TerminalAccessRegistryTests
     public void Couple_BySameSession_IsIdempotent_AndKeepsTheCapture()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.Couple("session-a", "pane-1");
         registry.CaptureOutput("pane-1", "line one\n");
 
@@ -56,7 +56,7 @@ public class TerminalAccessRegistryTests
     public void PaneClosed_DecouplesAutomatically()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.Couple("session-a", "pane-1");
 
         registry.PaneClosed("pane-1");
@@ -69,8 +69,8 @@ public class TerminalAccessRegistryTests
     public void SessionEnded_DecouplesEveryPaneThatSessionHeld()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
-        registry.PaneOpened("pane-2", "bash-2");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
+        registry.PaneOpened("pane-2", "bash-2", plainShell: true);
         registry.Couple("session-a", "pane-1");
         registry.Couple("session-a", "pane-2");
 
@@ -84,7 +84,7 @@ public class TerminalAccessRegistryTests
     public void Resolve_MatchesByIdOrByOperatorFacingName()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
 
         registry.Resolve("pane-1")!.Name.Should().Be("zsh-5");
         registry.Resolve("zsh-5")!.PaneId.Should().Be("pane-1");
@@ -92,11 +92,62 @@ public class TerminalAccessRegistryTests
     }
 
     [Fact]
+    public void ListPanes_LeavesOutAgentSessionPanes_SoOnlyPlainShellsAreOffered()
+    {
+        var registry = new TerminalAccessRegistry();
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
+        registry.PaneOpened("pane-2", "work-6", plainShell: false); // another agent's session
+
+        registry.ListPanes("session-a").Select(pane => pane.Name).Should().Equal("zsh-5");
+    }
+
+    [Fact]
+    public void Resolve_RefusesAnAgentSessionPane_EvenWhenItsIdOrNameIsKnown()
+    {
+        // Leaving a pane out of the list is only a gate if naming it directly fails too — otherwise an agent that
+        // learned the id or the session name from anywhere else could still couple to it.
+        var registry = new TerminalAccessRegistry();
+        registry.PaneOpened("pane-2", "work-6", plainShell: false);
+
+        registry.Resolve("pane-2").Should().BeNull();
+        registry.Resolve("work-6").Should().BeNull();
+    }
+
+    [Fact]
+    public void Couple_RefusesAPaneThatIsNotAnOpenPlainShell_SoTheRuleDoesNotRestOnEveryCallerUsingResolve()
+    {
+        // Reading and typing both need a coupling, so refusing it here is what makes the plain-shell rule hold even
+        // for a caller that never went through Resolve — an unknown pane id included.
+        var registry = new TerminalAccessRegistry();
+        registry.PaneOpened("pane-2", "work-6", plainShell: false);
+
+        var agentPane = () => registry.Couple("session-a", "pane-2");
+        agentPane.Should().Throw<InvalidOperationException>();
+
+        var unknownPane = () => registry.Couple("session-a", "never-registered");
+        unknownPane.Should().Throw<InvalidOperationException>();
+
+        registry.ReadCoupled("session-a", "pane-2").Should().BeNull();
+        registry.SendInput("session-a", "pane-2", new byte[] { 1 }).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Resolve_ByName_SkipsAnAgentSessionPaneAndFindsThePlainShellBehindIt()
+    {
+        // Same operator-facing name on both: the name lookup must not stop at the agent pane and report "no such pane".
+        var registry = new TerminalAccessRegistry();
+        registry.PaneOpened("pane-2", "work-6", plainShell: false);
+        registry.PaneOpened("pane-3", "work-6", plainShell: true);
+
+        registry.Resolve("work-6")!.PaneId.Should().Be("pane-3");
+    }
+
+    [Fact]
     public void SendInput_WhenCoupled_WritesThroughTheRegisteredSink_ButNotWhenNotCoupled()
     {
         var registry = new TerminalAccessRegistry();
         var written = new List<byte[]>();
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
 
         // Not coupled yet: a send must not reach the pty.
@@ -118,7 +169,7 @@ public class TerminalAccessRegistryTests
         var written = new List<byte[]>();
         var changes = new List<TerminalCouplingChange>();
         registry.CouplingChanged += changes.Add;
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
         registry.Couple("session-a", "pane-1");
 
@@ -138,7 +189,7 @@ public class TerminalAccessRegistryTests
         var registry = new TerminalAccessRegistry();
         var changes = new List<TerminalCouplingChange>();
         registry.CouplingChanged += changes.Add;
-        registry.PaneOpened("pane-1", "zsh-5");
+        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
 
         registry.Couple("session-a", "pane-1");
         registry.PaneClosed("pane-1");

@@ -20,8 +20,16 @@ public interface ITerminalAccessRegistry
 {
     // ---- Producer side (the TTY/UI layer) ----
 
-    /// <summary>Records that a terminal pane is open and drivable. Idempotent — re-registering updates the name.</summary>
-    void PaneOpened(string paneId, string name);
+    /// <summary>
+    /// Records that a terminal pane is open. Idempotent — re-registering updates the name.
+    /// <paramref name="plainShell"/> says the cockpit started this pane as a shell, not as an agent session. Only those
+    /// are offered to an agent, so an agent can neither list nor name another agent's session pane: driving one would
+    /// be agent-to-agent puppeting behind the operator's terminal consent, and reading one would pull that session's
+    /// whole transcript into this agent's context. It describes how the pane was launched, not what is running in the
+    /// pty now — an operator who starts an agent CLI by hand inside a shell they opened still has a shell they opened,
+    /// and still has to approve each agent that asks for it.
+    /// </summary>
+    void PaneOpened(string paneId, string name, bool plainShell);
 
     /// <summary>Records that a pane closed (tab closed, shell exit, SSH dropped): any coupling on it is broken automatically.</summary>
     void PaneClosed(string paneId);
@@ -43,10 +51,10 @@ public interface ITerminalAccessRegistry
 
     // ---- Consumer side (the cockpit-terminal MCP tools) ----
 
-    /// <summary>The open panes as this agent session sees them, each flagged with whether this session is coupled to it.</summary>
+    /// <summary>The open plain-shell panes as this agent session sees them, each flagged with whether this session is coupled to it. Agent-session panes are left out entirely.</summary>
     IReadOnlyList<TerminalPaneView> ListPanes(string sessionId);
 
-    /// <summary>Finds an open pane by its id or its operator-facing name, or null if there is no such pane.</summary>
+    /// <summary>Finds an open plain-shell pane by its id or its operator-facing name, or null if there is no such pane. Naming an agent-session pane directly resolves to null, so leaving it out of <see cref="ListPanes"/> is a real gate and not just a hidden entry.</summary>
     TerminalPane? Resolve(string paneRef);
 
     /// <summary>Whether this session already holds the coupling on the pane (so no fresh consent is needed to read it).</summary>
@@ -55,7 +63,7 @@ public interface ITerminalAccessRegistry
     /// <summary>Whether a <em>different</em> agent session holds the coupling — exclusivity: a second agent is refused.</summary>
     bool IsCoupledByAnother(string sessionId, string paneId);
 
-    /// <summary>Commits the coupling of a pane to a session (after the operator approved) and starts its output capture. Idempotent for the same session.</summary>
+    /// <summary>Commits the coupling of a pane to a session (after the operator approved) and starts its output capture. Idempotent for the same session. Throws for a pane that is not an open plain shell — reading and typing both need a coupling, so this is where the plain-shell rule is enforced rather than trusted to each caller.</summary>
     void Couple(string sessionId, string paneId);
 
     /// <summary>The output captured since this session coupled to the pane, or null when this session does not hold the coupling.</summary>

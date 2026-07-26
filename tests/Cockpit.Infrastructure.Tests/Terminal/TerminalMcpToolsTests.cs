@@ -30,7 +30,7 @@ public class TerminalMcpToolsTests
     public async Task ReadTerminal_FirstTime_AsksConsent_ThenReturnsOutputCapturedSinceCoupling()
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
@@ -52,7 +52,7 @@ public class TerminalMcpToolsTests
         // AC-34: the pane captures raw pty bytes with colour codes; read_terminal returns readable text.
         var esc = ((char)0x1b).ToString();
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         await tools.ReadTerminal(Session, "zsh-5");                 // couple
         registry.CaptureOutput("term-1", $"{esc}[32mok{esc}[0m done\n");
 
@@ -67,7 +67,7 @@ public class TerminalMcpToolsTests
         // Hardening (AC-89 pattern): coupling is keyed on the transport-verified pane, not the `session` the agent
         // declares. Otherwise an agent could read another session's coupled pane by naming its id (confused deputy).
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         registry.Couple("victim-pane", "term-1");             // the pane is coupled to the victim session
         registry.CaptureOutput("term-1", "secret output\n");  // captured for the victim
 
@@ -92,7 +92,7 @@ public class TerminalMcpToolsTests
     public async Task ReadTerminal_WhenDenied_ReturnsError_AndDoesNotCouple()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
@@ -117,7 +117,7 @@ public class TerminalMcpToolsTests
     public async Task ReadTerminal_WhenPaneCoupledToAnotherAgent_IsRefused_WithoutAsking()
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         registry.Couple("other-agent", "term-1");
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
@@ -131,7 +131,7 @@ public class TerminalMcpToolsTests
     public async Task ReadTerminal_WithNoConsentBroker_FailsClosed()
     {
         var registry = new TerminalAccessRegistry();
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         var tools = new TerminalMcpTools(registry, consent: null);
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
@@ -145,7 +145,7 @@ public class TerminalMcpToolsTests
     {
         var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
         var written = new List<byte[]>();
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "echo hi", submit: true));
@@ -160,7 +160,7 @@ public class TerminalMcpToolsTests
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
         var written = new List<byte[]>();
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "rm -rf /"));
@@ -174,9 +174,9 @@ public class TerminalMcpToolsTests
     public void ListTerminals_ReturnsOpenPanes_WithCouplingFlag()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
-        registry.PaneOpened("term-1", "zsh-5");
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
         registry.Couple(Session, "term-1");
-        registry.PaneOpened("term-2", "bash-2");
+        registry.PaneOpened("term-2", "bash-2", plainShell: true);
 
         var json = JsonNode.Parse(tools.ListTerminals(Session));
 
@@ -185,5 +185,50 @@ public class TerminalMcpToolsTests
         names.Should().BeEquivalentTo("zsh-5", "bash-2");
         var coupled = json["terminals"]!.AsArray().First(t => t!["name"]!.GetValue<string>() == "zsh-5");
         coupled!["coupled"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public void ListTerminals_OmitsPanesRunningAnotherAgent()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5", plainShell: true);
+        registry.PaneOpened("term-2", "work-6", plainShell: false);
+
+        var json = JsonNode.Parse(tools.ListTerminals(Session));
+
+        json!["terminals"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()).Should().Equal("zsh-5");
+    }
+
+    [Fact]
+    public async Task ReadTerminal_OfAPaneRunningAnotherAgent_IsRefused_WithoutAsking()
+    {
+        // The operator must never be prompted to approve reading another agent's session: its pane renders that
+        // session's whole transcript, and a well-meaning Approve would hand it over.
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-2", "work-6", plainShell: false);
+        registry.CaptureOutput("term-2", "the other session's transcript\n");
+
+        var json = JsonNode.Parse(await tools.ReadTerminal(Session, "work-6"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("No such terminal");
+        json["output"].Should().BeNull();
+        asked.Should().BeEmpty();
+        registry.IsCoupled("term-2").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SendTerminal_ToAPaneRunningAnotherAgent_IsRefused()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-2", "work-6", plainShell: false);
+        registry.RegisterInput("term-2", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "work-6", "/exit", submit: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        written.Should().BeEmpty("typing into another agent's session is not what the terminal consent covers");
+        asked.Should().BeEmpty();
     }
 }

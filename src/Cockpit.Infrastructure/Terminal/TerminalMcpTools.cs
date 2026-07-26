@@ -38,7 +38,7 @@ internal sealed class TerminalMcpTools
     }
 
     [McpServerTool(Name = "list_terminals")]
-    [Description("Lists the terminal panes the operator has open that you could ask to use: each with a stable id and the name the operator sees (e.g. \"zsh-5\"), and whether you are already coupled to it. Reading or driving a pane needs the operator to approve it first (see read_terminal / send_terminal); this list only names the panes so you can reference one.")]
+    [Description("Lists the shell panes the operator has open that you could ask to use: each with a stable id and the name the operator sees (e.g. \"zsh-5\"), and whether you are already coupled to it. Only the operator's shell panes are offered — a pane the cockpit started as an agent session is not one of them, whatever its name. Reading or driving a pane needs the operator to approve it first (see read_terminal / send_terminal); this list only names the panes so you can reference one.")]
     public string ListTerminals(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
     {

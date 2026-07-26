@@ -789,10 +789,14 @@ public partial class TtyView : UserControl
 
             // AC-34: this pane is now a live terminal an agent could ask to use. Register it under its pane id and the
             // name the operator sees (so list_terminals can name it), plus the input sink that a coupled agent's
-            // send_terminal writes through — the same pty stdin the operator's own keystrokes go to.
+            // send_terminal writes through — the same pty stdin the operator's own keystrokes go to. IsTerminal says
+            // whether this is a plain shell; a pane running an agent CLI registers too but is never offered to an agent.
             if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals)
             {
-                terminals.PaneOpened(paneId, string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title);
+                terminals.PaneOpened(
+                    paneId,
+                    string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title,
+                    _viewModel.IsTerminal);
                 terminals.RegisterInput(paneId, bytes =>
                 {
                     try
