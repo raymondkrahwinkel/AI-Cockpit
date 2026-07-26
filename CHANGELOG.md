@@ -32,6 +32,18 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a project can say where it is tracked. The project editor grows a "Where it is tracked" section with a field
+  per installed tracker plugin — YouTrack offers the projects on your configured instances, GitHub Issues offers the
+  repositories `gh` can see — so you pick from a real list instead of typing a tag and finding out later it was
+  misspelled. Typing still works for a repository you have no read access to, the lists load without holding up the
+  editor, and a project stays linked to something a plugin you removed used to understand.
+- added: the YouTrack and GitHub Issues dialogs open on the project or repository the session's project is linked to,
+  instead of on everything you have. Change the filter and it stays changed — the link decides where you start, not
+  where you have to stay.
+- added: plugins can put a field on the project editor and read back what the operator picked
+  (`ICockpitHost.AddProjectField` / `GetProjectFieldValueAsync`). The plugin describes the field and supplies the
+  choices; the cockpit draws the row and stores the answer, so every tracker looks the same in the editor. Two plugins
+  may share one key where they mean the same thing, which is how the GitHub plugins both offer "which repository".
 - added: a project information row can hold a credential. Tick "Secret" and the value is stored encrypted and
   scrubbed from backups the same way a profile's secret environment variables are, masked in the editor and shown as
   dots wherever the project appears — and never told to a session, whatever the sharing tick says. So the repository

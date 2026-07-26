@@ -29,6 +29,9 @@ public partial class ProjectDialog : Window
         }
 
         viewModel.CloseRequested += project => Close(project);
+        // Started here rather than awaited in the factory (AC-317): both sources are a network call or a shelled-out
+        // CLI, and the editor has to be on screen and typeable while they come. Each row shows its own progress.
+        _ = viewModel.LoadPluginFieldOptionsAsync();
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
         viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
         viewModel.PickMemoryRequested += () => _ = _PickMemoryFolderAsync(viewModel);

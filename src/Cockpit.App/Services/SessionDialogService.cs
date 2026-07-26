@@ -47,6 +47,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
     private readonly IProjectStore _projectStore;
+    private readonly IProjectFieldRegistry _projectFields;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -65,7 +66,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
         IVerifyRunnerRegistry verifyRunnerRegistry,
-        IProjectStore projectStore)
+        IProjectStore projectStore,
+        IProjectFieldRegistry projectFields)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -84,6 +86,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
         _projectStore = projectStore;
+        _projectFields = projectFields;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -234,7 +237,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog);
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog, _projectFields.Fields);
         var dialog = new ProjectDialog { DataContext = viewModel };
 
         // Cloning is answered here rather than in the dialog's code-behind: the clone flow owns a dialog of its

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 using Cockpit.Core.Projects;
 
@@ -44,6 +45,15 @@ internal sealed class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ProjectInfoFieldEntry>? AdditionalInfo { get; set; }
 
+    /// <summary>
+    /// What plugins have this project linked to (AC-317), by their own key. A plain map rather than a typed section:
+    /// the host does not know what a key means and must not need to, and a key belonging to a plugin that is not
+    /// installed reads and writes back unchanged instead of being dropped on the next save. Absent for an unlinked
+    /// project.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? PluginFields { get; set; }
+
     public static ProjectEntry FromDomain(Project project) => new()
     {
         Id = project.Id,
@@ -61,6 +71,9 @@ internal sealed class ProjectEntry
         AdditionalInfo = project.AdditionalInfo.Count == 0
             ? null
             : [.. project.AdditionalInfo.Select(ProjectInfoFieldEntry.FromDomain)],
+        PluginFields = project.PluginFields.Count == 0
+            ? null
+            : project.PluginFields.ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal),
     };
 
     public Project ToDomain() => new(Id, Name)
@@ -76,5 +89,10 @@ internal sealed class ProjectEntry
         LogoPath = LogoPath,
         LastOpenedAt = LastOpenedAt,
         AdditionalInfo = AdditionalInfo is null ? [] : [.. AdditionalInfo.Select(entry => entry.ToDomain())],
+        // Copied rather than handed over: this entry's own property stays settable, and a project is a record whose
+        // links nothing is supposed to be able to change behind its back.
+        PluginFields = PluginFields is null
+            ? ReadOnlyDictionary<string, string>.Empty
+            : new Dictionary<string, string>(PluginFields, StringComparer.Ordinal),
     };
 }

@@ -6,6 +6,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -23,6 +24,7 @@ using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
@@ -152,6 +154,45 @@ internal sealed class CockpitHost(
         }
 
         await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+    }
+
+    public void AddProjectField(ProjectFieldRegistration registration)
+    {
+        // Refused means another plugin already registered this key. That is the agreed case, not a mistake — the
+        // GitHub Issues and Pull Requests plugins both offer "which repository" so either one alone still shows the
+        // field — so this is logged at debug level, unlike the widget/workspace clashes above.
+        if (!services.GetRequiredService<IProjectFieldRegistry>().Register(registration))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Project field '{ProjectFieldKey}' is already contributed; this registration is ignored",
+                registration.Key);
+        }
+    }
+
+    public IReadOnlyList<ProjectFieldRegistration> ProjectFields =>
+        services.GetRequiredService<IProjectFieldRegistry>().Fields;
+
+    public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
+    {
+        // No pane named and none selected means there is no project to read from — not an error, just nothing to say.
+        var pane = string.IsNullOrEmpty(paneId) ? sessions.ActivePaneId : paneId;
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrEmpty(pane) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return null;
+        }
+
+        // The lookup walks the on-screen session collections, so it happens on the UI thread; a plugin may ask from any.
+        var projectId = Dispatcher.UIThread.CheckAccess()
+            ? cockpit.FindSession(pane)?.ProjectId
+            : await Dispatcher.UIThread.InvokeAsync(() => cockpit.FindSession(pane)?.ProjectId);
+
+        if (string.IsNullOrEmpty(projectId))
+        {
+            return null;
+        }
+
+        var projects = await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken);
+        return projects.Find(projectId)?.LinkedAs(key);
     }
 
     public void AddTrackerProvider(ITrackerProvider provider)

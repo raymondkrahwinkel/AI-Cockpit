@@ -18,7 +18,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         Id: "github-issues",
         DisplayName: "GitHub Issues",
         Author: "Cockpit",
-        Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
+        Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. Link a cockpit project to a repository in the project editor, picked from the list gh can see, and the dialog opens on it instead of on every repository you have. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -33,6 +33,10 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         // The writing half (AC-154): a consumer (Autopilot) posts evidence and labels an issue back through this,
         // tracker-neutrally. A GitHub issue has no status field, so its stage-equivalent is a label.
         host.AddTrackerProvider(new GitHubTrackerProvider());
+
+        // Which repository a cockpit project lives in (AC-317), picked from the owner's own list in the project
+        // editor. Read back below, where the issues dialog opens on it.
+        host.AddProjectField(GitHubRepositoryField.Registration(settings, new GitHubGhClient()));
 
         // Shared by the dialog (which links an issue to the active session) and the header items (each of which
         // shows the issue linked to its own session) — see SessionIssueLinks.

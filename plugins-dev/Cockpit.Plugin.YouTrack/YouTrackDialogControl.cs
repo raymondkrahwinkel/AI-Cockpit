@@ -464,11 +464,17 @@ internal sealed class YouTrackDialogControl : UserControl
                 project.ShortName,
                 string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
+        // AC-317: what the session's own project says it is tracked in wins over the instance-wide default. The
+        // operator linked that project on purpose and to this session; the default is what to fall back on when
+        // nothing did. Null when there is no session, no project, or no link — then nothing changes.
+        var preferredTag = await _host.GetProjectFieldValueAsync(YouTrackProjectField.Key, cancellationToken: CancellationToken.None)
+            ?? instance.DefaultProjectTag;
+
         _isSyncingProjectFilter = true;
         _projectFilter.ItemsSource = options;
         _projectFilter.SelectedItem = options.FirstOrDefault(option =>
-            !string.IsNullOrWhiteSpace(instance.DefaultProjectTag)
-            && string.Equals(option.Tag, instance.DefaultProjectTag, StringComparison.OrdinalIgnoreCase))
+            !string.IsNullOrWhiteSpace(preferredTag)
+            && string.Equals(option.Tag, preferredTag, StringComparison.OrdinalIgnoreCase))
             ?? AllProjectOption;
         _isSyncingProjectFilter = false;
 

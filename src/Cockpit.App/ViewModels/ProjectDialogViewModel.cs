@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
@@ -77,9 +78,23 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Project? project,
         ISessionProfileStore profileStore,
         IMcpServerCatalog mcpServerCatalog,
+        IReadOnlyList<ProjectFieldRegistration>? pluginFields = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project);
+
+        foreach (var registration in pluginFields ?? [])
+        {
+            viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(registration, project?.LinkedAs(registration.Key)));
+        }
+
+        // A link under a key no installed plugin claims — the plugin was removed, or is simply not on this machine —
+        // is carried through rather than dropped on save, the way a disabled server name with no row is. Uninstalling
+        // a plugin must not quietly unlink every project that used it.
+        viewModel._carriedPluginFields = project?.PluginFields
+            .Where(link => !viewModel.PluginFields.Any(field => string.Equals(field.Key, link.Key, StringComparison.Ordinal)))
+            .ToDictionary(link => link.Key, link => link.Value, StringComparer.Ordinal)
+            ?? [];
 
         foreach (var profile in await profileStore.LoadAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -115,6 +130,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     /// <summary>The names this project switched off that the checklist has no row for, carried through so saving cannot switch them back on.</summary>
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
+
+    /// <summary>The links this project holds under keys no installed plugin registered, carried through so saving cannot drop them.</summary>
+    private IReadOnlyDictionary<string, string> _carriedPluginFields = ReadOnlyDictionary<string, string>.Empty;
 
     /// <summary>Whether this is an existing project rather than a new one — drives the title and the confirm button.</summary>
     public bool IsEditing { get; }
@@ -171,7 +189,23 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
 
+    /// <summary>
+    /// The fields plugins contributed (AC-317), in registration order — what this project is called in a tracker or
+    /// on a forge. Empty when no plugin that links projects is installed, and the section stays out of the dialog.
+    /// </summary>
+    public ObservableCollection<ProjectPluginFieldViewModel> PluginFields { get; } = [];
+
+    public bool HasPluginFields => PluginFields.Count > 0;
+
     public bool HasMcpServers => McpServers.Count > 0;
+
+    /// <summary>
+    /// Fetches every contributed field's choices, all at once and after the dialog is already on screen — both
+    /// sources are a network call or a shelled-out CLI, and neither is worth making the operator wait on before
+    /// they can start typing a name.
+    /// </summary>
+    public Task LoadPluginFieldOptionsAsync(CancellationToken cancellationToken = default) =>
+        Task.WhenAll(PluginFields.Select(field => field.LoadOptionsAsync(cancellationToken)));
 
     /// <summary>A project needs a name — it is what every other surface shows it by.</summary>
     public bool CanSave => !string.IsNullOrWhiteSpace(Name);
@@ -213,7 +247,24 @@ public partial class ProjectDialogViewModel : ViewModelBase
             [
                 .. AdditionalInfo.Select(field => field.ToDomain().Tidied()).Where(field => !field.IsBlank),
             ],
+            PluginFields = _LinkedProjectFields(),
         };
+
+    /// <summary>
+    /// What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins
+    /// that are not installed. A row left empty is not written — clearing the box is how a link is removed, and an
+    /// empty string under a key would read as "linked to nothing in particular".
+    /// </summary>
+    private IReadOnlyDictionary<string, string> _LinkedProjectFields()
+    {
+        var links = new Dictionary<string, string>(_carriedPluginFields, StringComparer.Ordinal);
+        foreach (var field in PluginFields.Where(field => !string.IsNullOrWhiteSpace(field.Value)))
+        {
+            links[field.Key] = field.Value.Trim();
+        }
+
+        return links;
+    }
 
     [RelayCommand]
     private void Browse() => BrowseRequested?.Invoke();

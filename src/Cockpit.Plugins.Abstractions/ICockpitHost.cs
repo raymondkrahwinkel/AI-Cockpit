@@ -551,6 +551,42 @@ public interface ICockpitHost
     Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
     /// <summary>
+    /// Adds a field to the project editor (AC-317) — "which YouTrack project is this project", "which repository" —
+    /// so a project carries the identifier this plugin resolves, picked from a list the plugin supplies rather than
+    /// typed into a free-text box where a misspelling silently finds nothing.
+    /// <para>
+    /// The value is the host's to store, on the project itself: three plugins ask the same question about the same
+    /// project, and a project that names both a tracker and a repository is the ordinary case. Read it back with
+    /// <see cref="GetProjectFieldValueAsync"/>. A key another plugin already registered is kept as it was and this
+    /// registration ignored — see <see cref="ProjectFieldRegistration.Key"/> for why that is agreement and not a clash.
+    /// </para>
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host draws the field.
+    /// </summary>
+    void AddProjectField(Projects.ProjectFieldRegistration registration)
+    {
+    }
+
+    /// <summary>The project fields every plugin has contributed — what the project editor reads to draw them. Default empty.</summary>
+    IReadOnlyList<Projects.ProjectFieldRegistration> ProjectFields => [];
+
+    /// <summary>
+    /// What the operator picked for <paramref name="key"/> on the project a session belongs to (AC-317), or
+    /// <see langword="null"/> when that session has no project, the project is not linked, or nothing matches
+    /// <paramref name="paneId"/>. This is the reading half of <see cref="AddProjectField"/>, and a plugin may read a
+    /// key it did not register — that is the point of two plugins agreeing on one.
+    /// <para>
+    /// A null <paramref name="paneId"/> means the selected session (<see cref="ICockpitSessionObserver.ActivePaneId"/>),
+    /// which is what a dialog opened from the side menu is acting for; a contribution that belongs to one session
+    /// passes that session's own <see cref="Sessions.IPluginSessionContext.PaneId"/> instead of relying on which pane
+    /// happens to be selected.
+    /// </para>
+    /// Default <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
+
+    /// <summary>
     /// Registers a tracker a plugin can post back to (AC-154) — the writing half of an issue tracker (YouTrack, GitHub
     /// Issues), so a consumer (Autopilot) can leave evidence and move an issue's stage tracker-neutrally. First
     /// registration for a <see cref="Tracking.ITrackerProvider.TrackerId"/> wins; a later one for the same id is

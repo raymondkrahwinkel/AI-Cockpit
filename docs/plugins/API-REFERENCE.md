@@ -99,6 +99,10 @@ public interface ICockpitHost
     void AddTtyProvider(TtyProviderRegistration registration);                   // default no-op
     void AddManagedCli(ManagedCliDescriptor descriptor);                         // default no-op
     Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null); // default no-op
+    void AddProjectField(ProjectFieldRegistration registration);                 // default no-op
+    IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
+    Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
+                                            CancellationToken cancellationToken = default); // default null
 }
 ```
 
@@ -675,6 +679,61 @@ Registers a CLI the host downloads and unpacks on demand; a machine with no mana
 ### `Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null)`
 
 Registers an **in-process** MCP server (AC-12) exposing the methods on `tools` — distinct from `AddMcpServer`, which points the cockpit at an external MCP process. `isEnabled` gates it live on the plugin's own setting (read each time servers are gathered, so a toggle takes effect at once; `null` = always on). Call it fire-and-forget from `Initialize`. Used by the Docker and Kubernetes plugins. Default no-op.
+
+### `void AddProjectField(ProjectFieldRegistration registration)`
+
+Adds a field to the **project editor** (AC-317) — "which YouTrack project is this project", "which repository" — so a
+project carries the identifier your plugin resolves, picked from a list you supply instead of typed into a free-text
+box where a misspelling silently finds nothing. Default no-op.
+
+You describe the field; the host draws it and stores the answer on the project. That is deliberate: a plugin drawing
+its own row would have to remember the editor's label, hint and spacing, and a description also survives a project
+staying linked to a tracker that is not installed on this machine.
+
+```csharp
+host.AddProjectField(new ProjectFieldRegistration(
+    "youtrack.project",                        // stable key — already-linked projects are stored under it
+    "YouTrack project",
+    async cancellationToken => [.. (await client.GetProjectsAsync(cancellationToken))
+        .Select(project => new ProjectFieldOption(project.ShortName, $"{project.Name} — {project.ShortName}"))])
+{
+    Hint = "Which project in YouTrack this one is tracked in.",
+    Placeholder = "AC",
+});
+```
+
+`ProjectFieldOption(Value, Display)` keeps the two apart on purpose: `Display` is what the operator picks by,
+`Value` is what is stored and handed back to you. The box filters as the operator types and **keeps what they type**
+even when the source never returned it — a repository they cannot read is not in the list, and refusing it would be
+refusing the only way to link it.
+
+`LoadOptionsAsync` runs off the UI thread while the editor is already open and usable, so it may reach the network or
+shell out. Return an empty list when there is genuinely nothing to offer, and **throw when the fetch failed** — the
+two say different things to an operator deciding whether their project points at the right place.
+
+Two plugins may register the **same key**: that is agreement, not a clash (a repository is a repository), and the
+first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are
+different fields, because a link is read back case-sensitively.
+
+### `IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }`
+
+Every field plugins have contributed — what the project editor reads to draw them. A plugin that is not the project
+editor has no reason to call this. Default `[]`.
+
+### `Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default)`
+
+The reading half: what the operator picked for `key` on the project a session belongs to, or `null` when that session
+has no project, the project is not linked, or `paneId` matches nothing. A plugin may read a key it did not register —
+that is the point of two plugins agreeing on one.
+
+A null `paneId` means the **selected** session, which is what a dialog opened from the side menu is acting for; a
+contribution that belongs to one session passes that session's own `IPluginSessionContext.PaneId` instead of relying
+on which pane happens to be selected. Default `null`.
+
+```csharp
+// The issues dialog opens on the project this session is tracked in, falling back to the instance-wide default.
+var linked = await host.GetProjectFieldValueAsync("youtrack.project");
+```
 
 ## `ICockpitActions`
 
