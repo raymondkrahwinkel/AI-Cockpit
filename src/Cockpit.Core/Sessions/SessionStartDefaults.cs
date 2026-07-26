@@ -53,7 +53,15 @@ public sealed record SessionStartDefaults(
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project)));
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project), _InformationNote(project)));
+
+    /// <summary>
+    /// How much of the standing instructions a project's shared information rows may take. A ceiling rather than trust,
+    /// because this block is the one part of the prompt that grows by the row: the Claude route hands the whole prompt
+    /// to its CLI as one argument, and a process command line has a hard limit — so an unbounded block does not merely
+    /// cost budget, it stops the session starting at all. Generous enough that a realistic project never meets it.
+    /// </summary>
+    private const int InformationNoteBudget = 4000;
 
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
@@ -67,6 +75,60 @@ public sealed record SessionStartDefaults(
         project?.MemoryRef is { Length: > 0 } memory && !string.IsNullOrWhiteSpace(memory)
             ? $"This project's memory lives at {memory.Trim()}. Read it there when you need what this project already knows, and keep it up to date as you work."
             : null;
+
+    /// <summary>
+    /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block. Null when
+    /// none are — which is the default, so a session's prompt does not grow because a project happens to keep notes.
+    /// <para>
+    /// Told as flat <c>label: value</c> lines rather than a sentence per row: the operator wrote these labels, and
+    /// rephrasing them into prose would put words in their mouth. A row they left unlabelled is given as the bare
+    /// value.
+    /// </para>
+    /// <para>
+    /// Each row is tidied here rather than trusted to have been, even though the store tidies on load and on save. This
+    /// is one line per row: a value that still held a line break would arrive as extra lines the session reads as
+    /// instructions of their own, and relying on an earlier caller to have prevented that is how a guard stops being
+    /// one.
+    /// </para>
+    /// </summary>
+    private static string? _InformationNote(Project? project)
+    {
+        var shared = project?.AdditionalInfo
+            .Where(field => field.IsSharedWithSessions)
+            .Select(field => field.Tidied())
+            .Where(field => !field.IsBlank)
+            .ToList() ?? [];
+
+        if (shared.Count == 0)
+        {
+            return null;
+        }
+
+        var lines = new List<string>();
+        var budget = InformationNoteBudget;
+        foreach (var field in shared)
+        {
+            // A label the operator already punctuated keeps its own colon rather than getting a second one.
+            var label = field.Label.EndsWith(':') ? field.Label : $"{field.Label}:";
+            var line = field.HasLabel ? $"- {label} {field.Value}" : $"- {field.Value}";
+            if (line.Length > budget && lines.Count > 0)
+            {
+                break;
+            }
+
+            lines.Add(line);
+            budget -= line.Length + 1;
+        }
+
+        // Said out loud rather than trimmed away in silence: the session is told its picture is incomplete, and the
+        // operator can see in the prompt that a row they ticked did not make it.
+        if (lines.Count < shared.Count)
+        {
+            lines.Add($"- (and {shared.Count - lines.Count} more that did not fit here — read them in the project itself)");
+        }
+
+        return $"What else you should know about this project:\n{string.Join('\n', lines)}";
+    }
 
     /// <summary>
     /// The profile's standing instructions with the project's appended under them, blank-separated. Both apply and

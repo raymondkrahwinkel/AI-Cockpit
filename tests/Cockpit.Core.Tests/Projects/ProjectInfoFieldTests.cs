@@ -93,6 +93,27 @@ public class ProjectInfoFieldTests
     }
 
     [Fact]
+    public void Tidied_KeepsWhetherTheRowIsSharedWithSessions()
+    {
+        // Normalized() tidies on every load and every save, so a positional `new(Label, Value)` in here — which carries
+        // only those two — would have quietly unticked every row the operator shared.
+        var shared = new ProjectInfoField("  Repository ", " https://github.com/example/repo ")
+        {
+            IsSharedWithSessions = true,
+        };
+
+        shared.Tidied().IsSharedWithSessions.Should().BeTrue("tidying a row must not change what it is for");
+    }
+
+    [Fact]
+    public void IsSharedWithSessions_DefaultsToOff()
+    {
+        // These rows arrived as reference material for the operator (AC-295). Sharing them by default would change what
+        // already-entered rows do without anyone asking.
+        new ProjectInfoField("Customer", "Acme BV").IsSharedWithSessions.Should().BeFalse();
+    }
+
+    [Fact]
     public void Tidied_LeavesAnOrdinaryRowAsItIs()
     {
         var field = new ProjectInfoField("Repository", "https://github.com/example/repo");

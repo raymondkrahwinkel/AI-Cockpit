@@ -38,7 +38,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Profiles.Add("personal");
         SelectedProfileLabel = "personal";
         Name = "Cockpit";
-        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Repository", "https://github.com/example/ai-cockpit"));
+        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Repository", "https://github.com/example/ai-cockpit", isSharedWithSessions: true));
         AdditionalInfo.Add(new ProjectInfoFieldViewModel("Customer", "Acme BV — ask for their project lead"));
     }
 
@@ -64,7 +64,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         foreach (var field in project.AdditionalInfo)
         {
-            AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value));
+            AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value, field.IsSharedWithSessions));
         }
     }
 
