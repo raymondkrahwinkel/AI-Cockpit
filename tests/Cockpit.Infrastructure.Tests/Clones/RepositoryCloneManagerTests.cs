@@ -121,7 +121,7 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         // Replace the checkout with a different git repository (no matching origin) at the same managed slug. The
         // clone must refuse rather than overwrite whatever is there — it might be work.
-        Directory.Delete(first.Path, recursive: true);
+        TestGitDirectory.Remove(first.Path);
         Directory.CreateDirectory(first.Path);
         _Git(first.Path, "init", "-b", "main");
         var untouched = Path.Combine(first.Path, "someone-elses-work.txt");
@@ -192,25 +192,5 @@ public sealed class RepositoryCloneManagerTests : IDisposable
         return standardOutput.Trim();
     }
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_tempRoot))
-        {
-            // git checks out read-only pack files on some platforms; clear the attribute so the recursive delete
-            // does not trip over them.
-            foreach (var file in Directory.EnumerateFiles(_tempRoot, "*", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    File.SetAttributes(file, FileAttributes.Normal);
-                }
-                catch (Exception)
-                {
-                    // Best effort — a file we cannot re-attribute is not worth failing the cleanup over.
-                }
-            }
-
-            Directory.Delete(_tempRoot, recursive: true);
-        }
-    }
+    public void Dispose() => TestGitDirectory.Remove(_tempRoot);
 }

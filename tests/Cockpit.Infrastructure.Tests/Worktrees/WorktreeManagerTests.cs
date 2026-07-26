@@ -501,13 +501,7 @@ public sealed class WorktreeManagerTests : IDisposable
         Directory.Exists(record.Path).Should().BeTrue();
     }
 
-    public void Dispose()
-    {
-        if (Directory.Exists(_tempRoot))
-        {
-            Directory.Delete(_tempRoot, recursive: true);
-        }
-    }
+    public void Dispose() => TestGitDirectory.Remove(_tempRoot);
 
     /// <summary>A bare repository as origin, with main already on it — the "has somewhere to be pushed to" fixture.</summary>
     private void _AddRemote()

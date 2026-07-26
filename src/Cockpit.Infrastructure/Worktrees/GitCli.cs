@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Worktrees;
@@ -28,6 +29,14 @@ internal static class GitCli
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // git writes paths as UTF-8 on every platform. Left unset, .NET decodes a redirected stream with the
+            // console code page, which on Windows is not UTF-8 — "café.txt" comes back mangled, and a pathspec built
+            // from that text matches no file. git answers a pathspec that matches nothing with "no difference", so
+            // IsCleanAsync reads a worktree holding unmerged work as clean and ReleaseAsync deletes its branch.
+            // Same class of silent-safe answer the -z in _HasUnmergedWorkAsync guards against, arriving by a
+            // different door. A no-op where the console is already UTF-8.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
