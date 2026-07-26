@@ -54,5 +54,4 @@ public partial class PluginStoreDialog : Window
             ExternalLink.TryOpen(url);
         }
     }
-
 }
