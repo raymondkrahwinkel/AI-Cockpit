@@ -191,6 +191,13 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
         var mcpKey = keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
 
+        // Remembered so this session's token dies with it (AC-89). Only when we minted one: the shared app key is the
+        // app's, not ours to drop.
+        if (keyring is not null && !string.IsNullOrEmpty(paneId))
+        {
+            _minted = (paneId, mcpKey);
+        }
+
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [WellKnownSessionEnvironment.CockpitMcpKey] = mcpKey,
@@ -393,7 +400,23 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public ValueTask DisposeAsync() => inner.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        // The session is over, so its MCP identity goes with it rather than staying a valid bearer until the app
+        // restarts. Scoped to the token this adapter minted: a restarting pane mints its replacement before the old
+        // driver is disposed, and dropping by pane alone would revoke the live session's token instead of this one.
+        if (_minted is { } minted)
+        {
+            keyring?.Revoke(minted.PaneId, minted.Token);
+            _minted = null;
+        }
+
+        return inner.DisposeAsync();
+    }
+
+    // The per-session MCP token this adapter handed its session, so DisposeAsync can revoke exactly that one. Null
+    // when the session runs on the shared app key (no pane id, or no keyring in a test graph).
+    private (string PaneId, string Token)? _minted;
 
     private async IAsyncEnumerable<SessionEvent> _AdaptEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

@@ -182,6 +182,46 @@ public class PluginSessionDriverAdapterTests
         inner.LastEnvironment.Should().Contain("AI_OS_ROOT", "/home/raymond/AI-OS");
     }
 
+    /// <summary>
+    /// AC-89: the session's MCP identity dies with the session. Without this the token stays a valid bearer for every
+    /// cockpit-hosted endpoint until the app restarts, still naming a pane that is gone — and the consent broker keys
+    /// remembered approvals on exactly that pane id.
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_RevokesTheTokenItMintedForTheSession()
+    {
+        var keyring = new SessionMcpKeyring();
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, keyring: keyring);
+        await adapter.StartAsync(launchOptions: PaneOptions);
+        Assert.NotNull(inner.LastEnvironment);
+        var token = inner.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey];
+        keyring.PaneFor(token).Should().Be("pane-1", "the session was handed its own token, not the shared key");
+
+        await adapter.DisposeAsync();
+
+        keyring.PaneFor(token).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A session on the shared app key has no token of its own, and the app key is not this adapter's to drop — it is
+    /// the whole app's baseline capability, and revoking it would take every other session's access with it.
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_WithNoPaneId_LeavesTheSharedAppKeyAlone()
+    {
+        var keyring = new SessionMcpKeyring();
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, keyring: keyring);
+        await adapter.StartAsync();
+        Assert.NotNull(inner.LastEnvironment);
+        inner.LastEnvironment[WellKnownSessionEnvironment.CockpitMcpKey].Should().Be(_authKey.Value);
+
+        var act = async () => await adapter.DisposeAsync();
+
+        await act.Should().NotThrowAsync();
+    }
+
     private static readonly IReadOnlyDictionary<string, string> PaneOptions =
         new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "pane-1" };
 
