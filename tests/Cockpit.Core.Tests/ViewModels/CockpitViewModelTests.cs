@@ -276,6 +276,37 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task DuplicateSession_LeavesTheCopyOfAnUnnamedSessionOpenToBeingLabelled()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        await vm.DuplicateSessionCommand.ExecuteAsync(vm.Sessions.Single());
+
+        // "default - 1 (copy)" is composed here, and a copy of a session nobody named is equally unnamed — so it
+        // must not end up more protected from a ticket link than the session it came from (#AC-310).
+        var copy = vm.Sessions.Last();
+        copy.Title.Should().Be("default - 1 (copy)");
+        vm.SuggestSessionName(copy.PaneId, "AC-310").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DuplicateSession_CarriesOverThatTheOriginalWasNamedOnPurpose()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var original = vm.Sessions.Single();
+        original.EditTitle = "release work";
+        original.CommitRename();
+
+        await vm.DuplicateSessionCommand.ExecuteAsync(original);
+
+        var copy = vm.Sessions.Last();
+        copy.Title.Should().Be("release work (copy)");
+        vm.SuggestSessionName(copy.PaneId, "AC-310").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ShowTimestamps_TogglesEveryOpenSessionLive()
     {
         var vm = NewVm();

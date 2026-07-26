@@ -49,7 +49,7 @@ public class SessionIssueLinksTests
     }
 
     [Fact]
-    public void Unlink_ClearsTheStatuslineTheLinkPutThere()
+    public void Unlink_LeavesTheStatuslineAlone()
     {
         var host = new FakeCockpitHost();
         var links = new SessionIssueLinks(host);
@@ -57,20 +57,8 @@ public class SessionIssueLinksTests
 
         links.Unlink("pane-1");
 
-        // Cleared, not left saying hello-world#42 — a session that says it is on an issue you put down is worse
-        // than one that says nothing. The name stays: what it was before the link is not this plugin's to restore.
-        host.Statuslines["pane-1"].Should().BeEmpty();
-        host.SuggestedNames["pane-1"].Should().Be("hello-world#42");
-    }
-
-    [Fact]
-    public void Unlink_OfAPaneThatWasNeverLinked_TouchesNothing()
-    {
-        var host = new FakeCockpitHost();
-        var links = new SessionIssueLinks(host);
-
-        links.Unlink("pane-1");
-
-        host.Statuslines.Should().BeEmpty();
+        // The statusline is shared with the agent and with flows, and there is no way to read it back to tell whose
+        // text is on it now. Unlinking therefore writes nothing rather than risking wiping live progress.
+        host.Statuslines["pane-1"].Should().Be("hello-world#42 — Link to session leaves the name alone");
     }
 }

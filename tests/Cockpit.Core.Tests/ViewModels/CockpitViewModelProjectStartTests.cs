@@ -99,6 +99,28 @@ public class CockpitViewModelProjectStartTests
     }
 
     [Fact]
+    public async Task StartProjectSession_NamesItAfterTheProject_WithoutClaimingTheNameAsChosen()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>());
+        var vm = NewVm(Substitute.For<ISessionDialogService>(), quickStart: quickStart);
+        var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
+
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+
+        // "Cockpit" is composed here from the project, not typed by anyone, so linking a ticket to this session may
+        // still label it — the same as a session that was never named at all (#AC-310).
+        var session = vm.Sessions.Single();
+        session.Title.Should().Be("Cockpit");
+        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeTrue();
+        session.Title.Should().Be("AC-310");
+    }
+
+    [Fact]
     public async Task StartingASession_RecordsThatTheProjectWasWorkedOn()
     {
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };

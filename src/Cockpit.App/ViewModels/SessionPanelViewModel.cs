@@ -33,10 +33,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _title = "Session";
 
     /// <summary>
-    /// Whether <see cref="Title"/> is still one the cockpit made up ("&lt;profile&gt; - 3") rather than one somebody
-    /// chose — what lets <c>ICockpitHost.SuggestSessionName</c> label a session after the ticket just linked to it
-    /// without erasing a name the operator typed (#AC-310). True until the session is named on purpose: in the
-    /// New-session dialog, by an inline rename, or by an explicit <c>SetSessionName</c>.
+    /// Whether <see cref="Title"/> is still one the cockpit composed itself — "&lt;profile&gt; - 3", the project's
+    /// name, "&lt;original&gt; (copy)" — rather than one somebody chose, which is what lets
+    /// <c>ICockpitHost.SuggestSessionName</c> label a session after the ticket just linked to it without erasing a
+    /// name the operator typed (#AC-310). True until the session is named on purpose, which is any of: typed in the
+    /// New-session dialog, an inline rename, an explicit <c>SetSessionName</c>, or a flow naming it through
+    /// <c>ICockpitActions.SetActiveSessionStatusAsync</c>. Every one of those four is a decision; the composed ones
+    /// are placeholders.
     /// </summary>
     public bool HasGeneratedName { get; set; } = true;
 

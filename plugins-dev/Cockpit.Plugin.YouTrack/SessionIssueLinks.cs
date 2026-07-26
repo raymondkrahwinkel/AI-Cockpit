@@ -60,9 +60,10 @@ internal sealed class SessionIssueLinks(ICockpitHost host)
     {
         if (_byPaneId.Remove(paneId))
         {
-            // The label goes with the link: a statusline still naming a ticket you just put down is worse than none.
-            // The name stays as it is — the one it had before the link is not ours to restore.
-            _ = host.SetSessionStatusline(paneId, string.Empty);
+            // The label deliberately stays. Clearing it looks tidier until you notice the statusline is shared: the
+            // agent sets its own progress there through the session-status tool, and a flow through cockpit.set-status.
+            // The host offers no way to read the line back, so "clear it if it is still mine" is not a thing this can
+            // know — and wiping someone's live progress is a worse trade than leaving a ticket name a moment too long.
             Changed?.Invoke(this, paneId);
         }
     }

@@ -4247,7 +4247,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
             // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
             // numbering exists to prevent.
-            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            // Composed here, not chosen: linking a ticket to this session later may still label it, the same as it
+            // would a session that never got a name at all (#AC-310).
+            if (paneId is not null && FindSession(paneId) is { } started)
+            {
+                started.HasGeneratedName = true;
+            }
+
             return;
         }
 
@@ -4600,7 +4607,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (session.LaunchResult is { } result)
         {
-            await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
+            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
+            // The copy's name is composed here, so it is only as deliberate as the one it was copied from: a copy of
+            // "default - 3" stays open to a ticket link relabelling it, a copy of a name you typed does not (#AC-310).
+            if (paneId is not null && FindSession(paneId) is { } copy)
+            {
+                copy.HasGeneratedName = session.HasGeneratedName;
+            }
         }
     }
 
