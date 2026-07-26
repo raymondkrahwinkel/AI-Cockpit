@@ -4188,7 +4188,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SessionOptionCatalog.DefaultEffort,
             name,
             WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
-            SdkLaunchOptions: profile.Defaults?.OptionDefaults);
+            SdkLaunchOptions: profile.Defaults?.OptionDefaults,
+            // No operator said which project this one is for and no session it descends from, so the folder answers
+            // (AC-320) — the same rule an embedded run is placed by. Without it a plugin-started session belongs to
+            // no project, and everything a project decides at start stays silent for it.
+            ProjectId: await _ProjectIdForDirectoryAsync(workingDirectory));
 
         var paneId = await _LaunchSessionFromResultAsync(result);
 
@@ -4486,6 +4490,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The registered worktree whose folder is exactly this working directory, or null — the reattach probe. Uses the
     // same OS-aware path comparison the worktree engine does, so a case-only difference matches on Windows/macOS and
     // is distinct on Linux.
+    //
+    // Deliberately not WorktreeLookup (AC-320), which answers null for a path the platform rejects: here a path that
+    // cannot be resolved must throw, because the caller turns that into "could not isolate this session — run in the
+    // folder anyway?" rather than starting an unisolated session in silence.
     private async Task<WorktreeRecord?> _MatchingWorktreeAsync(string workingDirectory)
     {
         if (_worktreeManager is null)
@@ -5373,6 +5381,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
+            // Which project this run works on (AC-320), before the start rather than after: the launch asks every
+            // plugin what it gives a starting session, and that answer may depend on the project, so a project
+            // established afterwards would arrive too late to be used.
+            await _ApplyEmbeddedProjectAsync(session, request);
+
             // An SDK session on the requested permission mode (default "ask"), the requested model where the profile
             // offers a choice (AC-174 — a CEO plan picks one per step; null keeps the app default), and app-default
             // effort, with the profile's own start defaults in the generic OptionDefaults map — the same shape
@@ -5508,6 +5521,58 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         return options;
+    }
+
+    // Gives an embedded session the project it is working on (AC-320). Deliberately does not mark that project as
+    // opened the way a New-session launch does: that ordering is "what the operator works on", and a run started by
+    // an automation is not the operator opening it.
+    // Internal (not private) so a test can drive the resolution against a session directly.
+    internal async Task _ApplyEmbeddedProjectAsync(SessionPanelViewModel session, EmbeddedSessionRequest request)
+    {
+        if (request.WorkingDirectory is { Length: > 0 } directory)
+        {
+            session.ProjectId = await _ProjectIdForDirectoryAsync(directory);
+        }
+    }
+
+    // The project a session belongs to when nobody said which (AC-320): no operator picked one and there is no
+    // session it descends from, so the folder it runs in answers — a project is identified by the folder it owns.
+    // Shared by the two routes in that position, an embedded run and a plugin-started session, so they cannot drift
+    // into placing the same folder on different projects.
+    //
+    // The directory as requested, never the isolated one a start derives from it: a run's own worktree belongs to no
+    // project, the repository it was cut from does.
+    private async Task<string?> _ProjectIdForDirectoryAsync(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return null;
+        }
+
+        IReadOnlyList<WorktreeRecord> worktrees = [];
+        try
+        {
+            // The projects list is filled by a fire-and-forget read at startup, so a workspace that embeds as its body
+            // is built — a plugin workspace restored as the active tab — can get here first and find it empty. Read it
+            // now in that case rather than answer "no project" on a race.
+            if (Projects.Projects.Count == 0)
+            {
+                await Projects.LoadAsync();
+            }
+
+            if (_worktreeManager is not null)
+            {
+                worktrees = await _worktreeManager.ListAsync();
+            }
+        }
+        catch (Exception)
+        {
+            // Neither read is worth a session. The registry is only how a run pointed straight at a worktree finds its
+            // repository, and an unread projects list costs the same one answer — while an exception here would fail
+            // the start outright: an embedded start's catch stands the whole session down.
+        }
+
+        return EmbeddedSessionProject.Resolve(Projects.Projects, worktrees, directory)?.Id;
     }
 
     // Embedded isolation (AC-85/AC-174), the automated counterpart of _ResolveIsolatedWorkingDirectoryAsync. A run that

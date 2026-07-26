@@ -43,6 +43,17 @@ internal sealed class DelegatedTaskEntry
     /// <summary>The verified pane that created this task (AC-128), or null off the verified path. Scopes the task-addressed tools and list_tasks so an agent cannot reach another session's task by naming its id (confused deputy).</summary>
     public string? OwnerPaneId { get; init; }
 
+    /// <summary>
+    /// The project this task works on (AC-320) — inherited from the session that delegated it, because a sub-agent
+    /// asked to do a piece of its caller's work is working on the same thing the caller is. Null when that session
+    /// has no project, which runs exactly as delegation always has.
+    /// <para>
+    /// Resolved once, when the task is accepted, and carried as a value: the start path hands it to the driver, where
+    /// looking it up again would mean the UI thread from a thread that is waiting on the answer (AC-218).
+    /// </para>
+    /// </summary>
+    public string? ProjectId { get; init; }
+
     public ISessionRuntime? Runtime { get; private set; }
 
     /// <summary>Fires when the task outlives what its profile allows; cancelled the moment the task ends, so a finished task is never stopped after the fact.</summary>

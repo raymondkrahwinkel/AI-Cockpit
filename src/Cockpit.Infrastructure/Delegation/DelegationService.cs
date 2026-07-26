@@ -50,6 +50,10 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     private readonly IDelegationAuditLog _auditLog;
     private readonly ISessionWorkspaces _workspaces;
     private readonly IPluginProviderRegistry? _providerRegistry;
+
+    /// <summary>How a task finds the project of the session that delegated it (AC-320). Absent in a test graph; the task then runs without a project, as delegation always did.</summary>
+    private readonly ISessionProjectResolver? _projects;
+
     private readonly Func<int, TimeSpan> _timeout;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
@@ -60,8 +64,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         IMcpServerStore mcpServerStore,
         IDelegationAuditLog auditLog,
         ISessionWorkspaces workspaces,
-        IPluginProviderRegistry? providerRegistry = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry)
+        IPluginProviderRegistry? providerRegistry = null,
+        ISessionProjectResolver? projects = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects)
     {
     }
 
@@ -73,7 +78,8 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         IDelegationAuditLog auditLog,
         Func<int, TimeSpan> timeout,
         ISessionWorkspaces? workspaces = null,
-        IPluginProviderRegistry? providerRegistry = null)
+        IPluginProviderRegistry? providerRegistry = null,
+        ISessionProjectResolver? projects = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -81,6 +87,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         _auditLog = auditLog;
         _workspaces = workspaces ?? NoSessionWorkspaces.Instance;
         _providerRegistry = providerRegistry;
+        _projects = projects;
         _timeout = timeout;
     }
 
@@ -329,7 +336,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             }
         }
 
-        var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId };
+        // A sub-agent inherits the project of the session that delegated to it (AC-320): it is doing a piece of that
+        // session's work, so the servers, overrides and contributions its caller starts with are the ones it needs
+        // too. Resolved here, once, and carried on the entry — the start path is where looking it up would cost the
+        // UI thread. Absent resolver (a test graph, a caller off the verified path) leaves it null, which is exactly
+        // how delegation behaved before.
+        var projectId = _projects is null || callerPaneId is null
+            ? null
+            : await _projects.ProjectIdOfAsync(callerPaneId, cancellationToken);
+
+        var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId, ProjectId = projectId };
         lock (_tasksLock)
         {
             if (_tasks.Count(task => task.Status == DelegatedTaskStatus.Queued) >= MaxQueued)
@@ -576,7 +592,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 launchOptions: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     [WellKnownPluginSessionOptions.PaneId] = entry.TaskId,
-                });
+                },
+                // The project this task inherited from the session that delegated it (AC-320), so its MCP fan-out
+                // resolves the registry as that project sees it (AC-218) rather than unscoped. A value, never a
+                // lookup: this runs where the driver may resolve synchronously.
+                projectId: entry.ProjectId);
 
             // The ceiling above governs a CLI session's own permission handling, but a local-model session
             // (OpenAiCompatSessionDriver) treats permissionMode as a no-op and gates every MCP tool call through
