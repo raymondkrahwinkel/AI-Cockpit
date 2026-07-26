@@ -209,6 +209,21 @@ internal sealed class CockpitHost(
     public IReadOnlyList<ITrackerProvider> TrackerProviders =>
         services.GetRequiredService<ITrackerProviderRegistry>().Providers;
 
+    public void AddSessionResourceProvider(ISessionResourceProvider provider)
+    {
+        // Refused means this exact provider is already registered — a plugin whose Initialize ran twice, not two
+        // plugins clashing. Nothing is lost by ignoring it, so this is a debug line rather than a warning.
+        if (!services.GetRequiredService<ISessionResourceProviderRegistry>().Register(provider))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Session-resource provider {Provider} is already registered; this registration is ignored",
+                provider.GetType().Name);
+        }
+    }
+
+    public IReadOnlyList<ISessionResourceProvider> SessionResourceProviders =>
+        services.GetRequiredService<ISessionResourceProviderRegistry>().Providers;
+
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
 

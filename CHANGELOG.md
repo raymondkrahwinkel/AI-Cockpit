@@ -32,6 +32,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a plugin can now hand a session something as it starts — environment variables its process runs with, asked
+  for per session so the answer can depend on the project that session belongs to. It reaches every provider alike, so
+  a plugin contributes once instead of once per CLI. What a plugin sets sits on top of your profile's own variables
+  and underneath the cockpit's and the provider's, and a variable on a key the cockpit owns (an Anthropic credential,
+  a nested-agent marker) is refused and logged by name — the same rule your profile's variables already meet.
+- added: the GitHub Issues plugin uses it first. A session started under a project you linked to a repository now runs
+  with `GH_REPO` set to that repository, so a `gh` command the agent runs inside the session is about the repository
+  the project is tracked in rather than whichever one its folder happens to be. Nothing changes for a session without
+  a project, or for a project you never linked to a repository.
+
 - added: a plugin's settings dialog can have sections, navigated from a rail down its left side — the same one the
   cockpit's own Options dialog has. Autopilot's settings use it first: its four groups (CEO, Cost & tokens, Run safety,
   Templates) are now four pages you pick between instead of one scroll several screens long. Nothing moved and nothing

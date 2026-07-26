@@ -30,6 +30,11 @@ public interface ITtyLauncher
     /// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config honours the operator's
     /// checklist instead of loading every eligible server.
     /// </para>
+    /// <para>
+    /// <paramref name="contributed"/> is what the plugins give this session (AC-165), applied after the profile's
+    /// own variables and before the host identity and the provider's overlay — the same precedence the SDK route
+    /// applies.
+    /// </para>
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -40,5 +45,6 @@ public interface ITtyLauncher
         string? workingDirectory = null,
         SessionResume? resume = null,
         string? paneId = null,
-        IReadOnlySet<string>? enabledMcpServerNames = null);
+        IReadOnlySet<string>? enabledMcpServerNames = null,
+        SessionResources? contributed = null);
 }

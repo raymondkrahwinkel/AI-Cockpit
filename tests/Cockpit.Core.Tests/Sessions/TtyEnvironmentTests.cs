@@ -224,6 +224,32 @@ public class TtyEnvironmentTests
         environment.ContainsKey("ANTHROPIC_API_KEY").Should().BeFalse("a provider does not get to put back what the host stripped");
     }
 
+    // The pane id is who a session is, not a setting it may choose (AC-13, AC-165). A profile, a provider or a
+    // plugin contribution that could set it would let that session set another pane's statusline and be attributed
+    // another pane's consent — so it belongs to the host the same way COCKPIT_MCP_KEY does.
+    [Fact]
+    public void Compose_WithAnOverlayTryingToSetThePaneId_IgnoresIt()
+    {
+        var baseEnvironment = TtyEnvironment.BuildBase(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        var overlay = new Dictionary<string, string?> { ["COCKPIT_PANE_ID"] = "someone-elses-pane" };
+
+        TtyEnvironment.Compose(baseEnvironment, overlay).ContainsKey("COCKPIT_PANE_ID")
+            .Should().BeFalse("nothing but the host gets to say which pane a session is");
+    }
+
+    [Fact]
+    public void BuildBase_DropsAnInheritedPaneId()
+    {
+        // A cockpit launched from inside a cockpit session would otherwise hand its child the parent pane's identity,
+        // and the child would report its status as the parent.
+        var inherited = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["COCKPIT_PANE_ID"] = "the-parent-pane",
+        };
+
+        TtyEnvironment.BuildBase(inherited).ContainsKey("COCKPIT_PANE_ID").Should().BeFalse();
+    }
+
     [Fact]
     public void Compose_WithAProviderOverlayRemovingAVariable_TakesItOutOfTheBase()
     {

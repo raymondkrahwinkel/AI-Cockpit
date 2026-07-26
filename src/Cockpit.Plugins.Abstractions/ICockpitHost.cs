@@ -674,4 +674,23 @@ public interface ICockpitHost
     /// </summary>
     Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
         Task.FromResult(new ManagedCliStatus(null, null));
+
+    /// <summary>
+    /// Registers something this plugin gives every session as it starts (AC-165): environment variables, asked for
+    /// per session so the answer can depend on the project it belongs to. The host asks each registered provider
+    /// once per launch, merges what they return, and hands it to whichever provider is starting — so a plugin
+    /// contributes once and reaches Claude, Codex, Kimi and a TTY alike, without knowing any of them.
+    /// <para>
+    /// The counterpart to what a project <em>tells</em> its sessions (its memory location, the information rows it
+    /// shares), which arrives as standing instructions. This one arrives in the process.
+    /// </para>
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host asks anyone.
+    /// </summary>
+    void AddSessionResourceProvider(Sessions.ISessionResourceProvider provider)
+    {
+    }
+
+    /// <summary>The session-resource providers every plugin has contributed — what a starting session is assembled from. Default empty.</summary>
+    IReadOnlyList<Sessions.ISessionResourceProvider> SessionResourceProviders => [];
 }

@@ -177,7 +177,13 @@
          method returning the raw text in a wrapping SelectableTextBlock, which is what every plugin rendered before the
          seam existed: an already-compiled plugin and a test fake keep working unchanged. Additive, so it folds into
          this same minor; abstractionsVersion stays 1. -->
-    <Version>1.27.0</Version>
+    <!-- 1.28.0 (AC-165): session resources — ISessionResourceProvider / SessionResourceRequest /
+         SessionResourceContribution, plus ICockpitHost.AddSessionResourceProvider and SessionResourceProviders. A
+         plugin says what a session should carry as it starts (environment variables today) and the host asks it once
+         per launch, so one contribution reaches every provider. Default no-op and default empty: an already-compiled
+         plugin registers nothing and behaves exactly as before. Additions only — a minor; major and
+         abstractionsVersion stay 1. -->
+    <Version>1.28.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

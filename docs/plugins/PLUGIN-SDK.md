@@ -94,6 +94,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Project field | `host.AddProjectField(registration)` | Adds a field to the **project editor** (AC-317) — "which YouTrack project is this", "which repository" — so a project carries the identifier you resolve, picked from a list you supply. Read it back with `host.GetProjectFieldValueAsync(key)`. See [Project fields](#project-fields--link-a-project-to-your-side-of-the-world). |
+| Session resources | `host.AddSessionResourceProvider(provider)` | Gives every session **as it starts** (AC-165) environment variables its process runs with, asked for per session so the answer can depend on the project it belongs to. Reaches every provider — Claude, Codex, Kimi, a TTY — without your knowing any of them. See [`AddSessionResourceProvider`](API-REFERENCE.md#void-addsessionresourceproviderisessionresourceprovider-provider). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
 | Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
@@ -142,6 +143,7 @@ public interface ICockpitHost
     void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // and what it was set to
+    void AddSessionResourceProvider(ISessionResourceProvider provider); // what a starting session carries (AC-165)
 }
 
 public interface ICockpitActions
