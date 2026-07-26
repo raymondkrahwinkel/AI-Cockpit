@@ -71,6 +71,13 @@ public sealed class ScreenshotCoordinator : ISingletonService
     public bool IsSupported => _capture.IsSupported;
 
     /// <summary>
+    /// Completes once <see cref="IsSupported"/> means anything (AC-326). On Linux the answer is a D-Bus round
+    /// trip, and this coordinator is built in the same statement that wires the composer's button — so whoever
+    /// read it there has to come back and read it again.
+    /// </summary>
+    public Task SupportSettled => _capture.SupportSettled;
+
+    /// <summary>
     /// Runs the picker and puts the result on the session in view — the global hotkey's path, which has no
     /// session of its own to name and so takes the selected one, exactly as push-to-talk does.
     /// </summary>

@@ -5,7 +5,10 @@ namespace Cockpit.Core.Tests.Screenshots;
 /// <summary>Test double for <see cref="IScreenshotCapture"/>: stands in for the OS picker with a fixed answer — a capture, a cancel (null), or a failure.</summary>
 internal sealed class FakeScreenshotCapture : IScreenshotCapture
 {
-    public bool IsSupported { get; init; } = true;
+    public bool IsSupported { get; set; } = true;
+
+    /// <summary>Left unfinished to stand in for a platform that has not said yet whether it can capture — Linux, waiting on the session bus.</summary>
+    public Task SupportSettled { get; init; } = Task.CompletedTask;
 
     /// <summary>What the capture "returns". Null stands for the operator cancelling.</summary>
     public ScreenCapture? Result { get; init; }

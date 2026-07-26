@@ -30,6 +30,9 @@ internal sealed class MacScreenshotCapture(ILogger<MacScreenshotCapture> logger)
 {
     public bool IsSupported => true;
 
+    /// <summary>Nothing to ask anyone: <c>screencapture</c> is part of macOS.</summary>
+    public Task SupportSettled => Task.CompletedTask;
+
     public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(Path.GetTempPath(), $"cockpit-screenshot-{Guid.NewGuid():n}.png");

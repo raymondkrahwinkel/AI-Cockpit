@@ -1891,6 +1891,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             _WireScreenshots(session);
         }
+
+        if (value is { } screenshots)
+        {
+            _ = _RewireScreenshotsWhenSupportSettlesAsync(screenshots);
+        }
+    }
+
+    /// <summary>
+    /// Wires every session again once the platform has finished saying whether it can capture (AC-326). On Linux
+    /// that answer is a D-Bus round trip and this property is assigned in the same statement that builds the
+    /// coordinator, so the pass above always reads "cannot" — and every session already open at startup would
+    /// keep a greyed-out button for the rest of the run.
+    /// </summary>
+    private async Task _RewireScreenshotsWhenSupportSettlesAsync(ScreenshotCoordinator screenshots)
+    {
+        await screenshots.SupportSettled.ConfigureAwait(true);
+
+        foreach (var session in Sessions)
+        {
+            _WireScreenshots(session);
+        }
     }
 
     /// <summary>Hands a session panel the capture behind its composer button — and, where the platform has none, the sentence that says so.</summary>

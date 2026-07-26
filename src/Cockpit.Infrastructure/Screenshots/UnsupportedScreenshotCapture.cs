@@ -17,6 +17,9 @@ internal sealed class UnsupportedScreenshotCapture : IScreenshotCapture
 {
     public bool IsSupported => false;
 
+    /// <summary>Settled by being here at all: this is the registration for a platform with no route to try.</summary>
+    public Task SupportSettled => Task.CompletedTask;
+
     public Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Screen capture is not supported on this platform.");
 }

@@ -45,6 +45,9 @@ internal sealed class WindowsScreenshotCapture(IScreenshotClipboard clipboard, I
 
     public bool IsSupported => true;
 
+    /// <summary>Nothing to ask anyone: Windows ships the route this takes.</summary>
+    public Task SupportSettled => Task.CompletedTask;
+
     /// <summary>
     /// Test seam: swap the protocol launch and the wait between polls, so the clipboard-watching loop — the part
     /// with the actual logic in it — is assertable without a Snip overlay or two minutes of real time.
