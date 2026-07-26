@@ -830,6 +830,8 @@ public interface ICockpitActions
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm");  // default true
     Task<string> StartSessionAsync(string profileLabel, string? prompt = null,
                                    string? workingDirectory = null);                         // default throws
+    Task<string> StartSessionAsync(string profileLabel, string? prompt,
+                                   string? workingDirectory, string? sessionName);            // default throws
     Task<string> DelegateAsync(string profileLabel, string prompt,
                                string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
 }
@@ -854,6 +856,17 @@ Returns the name the session was given. Throws when no profile carries that labe
 between profiles would run someone's work on the wrong model, in the wrong directory, with the wrong permissions, and
 the caller would never learn that it had guessed. The default implementation throws `NotSupportedException`, so a
 plugin on a host too old to start sessions finds out rather than silently getting none.
+
+### `Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)`
+The same act, with the session's name said up front — what the New-session dialog's name field does, for a caller that
+has no dialog. A flow opening a session on a ticket can call it `AC-312` from the start instead of opening
+`Claude — 14:22` and renaming it a step later.
+
+A name passed here counts as a name somebody chose, so a ticket linked to that session afterwards will not replace it.
+Leave it null and the profile and the clock name it, and that composed name stays open to being relabelled later.
+
+It is a separate overload rather than a fourth optional parameter on the three-argument form, because adding one would
+change that method's signature and every plugin zip already published calls it. `abstractionsVersion` stays `1`.
 
 ### `Task SetClipboardTextAsync(string text)`
 Puts `text` on the system clipboard. Use as a fallback when there is no active session to inject into.

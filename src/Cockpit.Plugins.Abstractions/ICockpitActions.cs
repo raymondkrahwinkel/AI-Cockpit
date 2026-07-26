@@ -37,6 +37,26 @@ public interface ICockpitActions
         throw new NotSupportedException("This host cannot start sessions.");
 
     /// <summary>
+    /// <see cref="StartSessionAsync(string, string?, string?)"/>, with the session's name said up front (#AC-312) —
+    /// what the New-session dialog's own name field does, for a caller that has no dialog. A flow that opens a session
+    /// on a ticket can call it "AC-312" from the start instead of opening "Claude — 14:22" and renaming it a step
+    /// later. Left null, the profile and the clock name it, and that composed name stays open to being relabelled.
+    /// <para>
+    /// A separate overload rather than a fourth optional parameter on the one above: adding a parameter would change
+    /// that method's signature, and every plugin zip already published calls the three-argument form (#AC-40).
+    /// </para>
+    /// <para>
+    /// The default hands an unnamed start to the older overload, so a plugin built against this SDK still starts
+    /// sessions on a host that predates the name — only asking for a name is refused there, and it says which of the
+    /// two it could not do rather than claiming the host cannot start sessions at all.
+    /// </para>
+    /// </summary>
+    Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
+        string.IsNullOrWhiteSpace(sessionName)
+            ? StartSessionAsync(profileLabel, prompt, workingDirectory)
+            : throw new NotSupportedException("This host can start a session but cannot name it as it starts.");
+
+    /// <summary>
     /// Sets the statusline shown under the active (selected) session's name — what it is working on — and optionally
     /// renames it (#AC-13): the workflow half of the feature, so a flow that started a session on a ticket can label
     /// it with the ticket number, and clear it when the work moves on. The active session is the one a preceding

@@ -104,7 +104,10 @@ public sealed class PluginActions(
     /// the dialog. The profile's own defaults are used for model, permissions and effort, because a caller who names
     /// a profile means "the way I set that one up".
     /// </summary>
-    public async Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)
+    public Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
+        StartSessionAsync(profileLabel, prompt, workingDirectory, null);
+
+    public async Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)
     {
         var profiles = await profileStore.LoadAsync().ConfigureAwait(false);
 
@@ -114,7 +117,7 @@ public sealed class PluginActions(
                     ? "No session profiles are configured."
                     : $"No profile is called '{profileLabel}'. There is: {string.Join(", ", profiles.Select(candidate => candidate.Label))}.");
 
-        var name = await cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory).ConfigureAwait(false);
+        var name = await cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory, sessionName).ConfigureAwait(false);
 
         return name;
     }
