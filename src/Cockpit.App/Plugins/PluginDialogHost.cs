@@ -20,7 +20,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
     {
-        if (!_TryCreateWindow(title, width, height, out var window, out var owner))
+        if (!_TryCreateWindow(title, width, height, out var window, out var owner, out _))
         {
             return;
         }
@@ -32,7 +32,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
     public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
     {
-        if (!_TryCreateWindow(title, width, height, out var window, out var owner))
+        if (!_TryCreateWindow(title, width, height, out var window, out var owner, out var maximum))
         {
             return;
         }
@@ -72,12 +72,16 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         var root = new DockPanel();
         root.Children.Add(footer);
 
-        // The view gets the same inset as the footer already had. Without it a plugin's settings sat flush
-        // against the window edge — every plugin would otherwise have to remember its own margin, and they did
-        // not, so the padding belongs here where the host owns the chrome. The inset is a Border *inside* the
-        // scrolled content, not Padding on the ScrollViewer: Avalonia leaves a ScrollViewer's own padding out of
-        // the scroll extent, so a tall view could not scroll its last ~24px clear and it stayed under the footer.
-        root.Children.Add(new ScrollViewer { Content = new Border { Padding = new Thickness(14, 12), Child = view } });
+        // A view that declares sections is drawn with the Options navigation rail beside it (AC-316), and the
+        // dialog opens that much wider so the settings keep the room they had — up to the cockpit's own cap.
+        var body = PluginSettingsBodyBuilder.Build(view);
+        if (body.HasRail)
+        {
+            (window.Width, window.MinWidth) =
+                PluginSettingsBodyBuilder.GrowForRail(window.Width, window.MinWidth, maximum.Width, _RailWidth());
+        }
+
+        root.Children.Add(body.Content);
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
@@ -94,10 +98,11 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         return new Panel { Children = { content, overlay } };
     }
 
-    private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner)
+    private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner, out Size maximum)
     {
         window = null!;
         owner = null!;
+        maximum = default;
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
         {
             return false;
@@ -113,7 +118,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit
         // opens with its content cut off, which is how a canvas ends up cropped. Fit it to the cockpit window —
         // the main one, whichever window it is centred over — and let the operator resize from there.
-        var maximum = new Size(main.Width * 0.94, main.Height * 0.94);
+        maximum = new Size(main.Width * 0.94, main.Height * 0.94);
 
         window = new Window
         {
@@ -127,6 +132,12 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         };
         return true;
     }
+
+    // The width Theme.axaml draws the rail at. Read rather than repeated: the dialog has to be that much wider
+    // before the rail exists to be measured, and the style resolves the same key — so a theme without it draws no
+    // rail width and grows the dialog by none either.
+    private static double _RailWidth() =>
+        Application.Current?.TryFindResource("CockpitSubnavRailWidth", out var value) == true && value is double width ? width : 0;
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

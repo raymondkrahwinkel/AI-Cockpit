@@ -903,6 +903,71 @@ public sealed class MySettingsControl : UserControl, IPluginSettingsView
 
 ---
 
+## `IPluginSettingsSections`
+
+Optional interface your **settings control** implements when it has grown past one screenful: name your
+sections and the host draws the same left navigation rail the cockpit's own Options dialog uses, instead of
+stacking everything into one scroll.
+
+```csharp
+public interface IPluginSettingsSections
+{
+    IReadOnlyList<string> SectionTitles { get; }
+    void ShowSection(int index);
+}
+```
+
+Your control stays the one thing the host renders — it is not replaced or taken apart. The host asks it to
+show a section; swapping its own content is your business, so everything a settings view already relies on
+(its attach/detach lifetime, the fields `Save()` reads) is untouched. Save stays one shared footer across all
+sections: a section is a page of the same form, not a form of its own.
+
+The rail appears **from two sections up** — beside a single page it costs width and navigates nothing — and a
+control that does not implement this gets exactly the dialog it has today.
+
+```csharp
+public sealed class MySettingsControl : UserControl, IPluginSettingsView, IPluginSettingsSections
+{
+    private readonly List<string> _titles = [];
+    private readonly List<Control> _pages = [];
+
+    public MySettingsControl()
+    {
+        var connection = _Section("Connection");
+        connection.Children.Add(/* … */);
+
+        var advanced = _Section("Advanced");
+        advanced.Children.Add(/* … */);
+
+        ShowSection(0);
+    }
+
+    public IReadOnlyList<string> SectionTitles => _titles;
+
+    public void ShowSection(int index) => Content = _pages[index];
+
+    private StackPanel _Section(string title)
+    {
+        var page = new StackPanel { Spacing = 10 };
+        _titles.Add(title);
+        _pages.Add(page);
+        return page;
+    }
+}
+```
+
+Make `ShowSection` **idempotent**: the host shows section 0 when the dialog opens, so a control that also picks
+its opening section in its constructor (as above) is asked for that one twice.
+
+> **Set `minHostVersion` to `0.7.0`** when you implement this. Implementing an interface is not the safer half of
+> the contract it looks like: your plugin does not ship `Cockpit.Plugins.Abstractions` — it binds to the host's own
+> copy — so a host that predates this interface cannot load your settings control's type at all. That is a
+> `TypeLoadException` the moment the operator clicks the gear, and a silent one, because opening the settings
+> dialog is fire-and-forget: the gear simply does nothing. The version gate is what keeps the plugin off those
+> hosts.
+
+---
+
 ## `PluginMetadata`
 
 The identity you return from `ICockpitPlugin.Metadata`.

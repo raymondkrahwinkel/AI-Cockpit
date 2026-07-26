@@ -197,6 +197,12 @@ The host calls `Save()` and closes the dialog when it returns true, so every plu
 the same Save/Close behaviour — you don't add your own Save button. A view that applies changes live can
 skip the interface and just gets a Close button.
 
+Once a settings view has more in it than fits a screen, implement
+[`IPluginSettingsSections`](API-REFERENCE.md#ipluginsettingssections) as well: name your sections and the host
+draws the same navigation rail its own Options dialog uses, with one shared Save across all of them. Your
+control keeps its own lifetime and swaps its own content, so nothing else about it changes. Needs
+`minHostVersion` `0.7.0`.
+
 ## Provider plugins — registering a session driver
 
 A plugin can add a whole new **session provider** — the same picker slot as the built-in Claude CLI / Ollama
