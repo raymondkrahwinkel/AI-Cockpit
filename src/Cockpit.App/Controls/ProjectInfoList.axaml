@@ -33,7 +33,13 @@
                                    Foreground="{StaticResource CockpitAccentBrush}"
                                    TextDecorations="Underline"/>
                     </Button>
+                    <!-- Bounded at three lines with the rest trimmed away, and the whole value on hover: a card is a
+                         fixed width in a wrapping panel, so an ordinary value that wraps without limit — a pasted
+                         paragraph, an address — would make one card several times the height of its neighbours. The
+                         value itself is stored in full; only what the card draws is cut. -->
                     <TextBlock Text="{Binding Value}" FontSize="12" TextWrapping="Wrap"
+                               MaxLines="3" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Value}"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                IsVisible="{Binding !IsWebLink}"/>
                 </StackPanel>

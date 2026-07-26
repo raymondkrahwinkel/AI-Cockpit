@@ -13,6 +13,26 @@ public class ProjectInfoFieldTests
         new ProjectInfoField("Repository", "").IsBlank.Should().BeFalse();
         new ProjectInfoField("", "https://example.com").IsBlank
             .Should().BeFalse("a pasted link with no label yet is still information");
+        new ProjectInfoField("   ", "https://example.com").IsBlank
+            .Should().BeFalse("a label of nothing but spaces is the same as no label — the value still counts");
+    }
+
+    [Fact]
+    public void TwoRowsMayCarryTheSameLabel()
+    {
+        // Deliberately not a dictionary: two contacts are two rows, and rejecting the second would be the model
+        // telling the operator their own labels are wrong.
+        var settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Contact", "Marcel"),
+                new ProjectInfoField("Contact", "Sanne"),
+            ],
+        });
+
+        settings.Normalized().Projects.Should().ContainSingle()
+            .Which.AdditionalInfo.Select(field => field.Value).Should().Equal("Marcel", "Sanne");
     }
 
     [Theory]

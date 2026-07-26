@@ -90,6 +90,34 @@ public class ProjectInfoListTests
         overflowing.Should().BeEmpty("a card is a fixed width, so a long link has to trim rather than push past it");
     });
 
+    [Fact]
+    public void AVeryLongPlainValue_WantsNoMoreHeightThanAFewLines() => HeadlessAvalonia.Run(() =>
+    {
+        // The link row trims to one line; an ordinary value wraps, and without a limit a pasted paragraph made one
+        // card several times the height of its neighbours in the overview's wrapping panel.
+        // Measured with unbounded height on purpose: inside a fixed-height window both cases would simply be clipped
+        // to the window, which is how the first version of this test passed with the limit removed.
+        var oneLine = _WantedHeight(new ProjectInfoField("Address", "Kalverstraat 1"));
+        var pastedParagraph = _WantedHeight(new ProjectInfoField("Address", new string('x', 50_000)));
+
+        pastedParagraph.Should().BeLessThan(oneLine * 6,
+            "a value is stored in full but drawn within a bounded number of lines");
+    });
+
+    private static double _WantedHeight(ProjectInfoField field)
+    {
+        var control = new ProjectInfoList { Fields = new[] { field } };
+        var window = new Window { Width = CardWidth, Content = control };
+        window.Show();
+        window.UpdateLayout();
+
+        control.Measure(new Size(CardWidth, double.PositiveInfinity));
+        var wanted = control.DesiredSize.Height;
+        window.Close();
+
+        return wanted;
+    }
+
     private static Window _Host(params ProjectInfoField[] fields)
     {
         var window = new Window

@@ -4,12 +4,22 @@ using Cockpit.App.Services;
 namespace Cockpit.Core.Tests.Services;
 
 /// <summary>
-/// The guard in front of the one place this app hands an operator's own text to the shell. Only the refusals are
-/// exercised, deliberately: a case that passed the guard would start a browser on the machine running the tests, so
-/// the opening half is verified by rendering the control and by the four views that have always opened links this way.
+/// The guard in front of the one place this app hands an operator's own text to the shell. Both directions are
+/// exercised through <see cref="ExternalLink.IsWebAddress"/> rather than through the opening call: a case that reached
+/// the shell would start a browser on the machine running the tests, so an accept can only be asserted on the
+/// decision. Asserting only the refusals would leave an inverted guard — every link silently dead — green.
 /// </summary>
 public class ExternalLinkTests
 {
+    [Theory]
+    [InlineData("https://github.com/example/repo")]
+    [InlineData("http://example.test")]
+    [InlineData("https://example.test:8443/path?q=1#frag")]
+    [InlineData("HTTPS://EXAMPLE.TEST")]
+    public void IsWebAddress_AnHttpOrHttpsUrl_IsAccepted(string value) =>
+        ExternalLink.IsWebAddress(value)
+            .Should().BeTrue("a value the rows draw as a link has to be one this will actually open");
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -25,8 +35,16 @@ public class ExternalLinkTests
     [InlineData("search-ms:query=x")]
     [InlineData("vscode://file/etc/passwd")]
     [InlineData("mailto:someone@example.test")]
-    public void TryOpen_AnythingThatIsNotAnHttpUrl_StartsNothing(string? value) =>
+    public void IsWebAddress_AnythingElse_IsRefused(string? value) =>
+        ExternalLink.IsWebAddress(value)
+            .Should().BeFalse("these are the values a weaker guard would have launched a program with");
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("file:///C:/Windows/System32/calc.exe")]
+    [InlineData("cmd.exe /c calc")]
+    [InlineData("javascript:alert(1)")]
+    public void TryOpen_SomethingItRefuses_StartsNothing(string? value) =>
         ExternalLink.TryOpen(value)
-            .Should().BeFalse("a false return is the proof nothing was handed to the shell — these are the values a " +
-                              "weaker guard would have launched a program with");
+            .Should().BeFalse("a false return is the proof nothing was handed to the shell");
 }

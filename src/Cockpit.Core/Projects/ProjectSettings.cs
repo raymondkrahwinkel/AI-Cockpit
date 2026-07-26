@@ -38,7 +38,15 @@ public sealed record ProjectSettings
     /// <summary>
     /// <paramref name="project"/> with its information rows trimmed onto one line and the empty ones gone — a row the
     /// operator added and left alone carries nothing, and saving it would put a blank line on the project's card.
-    /// Returns the same instance when there was nothing to tidy, so the common case allocates nothing.
+    /// <para>
+    /// Returning the <em>same instance</em> when there is nothing to tidy is what makes the caller's
+    /// <c>SequenceEqual</c> safe, and that is worth stating: a record's generated equality compares
+    /// <see cref="Project.AdditionalInfo"/> with the default comparer, which for a list is reference equality, not
+    /// content. Because this method only ever hands back either the original reference or a new project whose rows
+    /// genuinely differ (the inner <c>SequenceEqual</c> compares <see cref="ProjectInfoField"/> by value), there is no
+    /// third case where two references differ while the content matches. Simplify this to an unconditional
+    /// <c>project with</c> and the caller starts rebuilding the whole list on every load.
+    /// </para>
     /// </summary>
     private static Project _WithTidyInfo(Project project)
     {
