@@ -297,6 +297,23 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
+    public void MarkingARowSecret_UnticksTheSharingItCanNoLongerHave()
+    {
+        // The domain gate keeps a secret out of a prompt either way; this is the editor not showing a ticked box it
+        // is ignoring, and not handing the tick back if the operator unticks Secret again.
+        var row = new ProjectInfoFieldViewModel("Deploy token", "s3cr3t", isSharedWithSessions: true);
+
+        row.IsSecret = true;
+
+        row.IsSharedWithSessions.Should().BeFalse();
+        row.CanShareWithSessions.Should().BeFalse();
+        row.ToDomain().ReachesSessions.Should().BeFalse();
+
+        row.IsSecret = false;
+        row.IsSharedWithSessions.Should().BeFalse("the tick is not silently restored — the operator says so again");
+    }
+
+    [Fact]
     public async Task CancelCommand_ClosesWithoutAProject()
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());

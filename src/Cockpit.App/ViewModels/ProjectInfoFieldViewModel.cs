@@ -31,6 +31,17 @@ public partial class ProjectInfoFieldViewModel : ViewModelBase
     /// </summary>
     public bool CanShareWithSessions => !IsSecret;
 
+    // Marking a row secret unticks the sharing it can no longer have, rather than leaving the flag true underneath a
+    // box gone grey. The domain gate (ReachesSessions) already keeps it out of a prompt either way, so this is about
+    // the editor telling the truth about its own state — and about what the operator sees when they untick Secret again.
+    partial void OnIsSecretChanged(bool value)
+    {
+        if (value)
+        {
+            IsSharedWithSessions = false;
+        }
+    }
+
     public ProjectInfoFieldViewModel(
         string label = "",
         string value = "",
