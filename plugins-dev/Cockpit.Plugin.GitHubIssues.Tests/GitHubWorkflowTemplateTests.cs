@@ -1,19 +1,19 @@
 using System.Text.Json;
 using FluentAssertions;
 
-namespace Cockpit.Plugin.YouTrack.Tests;
+namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 /// <summary>
-/// The flows this plugin ships (#69). They are written as text rather than built with the workflows plugin's model —
-/// the two plugins cannot see each other — so nothing but a test stands between a typo in an id and a template that
-/// opens as a canvas of steps wired to nothing.
+/// The flow this plugin ships (#69) is written as text, not built with the workflows plugin's model — the two plugins
+/// cannot see each other. Nothing compiles the ids inside it, so a typo travels through the build, through CI and into
+/// the store, and surfaces as a canvas of steps wired to nothing the first time an operator opens the template.
 /// </summary>
-public class YouTrackWorkflowTemplateTests
+public class GitHubWorkflowTemplateTests
 {
     [Fact]
     public void EveryTemplate_IsAFlowThatCanBeRead()
     {
-        foreach (var template in YouTrackWorkflowTemplates.All)
+        foreach (var template in GitHubWorkflowTemplates.All)
         {
             var flow = JsonDocument.Parse(template.Json).RootElement;
 
@@ -28,7 +28,7 @@ public class YouTrackWorkflowTemplateTests
     [Fact]
     public void EveryWire_RunsBetweenStepsThatAreInTheFlow()
     {
-        foreach (var template in YouTrackWorkflowTemplates.All)
+        foreach (var template in GitHubWorkflowTemplates.All)
         {
             var flow = JsonDocument.Parse(template.Json).RootElement;
             var ids = flow.GetProperty("Nodes")
@@ -52,11 +52,11 @@ public class YouTrackWorkflowTemplateTests
     [Fact]
     public void EveryStepATemplateUses_IsACockpitStepOrOneThisPluginContributes()
     {
-        var contributed = YouTrackWorkflowSteps.All(new YouTrackSettings(new EmptyStorage()))
+        var contributed = GitHubWorkflowSteps.All(new GitHubIssuesSettings(new InMemoryPluginStorage()))
             .Select(step => step.TypeId)
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var template in YouTrackWorkflowTemplates.All)
+        foreach (var template in GitHubWorkflowTemplates.All)
         {
             var types = JsonDocument.Parse(template.Json).RootElement
                 .GetProperty("Nodes")
@@ -69,15 +69,6 @@ public class YouTrackWorkflowTemplateTests
 
                 resolvable.Should().BeTrue($"'{template.Id}' uses '{typeId}', which is neither a cockpit step nor one this plugin contributes");
             }
-        }
-    }
-
-    private sealed class EmptyStorage : Cockpit.Plugins.Abstractions.IPluginStorage
-    {
-        public T? Get<T>(string key) => default;
-
-        public void Set<T>(string key, T value)
-        {
         }
     }
 }
