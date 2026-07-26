@@ -17,6 +17,12 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// The connection is opened per capture rather than held: a screenshot is an occasional, operator-initiated
 /// act, and a D-Bus connection kept open for the life of the app to serve it would outlive its usefulness by
 /// hours. The hotkey service holds one because it has a subscription to keep alive; this has nothing to keep.
+/// <para>
+/// Interim against <see cref="IScreenshotCapture"/> (AC-333): the contract asks for every display and no UI, and
+/// this still asks the portal for a picker. What comes back is therefore whatever region the operator dragged,
+/// with no layout that could honestly be put on it — hence <see cref="ScreenCapture.WithoutLayout"/>. AC-326
+/// takes the picker out by asking with <c>interactive: false</c>, which is what makes the layout knowable.
+/// </para>
 /// </remarks>
 internal sealed class PortalScreenshotCapture(ILogger<PortalScreenshotCapture> logger) : IScreenshotCapture
 {
@@ -25,7 +31,7 @@ internal sealed class PortalScreenshotCapture(ILogger<PortalScreenshotCapture> l
 
     public bool IsSupported => true;
 
-    public async Task<byte[]?> CaptureInteractiveAsync(CancellationToken cancellationToken = default)
+    public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
     {
         using var connection = new Connection(Address.Session);
         var requests = await PortalRequestChannel.ConnectAsync(connection).ConfigureAwait(false);
@@ -59,7 +65,7 @@ internal sealed class PortalScreenshotCapture(ILogger<PortalScreenshotCapture> l
             throw new InvalidOperationException("The screenshot portal reported success without saying where the image is.");
         }
 
-        return await _ReadAndDiscardAsync(uri, cancellationToken).ConfigureAwait(false);
+        return ScreenCapture.WithoutLayout(await _ReadAndDiscardAsync(uri, cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>

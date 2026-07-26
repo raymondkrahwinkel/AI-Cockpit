@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Tests.Hotkeys;
 using Cockpit.Core.Tests.Voice;
@@ -19,11 +20,15 @@ public class ScreenshotCoordinatorTests
 {
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
 
+    // What the picker-backed implementations still hand back until AC-326/327/328 replace them: the bytes, and
+    // no layout to go with them. All this coordinator wants is the image, which is why it survives that gap.
+    private static readonly ScreenCapture Capture = ScreenCapture.WithoutLayout(Png);
+
     [Fact]
     public async Task ACapturedScreenshot_LandsOnTheSelectedSession()
     {
         var session = new RecordingSession();
-        var coordinator = _Create(new FakeScreenshotCapture { Result = Png }, session, out var toasts);
+        var coordinator = _Create(new FakeScreenshotCapture { Result = Capture }, session, out var toasts);
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
@@ -52,7 +57,7 @@ public class ScreenshotCoordinatorTests
     [Fact]
     public async Task WithNoSessionSelected_ItSaysSo_AndNeverOpensThePicker()
     {
-        var capture = new FakeScreenshotCapture { Result = Png };
+        var capture = new FakeScreenshotCapture { Result = Capture };
         var coordinator = _Create(capture, session: null, out var toasts);
 
         await coordinator.CaptureIntoSelectedSessionAsync();
@@ -66,7 +71,7 @@ public class ScreenshotCoordinatorTests
     public async Task ASessionThatCannotTakeImages_HasItsReasonShown()
     {
         var session = new RecordingSession { RefusalReason = "a pty carries text only" };
-        var coordinator = _Create(new FakeScreenshotCapture { Result = Png }, session, out var toasts);
+        var coordinator = _Create(new FakeScreenshotCapture { Result = Capture }, session, out var toasts);
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
@@ -101,7 +106,7 @@ public class ScreenshotCoordinatorTests
         // fake is built, and a null-forgiving `!` on that would be exactly the compiler protection this codebase
         // does not give up (CSharp.md).
         var pressedAgain = new CaptureReentry();
-        var capture = new FakeScreenshotCapture { Result = Png, WhileCapturing = pressedAgain.InvokeAsync };
+        var capture = new FakeScreenshotCapture { Result = Capture, WhileCapturing = pressedAgain.InvokeAsync };
         var coordinator = _Create(capture, session, out _);
         pressedAgain.Coordinator = coordinator;
 

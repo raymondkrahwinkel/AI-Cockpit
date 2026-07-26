@@ -108,15 +108,18 @@ public sealed class ScreenshotCoordinator : ISingletonService
             // timeout two minutes later — which is exactly how long diagnosing the first real failure took.
             _logger.LogInformation("Screen capture starting for session '{Session}'.", session.Title);
 
-            var png = await _capture.CaptureInteractiveAsync(cancellationToken).ConfigureAwait(true);
-            if (png is null)
+            var capture = await _capture.CaptureAsync(cancellationToken).ConfigureAwait(true);
+            if (capture is null)
             {
                 _logger.LogInformation("Screen capture produced nothing — cancelled, or the picker was never completed.");
-                // Cancelled, or a platform that captures nothing. Silent on purpose: pressing Escape on the
-                // picker is the ordinary way to change your mind, and a toast for it would be nagging.
+                // Cancelled. Silent on purpose: pressing Escape on the picker is the ordinary way to change your
+                // mind, and a toast for it would be nagging. A platform that cannot capture at all throws
+                // instead, and lands in the catch below where it gets said out loud.
                 return;
             }
 
+            // The layout the capture came with is the selection UI's (AC-329); a session takes the image.
+            var png = capture.Image;
             if (await session.InjectScreenshotAsync(png).ConfigureAwait(true) is { } reason)
             {
                 _logger.LogInformation("Screen capture of {Bytes} bytes was not taken: {Reason}", png.Length, reason);

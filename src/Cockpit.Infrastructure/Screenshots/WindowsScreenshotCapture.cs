@@ -29,6 +29,12 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// region grabbed twice in a row — is indistinguishable from nothing having happened, and ends as a cancel.
 /// </item>
 /// </list>
+/// <para>
+/// Interim against <see cref="IScreenshotCapture"/> (AC-333): the contract asks for every display and no UI, and
+/// this still launches Snip. What lands on the clipboard is whatever the operator chose, with no layout that
+/// could honestly be put on it — hence <see cref="ScreenCapture.WithoutLayout"/>. AC-327 replaces the whole
+/// route with a DXGI/BitBlt read, which both removes the overlay and makes the layout knowable.
+/// </para>
 /// </remarks>
 internal sealed class WindowsScreenshotCapture(IScreenshotClipboard clipboard, ILogger<WindowsScreenshotCapture> logger) : IScreenshotCapture
 {
@@ -51,7 +57,7 @@ internal sealed class WindowsScreenshotCapture(IScreenshotClipboard clipboard, I
         _timeout = timeout;
     }
 
-    public async Task<byte[]?> CaptureInteractiveAsync(CancellationToken cancellationToken = default)
+    public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
     {
         // Read first, launch second: whatever is on the clipboard now is what a new snip has to differ from.
         var before = await clipboard.TryReadImageAsync(cancellationToken).ConfigureAwait(false);
@@ -68,7 +74,7 @@ internal sealed class WindowsScreenshotCapture(IScreenshotClipboard clipboard, I
             var current = await clipboard.TryReadImageAsync(cancellationToken).ConfigureAwait(false);
             if (current is { Length: > 0 } && !_IsSameImage(before, current))
             {
-                return current;
+                return ScreenCapture.WithoutLayout(current);
             }
         }
 
