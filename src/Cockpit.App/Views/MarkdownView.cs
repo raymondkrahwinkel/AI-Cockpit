@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -6,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.App.Services;
 using Cockpit.Core.Markdown;
 
 namespace Cockpit.App.Views;
@@ -301,27 +301,10 @@ public sealed class MarkdownView : ContentControl
         {
             if (position >= link.Start && position < link.Start + link.Length)
             {
-                _OpenUrl(link.Url);
+                ExternalLink.TryOpen(link.Url);
                 return;
             }
         }
     }
 
-    private static void _OpenUrl(string url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // Best-effort: a failed browser launch must not crash the UI thread.
-        }
-    }
 }
