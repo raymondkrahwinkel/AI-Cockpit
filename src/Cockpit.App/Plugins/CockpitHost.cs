@@ -448,7 +448,16 @@ internal sealed class CockpitHost(
     public Task SetSessionName(string paneId, string name) =>
         string.IsNullOrWhiteSpace(name)
             ? Task.CompletedTask
-            : _MutateSessionAsync(paneId, session => session.Title = name.Trim());
+            : _MutateSessionAsync(paneId, session =>
+            {
+                session.Title = name.Trim();
+                session.HasGeneratedName = false;
+            });
+
+    public Task SuggestSessionName(string paneId, string name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? Task.CompletedTask
+            : _MutateSessionAsync(paneId, session => session.SuggestName(name));
 
     public Task SendToSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)

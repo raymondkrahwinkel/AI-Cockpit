@@ -45,7 +45,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
         // One registry, shared by the dialog (which links an issue to the active session) and the header items
         // (each of which shows the issue linked to its own session) — see SessionIssueLinks.
-        var links = new SessionIssueLinks();
+        var links = new SessionIssueLinks(host);
 
         // And one bus for the moves themselves, shared by the two places a ticket can be moved from — see IssueStateChanges.
         var stateChanges = new IssueStateChanges();

@@ -40,7 +40,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
 
         // Shared by the dialog (which links an issue to the active session) and the header items (each of which
         // shows the issue linked to its own session) — see SessionIssueLinks.
-        var links = new SessionIssueLinks();
+        var links = new SessionIssueLinks(host);
 
         // 1280×860, up from 1040×700 — the chip, fixed action toolbar and rendered description all want more
         // room than the old size gave them, the same reasoning as the YouTrack dialog's resize. PluginDialogHost

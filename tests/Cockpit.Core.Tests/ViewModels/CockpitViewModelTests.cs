@@ -213,6 +213,69 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task SuggestSessionName_RenamesASessionStillOnTheNameTheCockpitMadeUp()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Title.Should().Be("default - 1");
+
+        vm.SuggestSessionName(session.PaneId, "  AC-310  ").Should().BeTrue();
+        session.Title.Should().Be("AC-310");
+
+        // A suggested name is still one nobody chose, so linking a second ticket relabels rather than sticking
+        // on the first — the session shows what it is working on now.
+        vm.SuggestSessionName(session.PaneId, "AC-311").Should().BeTrue();
+        session.Title.Should().Be("AC-311");
+
+        vm.SuggestSessionName("no-such-pane", "AC-312").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SuggestSessionName_LeavesASessionTheOperatorNamedThemselves()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+
+        // The sidebar's inline rename: a name typed on purpose, which a ticket link must not take away.
+        session.EditTitle = "release work";
+        session.CommitRename();
+
+        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
+        session.Title.Should().Be("release work");
+    }
+
+    [Fact]
+    public async Task SuggestSessionName_LeavesASessionNamedInTheNewSessionDialog()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync()
+            .Returns(NewSessionResultFor(SessionKind.Sdk) with { SessionName = "release work" });
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Title.Should().Be("release work");
+
+        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
+        session.Title.Should().Be("release work");
+    }
+
+    [Fact]
+    public async Task SuggestSessionName_LeavesASessionAnEarlierSetSessionNameClaimed()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+
+        // SetSessionName is the "I mean it" call — a workflow or the agent naming the session deliberately.
+        vm.SetSessionName(session.PaneId, "release work").Should().BeTrue();
+
+        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
+        session.Title.Should().Be("release work");
+    }
+
+    [Fact]
     public async Task ShowTimestamps_TogglesEveryOpenSessionLive()
     {
         var vm = NewVm();

@@ -311,7 +311,7 @@ public class YouTrackDialogControlTests
             var storage = new InMemoryPluginStorage();
             var settings = new YouTrackSettings(storage) { Instances = [instance] };
             var host = new FakeCockpitHost();
-            var links = new SessionIssueLinks();
+            var links = new SessionIssueLinks(host);
             var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
 
             var window = new Window { Width = 1280, Height = 860, Content = dialog };
