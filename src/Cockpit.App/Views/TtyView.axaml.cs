@@ -574,9 +574,6 @@ public partial class TtyView : UserControl
         return true;
     }
 
-    /// <summary>The <see cref="TerminalControl.LinkActivationPolicy"/> gate: only http/https URLs are handed to the browser.</summary>
-    private static bool _IsBrowsableLink(string url) => ExternalLink.TryParseWebAddress(url, out _);
-
     // AC-2 link hit-test: pixel→cell is TerminalControl.GridPos, which is not public. Cached once; a null here (an
     // Exclr8 version that renamed it) simply means Ctrl+click stops opening links, never a crash.
     private static readonly System.Reflection.MethodInfo? _GridPosMethod = typeof(TerminalControl)
