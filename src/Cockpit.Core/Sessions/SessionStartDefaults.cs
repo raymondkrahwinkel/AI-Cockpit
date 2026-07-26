@@ -55,6 +55,14 @@ public sealed record SessionStartDefaults(
             profile?.EnabledMcpServerNames,
             _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project), _InformationNote(project)));
 
+    /// <summary>
+    /// How much of the standing instructions a project's shared information rows may take. A ceiling rather than trust,
+    /// because this block is the one part of the prompt that grows by the row: the Claude route hands the whole prompt
+    /// to its CLI as one argument, and a process command line has a hard limit — so an unbounded block does not merely
+    /// cost budget, it stops the session starting at all. Generous enough that a realistic project never meets it.
+    /// </summary>
+    private const int InformationNoteBudget = 4000;
+
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
 
@@ -76,16 +84,48 @@ public sealed record SessionStartDefaults(
     /// rephrasing them into prose would put words in their mouth. A row they left unlabelled is given as the bare
     /// value.
     /// </para>
+    /// <para>
+    /// Each row is tidied here rather than trusted to have been, even though the store tidies on load and on save. This
+    /// is one line per row: a value that still held a line break would arrive as extra lines the session reads as
+    /// instructions of their own, and relying on an earlier caller to have prevented that is how a guard stops being
+    /// one.
+    /// </para>
     /// </summary>
     private static string? _InformationNote(Project? project)
     {
-        var shared = project?.AdditionalInfo.Where(field => field.IsSharedWithSessions).ToList() ?? [];
+        var shared = project?.AdditionalInfo
+            .Where(field => field.IsSharedWithSessions)
+            .Select(field => field.Tidied())
+            .Where(field => !field.IsBlank)
+            .ToList() ?? [];
+
         if (shared.Count == 0)
         {
             return null;
         }
 
-        var lines = shared.Select(field => field.HasLabel ? $"- {field.Label}: {field.Value}" : $"- {field.Value}");
+        var lines = new List<string>();
+        var budget = InformationNoteBudget;
+        foreach (var field in shared)
+        {
+            // A label the operator already punctuated keeps its own colon rather than getting a second one.
+            var label = field.Label.EndsWith(':') ? field.Label : $"{field.Label}:";
+            var line = field.HasLabel ? $"- {label} {field.Value}" : $"- {field.Value}";
+            if (line.Length > budget && lines.Count > 0)
+            {
+                break;
+            }
+
+            lines.Add(line);
+            budget -= line.Length + 1;
+        }
+
+        // Said out loud rather than trimmed away in silence: the session is told its picture is incomplete, and the
+        // operator can see in the prompt that a row they ticked did not make it.
+        if (lines.Count < shared.Count)
+        {
+            lines.Add($"- (and {shared.Count - lines.Count} more that did not fit here — read them in the project itself)");
+        }
 
         return $"What else you should know about this project:\n{string.Join('\n', lines)}";
     }

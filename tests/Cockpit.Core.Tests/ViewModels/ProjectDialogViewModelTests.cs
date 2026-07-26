@@ -275,6 +275,28 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
+    public async Task InformationRows_CarryWhetherTheyAreSharedWithSessionsBothWays()
+    {
+        // The editor is the only place this flag is ever set, and it travels through three positional arguments and a
+        // ToDomain initializer to get there and back. Reorder or drop any of them and nothing else in the suite notices.
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Repository", "https://github.com/example/repo") { IsSharedWithSessions = true },
+                new ProjectInfoField("Invoice reference", "AC-2026-118"),
+            ],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
+
+        viewModel.AdditionalInfo.Select(field => field.IsSharedWithSessions).Should().Equal(true, false);
+
+        viewModel.AdditionalInfo[1].IsSharedWithSessions = true;
+        viewModel.ToProject().AdditionalInfo.Select(field => field.IsSharedWithSessions).Should().Equal(true, true);
+    }
+
+    [Fact]
     public async Task CancelCommand_ClosesWithoutAProject()
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
