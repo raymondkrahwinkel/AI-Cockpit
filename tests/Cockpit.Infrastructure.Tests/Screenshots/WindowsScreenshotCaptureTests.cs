@@ -22,9 +22,11 @@ public class WindowsScreenshotCaptureTests
         var launches = 0;
         var capture = _Create(new ScriptedClipboard(null, null, Snip), () => launches++);
 
-        var png = await capture.CaptureInteractiveAsync();
+        var result = await capture.CaptureAsync();
 
-        png.Should().Equal(Snip);
+        Assert.NotNull(result);
+        result.Image.Should().Equal(Snip);
+        result.Displays.Should().BeEmpty("a snip of the operator's choosing has no display layout to report (AC-333)");
         launches.Should().Be(1, "the overlay is opened once, then watched for");
     }
 
@@ -38,9 +40,10 @@ public class WindowsScreenshotCaptureTests
         var clipboard = new ScriptedClipboard(AlreadyCopied, AlreadyCopied, Snip);
         var capture = _Create(clipboard);
 
-        var png = await capture.CaptureInteractiveAsync();
+        var result = await capture.CaptureAsync();
 
-        png.Should().Equal(Snip);
+        Assert.NotNull(result);
+        result.Image.Should().Equal(Snip);
     }
 
     /// <summary>A cancelled snip leaves the clipboard as it was, so the wait runs out — and running out is "nothing captured", not an error.</summary>
@@ -50,9 +53,9 @@ public class WindowsScreenshotCaptureTests
         var clipboard = new ScriptedClipboard(AlreadyCopied, AlreadyCopied, AlreadyCopied, AlreadyCopied);
         var capture = _Create(clipboard);
 
-        var png = await capture.CaptureInteractiveAsync();
+        var result = await capture.CaptureAsync();
 
-        png.Should().BeNull();
+        result.Should().BeNull();
     }
 
     [Fact]
@@ -61,9 +64,9 @@ public class WindowsScreenshotCaptureTests
         var clipboard = new ScriptedClipboard(null, null, null, null);
         var capture = _Create(clipboard);
 
-        var png = await capture.CaptureInteractiveAsync();
+        var result = await capture.CaptureAsync();
 
-        png.Should().BeNull();
+        result.Should().BeNull();
     }
 
     /// <summary>Giving up on the wait must not leave the operator's own capture behind — cancelling propagates rather than returning a quiet null.</summary>
@@ -79,7 +82,7 @@ public class WindowsScreenshotCaptureTests
             pollInterval: TimeSpan.FromMilliseconds(1),
             timeout: TimeSpan.FromMilliseconds(10));
 
-        var act = async () => await capture.CaptureInteractiveAsync(cancellation.Token);
+        var act = async () => await capture.CaptureAsync(cancellation.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

@@ -19,12 +19,18 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// it, macOS lets the capture run and yields nothing — indistinguishable here from a cancel, which is why the
 /// hint the caller shows says so rather than claiming the picker was dismissed.
 /// </para>
+/// <para>
+/// Interim against <see cref="IScreenshotCapture"/> (AC-333): the contract asks for every display and no UI, and
+/// <c>-i</c> is exactly a UI. What it writes is whatever the operator selected, with no layout that could
+/// honestly be put on it — hence <see cref="ScreenCapture.WithoutLayout"/>. AC-328 drops the <c>-i</c>, which is
+/// what makes the layout knowable.
+/// </para>
 /// </remarks>
 internal sealed class MacScreenshotCapture(ILogger<MacScreenshotCapture> logger) : IScreenshotCapture
 {
     public bool IsSupported => true;
 
-    public async Task<byte[]?> CaptureInteractiveAsync(CancellationToken cancellationToken = default)
+    public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(Path.GetTempPath(), $"cockpit-screenshot-{Guid.NewGuid():n}.png");
 
@@ -56,7 +62,7 @@ internal sealed class MacScreenshotCapture(ILogger<MacScreenshotCapture> logger)
             // No file, or an empty one: the selection was dismissed, or screen recording is not permitted yet.
             var file = new FileInfo(path);
             return file is { Exists: true, Length: > 0 }
-                ? await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)
+                ? ScreenCapture.WithoutLayout(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false))
                 : null;
         }
         finally
