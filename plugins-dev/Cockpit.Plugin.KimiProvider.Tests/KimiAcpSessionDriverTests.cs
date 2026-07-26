@@ -56,6 +56,48 @@ public class KimiAcpSessionDriverTests
         }
     }
 
+    // A Claude Code session exports these to mark itself, and CLAUDE_CODE_OAUTH_TOKEN among them is a live
+    // credential — a cockpit started from inside such a session inherits the lot, and Moonshot's CLI is the last
+    // process that should receive it.
+    [Theory]
+    [InlineData("CLAUDE_CODE_OAUTH_TOKEN")]
+    [InlineData("CLAUDECODE")]
+    [InlineData("CLAUDE_AGENT_ID")]
+    public async Task Start_ScrubsAnInheritedClaudeAgentMarker_FromTheChildEnvironment(string variable)
+    {
+        Environment.SetEnvironmentVariable(variable, "inherited");
+        try
+        {
+            var fake = new FakeCliSubprocess();
+            await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+            await _StartAsync(driver, fake);
+
+            fake.EnvironmentVariables.Should().ContainKey(variable).WhoseValue.Should().BeNull();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
+    // The bearer for the cockpit's own MCP endpoints is the one host-controlled variable this driver passes on:
+    // the servers it hands kimi authenticate with exactly that key, so scrubbing it would lock the session out
+    // of the tools it was just given.
+    [Fact]
+    public async Task Start_KeepsTheCockpitMcpKey_ForTheServersItHandsTheChild()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        var environment = new Dictionary<string, string> { ["COCKPIT_MCP_KEY"] = "mcp-key" };
+
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, environment, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        await startTask;
+
+        fake.EnvironmentVariables.Should().ContainKey("COCKPIT_MCP_KEY").WhoseValue.Should().Be("mcp-key");
+    }
+
     [Fact]
     public async Task Start_WithResumeSessionId_SendsSessionResume_NeverSessionLoad()
     {
@@ -294,6 +336,48 @@ public class KimiAcpSessionDriverTests
         var permissionAnswer = await _WaitForWrittenLineAsync(fake, "\"id\":30");
         using var answerDocument = JsonDocument.Parse(permissionAnswer);
         answerDocument.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString().Should().Be("cancelled");
+    }
+
+    // A permission request that lands after the cancel is answered where it arrives and never tracked. Besides
+    // being the right answer (the operator stopped this turn), it is what bounds the drain loop in
+    // InterruptAsync: if a request could still enter the dictionary, a child that keeps sending them would keep
+    // that loop running for as long as it liked.
+    [Fact]
+    public async Task PermissionRequest_ArrivingAfterACancel_IsAnsweredCancelled_WithoutRaisingACard()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await driver.InterruptAsync();
+        await _WaitForWrittenLineAsync(fake, "\"method\":\"session/cancel\"");
+
+        await fake.PushStdoutAsync("""{"id":77,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-1:tool-late","title":"shell","content":[]}}}""");
+
+        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":77");
+        using var document = JsonDocument.Parse(answer);
+        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString().Should().Be("cancelled");
+
+        var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
+        events.Should().NotContain(evt => evt is PluginPermissionRequested);
+    }
+
+    [Fact]
+    public async Task PermissionRequest_AfterANewTurnStarts_IsTrackedAgain()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        await driver.InterruptAsync();
+        await _WaitForWrittenLineAsync(fake, "\"method\":\"session/cancel\"");
+        await driver.SendUserMessageAsync("carry on");
+        await _WaitForWrittenLineAsync(fake, "\"method\":\"session/prompt\"");
+
+        await fake.PushStdoutAsync("""{"id":78,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-2:tool-1","title":"shell","content":[]}}}""");
+
+        var requested = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+        requested.ToolUseId.Should().Be("turn-2:tool-1");
     }
 
     // D12: a process end that is NOT our own dispose must surface an error and a failed turn before the

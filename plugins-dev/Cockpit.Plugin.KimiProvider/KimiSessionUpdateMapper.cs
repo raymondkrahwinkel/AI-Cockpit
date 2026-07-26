@@ -22,6 +22,9 @@ namespace Cockpit.Plugin.KimiProvider;
 /// </remarks>
 internal sealed class KimiSessionUpdateMapper
 {
+    /// <summary>How many toolCallIds either map remembers before the oldest is forgotten — exposed for tests.</summary>
+    internal const int MaxTrackedToolCalls = 4096;
+
     // toolCallId -> the best tool name/rawInput known so far, for an id that has not produced its one
     // PluginToolUseRequested yet. Removed once that event fires; absence here does not by itself mean "already
     // emitted" — see _emittedToolUseRequests, which is the actual source of truth for that.
@@ -30,6 +33,21 @@ internal sealed class KimiSessionUpdateMapper
     // toolCallIds that already produced their one PluginToolUseRequested — every later trigger for the same id
     // (a refining tool_call_update, a terminal one, or a permission request) is a no-op for this purpose.
     private readonly ConcurrentDictionary<string, byte> _emittedToolUseRequests = new();
+
+    // Insertion order for the two maps above, so the oldest id can be dropped once either passes the cap. Both
+    // are keyed on strings the child process chooses and neither empties on its own: a lazy tool_call that never
+    // gets a follow-up stays in the pending map forever, and an emitted id is remembered for the whole session by
+    // design. Left unbounded, a child that invents ids faster than it finishes them grows the host's memory with
+    // no ceiling. Forgetting the oldest costs at worst one duplicate tool card for an id that went quiet
+    // thousands of calls ago — a cosmetic price for a bounded one.
+    private readonly ConcurrentQueue<string> _pendingOrder = new();
+    private readonly ConcurrentQueue<string> _emittedOrder = new();
+
+    // How many ids each map currently holds — exposed so a test can prove the cap holds without reaching into
+    // the maps themselves.
+    internal int TrackedToolCallCountForTests => _pendingToolUseRequests.Count;
+
+    internal int EmittedToolCallCountForTests => _emittedToolUseRequests.Count;
 
     public KimiSessionUpdateMapResult Map(JsonElement notificationParams)
     {
@@ -110,7 +128,7 @@ internal sealed class KimiSessionUpdateMapper
                 : KimiSessionUpdateMapResult.Empty;
         }
 
-        _pendingToolUseRequests[toolCallId] = (toolName, "{}");
+        _RememberPending(toolCallId, (toolName, "{}"));
         return KimiSessionUpdateMapResult.Empty;
     }
 
@@ -137,7 +155,7 @@ internal sealed class KimiSessionUpdateMapper
         else if (hasTitle && _pendingToolUseRequests.TryGetValue(toolCallId, out var pendingSoFar))
         {
             // No rawInput on this particular update, but a refined title arrived — keep it for whichever
-            // trigger fires the event later.
+            // trigger fires the event later. The id is already tracked, so this only replaces its value.
             _pendingToolUseRequests[toolCallId] = (title, pendingSoFar.InputJson);
         }
 
@@ -174,8 +192,34 @@ internal sealed class KimiSessionUpdateMapper
             return null;
         }
 
+        _emittedOrder.Enqueue(toolCallId);
+        _ForgetOldest(_emittedOrder, id => _emittedToolUseRequests.TryRemove(id, out _));
+
         _pendingToolUseRequests.TryRemove(toolCallId, out _);
         return new PluginToolUseRequested { SessionId = sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = inputJson };
+    }
+
+    private void _RememberPending(string toolCallId, (string ToolName, string InputJson) known)
+    {
+        if (!_pendingToolUseRequests.TryAdd(toolCallId, known))
+        {
+            _pendingToolUseRequests[toolCallId] = known;
+            return;
+        }
+
+        _pendingOrder.Enqueue(toolCallId);
+        _ForgetOldest(_pendingOrder, id => _pendingToolUseRequests.TryRemove(id, out _));
+    }
+
+    // Trims on the queue's length rather than the map's: an id that leaves its map early (a pending id that just
+    // fired its event) stays queued, so counting the map would let the queue itself grow without end. Bounding
+    // the queue bounds both, since every key in a map was enqueued exactly once.
+    private static void _ForgetOldest(ConcurrentQueue<string> order, Action<string> forget)
+    {
+        while (order.Count > MaxTrackedToolCalls && order.TryDequeue(out var oldest))
+        {
+            forget(oldest);
+        }
     }
 
     private static KimiSessionUpdateMapResult _MapConfigOptionUpdate(JsonElement update) =>

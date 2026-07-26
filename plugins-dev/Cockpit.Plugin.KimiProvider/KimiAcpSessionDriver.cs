@@ -43,6 +43,10 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     /// <summary>The most outstanding <c>session/request_permission</c>s tracked at once (P1-9) — exposed for tests.</summary>
     internal const int MaxPendingApprovals = 500;
 
+    // P1-10b: the JSON-RPC code kimi returns for "no usable auth token" (protocol §1) — a session/new|resume
+    // that fails with exactly this code gets an actionable message instead of the raw JSON-RPC error text.
+    private const int _AuthRequiredErrorCode = -32000;
+
     // Exactly three configIds exist on the wire (protocol §8); anything else would earn a -32602 from kimi, but
     // filtering here means a bad key never even reaches the agent (AC-272 sub [e]).
     private static readonly string[] _ValidConfigIds = ["model", "mode", "thinking"];
@@ -78,6 +82,10 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     private readonly SemaphoreSlim _promptGate = new(1, 1);
     private volatile bool _capturingUsageResponse;
 
+    // True from the moment a cancel goes out until the next turn starts. Written on the caller's thread in
+    // InterruptAsync/SendUserMessageAsync and read on the server-request pump's own task, hence volatile.
+    private volatile bool _cancelling;
+
     // P1-11: read from Status (any thread the host polls from) and written from the notification pump's own
     // task — volatile, matching _capturingUsageResponse/_disposing above and the Codex driver template, so a
     // reader never sees a stale reference.
@@ -86,10 +94,6 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // P1-3: one instance per session, since it tracks per-toolCallId state (the lazy tool_call/tool_call_update
     // refinement sequence) across the whole session's notification stream.
     private readonly KimiSessionUpdateMapper _toolCallMapper = new();
-
-    // P1-10b: the JSON-RPC code kimi returns for "no usable auth token" (protocol §1) — a session/new|resume
-    // that fails with exactly this code gets an actionable message instead of the raw JSON-RPC error text.
-    private const int _AuthRequiredErrorCode = -32000;
 
     private string? _model;
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
@@ -201,13 +205,19 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             }
         }
 
-        // P1-7: drop any inherited or profile-supplied ANTHROPIC_* credential before spawning kimi acp — the
-        // Moonshot CLI has no business ever seeing an Anthropic API key/token (ClaudeSdkSessionDriver applies
-        // the same rule for its own spawn). Null tells the subprocess seam to remove the variable from the
+        // P1-7: drop any inherited or profile-supplied credential of the agent stack the cockpit itself runs on
+        // before spawning kimi acp. ANTHROPIC_* is the API key/token that would put a session on someone's
+        // API billing; CLAUDECODE/CLAUDE_CODE_*/CLAUDE_AGENT_* are what a Claude Code session exports to mark
+        // itself, and CLAUDE_CODE_OAUTH_TOKEN in particular is a live credential — a cockpit started from inside
+        // such a session inherits them, and Moonshot's CLI has no business receiving any of it. Same families the
+        // host strips for its own spawns (TtyEnvironment.IsHostControlled), minus two it strips for reasons that
+        // do not apply here: terminal-identity markers (this child renders nothing — it speaks JSON-RPC over a
+        // pipe) and COCKPIT_MCP_KEY, which this driver deliberately passes on because the MCP servers it hands
+        // kimi authenticate with exactly that key. Null tells the subprocess seam to remove the variable from the
         // child's environment rather than merely not setting it, so an inherited one is actually stripped.
         foreach (var key in Environment.GetEnvironmentVariables().Keys.Cast<string>()
                      .Concat(environmentVariables.Keys)
-                     .Where(name => name.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase))
+                     .Where(_IsForeignAgentCredential)
                      .ToList())
         {
             environmentVariables[key] = null;
@@ -313,6 +323,10 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
+        // A new turn reopens the door the cancel closed: from here on a permission request is a real question
+        // again, not the tail of a turn the operator already stopped.
+        _cancelling = false;
+
         // Fire-and-forget: session/prompt only settles at turn end (protocol §3), so awaiting it here would
         // block the caller for the whole turn. The turn's content streams through the notification pump instead.
         // Tracked (P1-6) so DisposeAsync can await it before disposing _promptGate.
@@ -369,6 +383,9 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         }
         catch (Exception)
         {
+            // The gate is cancelled or already disposed: the session is being torn down while this poll was
+            // queued behind the turn that launched it. Nothing to clean up — the flag below was never set —
+            // and nothing worth reporting: usage is a nicety, and the session is on its way out.
             return;
         }
 
@@ -434,7 +451,9 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // outcome "cancelled" — kimi does not fail these on its own, and an unanswered one blocks the agent
         // forever. P1-2: re-snapshot and keep draining rather than iterating a single snapshot once — kimi may
         // still send a request_permission for this turn while this loop is running (protocol §7.5), and a
-        // single pass would leave it unanswered.
+        // single pass would leave it unanswered. The flag set above is what bounds this loop: a request arriving
+        // now is answered where it is received and never lands here, so the dictionary can only shrink.
+        _cancelling = true;
         while (!_pendingApprovals.IsEmpty)
         {
             foreach (var toolUseId in _pendingApprovals.Keys.ToList())
@@ -666,6 +685,17 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             return;
         }
 
+        // A permission request that arrives once this turn is being cancelled is answered "cancelled" right here
+        // and never tracked. Two reasons: the operator asked for the turn to stop, so putting a fresh card on
+        // screen would be answering a question nobody wants; and the drain loop in InterruptAsync below only
+        // terminates because nothing new can enter the dictionary while it runs — a child that keeps sending
+        // requests would otherwise keep that loop going for as long as it cares to.
+        if (_cancelling)
+        {
+            await _connection.RespondAsync(request.Id, new { outcome = new { outcome = "cancelled" } }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         // P1-9: caps concurrent outstanding permission requests — an unbounded _pendingApprovals dictionary is
         // an OOM vector on untrusted stdout (a runaway or malicious kimi process flooding
         // session/request_permission faster than the operator can ever answer).
@@ -703,20 +733,15 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         _events.Writer.TryWrite(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
     }
 
-    /// <summary>
-    /// AC-273: says out loud that this session's hidden briefing — a profile's identity, a project's
-    /// instructions, an embedded Autopilot run's CEO prompt — is <em>not</em> reaching Kimi.
-    /// <para>
-    /// There is no route for it over ACP. The adapter reads no <c>systemPrompt</c>/<c>instructions</c>
-    /// parameter, the <c>_meta</c> it accepts on <c>session/new</c> is parsed and then never read, and
-    /// <c>--agent-file</c> lives on the v2 engine that <c>kimi acp</c> never reaches. The one text that does
-    /// land in the system prompt (<c>$KIMI_CODE_HOME/AGENTS.md</c>) is introduced by Kimi's own template as
-    /// "not a privileged instruction channel", and that variable also relocates credentials, <c>mcp.json</c>
-    /// and the session store — so it is a config-tree migration, not a place to drop one file.
-    /// </para>
-    /// Raymond's call (2026-07-26) is therefore to leave the capability unclaimed and make the gap visible:
-    /// an identity that silently evaporates is worse than one the operator can see did not apply.
-    /// </summary>
+    // AC-273: says out loud that this session's hidden briefing — a profile's identity, a project's instructions,
+    // an embedded Autopilot run's CEO prompt — is not reaching Kimi. There is no route for it over ACP: the
+    // adapter reads no systemPrompt/instructions parameter, the _meta it accepts on session/new is parsed and
+    // then never read, and --agent-file lives on the v2 engine that kimi acp never reaches. The one text that
+    // does land in the system prompt ($KIMI_CODE_HOME/AGENTS.md) is introduced by Kimi's own template as "not a
+    // privileged instruction channel", and that variable also relocates credentials, mcp.json and the session
+    // store — a config-tree migration, not a place to drop one file. So the capability stays unclaimed and the
+    // gap is made visible instead: an identity that silently evaporates is worse than one the operator can see
+    // did not apply.
     private void _ReportUnappliedSystemPrompt(IReadOnlyDictionary<string, string>? options)
     {
         if (_ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, fallback: null) is null)
@@ -732,6 +757,14 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 + "Put anything the agent must know in your first message instead.",
         });
     }
+
+    // The variable families scrubbed from the child's environment above. Kept as a named predicate rather than a
+    // prefix list inline, so the reason each family is here stays attached to it.
+    private static bool _IsForeignAgentCredential(string key) =>
+        key.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("CLAUDECODE", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("CLAUDE_CODE_", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("CLAUDE_AGENT_", StringComparison.OrdinalIgnoreCase);
 
     private string _ResolveProcessWorkingDirectory(string? workingDirectory)
     {

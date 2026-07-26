@@ -32,11 +32,8 @@ internal sealed class ProcessCliSubprocess : ICliSubprocess
 
     public int? ProcessId => !_disposed && _started && _process is { HasExited: false } process ? process.Id : null;
 
-    /// <summary>
-    /// How many stdout/stderr lines have been dropped so far for exceeding <see cref="MaxLineLengthChars"/>
-    /// (P1-9a) — the "make it observable, not silent" signal the fix requires: a caller can inspect this rather
-    /// than the drop happening with no trace anywhere.
-    /// </summary>
+    // P1-9a: how many stdout/stderr lines were dropped for exceeding MaxLineLengthChars — a caller can inspect
+    // this rather than the drop happening with no trace anywhere.
     public int DroppedOversizedLineCount => _droppedOversizedLineCount;
 
     public bool HasExited => _disposed || (_started && (_process?.HasExited ?? true));
@@ -97,7 +94,8 @@ internal sealed class ProcessCliSubprocess : ICliSubprocess
     public IAsyncEnumerable<string> ReadStderrLinesAsync(CancellationToken cancellationToken = default) =>
         _ReadLinesAsync(_RequireStartedProcess().StandardError, cancellationToken);
 
-    /// <summary>Test seam for P1-9a (InternalsVisibleTo): exercises the capped line reader against any <see cref="StreamReader"/>, without spawning a real process.</summary>
+    // Test seam for P1-9a (InternalsVisibleTo): exercises the capped line reader against any StreamReader,
+    // without spawning a real process.
     internal IAsyncEnumerable<string> ReadLinesAsyncForTests(StreamReader reader, CancellationToken cancellationToken = default) =>
         _ReadLinesAsync(reader, cancellationToken);
 

@@ -234,6 +234,45 @@ public class KimiSessionUpdateMapperTests
         mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool").Should().BeNull();
     }
 
+    // Both maps are keyed on toolCallIds the child process invents and neither empties on its own, so a child
+    // that keeps inventing them must not be able to grow the host's memory without a ceiling. Past the cap the
+    // oldest id is forgotten instead.
+    [Fact]
+    public void ManyLazyToolCalls_PastTheTrackingCap_ForgetTheOldestInsteadOfGrowing()
+    {
+        var mapper = new KimiSessionUpdateMapper();
+        var overflow = KimiSessionUpdateMapper.MaxTrackedToolCalls + 500;
+
+        for (var index = 0; index < overflow; index++)
+        {
+            mapper.Map(_Parse($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{index}}}","title":"Read"}}"""));
+        }
+
+        mapper.TrackedToolCallCountForTests.Should().BeLessThanOrEqualTo(KimiSessionUpdateMapper.MaxTrackedToolCalls);
+
+        // The most recent id is the one that still matters: its permission request must still find what the
+        // mapper knows about it rather than falling back to a bare name.
+        var latest = mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool");
+        latest!.ToolName.Should().Be("Read");
+    }
+
+    [Fact]
+    public void ManyEmittedToolCalls_PastTheTrackingCap_ForgetTheOldestInsteadOfGrowing()
+    {
+        var mapper = new KimiSessionUpdateMapper();
+        var overflow = KimiSessionUpdateMapper.MaxTrackedToolCalls + 500;
+
+        for (var index = 0; index < overflow; index++)
+        {
+            mapper.Map(_Parse($$$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{{index}}}}","title":"Read","rawInput":{}}}"""));
+        }
+
+        mapper.EmittedToolCallCountForTests.Should().BeLessThanOrEqualTo(KimiSessionUpdateMapper.MaxTrackedToolCalls);
+
+        // Recent ids keep their "already emitted" answer — only ids thousands of calls old are forgotten.
+        mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool").Should().BeNull();
+    }
+
     private static JsonElement _Parse(string paramsJson)
     {
         using var document = JsonDocument.Parse(paramsJson);
