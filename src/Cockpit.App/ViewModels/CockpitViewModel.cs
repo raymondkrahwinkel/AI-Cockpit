@@ -4263,13 +4263,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
             // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
             // numbering exists to prevent.
-            // Composed here, not chosen: linking a ticket to this session later may still label it, the same as it
-            // would a session that never got a name at all (#AC-310).
-            await _LaunchSessionFromResultAsync(result with
-            {
-                SessionName = _UniqueSessionTitle(project.Name),
-                NameIsComposed = true,
-            });
+            // Only the name changes; that it is composed came with the result, and stays with it (#AC-324).
+            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
 
             return;
         }
