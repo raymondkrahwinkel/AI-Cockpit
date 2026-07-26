@@ -56,7 +56,7 @@ public class DelegationPerTaskMcpTests
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Is<IReadOnlySet<string>?>(servers => servers != null && servers.SetEquals(new HashSet<string> { "filesystem", "youtrack" })),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class DelegationPerTaskMcpTests
         await driver.DidNotReceive().StartAsync(
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class DelegationPerTaskMcpTests
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Is<IReadOnlySet<string>?>(servers => servers != null && servers.SetEquals(new HashSet<string> { "filesystem" })),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -119,7 +119,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
         inner.SetLiveOptionAsync(key, value, cancellationToken);
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         // workingDirectory, resume, launchOptions and the session's MCP servers are passed through (#45 D5, #44):
         // a plugin driver that spawns a CLI (Codex app-server) runs in a cwd, resumes a thread by id, honours the
@@ -138,7 +138,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // session), so the fallback belongs here rather than on the dialog-only TTY route.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
 
-        var mcpServers = await _ResolveMcpServersAsync(selection, cancellationToken).ConfigureAwait(false);
+        var mcpServers = await _ResolveMcpServersAsync(selection, projectId, cancellationToken).ConfigureAwait(false);
 
         // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
         // can depend on the project that pane belongs to.
@@ -279,9 +279,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
     /// that does not wire one) means no fan-out. Best-effort — a transient <c>cockpit.json</c> read failure
     /// launches the session without the shared servers rather than failing the whole start, matching how the
-    /// Claude fan-out treats the same read.
+    /// Claude fan-out treats the same read. <paramref name="projectId"/> (AC-218) scopes the registry read to that
+    /// project's own view, so a project's servers and by-name overrides are seen here too.
     /// </summary>
-    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, string? projectId, CancellationToken cancellationToken)
     {
         if (mcpServerCatalog is null)
         {
@@ -290,7 +291,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         try
         {
-            var registry = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
+            var registry = await mcpServerCatalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
             var servers = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
                 .Where(McpConfigFile.IsAgentEligible)
                 .Select(_ToPluginMcpServer)

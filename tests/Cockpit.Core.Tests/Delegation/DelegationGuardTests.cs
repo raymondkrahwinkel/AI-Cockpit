@@ -136,7 +136,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(),
-            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
+            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -237,6 +237,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -263,6 +264,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
             Arg.Any<IReadOnlyDictionary<string, string>?>(),
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 

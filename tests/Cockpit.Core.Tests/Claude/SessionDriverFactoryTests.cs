@@ -61,7 +61,7 @@ public class SessionDriverFactoryTests
         registry.Register(registration);
 
         var catalog = Substitute.For<IMcpServerCatalog>();
-        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
         });

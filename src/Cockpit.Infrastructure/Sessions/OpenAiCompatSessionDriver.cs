@@ -81,7 +81,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     public IAsyncEnumerable<SessionEvent> Events => _events.Reader.ReadAllAsync();
 
     // launchOptions is unused: a built-in HTTP chat provider declares no per-session launch options.
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         // workingDirectory is used only to confine file tools (below): a local session talks HTTP to a model server with
         // no cwd, but its file access rides MCP servers, so an isolated run confines those to this directory instead.
@@ -123,7 +123,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
         // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, cancellationToken).ConfigureAwait(false);
+        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, cancellationToken).ConfigureAwait(false);
 
         // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
         // which selection, so a local-model session missing its MCP servers is a log line rather than a silent

@@ -31,7 +31,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         SessionResume? resume = null,
         string? paneId = null,
         IReadOnlySet<string>? enabledMcpServerNames = null,
-        SessionResources? contributed = null)
+        SessionResources? contributed = null,
+        string? projectId = null)
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
@@ -104,6 +105,9 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
             // The per-session MCP checklist (#44): a provider that fans the shared registry into its config narrows
             // to exactly these names, so an unchecked server never reaches the CLI. Null means no narrowing.
             EnabledMcpServerNames = enabledMcpServerNames,
+            // AC-218: the project this session runs under, so the fan-out below resolves against that project's
+            // own registry view (its servers, its by-name overrides) rather than the unscoped registry.
+            ProjectId = projectId,
         };
 
         var spec = provider.BuildLaunch(context);

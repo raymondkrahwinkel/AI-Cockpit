@@ -48,8 +48,11 @@ public interface ISessionDriver : IAsyncDisposable
     /// is the per-session MCP-server selection from the New-session dialog (#44): when non-null, it narrows
     /// the shared MCP registry to just those names for this session, on top of the registry's own
     /// enabled/scope filtering; <see langword="null"/> keeps the pre-#44 behaviour of using the full registry.
+    /// <paramref name="projectId"/> (AC-218) is the project this session was started under, so the MCP fan-out
+    /// resolves the selection against that project's own registry view (its servers, its by-name overrides)
+    /// instead of the unscoped registry; <see langword="null"/> for a session with no project.
     /// </summary>
-    Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default);
+    Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.

@@ -77,6 +77,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         string? workingDirectory = null,
         SessionResume? resume = null,
         IReadOnlyDictionary<string, string>? launchOptions = null,
+        string? projectId = null,
         CancellationToken cancellationToken = default)
     {
         Profile = profile;
@@ -90,7 +91,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
         _driver = _driverFactory.Create(profile);
-        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, _lifetime.Token);
+        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
         _pump = _PumpEventsAsync(_lifetime.Token);
     }
 
