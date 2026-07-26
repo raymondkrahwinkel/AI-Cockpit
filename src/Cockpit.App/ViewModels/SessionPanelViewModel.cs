@@ -39,7 +39,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// name the operator typed (#AC-310). True until the session is named on purpose, which is any of: typed in the
     /// New-session dialog, an inline rename, an explicit <c>SetSessionName</c>, or a flow naming it through
     /// <c>ICockpitActions.SetActiveSessionStatusAsync</c>. Every one of those four is a decision; the composed ones
-    /// are placeholders.
+    /// are placeholders. Which of the two a starting session got is decided in one place — <c>AddSession</c>, from
+    /// <c>NewSessionResult.NameIsComposed</c> — so a new start route cannot forget to say (#AC-324).
     /// </summary>
     public bool HasGeneratedName { get; set; } = true;
 
