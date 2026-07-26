@@ -15,9 +15,8 @@ public sealed class KimiProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "kimi-provider",
         DisplayName: "Kimi Code Provider (ACP)",
-        Version: "0.1.0",
         Author: "Cockpit",
-        Description: "Adds Kimi Code as a session provider, driven over the Agent Client Protocol (JSON-RPC 2.0 over stdio) via `kimi acp`. Requires the kimi CLI installed and authenticated on this machine (an API key, or `kimi acp --login`). Known limitation: Kimi maps a failed turn to the same stopReason as a successful one, so this provider cannot tell the two apart from the wire alone.");
+        Description: "Adds Kimi Code as a session provider, driven over the Agent Client Protocol (JSON-RPC 2.0 over stdio) via `kimi acp`. Requires the kimi CLI installed and authenticated on this machine (an API key, or `kimi acp --login`). Three known limitations: a failed turn is indistinguishable from a successful one on the wire, there is no quota or cost to report, and `kimi acp` cannot receive a system prompt — the session says so rather than dropping it silently.");
 
     public void ConfigureServices(IServiceCollection services)
     {
