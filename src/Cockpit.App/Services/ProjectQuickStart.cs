@@ -69,7 +69,12 @@ public sealed class ProjectQuickStart(
             IsolateInWorktree: defaults.IsolateInWorktree,
             ReadingLevel: isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
             ProjectId: project.Id,
-            SystemPrompt: defaults.SystemPrompt);
+            SystemPrompt: defaults.SystemPrompt)
+        {
+            // The project's name, taken not typed. Said here rather than left to whoever launches this, so the
+            // result is right on its own and a second caller cannot inherit the old bug (#AC-324).
+            NameIsComposed = true,
+        };
     }
 
     /// <summary>

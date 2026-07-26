@@ -4197,17 +4197,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // No operator said which project this one is for and no session it descends from, so the folder answers
             // (AC-320) — the same rule an embedded run is placed by. Without it a plugin-started session belongs to
             // no project, and everything a project decides at start stays silent for it.
-            ProjectId: await _ProjectIdForDirectoryAsync(workingDirectory));
+            ProjectId: await _ProjectIdForDirectoryAsync(workingDirectory))
+        {
+            // "<profile> — 14:22" is composed here; a name the caller actually passed is a decision (#AC-312).
+            NameIsComposed = string.IsNullOrWhiteSpace(sessionName),
+        };
 
         var paneId = await _LaunchSessionFromResultAsync(result);
-
-        // "<profile> — 14:22" is composed here, not chosen, so it stays open to a ticket link relabelling it — the same
-        // reading the project-start and duplicate paths take of their own composed names (#AC-310). A name the caller
-        // actually passed is a decision and keeps the session (#AC-312).
-        if (paneId is not null && string.IsNullOrWhiteSpace(sessionName) && FindSession(paneId) is { } started)
-        {
-            started.HasGeneratedName = true;
-        }
 
         // The prompt goes in after the session exists, through the same seam a plugin's inject uses — a session that
         // is not up yet cannot be typed into, and pretending otherwise loses the prompt. Target the started pane by its
@@ -4267,13 +4263,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
             // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
             // numbering exists to prevent.
-            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
-            // Composed here, not chosen: linking a ticket to this session later may still label it, the same as it
-            // would a session that never got a name at all (#AC-310).
-            if (paneId is not null && FindSession(paneId) is { } started)
-            {
-                started.HasGeneratedName = true;
-            }
+            // Only the name changes; that it is composed came with the result, and stays with it (#AC-324).
+            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
 
             return;
         }
@@ -4359,7 +4350,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var session = _sessionFactory();
             session.LaunchResult = result;
-            AddSession(session, result.SessionName, result.Profile.Label);
+            AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
             string? workingDirectory;
             try
             {
@@ -4381,7 +4372,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var session = _ttySessionFactory();
             session.LaunchResult = result;
-            AddSession(session, result.SessionName, result.Profile.Label);
+            AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
             string? workingDirectory;
             try
             {
@@ -4639,13 +4630,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         if (session.LaunchResult is { } result)
         {
-            var paneId = await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
             // The copy's name is composed here, so it is only as deliberate as the one it was copied from: a copy of
             // "default - 3" stays open to a ticket link relabelling it, a copy of a name you typed does not (#AC-310).
-            if (paneId is not null && FindSession(paneId) is { } copy)
+            await _LaunchSessionFromResultAsync(result with
             {
-                copy.HasGeneratedName = session.HasGeneratedName;
-            }
+                SessionName = $"{session.Title} (copy)",
+                NameIsComposed = session.HasGeneratedName,
+            });
         }
     }
 
@@ -4907,7 +4898,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AllSettingsStatus = "Saved";
     }
 
-    private void AddSession(SessionPanelViewModel session, string? name, string profileLabel)
+    private void AddSession(SessionPanelViewModel session, string? name, string profileLabel, bool nameIsChosen = false)
     {
         _sessionCounter++;
         // A session always lives on a Sessions workspace (Raymond): the one showing, else the first there is,
@@ -4915,10 +4906,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // show it — invisible rather than absent, which is the worse of the two.
         session.WorkspaceId = Workspaces.EnsureSessionWorkspace();
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
-        // shows which profile — and therefore which provider — each session runs under. Only the fallback is a
-        // name nobody chose, and that is the one a later ticket link may replace (#AC-310).
+        // shows which profile — and therefore which provider — each session runs under. Whether that name is one
+        // somebody meant is not worked out here: NewSessionResult.NameIsChosen says so, and this applies it (#AC-324).
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
-        session.HasGeneratedName = string.IsNullOrWhiteSpace(name);
+        session.HasGeneratedName = !nameIsChosen;
         _SeedSessionPreferences(session);
 
         session.CloseRequested += OnSessionCloseRequested;

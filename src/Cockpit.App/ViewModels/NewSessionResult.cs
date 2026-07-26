@@ -72,6 +72,25 @@ public sealed record NewSessionResult(
     string? ProjectId = null,
     string? SystemPrompt = null)
 {
+    /// <summary>
+    /// Whether <see cref="SessionName"/> was put together by the cockpit rather than chosen by anybody — "Cockpit 2",
+    /// "Claude — 14:22", "webshop (copy)". A composed name is a placeholder, so a ticket linked to that session later
+    /// may still label it; a name somebody typed, renamed to, or handed in is theirs and stays (#AC-310).
+    /// <para>
+    /// It rides along here so the one place that decides — <c>AddSession</c> — can be told, instead of every route
+    /// that composes a name having to put the flag back afterwards. Three of them did; the fourth forgot, and a
+    /// session started by a flow could never be relabelled until that was found (#AC-324).
+    /// </para>
+    /// </summary>
+    public bool NameIsComposed { get; init; }
+
+    /// <summary>
+    /// Whether the session this starts carries a name somebody meant, and so one a ticket linked to it later must
+    /// leave alone (#AC-310). The whole rule, in one expression: a name is chosen when there is one and nobody
+    /// composed it. Everything downstream applies this rather than working it out again (#AC-324).
+    /// </summary>
+    public bool NameIsChosen => !NameIsComposed && !string.IsNullOrWhiteSpace(SessionName);
+
     /// <summary>The SDK provider's launch options with <see cref="SystemPrompt"/> folded in (AC-142).</summary>
     public IReadOnlyDictionary<string, string>? SdkLaunchOptionsWithInstructions => _WithSystemPrompt(SdkLaunchOptions);
 

@@ -145,6 +145,37 @@ public class CockpitViewModelProjectStartTests
             Arg.Any<CancellationToken>());
     }
 
+    // The route that had the bug (#AC-312): its name is put together from the profile and the clock, so it is nobody's
+    // and a ticket linked to the session later may still label it. This is the only start route no test watched, which
+    // is how it came to be the one that forgot (#AC-324).
+    [Fact]
+    public async Task StartSessionForPlugin_WithoutAName_LeavesTheSessionOpenToBeingLabelled()
+    {
+        var vm = NewVm(Substitute.For<ISessionDialogService>());
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"));
+
+        await vm.StartSessionForPluginAsync(profile, prompt: null, workingDirectory: null);
+
+        var session = vm.Sessions.Single();
+        vm.SuggestSessionName(session.PaneId, "AC-312").Should().BeTrue();
+        session.Title.Should().Be("AC-312");
+    }
+
+    [Fact]
+    public async Task StartSessionForPlugin_WithAName_KeepsIt()
+    {
+        var vm = NewVm(Substitute.For<ISessionDialogService>());
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"));
+
+        await vm.StartSessionForPluginAsync(profile, prompt: null, workingDirectory: null, sessionName: "release work");
+
+        // A name the caller passed is a decision, so a ticket offers its own rather than taking this one.
+        var session = vm.Sessions.Single();
+        session.Title.Should().Be("release work");
+        vm.SuggestSessionName(session.PaneId, "AC-312").Should().BeFalse();
+        session.Title.Should().Be("release work");
+    }
+
     [Fact]
     public async Task OpenProjectsWorkspace_BringsUpTheOverview()
     {
