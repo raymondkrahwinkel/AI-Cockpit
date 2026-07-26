@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Verify;
@@ -25,6 +26,13 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // Same reason as GitCli's (AC-339): unset, .NET decodes a redirected stream with the console code page,
+            // which on Windows is not UTF-8. Build and test tools write UTF-8 — an accented path in a compiler error,
+            // the ✓/✗ a test runner prints — and the operator would read the mangling as their tool being broken.
+            // Only the panel's text is at stake here, not a decision, so a tool that still emits the ANSI code page
+            // renders a wrong glyph rather than anything worse; UTF-8 is the better bet by a wide margin.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
         };
         foreach (var argument in runner.Arguments)
