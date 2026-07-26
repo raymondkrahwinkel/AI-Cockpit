@@ -47,10 +47,12 @@ public sealed record CapturedDisplay
     /// operator's pointer can be compared against.
     /// </summary>
     /// <remarks>
-    /// A desktop point round-trips through this exactly. A pixel does not always: where the display is scaled up,
-    /// several pixels answer to one desktop position, so pixel → desktop → pixel lands on the first pixel of that
-    /// position rather than the one it started from. That is the scaling, not a defect here — and where a display
-    /// is scaled <em>down</em> the loss runs the other way, several desktop positions to the pixel.
+    /// A desktop point round-trips through this exactly for any display the image is at least as wide and tall as
+    /// — which is every real one, since a desktop never scales a display below 100%. A pixel does not round-trip:
+    /// where the display is scaled up, several pixels answer to one desktop position, so pixel → desktop → pixel
+    /// lands on the first pixel of that position rather than the one it started from. That is the scaling, not a
+    /// defect here. Were a display ever scaled <em>down</em>, the loss would run the other way and desktop points
+    /// would stop round-tripping too.
     /// </remarks>
     public CapturePoint ToDesktopPoint(CapturePoint imagePixel) =>
         new(

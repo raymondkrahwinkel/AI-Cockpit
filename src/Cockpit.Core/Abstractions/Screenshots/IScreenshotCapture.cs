@@ -15,6 +15,11 @@ namespace Cockpit.Core.Abstractions.Screenshots;
 /// This is the first capture of anything <em>outside</em> the cockpit. <c>Screenshotter</c> renders the cockpit's
 /// own Avalonia tree to a PNG, which is a different thing entirely and stays where it is.
 /// </para>
+/// <para>
+/// Threading: never wait on this synchronously from the UI thread. Reading every display is quick, but the interim
+/// implementations still hand control to the desktop's picker and so take exactly as long as the operator does —
+/// and on Windows that picker needs the very thread a synchronous wait would be holding.
+/// </para>
 /// </remarks>
 public interface IScreenshotCapture
 {
