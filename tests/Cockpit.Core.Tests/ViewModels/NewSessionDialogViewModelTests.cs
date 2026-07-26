@@ -213,13 +213,13 @@ public class NewSessionDialogViewModelTests
         loginChecker.IsLoggedIn(profile).Returns(true);
         await vm.LoadAsync();
         // The editable field lets the operator pin a specific model/snapshot, not only the alias suggestions.
-        vm.SelectedClaudeModel = "claude-opus-4-8";
+        vm.SelectedClaudeModel = "claude-opus";
 
         NewSessionResult? result = null;
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result!.Model.Value.Should().Be("claude-opus-4-8");
+        result!.Model.Value.Should().Be("claude-opus");
     }
 
     [Fact]
