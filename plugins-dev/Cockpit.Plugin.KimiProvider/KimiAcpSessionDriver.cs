@@ -272,6 +272,8 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
         _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = _sessionId, Tools = [], Cwd = absoluteCwd });
 
+        _ReportUnappliedSystemPrompt(options);
+
         // D8: fold the host's well-known permission-mode option into Kimi's own "mode" configId, once, at start —
         // there is no such parameter on session/new/resume itself. Absent option = leave kimi's own default mode alone.
         var permissionMode = _ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, fallback: null);
@@ -699,6 +701,36 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
         var toolCallJson = request.Params.TryGetProperty("toolCall", out var toolCall) ? toolCall.GetRawText() : "{}";
         _events.Writer.TryWrite(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
+    }
+
+    /// <summary>
+    /// AC-273: says out loud that this session's hidden briefing — a profile's identity, a project's
+    /// instructions, an embedded Autopilot run's CEO prompt — is <em>not</em> reaching Kimi.
+    /// <para>
+    /// There is no route for it over ACP. The adapter reads no <c>systemPrompt</c>/<c>instructions</c>
+    /// parameter, the <c>_meta</c> it accepts on <c>session/new</c> is parsed and then never read, and
+    /// <c>--agent-file</c> lives on the v2 engine that <c>kimi acp</c> never reaches. The one text that does
+    /// land in the system prompt (<c>$KIMI_CODE_HOME/AGENTS.md</c>) is introduced by Kimi's own template as
+    /// "not a privileged instruction channel", and that variable also relocates credentials, <c>mcp.json</c>
+    /// and the session store — so it is a config-tree migration, not a place to drop one file.
+    /// </para>
+    /// Raymond's call (2026-07-26) is therefore to leave the capability unclaimed and make the gap visible:
+    /// an identity that silently evaporates is worse than one the operator can see did not apply.
+    /// </summary>
+    private void _ReportUnappliedSystemPrompt(IReadOnlyDictionary<string, string>? options)
+    {
+        if (_ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, fallback: null) is null)
+        {
+            return;
+        }
+
+        _events.Writer.TryWrite(new PluginSessionError
+        {
+            SessionId = _sessionId,
+            Message = "This session carries a system prompt (a profile identity, a project's instructions, or an "
+                + "embedded run's briefing), but Kimi Code has no way to receive one over ACP — it is not applied. "
+                + "Put anything the agent must know in your first message instead.",
+        });
     }
 
     private string _ResolveProcessWorkingDirectory(string? workingDirectory)

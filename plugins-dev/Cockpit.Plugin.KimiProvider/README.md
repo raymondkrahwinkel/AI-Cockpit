@@ -39,7 +39,7 @@ The host's `acceptEdits` permission mode maps to Kimi's **`default`** mode, not 
 edits-only tier and `yolo` switches permission requests off entirely, so the middle setting would silently
 become free rein over the disk.
 
-## Two known limitations — neither is a bug to file
+## Three known limitations — none of them a bug to file
 
 1. **A failed turn is indistinguishable from a successful one.** Kimi maps its internal `failed` reason onto
    the same `end_turn` stop reason it uses for success, so nothing on the wire says the turn broke. The
@@ -47,6 +47,11 @@ become free rein over the disk.
 2. **No quota or cost reporting.** Kimi sends no usage on the wire. The context percentage is recovered by
    asking the CLI itself (`/usage`) and parsing its reply; there are no rate-limit windows to show, so that
    part of the session UI stays empty.
+3. **A system prompt does not reach Kimi.** A profile identity, a project's instructions or an embedded run's
+   briefing all arrive as the host's `cockpit.append-system-prompt`, and `kimi acp` has no parameter for it:
+   the `_meta` it accepts on `session/new` is never read, and `--agent-file` only exists on an engine the ACP
+   path does not use. Rather than let it vanish, the session says so once in the transcript when a prompt was
+   supplied — put what the agent must know in your first message instead.
 
 ## Distribution
 

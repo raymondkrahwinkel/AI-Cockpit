@@ -234,6 +234,36 @@ public class KimiAcpSessionDriverTests
         setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("auto");
     }
 
+    // AC-273: Kimi has no way to receive the host's hidden briefing over ACP, so the operator is told once,
+    // in the transcript. A profile identity that vanishes without a trace is the failure mode this prevents.
+    [Fact]
+    public async Task Start_WithAnAppendSystemPromptOption_ReportsThatItIsNotApplied_WithoutEchoingIt()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are Olaf. Answer in Dutch." };
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
+        await startTask;
+
+        var notice = await _NextEventOfTypeAsync<PluginSessionError>(driver);
+        notice.Message.Should().Contain("system prompt").And.Contain("not applied");
+        notice.Message.Should().NotContain("You are Olaf", "the briefing is hidden from the operator by design — repeating it in the transcript would publish what the host deliberately kept out of it");
+    }
+
+    [Fact]
+    public async Task Start_WithoutAnAppendSystemPromptOption_ReportsNothing()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+        await _StartAsync(driver, fake);
+
+        var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
+        events.Should().NotContain(evt => evt is PluginSessionError);
+    }
+
     [Fact]
     public async Task Start_WithNoOptionsAndNoConfiguredModel_SendsNoSetConfigOptionCalls()
     {
