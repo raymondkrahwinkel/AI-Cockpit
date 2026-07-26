@@ -367,10 +367,6 @@ public partial class CockpitView : UserControl
         }
     }
 
-    // A shortcut must never hijack a keystroke while the operator is typing: true when focus is in a TextBox
-    // or anywhere inside the Exclr8 terminal (focus can land on the control or a descendant).
-    private bool _IsTypingSurfaceFocused() => _IsTextBoxFocused() || _IsTerminalFocused();
-
     private bool _IsTextBoxFocused() =>
         TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
 
