@@ -114,7 +114,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             AdditionalInfo =
             [
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
-                new ProjectInfoField("Customer", "Acme BV — ask for Marcel"),
+                new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
         });
         viewModel._Republish();

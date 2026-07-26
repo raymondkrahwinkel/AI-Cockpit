@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Cockpit.App.Services;
 
@@ -14,18 +15,25 @@ namespace Cockpit.App.Services;
 internal static class ExternalLink
 {
     /// <summary>
-    /// Whether <paramref name="url"/> is something this will hand to the shell: an absolute <c>http</c> or
-    /// <c>https</c> address, and nothing else. Its own method so the decision can be tested in both directions — a
-    /// test that exercised the opening half would start a browser on the machine running it, so without this the guard
-    /// could be inverted and every test would still pass.
+    /// Parses <paramref name="url"/> if and only if it is something this will hand to the shell: an absolute
+    /// <c>http</c> or <c>https</c> address, and nothing else. The decision is its own method so it can be tested in
+    /// both directions — a test that exercised the opening half would start a browser on the machine running it, so
+    /// otherwise the guard could be inverted, leaving every link silently dead, with the suite still green.
     /// <para>
     /// <c>Cockpit.Core</c>'s <see cref="Cockpit.Core.Projects.ProjectInfoField.IsWebLink"/> applies the same rule to
     /// decide whether to <em>draw</em> a value as a link. Two places by necessity — the core cannot reference the app
     /// — and both are tested, because a value drawn as followable that this then refuses is a link that does nothing.
     /// </para>
     /// </summary>
-    public static bool IsWebAddress(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) && _IsWebAddress(uri);
+    public static bool TryParseWebAddress(string? url, [NotNullWhen(true)] out Uri? address)
+    {
+        address = Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                  (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? uri
+            : null;
+
+        return address is not null;
+    }
 
     /// <summary>
     /// Opens <paramref name="url"/> in the operator's browser. Returns false, having started nothing, when it is not
@@ -34,14 +42,14 @@ internal static class ExternalLink
     /// </summary>
     public static bool TryOpen(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !_IsWebAddress(uri))
+        if (!TryParseWebAddress(url, out var address))
         {
             return false;
         }
 
         try
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(address.AbsoluteUri) { UseShellExecute = true });
             return true;
         }
         catch (Exception)
@@ -50,7 +58,4 @@ internal static class ExternalLink
             return false;
         }
     }
-
-    private static bool _IsWebAddress(Uri uri) =>
-        uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
 }

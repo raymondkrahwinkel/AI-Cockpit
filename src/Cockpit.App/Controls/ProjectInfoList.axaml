@@ -16,7 +16,7 @@
                     <TextBlock Text="{Binding Label}" FontSize="10"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding Label, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                               IsVisible="{Binding HasLabel}"/>
                     <!-- A web address is a button so it can be followed and shows itself on hover; anything else is
                          plain text rather than something that looks clickable and is not. The text inside trims
                          instead of the button growing — a long URL would otherwise push a card wider than its row.

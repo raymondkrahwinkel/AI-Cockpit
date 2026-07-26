@@ -24,7 +24,7 @@ public class ProjectInfoListTests
     {
         var window = _Host(
             new ProjectInfoField("Repository", "https://github.com/example/repo"),
-            new ProjectInfoField("Customer", "Acme BV — ask for Marcel"));
+            new ProjectInfoField("Customer", "Acme BV — ask for their project lead"));
 
         var buttons = window.GetVisualDescendants().OfType<Button>().Where(button => button.IsVisible).ToList();
         var texts = window.GetVisualDescendants().OfType<TextBlock>()
@@ -35,7 +35,7 @@ public class ProjectInfoListTests
         window.Close();
 
         buttons.Should().ContainSingle("only the web address may look clickable");
-        texts.Should().Contain("Acme BV — ask for Marcel", "an ordinary value is still shown, just not as a link");
+        texts.Should().Contain("Acme BV — ask for their project lead", "an ordinary value is still shown, just not as a link");
     });
 
     [Fact]

@@ -5,7 +5,7 @@ namespace Cockpit.Core.Tests.Services;
 
 /// <summary>
 /// The guard in front of the one place this app hands an operator's own text to the shell. Both directions are
-/// exercised through <see cref="ExternalLink.IsWebAddress"/> rather than through the opening call: a case that reached
+/// exercised through <see cref="ExternalLink.TryParseWebAddress"/> rather than through the opening call: a case that reached
 /// the shell would start a browser on the machine running the tests, so an accept can only be asserted on the
 /// decision. Asserting only the refusals would leave an inverted guard — every link silently dead — green.
 /// </summary>
@@ -16,8 +16,8 @@ public class ExternalLinkTests
     [InlineData("http://example.test")]
     [InlineData("https://example.test:8443/path?q=1#frag")]
     [InlineData("HTTPS://EXAMPLE.TEST")]
-    public void IsWebAddress_AnHttpOrHttpsUrl_IsAccepted(string value) =>
-        ExternalLink.IsWebAddress(value)
+    public void TryParseWebAddress_AnHttpOrHttpsUrl_IsAccepted(string value) =>
+        ExternalLink.TryParseWebAddress(value, out _)
             .Should().BeTrue("a value the rows draw as a link has to be one this will actually open");
 
     [Theory]
@@ -35,8 +35,8 @@ public class ExternalLinkTests
     [InlineData("search-ms:query=x")]
     [InlineData("vscode://file/etc/passwd")]
     [InlineData("mailto:someone@example.test")]
-    public void IsWebAddress_AnythingElse_IsRefused(string? value) =>
-        ExternalLink.IsWebAddress(value)
+    public void TryParseWebAddress_AnythingElse_IsRefused(string? value) =>
+        ExternalLink.TryParseWebAddress(value, out _)
             .Should().BeFalse("these are the values a weaker guard would have launched a program with");
 
     [Theory]

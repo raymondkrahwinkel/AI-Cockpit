@@ -18,7 +18,7 @@ public class ProjectInfoFieldTests
     }
 
     [Fact]
-    public void TwoRowsMayCarryTheSameLabel()
+    public void Normalized_TwoRowsWithTheSameLabel_AreBothKept()
     {
         // Deliberately not a dictionary: two contacts are two rows, and rejecting the second would be the model
         // telling the operator their own labels are wrong.
@@ -26,13 +26,13 @@ public class ProjectInfoFieldTests
         {
             AdditionalInfo =
             [
-                new ProjectInfoField("Contact", "Marcel"),
-                new ProjectInfoField("Contact", "Sanne"),
+                new ProjectInfoField("Contact", "Acme BV service desk"),
+                new ProjectInfoField("Contact", "Acme BV account manager"),
             ],
         });
 
         settings.Normalized().Projects.Should().ContainSingle()
-            .Which.AdditionalInfo.Select(field => field.Value).Should().Equal("Marcel", "Sanne");
+            .Which.AdditionalInfo.Select(field => field.Value).Should().Equal("Acme BV service desk", "Acme BV account manager");
     }
 
     [Theory]
@@ -47,7 +47,7 @@ public class ProjectInfoFieldTests
     [InlineData("mailto:someone@example.test")]
     [InlineData("javascript:alert(1)")]
     [InlineData("")]
-    [InlineData("Ask for Marcel, he signs off on it")]
+    [InlineData("Ask the service desk, they sign off on it")]
     public void IsWebLink_FalseForAnythingElse(string value) =>
         new ProjectInfoField("Note", value).IsWebLink
             .Should().BeFalse("only http(s) is ever handed to the shell, so only http(s) may look followable");
@@ -55,10 +55,10 @@ public class ProjectInfoFieldTests
     [Fact]
     public void Tidied_TrimsTheLabelAndFoldsThePastedValueOntoOneLine()
     {
-        var tidied = new ProjectInfoField("  Contact  ", "Marcel\r\n  +31 6 1234 5678\n\n").Tidied();
+        var tidied = new ProjectInfoField("  Contact  ", "Acme BV\r\n  service desk\n\n").Tidied();
 
         tidied.Label.Should().Be("Contact");
-        tidied.Value.Should().Be("Marcel +31 6 1234 5678");
+        tidied.Value.Should().Be("Acme BV service desk");
     }
 
     [Theory]

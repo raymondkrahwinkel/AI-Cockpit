@@ -35,9 +35,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: a project can carry whatever else belongs with it — rows you name yourself, with the value beside them: the
   repository it lives in, the customer's website, who to ask. No field per kind of information, so a new kind costs
   nothing: add a row in the project editor, type a label, type a value. The rows show on the project's card and in
-  the projects window, and a web address there is a link you can click straight through to. Passwords and tokens
-  still belong in a profile, which stores them encrypted — these rows are plain text.
-
+  the projects window; a web address there is a link you can click straight through to, and a long value is shown
+  shortened with the whole of it on hover, so one project cannot leave a card towering over its neighbours.
+  Passwords and tokens still belong in a profile, which stores them encrypted — these rows are plain text.
 - added: Kimi Code as a session provider, installable from the store. One `kimi` process runs for the whole
   session and speaks its protocol to the cockpit rather than drawing a terminal, so streaming text and
   thinking, tool calls with real Allow/Deny prompts, switching model mid-session, cancelling a turn and

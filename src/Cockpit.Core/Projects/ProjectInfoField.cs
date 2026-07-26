@@ -49,6 +49,13 @@ public sealed record ProjectInfoField(string Label, string Value)
     public bool IsBlank => string.IsNullOrWhiteSpace(Label) && string.IsNullOrWhiteSpace(Value);
 
     /// <summary>
+    /// Whether there is a label to draw above the value. Whitespace counts as none, which is what a surface needs and
+    /// what <see cref="IsBlank"/> deliberately does not say: a row of spaces beside a filled value is still a row worth
+    /// keeping, it just has nothing to put over it.
+    /// </summary>
+    public bool HasLabel => !string.IsNullOrWhiteSpace(Label);
+
+    /// <summary>
     /// Whether <see cref="Value"/> is a link a viewer can follow, which is what decides whether a surface draws it
     /// as one. Only <c>http</c> and <c>https</c>: the same limit the views already put on opening a URL, so a value
     /// that happens to read as <c>file:</c> or a custom scheme stays text.

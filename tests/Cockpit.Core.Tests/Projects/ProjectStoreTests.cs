@@ -56,7 +56,7 @@ public class ProjectStoreTests : IDisposable
             AdditionalInfo =
             [
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
-                new ProjectInfoField("Customer", "Acme BV, contact Marcel"),
+                new ProjectInfoField("Customer", "Acme BV, via the service desk"),
             ],
         };
 

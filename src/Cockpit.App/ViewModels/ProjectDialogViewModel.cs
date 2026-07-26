@@ -39,7 +39,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         SelectedProfileLabel = "personal";
         Name = "Cockpit";
         AdditionalInfo.Add(new ProjectInfoFieldViewModel("Repository", "https://github.com/example/ai-cockpit"));
-        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Customer", "Acme BV — ask for Marcel"));
+        AdditionalInfo.Add(new ProjectInfoFieldViewModel("Customer", "Acme BV — ask for their project lead"));
     }
 
     private ProjectDialogViewModel(Project? project)

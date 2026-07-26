@@ -127,7 +127,7 @@
                      project needs — a repository link, the customer's website, a contact. Kept next to the
                      description rather than after the session settings: it answers the same question, "what is this
                      project", and a field per kind of information was explicitly not what was wanted. -->
-                <StackPanel Spacing="11">
+                <StackPanel Spacing="14">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="SectionHeading" Text="Anything else worth keeping"/>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
@@ -150,7 +150,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <Button Content="+ Add a row" Classes="Subtle" HorizontalAlignment="Left"
+                    <Button Content="+ Add row" Classes="Subtle" HorizontalAlignment="Left"
                             Foreground="{StaticResource CockpitAccentBrush}"
                             Command="{Binding AddInfoFieldCommand}"/>
                 </StackPanel>
