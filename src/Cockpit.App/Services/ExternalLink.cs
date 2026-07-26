@@ -50,9 +50,20 @@ internal static class ExternalLink
     /// <summary>
     /// Opens an address already known to be a web address, for a caller that parsed it to decide something else first.
     /// Returns whether the browser started.
+    /// <para>
+    /// It re-checks the scheme rather than trusting the caller. This class is the one place the "only http(s) reaches
+    /// the shell" rule lives, and a rule enforced only by the discipline of whoever calls it is not enforced: a future
+    /// caller holding a <see cref="Uri"/> from a config file or a plugin could reach the shell past the guard, and the
+    /// test that watches for new shell-outs would not see it, because such a caller writes none of its own.
+    /// </para>
     /// </summary>
     public static bool TryOpen(Uri address)
     {
+        if (address.Scheme != Uri.UriSchemeHttp && address.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
         try
         {
             Process.Start(new ProcessStartInfo(address.AbsoluteUri) { UseShellExecute = true });
