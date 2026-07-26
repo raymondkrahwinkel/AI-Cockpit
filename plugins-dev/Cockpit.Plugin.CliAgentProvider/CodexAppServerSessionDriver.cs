@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Threading.Channels;
 using System.Collections.Concurrent;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -47,7 +46,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
     private readonly string _executablePath;
-    private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
+    private readonly PluginSessionEventPublisher _events = new();
 
     // itemId -> the server request's JSON-RPC id, so an operator's allow/deny can be routed back to the exact
     // approval the server is blocking on (RespondToPermissionAsync correlates on itemId, which is the tool-use id).
@@ -116,7 +115,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     public IReadOnlyList<PluginSessionLaunchOption> LiveOptions => _liveOptions;
 
-    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
+    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
         StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
@@ -207,7 +206,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         _threadId = threadId;
         _threadReady.TrySetResult(threadId);
-        _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
+        _events.Publish(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
@@ -243,7 +242,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         catch (Exception exception)
         {
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _threadId, Message = exception.Message });
+            _events.Publish(new PluginSessionError { SessionId = _threadId, Message = exception.Message });
         }
     }
 
@@ -314,7 +313,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         finally
         {
-            _events.Writer.TryComplete();
+            _events.TryComplete();
         }
     }
 
@@ -344,7 +343,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/agentMessage/delta":
                 if (_TryGetString(notification.Params, "delta", out var delta))
                 {
-                    _events.Writer.TryWrite(new PluginAssistantTextDelta { SessionId = _threadId, BlockIndex = 0, Text = delta });
+                    _events.Publish(new PluginAssistantTextDelta { SessionId = _threadId, BlockIndex = 0, Text = delta });
                 }
 
                 break;
@@ -356,7 +355,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/reasoning/textDelta":
                 if (_TryGetString(notification.Params, "delta", out var reasoningText))
                 {
-                    _events.Writer.TryWrite(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 0, Thinking = reasoningText });
+                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 0, Thinking = reasoningText });
                 }
 
                 break;
@@ -364,7 +363,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/reasoning/summaryTextDelta":
                 if (_TryGetString(notification.Params, "delta", out var reasoningSummary))
                 {
-                    _events.Writer.TryWrite(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 1, Thinking = reasoningSummary });
+                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 1, Thinking = reasoningSummary });
                 }
 
                 break;
@@ -390,7 +389,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "error":
-                _events.Writer.TryWrite(new PluginSessionError { SessionId = _threadId, Message = _ExtractErrorMessage(notification.Params) });
+                _events.Publish(new PluginSessionError { SessionId = _threadId, Message = _ExtractErrorMessage(notification.Params) });
                 break;
         }
     }
@@ -407,19 +406,19 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         switch (itemType)
         {
             case "commandExecution" when !completed:
-                _events.Writer.TryWrite(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = "shell", InputJson = _RawOrEmpty(item, "command") });
+                _events.Publish(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = "shell", InputJson = _RawOrEmpty(item, "command") });
                 break;
 
             case "commandExecution" when completed:
-                _events.Writer.TryWrite(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _StringOrEmpty(item, "aggregatedOutput"), IsError = _IsNonZeroExit(item) });
+                _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _StringOrEmpty(item, "aggregatedOutput"), IsError = _IsNonZeroExit(item) });
                 break;
 
             case "mcpToolCall" when !completed:
-                _events.Writer.TryWrite(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = _StringOrEmpty(item, "tool"), InputJson = _RawOrEmpty(item, "arguments") });
+                _events.Publish(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = _StringOrEmpty(item, "tool"), InputJson = _RawOrEmpty(item, "arguments") });
                 break;
 
             case "mcpToolCall" when completed:
-                _events.Writer.TryWrite(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _RawOrEmpty(item, "result"), IsError = item.TryGetProperty("error", out var error) && error.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) });
+                _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _RawOrEmpty(item, "result"), IsError = item.TryGetProperty("error", out var error) && error.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) });
                 break;
         }
     }
@@ -432,7 +431,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var status = _TryGetNestedString(parameters, "turn", "status", out var turnStatus) ? turnStatus : "completed";
         var isInterrupted = string.Equals(status, "interrupted", StringComparison.OrdinalIgnoreCase);
         var isError = !isInterrupted && !string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
-        _events.Writer.TryWrite(new PluginTurnCompleted
+        _events.Publish(new PluginTurnCompleted
         {
             SessionId = _threadId,
             Subtype = status,
@@ -613,7 +612,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         _pendingApprovals[itemId] = request.Id;
         var isCommand = request.Method == "item/commandExecution/requestApproval";
-        _events.Writer.TryWrite(new PluginPermissionRequested
+        _events.Publish(new PluginPermissionRequested
         {
             SessionId = _threadId,
             ToolUseId = itemId,
@@ -745,7 +744,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     public async ValueTask DisposeAsync()
     {
-        _events.Writer.TryComplete();
+        _events.TryComplete();
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _connection.DisposeAsync().ConfigureAwait(false);
 

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using System.Threading.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -39,7 +38,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private readonly Func<IClaudeSdkSubprocess> _subprocessFactory;
     private readonly ClaudeProviderConfig _config;
     private readonly string _executablePath;
-    private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
+    private readonly PluginSessionEventPublisher _events = new();
     private readonly CancellationTokenSource _lifetime = new();
 
     // tool_use_id -> the pending can_use_tool request the CLI is blocking on. Keyed on tool_use_id because that is what
@@ -89,7 +88,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public IReadOnlyList<PluginSessionLaunchOption> LiveOptions => _liveOptions;
 
-    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
+    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
         StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
@@ -285,11 +284,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
         catch (Exception exception)
         {
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = exception.Message });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = exception.Message });
         }
         finally
         {
-            _events.Writer.TryComplete();
+            _events.TryComplete();
         }
     }
 
@@ -327,7 +326,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 if (ClaudeControlProtocol.TryParsePermissionRequest(root, out var requestId, out var toolUseId, out var toolName, out var inputJson))
                 {
                     _pendingApprovals[toolUseId] = (requestId, inputJson);
-                    _events.Writer.TryWrite(new PluginPermissionRequested
+                    _events.Publish(new PluginPermissionRequested
                     {
                         SessionId = _sessionId,
                         ToolUseId = toolUseId,
@@ -341,7 +340,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
             foreach (var evt in ClaudeStreamJson.ParseLine(line))
             {
-                _events.Writer.TryWrite(evt);
+                _events.Publish(evt);
             }
         }
     }
@@ -440,7 +439,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public async ValueTask DisposeAsync()
     {
-        _events.Writer.TryComplete();
+        _events.TryComplete();
         await _lifetime.CancelAsync().ConfigureAwait(false);
 
         // Guarded so _lifetime.Dispose always runs even if the subprocess teardown throws something other than the
