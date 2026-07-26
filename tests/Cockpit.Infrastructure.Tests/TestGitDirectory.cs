@@ -23,11 +23,21 @@ internal static class TestGitDirectory
 
         foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
         {
-            var attributes = File.GetAttributes(file);
-            if (attributes.HasFlag(FileAttributes.ReadOnly))
+            try
             {
-                // Only the one bit: a blanket FileAttributes.Normal would drop whatever else the file carries.
-                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                var attributes = File.GetAttributes(file);
+                if (attributes.HasFlag(FileAttributes.ReadOnly))
+                {
+                    // Only the one bit: a blanket FileAttributes.Normal would drop whatever else the file carries.
+                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                }
+            }
+            catch (Exception)
+            {
+                // Swallowed on purpose, and it hides nothing: the delete below is still the gate. A virus scanner
+                // holding one file for a moment would otherwise throw here and fail every test in the calling class
+                // from its Dispose — the exact failure this helper exists to stop, reintroduced one file at a time.
+                // If the attribute genuinely could not be cleared, the delete says so, with the path in the message.
             }
         }
 
