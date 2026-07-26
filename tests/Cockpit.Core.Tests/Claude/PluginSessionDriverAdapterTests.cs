@@ -133,6 +133,38 @@ public class PluginSessionDriverAdapterTests
         inner.LastEnvironment.Should().Contain("GH_REPO", "from/project");
     }
 
+    // The same rule the profile's variables meet, applied where the value is put in the driver's environment rather
+    // than trusted to have been applied upstream — the resolver and the merge both scrub too, and this is what still
+    // holds if either of them ever stops.
+    [Fact]
+    public async Task StartAsync_AContributedVariableOnAHostControlledKey_NeverCrossesThePluginBoundary()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner, inner.Capabilities, _authKey,
+            sessionResources: StubResources(("ANTHROPIC_API_KEY", "smuggled"), ("GH_REPO", "owner/repo")));
+
+        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")), launchOptions: PaneOptions);
+
+        inner.LastEnvironment.Should().NotContainKey("ANTHROPIC_API_KEY", "a host-controlled variable never crosses");
+        inner.LastEnvironment.Should().Contain("GH_REPO", "owner/repo", "the rest of the contribution still applies");
+    }
+
+    // A contribution must not be able to rename the session it is running in: the pane id is the identity the consent
+    // broker and the session-status tool attribute by, so one a plugin chose would let it act as another pane.
+    [Fact]
+    public async Task StartAsync_AContributedPaneId_NeverReachesTheDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner, inner.Capabilities, _authKey,
+            sessionResources: StubResources(("COCKPIT_PANE_ID", "someone-elses-pane")));
+
+        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")), launchOptions: PaneOptions);
+
+        inner.LastEnvironment.Should().NotContainKey("COCKPIT_PANE_ID");
+    }
+
     // With no resolver in the graph (every other test here, and any host built before AC-165) the launch is exactly
     // what it was: the parameter is optional precisely so an existing composition keeps working untouched.
     [Fact]

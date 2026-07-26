@@ -716,6 +716,10 @@ refusing the only way to link it.
 shell out. Return an empty list when there is genuinely nothing to offer, and **throw when the fetch failed** — the
 two say different things to an operator deciding whether their project points at the right place.
 
+Two plugins may register the **same key**: that is agreement, not a clash (a repository is a repository), and the
+first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are
+different fields, because a link is read back case-sensitively.
+
 ### `void AddSessionResourceProvider(ISessionResourceProvider provider)`
 
 Registers something your plugin gives a session **as it starts** (AC-165) — today, environment variables its process
@@ -752,8 +756,9 @@ internal sealed class RepositorySessionResources(ICockpitHost host) : ISessionRe
 }
 ```
 
-Pass `request.PaneId` when you read a project field here: the session being started is not the selected one — it does
-not exist on screen yet — so leaving it null reads whichever pane the operator happens to be looking at.
+Pass `request.PaneId` when you read a project field here: the session being started is not necessarily the selected
+one, so leaving it null reads whichever pane the operator happens to be looking at instead of the one you are being
+asked about.
 
 Rules worth knowing before you rely on it:
 
@@ -768,10 +773,9 @@ Rules worth knowing before you rely on it:
   logged and treated as `None` — one plugin's bad day does not stop a session starting.
 - **This is not how you tell a session something.** A sentence for the agent to read belongs in the project's own
   behaviour prompt or information rows; this puts a value in a process.
-
-Two plugins may register the **same key**: that is agreement, not a clash (a repository is a repository), and the
-first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are
-different fields, because a link is read back case-sensitively.
+- **A session started inside a workspace has no project.** Only the New-session routes set one, so an embedded run
+  (an Autopilot step, a workflow) answers `null` for `ProjectId` today and a project-dependent contribution does not
+  fire there.
 
 ### `IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }`
 

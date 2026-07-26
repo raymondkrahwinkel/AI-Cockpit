@@ -6,11 +6,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// merges the answers, and hands the result to whichever provider is starting, so a contribution arrives the same
 /// way whether the session is a Claude CLI, a Codex app-server, a Kimi ACP connection or a TTY.
 /// <para>
-/// Asked rather than pushed, for the reason <see cref="Mcp.IPluginMcpProvider"/> already is: the plugin stays the
-/// owner of what it contributes and answers with whatever it currently holds, so a value it changes takes effect on
-/// the next session without any other store having to be kept in step. The difference here is the context — this
-/// one is told which session and which project it is answering for, which is what lets a contribution differ per
-/// project.
+/// Asked rather than pushed, like <see cref="Mcp.IPluginMcpProvider"/>: the plugin answers with whatever it
+/// currently holds, so a value it changes takes effect on the next session without another store to keep in step.
+/// What it is told, and that one does not get, is which session and project it is answering for.
 /// </para>
 /// </summary>
 public interface ISessionResourceProvider

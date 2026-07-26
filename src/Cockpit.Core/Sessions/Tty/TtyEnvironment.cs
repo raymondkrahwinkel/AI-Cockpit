@@ -129,7 +129,8 @@ public static class TtyEnvironment
         IsNestedClaudeCodeMarker(key)
         || IsHostTerminalIdentityMarker(key)
         || IsAnthropicCredentialMarker(key)
-        || IsCockpitMcpKeyMarker(key);
+        || IsCockpitMcpKeyMarker(key)
+        || IsCockpitPaneIdMarker(key);
 
     /// <summary>
     /// True when the effective ctype locale is UTF-8. The C library resolves the ctype category as
@@ -208,4 +209,13 @@ public static class TtyEnvironment
     /// </summary>
     public static bool IsCockpitMcpKeyMarker(string key) =>
         key.Equals("COCKPIT_MCP_KEY", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True for <c>COCKPIT_PANE_ID</c>, the identity the host hands a session so its agent can name itself to the
+    /// cockpit-session MCP (AC-13). It is who the session <em>is</em>, not a setting: a session that could choose its
+    /// own would be able to set another pane's statusline or claim another pane's consent, so nothing but the host
+    /// gets to write it. The literal name mirrors <c>WellKnownSessionEnvironment</c>'s, which Core does not reference.
+    /// </summary>
+    public static bool IsCockpitPaneIdMarker(string key) =>
+        key.Equals("COCKPIT_PANE_ID", StringComparison.OrdinalIgnoreCase);
 }

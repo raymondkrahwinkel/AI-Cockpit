@@ -1,4 +1,5 @@
 using Cockpit.App.Plugins;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,5 +69,19 @@ public class SessionResourceProviderRegistryTests
 
         services.BuildServiceProvider().GetService<ISessionResourceProviderRegistry>()
             .Should().BeOfType<SessionResourceProviderRegistry>();
+    }
+
+    [Fact]
+    public void TheAppsOwnScan_ResolvesTheResolverByItsContract()
+    {
+        // Both launch routes take ISessionResourceResolver as an optional dependency, so a resolver the scan does not
+        // register against that interface is not a startup failure — it is null, and every contribution silently
+        // never happens. This is the only thing standing between that and shipping.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddServices(typeof(SessionResourceProviderRegistry).Assembly);
+
+        services.BuildServiceProvider().GetService<ISessionResourceResolver>()
+            .Should().BeOfType<SessionResourceResolver>();
     }
 }

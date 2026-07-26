@@ -1,17 +1,13 @@
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
-/// What a plugin gives a session that is starting (AC-165): the variables its process runs with. The counterpart
-/// to what the project already <em>tells</em> a session — a memory location, the information rows it shares —
-/// which reaches it as standing instructions and never touches a process. These two are deliberately separate: a
-/// sentence costs prompt budget, a variable costs a slot in a process environment, and they fail in different
-/// ways.
+/// What a plugin gives a session that is starting (AC-165): the variables its process runs with. Distinct from what
+/// a project <em>tells</em> a session (its memory location, the rows it shares), which arrives as standing
+/// instructions — a sentence costs prompt budget, a variable costs a slot in a process environment.
 /// <para>
-/// A record rather than a bare dictionary because this is where a contribution grows. Endpoints are the obvious
-/// next kind and are deliberately absent for now: a session-scoped MCP server can be offered to a session but not
-/// yet mounted by one — the fan-out resolves selected names against the unscoped registry — so contributing one
-/// would produce a server the operator can neither see on the New-session checklist nor untick. That is the
-/// project-scoped fan-out's job, not this one's.
+/// A record rather than a bare dictionary because this is where a contribution grows. An MCP endpoint is the
+/// obvious next kind and waits on the project-scoped fan-out: one contributed today could be offered to a session
+/// but not mounted by it, and the operator could neither see nor untick it.
 /// </para>
 /// </summary>
 public sealed record SessionResourceContribution

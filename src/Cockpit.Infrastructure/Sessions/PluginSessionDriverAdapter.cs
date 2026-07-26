@@ -219,7 +219,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             }
         }
 
-        foreach (var variable in contributed.EnvironmentVariables)
+        // Scrubbed again here rather than trusted to have been: this is where the value is put in the environment the
+        // driver receives, and the TTY route's own composition re-checks the same rule at its equivalent point. A
+        // guard that holds only because an earlier layer ran is one refactor away from not holding at all.
+        foreach (var variable in contributed.EnvironmentVariables.Where(variable => !TtyEnvironment.IsHostControlled(variable.Key)))
         {
             environment[variable.Key] = variable.Value;
         }

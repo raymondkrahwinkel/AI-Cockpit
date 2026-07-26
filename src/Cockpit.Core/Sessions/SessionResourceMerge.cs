@@ -3,9 +3,8 @@ using Cockpit.Core.Sessions.Tty;
 namespace Cockpit.Core.Sessions;
 
 /// <summary>
-/// Folds what several plugins contribute to one starting session into a single answer (AC-165). Pure and separate
-/// from the resolver that gathers the contributions, so the rules below can be tested without standing up a plugin
-/// host — the same reason <c>McpServerCatalog.Merge</c> is its own method.
+/// Folds what several plugins contribute to one starting session into a single answer (AC-165). Kept apart from the
+/// resolver that gathers the contributions so the rules below can be tested without standing up a plugin host.
 /// </summary>
 public static class SessionResourceMerge
 {

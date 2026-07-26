@@ -26,6 +26,10 @@ internal sealed class SessionResourceResolver(
     ILogger<SessionResourceResolver> logger)
     : ISessionResourceResolver, ISingletonService
 {
+    // Long enough that a plugin reading what it already holds is never cut off, short enough that a hung one costs
+    // the operator a noticeable pause rather than a session that never opens.
+    private static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(5);
+
     public async Task<SessionResources> ResolveAsync(string? paneId, CancellationToken cancellationToken = default)
     {
         var providers = registry.Providers;
@@ -63,11 +67,9 @@ internal sealed class SessionResourceResolver(
         return resources;
     }
 
-    /// <summary>
-    /// One plugin's answer, mapped into host types, with its environment already scrubbed so the warning below can
-    /// name the plugin that sent it — <see cref="SessionResourceMerge"/> drops the same keys again, because the
-    /// guarantee belongs where the value is used and this pass exists only to attribute it.
-    /// </summary>
+    // One plugin's answer. Host-controlled keys are reported here but not removed here: dropping them is the merge's
+    // job, and doing it twice would be the same rule in two places. What this pass adds is the plugin's name, which
+    // the merge no longer knows by the time it sees the keys.
     private async Task<SessionResources> _AskAsync(
         ISessionResourceProvider provider,
         SessionResourceRequest request,
@@ -76,8 +78,21 @@ internal sealed class SessionResourceResolver(
         SessionResourceContribution contribution;
         try
         {
-            contribution = await provider.GetSessionResourcesAsync(request, cancellationToken).ConfigureAwait(false)
-                ?? SessionResourceContribution.None;
+            var answer = provider.GetSessionResourcesAsync(request, cancellationToken);
+
+            // Bounded by racing a timer rather than by handing the plugin a deadline it has to honour: a plugin that
+            // hangs is exactly the one that will not be observing its cancellation token, and the operator is waiting
+            // for a session to open. The abandoned call is left to finish into nothing.
+            if (await Task.WhenAny(answer, Task.Delay(AskTimeout, cancellationToken)).ConfigureAwait(false) != answer)
+            {
+                logger.LogWarning(
+                    "Plugin {Provider} did not answer within {Seconds}s; starting the session without its contribution.",
+                    provider.GetType().Name,
+                    AskTimeout.TotalSeconds);
+                return SessionResources.Empty;
+            }
+
+            contribution = await answer.ConfigureAwait(false) ?? SessionResourceContribution.None;
         }
         catch (Exception exception)
         {
@@ -90,19 +105,7 @@ internal sealed class SessionResourceResolver(
             return SessionResources.Empty;
         }
 
-        var environment = new Dictionary<string, string>(StringComparer.Ordinal);
-        var rejected = new List<string>();
-        foreach (var variable in contribution.EnvironmentVariables)
-        {
-            if (TtyEnvironment.IsHostControlled(variable.Key))
-            {
-                rejected.Add(variable.Key);
-                continue;
-            }
-
-            environment[variable.Key] = variable.Value;
-        }
-
+        var rejected = contribution.EnvironmentVariables.Keys.Where(TtyEnvironment.IsHostControlled).ToList();
         if (rejected.Count > 0)
         {
             logger.LogWarning(
@@ -111,14 +114,11 @@ internal sealed class SessionResourceResolver(
                 string.Join(", ", rejected));
         }
 
-        return new SessionResources(environment);
+        return new SessionResources(contribution.EnvironmentVariables);
     }
 
-    /// <summary>
-    /// Which project the pane's session belongs to, or null when it has none or the pane is not on screen yet. The
-    /// lookup walks the on-screen session collections, so it happens on the UI thread; a launch route may ask from
-    /// any.
-    /// </summary>
+    // The lookup walks the on-screen session collections, so it happens on the UI thread; a launch route may ask
+    // from any.
     private async Task<string?> _ProjectIdOfAsync(string paneId)
     {
         if (services.GetService<CockpitViewModel>() is not { } cockpit)
