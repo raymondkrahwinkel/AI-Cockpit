@@ -64,7 +64,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         foreach (var field in project.AdditionalInfo)
         {
-            AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value, field.IsSharedWithSessions));
+            AdditionalInfo.Add(new ProjectInfoFieldViewModel(field.Label, field.Value, field.IsSharedWithSessions, field.IsSecret));
         }
     }
 

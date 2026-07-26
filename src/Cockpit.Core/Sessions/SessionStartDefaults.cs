@@ -77,8 +77,9 @@ public sealed record SessionStartDefaults(
             : null;
 
     /// <summary>
-    /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block. Null when
-    /// none are — which is the default, so a session's prompt does not grow because a project happens to keep notes.
+    /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block — never a
+    /// row marked secret, whatever its sharing flag says (AC-318). Null when none apply — which is the default, so a
+    /// session's prompt does not grow because a project happens to keep notes.
     /// <para>
     /// Told as flat <c>label: value</c> lines rather than a sentence per row: the operator wrote these labels, and
     /// rephrasing them into prose would put words in their mouth. A row they left unlabelled is given as the bare
@@ -94,7 +95,7 @@ public sealed record SessionStartDefaults(
     private static string? _InformationNote(Project? project)
     {
         var shared = project?.AdditionalInfo
-            .Where(field => field.IsSharedWithSessions)
+            .Where(field => field.ReachesSessions)
             .Select(field => field.Tidied())
             .Where(field => !field.IsBlank)
             .ToList() ?? [];

@@ -10,8 +10,8 @@ namespace Cockpit.Core.Projects;
 /// back in; and because two rows may honestly carry the same label (two contacts) where a dictionary key may not.
 /// </para>
 /// <para>
-/// Both halves are stored and shown as plain text — this is reference material an operator reads back, not a place
-/// for a credential. A secret belongs in a profile's environment variables, which the config encrypts and masks.
+/// A row is plain text unless the operator marks it a secret (AC-318): then the value is stored encrypted, masked
+/// wherever a project is shown, and kept out of anything a session is told.
 /// </para>
 /// </summary>
 /// <param name="Label">What the operator calls this — free text, shown before the value.</param>
@@ -25,6 +25,32 @@ public sealed record ProjectInfoField(string Label, string Value)
     /// — and a row costs prompt budget at every session start, which is worth deciding per row rather than in bulk.
     /// </summary>
     public bool IsSharedWithSessions { get; init; }
+
+    /// <summary>
+    /// Whether <see cref="Value"/> is a credential (AC-318). A secret row is stored encrypted, masked wherever a
+    /// project is shown, never drawn as a followable link, and never told to a session — a token in a system prompt is
+    /// the thing this flag exists to prevent.
+    /// </summary>
+    public bool IsSecret { get; init; }
+
+    /// <summary>
+    /// Whether this row may be told to a session: what the operator asked for, unless it holds a credential. The two
+    /// are answered together here rather than left to each surface, so a row that is both cannot reach a prompt because
+    /// one caller forgot to check the other flag.
+    /// </summary>
+    public bool ReachesSessions => IsSharedWithSessions && !IsSecret;
+
+    /// <summary>
+    /// Whether a surface may draw <see cref="Value"/> as it is. False for a secret, which is masked, and for a web
+    /// address, which is drawn as a link instead.
+    /// </summary>
+    public bool ShowsPlainValue => !IsSecret && !IsWebLink;
+
+    /// <summary>
+    /// What a surface shows in place of a secret. A fixed width rather than one dot per character: the length of a
+    /// credential is itself something worth not telling anyone reading over a shoulder.
+    /// </summary>
+    public const string Mask = "••••••••";
 
     /// <summary>
     /// Unicode's complete set of mandatory line breaks, not only CR and LF: a value pasted out of a web page or a PDF
@@ -69,6 +95,7 @@ public sealed record ProjectInfoField(string Label, string Value)
     /// that happens to read as <c>file:</c> or a custom scheme stays text.
     /// </summary>
     public bool IsWebLink =>
+        !IsSecret &&
         Uri.TryCreate(Value, UriKind.Absolute, out var uri) &&
         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 

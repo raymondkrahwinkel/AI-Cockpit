@@ -7,6 +7,40 @@ namespace Cockpit.Core.Tests.Projects;
 public class ProjectInfoFieldTests
 {
     [Fact]
+    public void ASecretRow_NeverReachesASessionEvenWhenSharingIsTicked()
+    {
+        // The two flags are answered together on the model rather than left to each surface: a token in a system prompt
+        // is the thing this exists to prevent, and one caller forgetting to check both would undo it.
+        var secret = new ProjectInfoField("Deploy token", "s3cr3t")
+        {
+            IsSecret = true,
+            IsSharedWithSessions = true,
+        };
+
+        secret.ReachesSessions.Should().BeFalse("a credential is never told to a session");
+        new ProjectInfoField("Repository", "https://example.test") { IsSharedWithSessions = true }
+            .ReachesSessions.Should().BeTrue("an ordinary shared row still is");
+    }
+
+    [Fact]
+    public void ASecretRow_IsNeverDrawnAsAFollowableLink()
+    {
+        // A secret that happens to parse as a URL would otherwise get a link carrying the value in its tooltip, and a
+        // click would put it in the browser's history.
+        new ProjectInfoField("Webhook", "https://hooks.example.test/T0K3N") { IsSecret = true }
+            .IsWebLink.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ASecretRow_IsNotShownAsPlainText()
+    {
+        new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true }.ShowsPlainValue.Should().BeFalse();
+        new ProjectInfoField("Customer", "Acme BV").ShowsPlainValue.Should().BeTrue();
+        new ProjectInfoField("Repository", "https://example.test").ShowsPlainValue
+            .Should().BeFalse("a web address is drawn as a link instead");
+    }
+
+    [Fact]
     public void IsBlank_OnlyWhenBothHalvesAreEmpty()
     {
         new ProjectInfoField("  ", "\t").IsBlank.Should().BeTrue("an untouched row the editor added carries nothing");

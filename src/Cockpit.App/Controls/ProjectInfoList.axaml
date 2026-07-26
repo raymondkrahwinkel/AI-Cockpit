@@ -41,7 +41,13 @@
                                MaxLines="3" TextTrimming="CharacterEllipsis"
                                ToolTip.Tip="{Binding Value}"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                               IsVisible="{Binding !IsWebLink}"/>
+                               IsVisible="{Binding ShowsPlainValue}"/>
+                    <!-- A secret is shown as a mask and nothing else — no value, and no tooltip carrying it either,
+                         since a hover is exactly how it would end up on someone else's screen (AC-318). Whoever needs
+                         it opens the editor, where it is theirs to reveal. -->
+                    <TextBlock Text="{x:Static projects:ProjectInfoField.Mask}" FontSize="12"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding IsSecret}"/>
                 </StackPanel>
             </DataTemplate>
         </ItemsControl.ItemTemplate>
