@@ -187,7 +187,7 @@
                                     <!-- Typing filters, and what is typed counts: a repository you cannot read is not
                                          in the list, and refusing it would be refusing the only way to link it. -->
                                     <AutoCompleteBox ItemsSource="{Binding Options}"
-                                                     Text="{Binding Text}"
+                                                     Text="{Binding Text, Mode=TwoWay}"
                                                      ValueMemberBinding="{Binding Display}"
                                                      FilterMode="Contains"
                                                      MinimumPrefixLength="0"

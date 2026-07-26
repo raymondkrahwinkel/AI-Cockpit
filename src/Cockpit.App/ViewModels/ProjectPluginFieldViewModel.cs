@@ -67,7 +67,10 @@ public partial class ProjectPluginFieldViewModel : ViewModelBase
 
         try
         {
-            foreach (var option in await _registration.LoadOptionsAsync(cancellationToken))
+            // On a worker, not merely awaited: everything a plugin's fetch does before its own first await runs on
+            // whichever thread called it, and for the GitHub field that is a process spawn — the editor would stutter
+            // on opening. The continuation comes back to the UI thread, which is where Options may be added to.
+            foreach (var option in await Task.Run(() => _registration.LoadOptionsAsync(cancellationToken), cancellationToken))
             {
                 Options.Add(option);
             }

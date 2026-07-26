@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -47,6 +48,18 @@ public class ProjectFieldRegistryTests
         registry.Register(Field("  ", "Nameless")).Should().BeFalse();
 
         registry.Fields.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TheAppsOwnScan_ResolvesTheRegistry()
+    {
+        // The project editor takes IProjectFieldRegistry as a constructor dependency, so a missing marker interface
+        // is not a quiet degradation — it is the app failing to start. Nothing else here would notice: every other
+        // test in this suite builds the registry with new().
+        var services = new ServiceCollection();
+        services.AddServices(typeof(ProjectFieldRegistry).Assembly);
+
+        services.BuildServiceProvider().GetService<IProjectFieldRegistry>().Should().BeOfType<ProjectFieldRegistry>();
     }
 
     [Fact]
