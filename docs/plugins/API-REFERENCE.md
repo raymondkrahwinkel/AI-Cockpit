@@ -103,6 +103,9 @@ public interface ICockpitHost
     IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // default null
+    Task SetSessionStatusline(string paneId, string statusline);                 // default no-op
+    Task SetSessionName(string paneId, string name);                             // default no-op
+    Task SuggestSessionName(string paneId, string name);                         // default no-op
 }
 ```
 
@@ -733,6 +736,26 @@ on which pane happens to be selected. Default `null`.
 ```csharp
 // The issues dialog opens on the project this session is tracked in, falling back to the instance-wide default.
 var linked = await host.GetProjectFieldValueAsync("youtrack.project");
+```
+
+### `Task SetSessionStatusline(string paneId, string statusline)` / `Task SetSessionName(string paneId, string name)` / `Task SuggestSessionName(string paneId, string name)`
+
+How a plugin labels a session it just gave work to (AC-13, AC-310). The statusline is the accented line under a
+session's title in its header and the sidebar; an empty string clears it. All three take a pane id — the session's own
+`IPluginSessionContext.PaneId`, or `ICockpitSessionObserver.ActivePaneId` from a dialog acting on the selected
+session — and a pane id matching nothing is a no-op, never an error. They marshal to the UI thread themselves, so call
+them fire-and-forget (`_ = host.SetSessionStatusline(...)`) from anywhere. Default no-op.
+
+The two naming calls differ in who wins. `SetSessionName` renames regardless: use it when the caller is the authority
+on the name, as a workflow step naming the session it just started is. `SuggestSessionName` renames **only** a session
+still carrying the name the cockpit made up ("default - 3"), and leaves alone one named in the New-session dialog, by
+an inline rename, or by an earlier `SetSessionName`. Tying a ticket to a session that is already running is the
+suggesting case: the session should become recognisable, but not by taking away a name the operator chose.
+
+```csharp
+// Linking a ticket to a running session: say what it is on, and offer the ticket as its name.
+_ = host.SetSessionStatusline(paneId, $"{issue.IdReadable} — {issue.Summary}");
+_ = host.SuggestSessionName(paneId, issue.IdReadable);
 ```
 
 ## `ICockpitActions`

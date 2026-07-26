@@ -18,7 +18,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         Id: "github-issues",
         DisplayName: "GitHub Issues",
         Author: "Cockpit",
-        Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. Link a cockpit project to a repository in the project editor, picked from the list gh can see, and the dialog opens on it instead of on every repository you have. The prompt template is editable in settings.");
+        Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. Link a cockpit project to a repository in the project editor, picked from the list gh can see, and the dialog opens on it instead of on every repository you have. Linking an issue to a session you already have open labels that session: it says what it is working on, and takes the issue as its name unless you gave it one yourself. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {
