@@ -239,6 +239,27 @@ public class SessionStartDefaultsTests
     }
 
     [Fact]
+    public void Resolve_ASecretRowTickedToShare_IsStillKeptOutOfThePrompt()
+    {
+        // The one thing AC-318 must guarantee: a credential does not end up in a system prompt, whatever the sharing
+        // tick says. The editor makes that tick unavailable on a secret row, but a hand-edited config can set both.
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true, IsSharedWithSessions = true },
+                new ProjectInfoField("Repository", "https://github.com/example/repo") { IsSharedWithSessions = true },
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
+
+        prompt.Should().NotContain("s3cr3t", "a credential never reaches a session");
+        prompt.Should().NotContain("Deploy token", "not even its label, which would say a secret exists and what it is for");
+        prompt.Should().Contain("Repository: https://github.com/example/repo", "the ordinary shared row still goes");
+    }
+
+    [Fact]
     public void Resolve_InformationRowsNobodyShared_SayNothing()
     {
         // A project that keeps notes must not grow every session's prompt just by keeping them.

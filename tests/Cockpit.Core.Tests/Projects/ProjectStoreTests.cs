@@ -77,6 +77,37 @@ public class ProjectStoreTests : IDisposable
         loaded.Projects.Should().ContainSingle().Which.McpOverlay.IsEmpty.Should().BeTrue();
     }
 
+    /// <summary>
+    /// A credential in an information row must reach the config under the field name the secret rule recognises
+    /// (AC-318) — that name is the whole mechanism by which it gets encrypted and scrubbed from backups. Written as a
+    /// file assertion because the encryption itself lives above this store: what this owns is putting the value in the
+    /// field that routes it there, and never in the readable one.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_ASecretInformationRow_GoesToTheFieldNameTheSecretRuleRecognises()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo =
+            [
+                new ProjectInfoField("Deploy token", "s3cr3t-value") { IsSecret = true },
+                new ProjectInfoField("Repository", "https://github.com/example/repo"),
+            ],
+        };
+
+        await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(project));
+        var written = await File.ReadAllTextAsync(_configFilePath);
+
+        written.Should().Contain("SecretValue", "the field's name is what routes it through encryption");
+        written.Should().Contain("https://github.com/example/repo", "an ordinary value stays readable on purpose");
+
+        var loaded = await new ProjectStore(_configFilePath).LoadAsync();
+        var rows = loaded.Projects.Should().ContainSingle().Subject.AdditionalInfo;
+        rows[0].IsSecret.Should().BeTrue("which field carried the value is what says it is a secret");
+        rows[0].Value.Should().Be("s3cr3t-value");
+        rows[1].IsSecret.Should().BeFalse();
+    }
+
     /// <summary>Most projects keep no information of their own; their entry should not gain an empty array for it.</summary>
     [Fact]
     public async Task SaveAsync_ProjectWithoutInformation_WritesNoSectionForIt()

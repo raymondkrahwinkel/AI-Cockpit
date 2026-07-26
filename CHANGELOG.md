@@ -32,6 +32,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a project information row can hold a credential. Tick "Secret" and the value is stored encrypted and
+  scrubbed from backups the same way a profile's secret environment variables are, masked in the editor and shown as
+  dots wherever the project appears — and never told to a session, whatever the sharing tick says. So the repository
+  URL, the customer, and the deploy token for that customer can finally live in one place.
 - added: a project's information rows can be handed to its sessions. Tick "Tell sessions" on a row and a session
   started on that project is told it as it begins — the repository it lives in, who the customer is, whatever you
   decided is worth its knowing — under your own labels, so nothing is rephrased for you. Off per row and off for every
