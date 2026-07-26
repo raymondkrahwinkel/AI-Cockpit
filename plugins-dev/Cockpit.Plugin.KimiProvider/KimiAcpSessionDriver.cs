@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using System.Threading.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.KimiProvider;
@@ -70,7 +69,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     private readonly KimiAcpConnection _connection;
     private readonly KimiConfig _config;
     private readonly string _executablePath;
-    private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
+    private readonly PluginSessionEventPublisher _events = new();
     private readonly CancellationTokenSource _lifetime = new();
 
     // toolCallId -> the pending session/request_permission's id + offered "options" (P0-5), bundled into one
@@ -171,7 +170,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // and left as-is (not reset) by a failed one — a failed /usage round must never disturb the session.
     public PluginSessionStatus? Status => _status;
 
-    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
+    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     /// <summary>
     /// The initialize response's <c>agentCapabilities</c> (loadSession, promptCapabilities, mcpCapabilities,
@@ -290,7 +289,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             // through in sync (P1-8's precedent: a thrown message a caller shows verbatim, e.g. SessionViewModel's
             // Status = $"Failed to start: {ex.Message}") — the event and the rethrown exception carry the same text.
             var actionableMessage = "Kimi is not authenticated. Set an API key in this provider's configuration, or run \"kimi acp --login\" to sign in, then try again.";
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = actionableMessage });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = actionableMessage });
             throw new KimiAcpException(actionableMessage, exception.Code.Value);
         }
 
@@ -299,7 +298,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             _liveOptions = _BuildLiveOptions(configOptions);
         }
 
-        _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = _sessionId, Tools = [], Cwd = absoluteCwd });
+        _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = [], Cwd = absoluteCwd });
 
         _ReportUnappliedSystemPrompt(options);
 
@@ -384,7 +383,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         }
         catch (Exception exception)
         {
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = exception.Message });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = exception.Message });
         }
     }
 
@@ -433,7 +432,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     private void _EmitTurnCompleted(JsonElement promptResult)
     {
         var (stopReason, isError) = _MapStopReason(promptResult);
-        _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = stopReason, Result = null, IsError = isError, StopReason = stopReason });
+        _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = stopReason, Result = null, IsError = isError, StopReason = stopReason });
     }
 
     // D7, protocol §3/§12: the wire only ever carries end_turn | cancelled | refusal — completed/blocked/failed
@@ -619,11 +618,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 // D12: the process ended on its own — a crash, not our own dispose — rather than through
                 // DisposeAsync. Emitting these two before completing the channel is the whole point: a bare
                 // channel-complete would leave the UI with no reason the session stopped.
-                _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = "The kimi acp process ended unexpectedly." });
-                _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+                _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "The kimi acp process ended unexpectedly." });
+                _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
             }
 
-            _events.Writer.TryComplete();
+            _events.TryComplete();
         }
     }
 
@@ -672,7 +671,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             result = _toolCallMapper.Map(notification.Params);
             foreach (var evt in result.Events)
             {
-                _events.Writer.TryWrite(evt);
+                _events.Publish(evt);
             }
         }
 
@@ -772,11 +771,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         {
             if (_toolCallMapper.EnsureToolUseRequested(toolCallId, _sessionId, toolName) is { } toolUseRequested)
             {
-                _events.Writer.TryWrite(toolUseRequested);
+                _events.Publish(toolUseRequested);
             }
 
             var toolCallJson = request.Params.TryGetProperty("toolCall", out var toolCall) ? toolCall.GetRawText() : "{}";
-            _events.Writer.TryWrite(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
+            _events.Publish(new PluginPermissionRequested { SessionId = _sessionId, ToolUseId = toolCallId, ToolName = toolName, InputJson = toolCallJson });
         }
     }
 
@@ -796,7 +795,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             return;
         }
 
-        _events.Writer.TryWrite(new PluginSessionError
+        _events.Publish(new PluginSessionError
         {
             SessionId = _sessionId,
             Message = "This session carries a system prompt (a profile identity, a project's instructions, or an "
@@ -879,7 +878,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
         _disposed = true;
         _disposing = true;
-        _events.Writer.TryComplete();
+        _events.TryComplete();
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _connection.DisposeAsync().ConfigureAwait(false);
 

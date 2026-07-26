@@ -1,5 +1,4 @@
 using System.Text;
-using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -14,7 +13,7 @@ namespace Cockpit.Plugin.GitHubModelsProvider;
 /// </summary>
 internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel) : IPluginSessionDriver
 {
-    private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
+    private readonly PluginSessionEventPublisher _events = new();
     private readonly List<ChatMessage> _history = [];
 
     private string? _sessionId;
@@ -25,7 +24,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     public string? SessionId => _sessionId;
 
-    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
+    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {
@@ -35,7 +34,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         }
 
         _sessionId = Guid.NewGuid().ToString();
-        _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = _sessionId, Tools = [] });
+        _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = [] });
         return Task.CompletedTask;
     }
 
@@ -78,21 +77,21 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                 if (!string.IsNullOrEmpty(delta))
                 {
                     assistant.Append(delta);
-                    _events.Writer.TryWrite(new PluginAssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
+                    _events.Publish(new PluginAssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
                 }
             }
 
             _history.Add(new ChatMessage(ChatRole.Assistant, assistant.ToString()));
-            _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
         }
         catch (OperationCanceledException)
         {
-            _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
         }
         catch (Exception ex)
         {
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = ex.Message });
-            _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = ex.Message });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
     }
 
@@ -108,7 +107,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     public async ValueTask DisposeAsync()
     {
-        _events.Writer.TryComplete();
+        _events.TryComplete();
         _turnCancellation?.Cancel();
         _turnCancellation?.Dispose();
         (chatClient as IDisposable)?.Dispose();

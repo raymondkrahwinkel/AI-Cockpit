@@ -312,6 +312,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a session that produces events far faster than the cockpit can take them in no longer grows the cockpit's
+  memory without limit. Each session now holds at most a few thousand unread events; past that, further ones are
+  counted and the session's own transcript says how many went missing, so a gap is something you can see rather than
+  something that quietly happened. Reaching this at all means something was already wrong — a normal turn stays far
+  below it.
 - fixed: right-clicking a session in the sidebar, or a workspace tab, no longer starts dragging it. Both strips
   armed their reorder on any mouse button, so opening the context menu and moving the pointer to what it opened —
   Rename, typically — quietly moved the session or the workspace to a different position on the way there. They

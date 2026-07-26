@@ -1,5 +1,4 @@
 using System.Text;
-using System.Threading.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -27,7 +26,7 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
     private readonly Func<ICliSubprocess> _subprocessFactory;
     private readonly CliAgentConfig _config;
     private readonly string _executablePath;
-    private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
+    private readonly PluginSessionEventPublisher _events = new();
 
     private string? _model;
     private string? _sessionId;
@@ -46,7 +45,7 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
 
     public string? SessionId => _sessionId;
 
-    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
+    public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {
@@ -96,7 +95,7 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
                 _sessionId = result.SessionId;
                 foreach (var evt in result.Events)
                 {
-                    _events.Writer.TryWrite(evt);
+                    _events.Publish(evt);
                     if (evt is PluginTurnCompleted)
                     {
                         sawTurnCompletion = true;
@@ -115,12 +114,12 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
         }
         catch (OperationCanceledException)
         {
-            _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
         }
         catch (Exception ex)
         {
-            _events.Writer.TryWrite(new PluginSessionError { SessionId = _sessionId, Message = ex.Message });
-            _events.Writer.TryWrite(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = ex.Message });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
         finally
         {
@@ -138,14 +137,14 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
         if (!wasInterrupted)
         {
             var detail = string.IsNullOrWhiteSpace(stderrText) ? string.Empty : $" stderr: {stderrText}";
-            _events.Writer.TryWrite(new PluginSessionError
+            _events.Publish(new PluginSessionError
             {
                 SessionId = _sessionId,
                 Message = $"codex exited (code {subprocess.ExitCode?.ToString() ?? "unknown"}) without completing the turn.{detail}",
             });
         }
 
-        _events.Writer.TryWrite(wasInterrupted
+        _events.Publish(wasInterrupted
             ? new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" }
             : new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
     }
@@ -225,7 +224,7 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
 
     public async ValueTask DisposeAsync()
     {
-        _events.Writer.TryComplete();
+        _events.TryComplete();
         _turnCancellation?.Cancel();
         _turnCancellation?.Dispose();
 
