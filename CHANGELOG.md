@@ -32,6 +32,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a session can now name itself. An agent that picks up a ticket can propose the ticket as its session's name
+  at the same moment it sets its status line, so the row in the sidebar reads "AC-312" instead of "default - 3" without
+  you touching it. It is a proposal, not a claim: a session you named yourself keeps the name you gave it, and the
+  agent is told the name stood rather than being left to think it renamed something.
+- added: a flow can name the session it starts. The Start session step grows a "Session name" field, so a flow opening a
+  session on a ticket opens it already called after that ticket instead of opening "Claude — 14:22" and renaming it a
+  step later. Leave it empty and the profile and the clock name it as before.
+
 - added: a plugin can now hand a session something as it starts — environment variables its process runs with, asked
   for per session so the answer can depend on the project that session belongs to. It reaches every provider alike, so
   a plugin contributes once instead of once per CLI. What a plugin sets sits on top of your profile's own variables
@@ -347,6 +355,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a session a flow started could never be relabelled by a ticket you linked to it afterwards. Its name is put
+  together from the profile and the clock — "Claude — 14:22" — which nobody chose, but it was treated as a name you
+  had picked, so the link left it alone. It now stays open to being labelled, the same as a session that was never
+  given a name at all.
 - fixed: a session that starts without you opening the new-session window now knows which project it works on, so
   everything a project decides — the MCP servers it brings, what a plugin hands a session as it starts — reaches it
   too. Until now only sessions you started by hand had a project, which left it silent exactly where it mattered
@@ -356,7 +368,6 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   still belongs to none, and a folder two projects claim equally is left alone rather than guessed at.
   Worth knowing: an autonomous run now inherits its project's environment as well, so a project linked to a
   repository other than the one its folder clones will point that run's `gh` commands at the linked one.
-
 - fixed: starting a session from a GitHub issue names it after the repository the issue came from — `hello-world#42`
   rather than `#42`. Issue numbers only mean anything inside one repository, and the cross-repo view lists every repo
   you have, so two issues could put two identically named sessions in the sidebar with nothing on either to tell them

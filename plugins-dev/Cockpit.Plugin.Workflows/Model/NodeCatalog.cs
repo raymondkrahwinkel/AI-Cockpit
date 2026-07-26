@@ -119,12 +119,12 @@ public static class NodeCatalog
         new(
             "cockpit.start-session",
             "Start session",
-            "Open a session on a profile and hand it a prompt.",
+            "Open a session on a profile and hand it a prompt. Name it here and it opens under that name — a flow starting a session on a ticket need not open \"Claude — 14:22\" and rename it a step later; leave the name empty and the profile and the clock decide.",
             "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Profile", "Prompt", "Working directory"],
+            ["Profile", "Session name", "Prompt", "Working directory"],
             new Dictionary<string, string> { ["session"] = "webshop" })
         {
             IconKind = MaterialIconKind.Rocket,

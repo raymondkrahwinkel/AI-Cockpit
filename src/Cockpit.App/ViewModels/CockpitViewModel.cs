@@ -4171,10 +4171,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <paramref name="prompt"/> as its first input. The profile's own defaults decide model, permissions and effort:
     /// naming a profile means "the way I set that one up", and a caller who knew better would have said so.
     /// Returns the name the session carries, so the caller can say which one it started.
+    /// <para>
+    /// <paramref name="sessionName"/> names it outright, the way the New-session dialog's own name field does — a flow
+    /// that starts a session on a ticket should not have to open it as "Claude — 14:22" and rename it a step later
+    /// (#AC-312). Left blank, the profile and the clock name it as before.
+    /// </para>
     /// </summary>
-    public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory)
+    public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory, string? sessionName = null)
     {
-        var name = $"{profile.Label} — {DateTime.Now:HH:mm}";
+        var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
         // drives. Starting one and typing into it on someone's behalf is not the same act at all.
@@ -4195,6 +4200,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: await _ProjectIdForDirectoryAsync(workingDirectory));
 
         var paneId = await _LaunchSessionFromResultAsync(result);
+
+        // "<profile> — 14:22" is composed here, not chosen, so it stays open to a ticket link relabelling it — the same
+        // reading the project-start and duplicate paths take of their own composed names (#AC-310). A name the caller
+        // actually passed is a decision and keeps the session (#AC-312).
+        if (paneId is not null && string.IsNullOrWhiteSpace(sessionName) && FindSession(paneId) is { } started)
+        {
+            started.HasGeneratedName = true;
+        }
 
         // The prompt goes in after the session exists, through the same seam a plugin's inject uses — a session that
         // is not up yet cannot be typed into, and pretending otherwise loses the prompt. Target the started pane by its
@@ -5014,8 +5027,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// a name of its own". A suggested name counts as generated in its turn, so linking a second ticket to the same
     /// session relabels it rather than leaving it showing the first. Must be called on the UI thread.
     /// </summary>
+    // FindSession, not Sessions: an embedded pane already reaches its statusline and its consent through the same
+    // resolver, and an agent proposing a name for the session it is running in must not miss for being embedded
+    // (AC-152, #AC-312).
     public bool SuggestSessionName(string paneId, string name) =>
-        Sessions.FirstOrDefault(session => session.PaneId == paneId)?.SuggestName(name) ?? false;
+        FindSession(paneId)?.SuggestName(name) ?? false;
 
     /// <summary>
     /// Edge-triggered attention routing: fires the presence-aware notifier once, on the transition

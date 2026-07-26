@@ -37,6 +37,29 @@ public interface ICockpitActions
         throw new NotSupportedException("This host cannot start sessions.");
 
     /// <summary>
+    /// <see cref="StartSessionAsync(string, string?, string?)"/>, with the session's name said up front (#AC-312) —
+    /// what the New-session dialog's own name field does, for a caller that has no dialog. A flow that opens a session
+    /// on a ticket can call it "AC-312" from the start instead of opening "Claude — 14:22" and renaming it a step
+    /// later. Left null, the profile and the clock name it, and that composed name stays open to being relabelled.
+    /// <para>
+    /// A separate overload rather than a fourth optional parameter on the one above: adding a parameter would change
+    /// that method's signature, and every plugin zip already published calls the three-argument form (#AC-40).
+    /// </para>
+    /// <para>
+    /// There is no falling back to the three-argument form on a host that predates this one. Plugins reference this
+    /// assembly compile-only and bind to the host's copy, so an older host loads an older SDK in which this member
+    /// does not exist at all — the call fails before any default body could run. <c>minHostVersion</c> in the
+    /// manifest is what keeps that plugin off that host; a default cannot.
+    /// </para>
+    /// <para>
+    /// Implement both overloads or neither. Delegating one to the other in an implementation, in the direction
+    /// opposite to whichever the defaults take, is how you get a stack overflow instead of a refusal.
+    /// </para>
+    /// </summary>
+    Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
+        throw new NotSupportedException("This host cannot start sessions.");
+
+    /// <summary>
     /// Sets the statusline shown under the active (selected) session's name — what it is working on — and optionally
     /// renames it (#AC-13): the workflow half of the feature, so a flow that started a session on a ticket can label
     /// it with the ticket number, and clear it when the work moves on. The active session is the one a preceding

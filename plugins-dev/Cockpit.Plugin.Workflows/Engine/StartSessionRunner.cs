@@ -31,8 +31,13 @@ internal sealed class StartSessionRunner(ICockpitHost host) : IStepRunner
 
         var prompt = context.Resolve(context.Node.Parameters.GetValueOrDefault("Prompt")).Text;
         var directory = context.Resolve(context.Node.Parameters.GetValueOrDefault("Working directory")).Text.Trim();
+        var sessionName = context.Resolve(context.Node.Parameters.GetValueOrDefault("Session name")).Text.Trim();
 
-        var name = await host.Actions.StartSessionAsync(profile, prompt, directory.Length == 0 ? null : directory);
+        var name = await host.Actions.StartSessionAsync(
+            profile,
+            prompt,
+            directory.Length == 0 ? null : directory,
+            sessionName.Length == 0 ? null : sessionName);
 
         return new StepOutcome(
             [

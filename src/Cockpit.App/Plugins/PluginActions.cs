@@ -99,12 +99,19 @@ public sealed class PluginActions(
         throw new TimeoutException($"'{profileLabel}' had not answered after {(timeout ?? DefaultPatience).TotalMinutes:0} minutes. The task is still running — it is in the delegated tasks view.");
     }
 
+    // Both overloads are implemented, and the unnamed one delegates to the named one — never the other way around.
+    // The interface's defaults run in the opposite direction, so an implementation that delegated the same way they
+    // do would call itself until the stack ran out (#AC-312).
+    public Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
+        StartSessionAsync(profileLabel, prompt, workingDirectory, null);
+
     /// <summary>
     /// Opens a session on a named profile and hands it a prompt (#69) — the same act as the New-session dialog, minus
     /// the dialog. The profile's own defaults are used for model, permissions and effort, because a caller who names
-    /// a profile means "the way I set that one up".
+    /// a profile means "the way I set that one up". <paramref name="sessionName"/> names it as it opens (#AC-312);
+    /// blank leaves the naming to the profile and the clock.
     /// </summary>
-    public async Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)
+    public async Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)
     {
         var profiles = await profileStore.LoadAsync().ConfigureAwait(false);
 
@@ -114,7 +121,7 @@ public sealed class PluginActions(
                     ? "No session profiles are configured."
                     : $"No profile is called '{profileLabel}'. There is: {string.Join(", ", profiles.Select(candidate => candidate.Label))}.");
 
-        var name = await cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory).ConfigureAwait(false);
+        var name = await cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory, sessionName).ConfigureAwait(false);
 
         return name;
     }
