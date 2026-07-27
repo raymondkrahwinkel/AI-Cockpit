@@ -65,6 +65,12 @@ public sealed class HeadlessAvalonia : IDisposable
     /// <summary>Runs a test body on the thread Avalonia belongs to, and hands its failure back to the test.</summary>
     public static void Run(Action body) => Dispatcher.UIThread.Invoke(body);
 
+    /// <summary>
+    /// The same, for a body that awaits. Needed by anything that has to let the dispatcher keep running while it
+    /// waits — a timer cannot be shown to tick from a body that blocks the thread it ticks on.
+    /// </summary>
+    public static Task RunAsync(Func<Task> body) => Dispatcher.UIThread.InvokeAsync(body);
+
     public void Dispose() => _stop?.Cancel();
 }
 
