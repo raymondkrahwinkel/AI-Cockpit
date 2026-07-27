@@ -265,8 +265,7 @@ public partial class ScreenshotSelectionWindow : Window
                 selection.Confirm();
                 break;
             case Key.A:
-                selection.PickWindows(false);
-                selection.SelectEverything();
+                _ChooseEverything(selection);
                 break;
             case Key.B:
                 // Boxes are a mode too: the same drag either marks out what to take or what to hide, and the
@@ -276,7 +275,7 @@ public partial class ScreenshotSelectionWindow : Window
             case Key.R:
                 // The way back to the ordinary drag. W and B toggle, so it was always reachable by pressing the
                 // one you were in again — but only if you knew which that was, which is what this epic is about.
-                _ChooseRegion(selection);
+                selection.ChooseRegion();
                 break;
             case Key.Z when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 selection.UndoRedaction();
@@ -337,10 +336,12 @@ public partial class ScreenshotSelectionWindow : Window
     /// the same redraw — a button that did something subtly different from the key beside it would be worse than
     /// no button at all.
     /// </summary>
-    private void _OnRegionTool(object? sender, RoutedEventArgs e) => _Tool(_ChooseRegion);
+    private void _OnRegionTool(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseRegion());
 
     private void _OnWindowTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.PickWindows(!selection.PickingWindow));
+
+    private void _OnEverythingTool(object? sender, RoutedEventArgs e) => _Tool(_ChooseEverything);
 
     private void _OnRedactTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Redact(!selection.Redacting));
@@ -356,22 +357,28 @@ public partial class ScreenshotSelectionWindow : Window
         _Draw();
     }
 
-    /// <summary>Back to the ordinary drag, whichever of the other two was on.</summary>
-    private static void _ChooseRegion(ScreenshotSelectionViewModel selection)
+    /// <summary>
+    /// The whole capture in one press. Named here rather than written out twice so the button and the key it
+    /// carries cannot drift apart — the one thing this panel promises is that the two are the same surface said
+    /// twice. Window mode comes off first: what it marks out is a window, and taking everything is not that.
+    /// </summary>
+    private static void _ChooseEverything(ScreenshotSelectionViewModel selection)
     {
         selection.PickWindows(false);
-        selection.Redact(false);
+        selection.SelectEverything();
     }
 
     /// <summary>
-    /// Puts the control panel on the display the pointer is on, and out from under what is marked out where there
-    /// is room for that. The window spans every screen at once, so its own middle is a spot nobody is looking at —
-    /// and a panel over the region being dragged sits on top of the one thing the surface is for.
+    /// Puts the control panel at the top of the display the pointer is on. The window spans every screen at once,
+    /// so its own middle is a spot nobody is looking at; the display under the pointer is the one they are.
     /// </summary>
     /// <remarks>
-    /// Moved rather than faded: a panel you can see through is still a panel you cannot drag underneath, and the
-    /// press would land on a tool instead of on the picture. A selection covering the whole screen leaves nowhere
-    /// to move it to, and then it stays where it is — there is no third edge.
+    /// It stays there — it does not step aside for what is being marked out, though an earlier version of this did
+    /// (AC-358). Nothing here remembers where the panel was, so every reason to move away became a reason to move
+    /// back the moment it lapsed, and the row rocked between the two edges while the operator was trying to use
+    /// it. A tool that moves while you are reaching for it costs more than one that sits over the picture, and the
+    /// picture is frozen anyway. The price, said plainly: a drag cannot be *started* on the strip the panel
+    /// occupies, since a press there belongs to the panel — dragging through it and letting go past it is fine.
     /// </remarks>
     private void _PlaceControls()
     {
@@ -399,12 +406,6 @@ public partial class ScreenshotSelectionWindow : Window
         var display = _ToRect(selection.ToSurface(bounds));
         var left = display.X + ((display.Width - size.Width) / 2);
         var top = display.Y + ControlsMargin;
-
-        if (selection.Selection is { } region
-            && _ToRect(selection.ToSurface(region)).Intersects(new Rect(left, top, size.Width, size.Height)))
-        {
-            top = display.Bottom - size.Height - ControlsMargin;
-        }
 
         // Clamped last, against the window rather than the display: a screen narrower or shorter than the panel
         // would otherwise push it off the edge, and a panel half outside the window is a tool you cannot press.

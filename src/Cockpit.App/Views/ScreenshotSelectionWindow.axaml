@@ -122,6 +122,19 @@
               </StackPanel>
             </Button>
 
+            <!-- Grouped with the two above it because all three answer what is being taken; Hide answers what is
+                 being left out of it. "Everything" rather than "Full screen" because the capture is every screen
+                 at once — on two displays a full screen would be the wrong half of what this takes.
+                 Lit by what is marked out rather than by a mode, since taking everything is not one: it is on
+                 while the selection is the whole capture and goes out the moment anything smaller is dragged. -->
+            <Button Name="EverythingTool" Classes="tool" Classes.active="{Binding TakingEverything}" Click="_OnEverythingTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="SelectAll" Width="15" Height="15" />
+                <TextBlock Text="Everything" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="A" /></Border>
+              </StackPanel>
+            </Button>
+
             <Button Name="RedactTool" Classes="tool" Classes.active="{Binding Redacting}" Click="_OnRedactTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="EyeOff" Width="15" Height="15" />

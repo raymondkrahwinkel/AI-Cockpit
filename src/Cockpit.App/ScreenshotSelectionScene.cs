@@ -97,8 +97,8 @@ internal static class ScreenshotSelectionScene
             case Redaction:
                 // A region first: redaction is refused until there is something to hide part of, so a scene that
                 // skipped this would render the refusal rather than the mode. Taken from high enough up to run
-                // under where the control panel rests, so this is also the scene that shows it getting out of
-                // the way — the one behaviour of the panel that only appears when something is in its place.
+                // under where the control panel rests, so this is also the scene that shows the panel staying
+                // there — it does not step aside, and a scene where nothing reaches it could not show that.
                 _Drag(surface, new Point(width * 0.14, height * 0.06), new Point(width * 0.86, height * 0.86));
                 surface.KeyPressQwerty(PhysicalKey.B, RawInputModifiers.None);
                 _Drag(surface, new Point(width * 0.20, height * 0.30), new Point(width * 0.44, height * 0.35));
