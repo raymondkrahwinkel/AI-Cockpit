@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Theming;
 
 namespace Cockpit.Plugins.Abstractions.ManagedCli;
 
@@ -19,10 +19,6 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// </summary>
 public sealed class ManagedCliConfigSection
 {
-    // A muted, checkmark-less brush for the neutral states (not-installed, downloading) — a green ✓ there would read
-    // as a success mark on something that has not happened. The green ✓ is kept only for the actually-installed state.
-    private static readonly IBrush _MutedBrush = new SolidColorBrush(Color.Parse("#9AA0A6"));
-
     private readonly ICockpitHost _host;
     private readonly string _cliName;
     private readonly string _displayName;
@@ -155,7 +151,10 @@ public sealed class ManagedCliConfigSection
     private void _SetMuted(string message)
     {
         _status.Text = message;
-        _status.Foreground = _MutedBrush;
+        // Checkmark-less and muted for the neutral states (not-installed, downloading) — a green ✓ there would read
+        // as a success mark on something that has not happened. The green ✓ (ProviderConfigStatus.Set) is kept only
+        // for the actually-installed state.
+        _status.Foreground = ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#949aa5");
     }
 
     private async Task _InstallAsync()

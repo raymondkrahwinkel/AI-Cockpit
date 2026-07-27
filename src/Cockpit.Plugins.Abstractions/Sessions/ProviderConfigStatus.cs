@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions.Theming;
 
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
@@ -13,11 +14,6 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public static class ProviderConfigStatus
 {
-    // Muted green / amber rather than pure success/error red: a field being "not found" is a warning the operator
-    // may knowingly accept (a profile can pin a command for a machine that has it installed elsewhere), not an error.
-    private static readonly IBrush _OkBrush = new SolidColorBrush(Color.Parse("#5AA576"));
-    private static readonly IBrush _WarnBrush = new SolidColorBrush(Color.Parse("#E0A33E"));
-
     /// <summary>Creates an empty status line to place under a config field; fill it with <see cref="Set"/>.</summary>
     public static TextBlock CreateLine() =>
         new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
@@ -26,6 +22,11 @@ public static class ProviderConfigStatus
     public static void Set(TextBlock line, string message, bool isOk)
     {
         line.Text = (isOk ? "✓ " : "✗ ") + message;
-        line.Foreground = isOk ? _OkBrush : _WarnBrush;
+        // Muted green / amber rather than pure success/error red: a field being "not found" is a warning the operator
+        // may knowingly accept (a profile can pin a command for a machine that has it installed elsewhere), not an
+        // error. Reuses the same status tokens the session dot paints with, resolved live so a theme swap follows.
+        line.Foreground = isOk
+            ? ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576")
+            : ThemeBrush.Resolve("CockpitStatusWaitingBrush", "#E0A33E");
     }
 }

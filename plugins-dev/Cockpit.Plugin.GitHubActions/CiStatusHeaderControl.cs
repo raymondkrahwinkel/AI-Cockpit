@@ -121,7 +121,9 @@ internal sealed class CiStatusHeaderControl : UserControl
         CiRunState.Passed => (MaterialIconKind.CheckCircleOutline, _Brush("CockpitStatusDoneBrush", Color.Parse("#5AA576"))),
         CiRunState.Failed => (MaterialIconKind.CloseCircleOutline, _Brush("CockpitStatusErrorBrush", Color.Parse("#D9534F"))),
         CiRunState.Running => (MaterialIconKind.ProgressClock, _Brush("CockpitStatusWaitingBrush", Color.Parse("#E0A33E"))),
-        _ => (MaterialIconKind.MinusCircleOutline, _Brush("CockpitTextFaintBrush", Color.Parse("#9AA0A6"))),
+        // Fallback only fires with no Application (designer/headless) — a plugin always runs inside the host, so
+        // this never changes what a user sees.
+        _ => (MaterialIconKind.MinusCircleOutline, _Brush("CockpitTextFaintBrush", Color.Parse("#656c78"))),
     };
 
     private static string _Describe(CiRun run)

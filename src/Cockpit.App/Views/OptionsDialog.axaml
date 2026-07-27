@@ -1046,7 +1046,7 @@
 
     <!-- The migration overlay. It blocks the dialog on purpose: this is the one operation that rewrites every
          credential the operator has, and letting them edit settings underneath it is how you get a half file. -->
-    <Border IsVisible="{Binding Security.IsMigrating}" Background="#CC16181D">
+    <Border IsVisible="{Binding Security.IsMigrating}" Background="#CC0f1116">
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Width="300">
             <TextBlock Text="{Binding Security.MigrationCaption}" HorizontalAlignment="Center"
                        FontSize="13" FontWeight="SemiBold"/>
@@ -1061,7 +1061,7 @@
     <!-- The calibration overlay (AC-68). It blocks the dialog while a measurement runs: each backend is timed in a
          child process and the desktop hitch is sampled here, so letting the operator drive the UI underneath would
          both muddy the hitch reading and invite a settings change mid-run. -->
-    <Border IsVisible="{Binding IsCalibrating}" Background="#CC16181D">
+    <Border IsVisible="{Binding IsCalibrating}" Background="#CC0f1116">
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Width="330">
             <TextBlock Text="Calibrating transcription" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
             <TextBlock Text="{Binding CalibrationStatus}" HorizontalAlignment="Center" TextAlignment="Center"

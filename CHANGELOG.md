@@ -330,6 +330,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the cockpit is blue. The accent that runs through buttons, links, focus rings and the active session's
+  border moved from the old orange to a blue, and the surfaces behind it went a shade deeper, so a panel now reads as
+  sitting on the window rather than beside it. A session that is busy is marked in cyan instead of blue, because blue
+  is now the colour of everything you can click — the other status colours (amber waiting, green done, purple working
+  in the background, red failed) are unchanged and still mean what they meant.
+- changed: colours that had been written into individual screens — the markdown in a reply, the microphone level
+  meter, the badge on an isolated session, the green and amber status lines in a provider's settings — are now taken
+  from the theme like everything else. They were the places that would have stayed orange while the rest of the
+  window turned blue.
+
 - changed: taking a screenshot on macOS no longer opens the system crosshair. It reads every display straight away
   instead, so what comes back is the whole desktop rather than a region you had to drag first — the selection
   becomes the cockpit's own. Screen Recording permission is still asked for once by macOS; until you grant it,
