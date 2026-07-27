@@ -67,10 +67,16 @@ public class CanvasThemeRenderTests
 
     /// <summary>
     /// A card three times its own size, so the thing a 60px-tall card is too small to judge — how its title, its
-    /// subtitle and its gear sit together — can actually be looked at. Nothing is asserted: this one is for eyes.
+    /// subtitle and its gear sit together — can actually be looked at.
+    /// <para>
+    /// It also pins the fault that made this harness worth having. The first version of it laid the card out
+    /// without a window above it, and produced a card whose title was drawn in near-black on a dark fill: styles
+    /// reach a control when it reaches a styling root, so a loose tree renders as though the theme did not exist.
+    /// Asserting the title is light says the picture beside it can be trusted.
+    /// </para>
     /// </summary>
     [Fact]
-    public void ACard_IsWrittenOutLargeEnoughToRead()
+    public void ACardsTitle_IsLegible_WhichIsAlsoHowWeKnowTheHarnessIsHonest()
     {
         var card = new WorkflowNodeControl(_Node("cockpit.notify", "Post the result"));
         var zoomed = new Border
@@ -85,7 +91,39 @@ public class CanvasThemeRenderTests
 
         var image = _Render(zoomed, 700, 260, "canvas-card-3x.png");
 
-        Assert.Equal(700, image.PixelSize.Width);
+        var title = card.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == "Post the result");
+        var brightest = _BrightestPixelIn(image, title, zoomed, scale: 3);
+
+        // The theme's text is #e8eaef. Anti-aliasing means no glyph pixel is exactly that, but the brightest one
+        // in the title's box is nowhere near the card fill it sits on unless the text is actually being tinted.
+        Assert.True(brightest > 180, $"the brightest pixel in the title is {brightest} — the text is not the theme's");
+    }
+
+    /// <summary>
+    /// The brightest channel value inside a control's box, in the rendered image. Used rather than a single sampled
+    /// pixel because where a glyph's stroke lands is not something a test should have to know.
+    /// </summary>
+    private static int _BrightestPixelIn(WriteableBitmap image, Visual control, Visual root, double scale)
+    {
+        var origin = control.TranslatePoint(default, root)
+            ?? throw new InvalidOperationException("The control is not in the tree that was rendered.");
+
+        var left = (int)((origin.X * scale) + Margin);
+        var top = (int)((origin.Y * scale) + Margin);
+        var right = Math.Min(image.PixelSize.Width - 1, left + (int)(control.Bounds.Width * scale));
+        var bottom = Math.Min(image.PixelSize.Height - 1, top + (int)(control.Bounds.Height * scale));
+
+        var brightest = 0;
+        for (var y = top; y <= bottom; y++)
+        {
+            for (var x = left; x <= right; x++)
+            {
+                var pixel = _PixelAt(image, x, y);
+                brightest = Math.Max(brightest, Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)));
+            }
+        }
+
+        return brightest;
     }
 
     private const int Margin = 20;

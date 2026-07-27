@@ -87,17 +87,13 @@ internal sealed class WorkflowWire
         // label on every other wire is noise.
         Label = string.IsNullOrEmpty(branchLabel)
             ? null
-            // The same shape the app labels anything else with — the theme's tag, borrowed by hand because a wire
-            // label is drawn onto a canvas rather than placed in a styled visual tree.
+            // Border.tag — the same shape the app labels anything else with. A wire label is drawn onto a canvas,
+            // but a canvas is still part of the app's visual tree, so the theme reaches it like anything else.
             : new Border
             {
-                Background = _Brush("CockpitInsetBgBrush", "#202430"),
-                BorderBrush = _Brush("CockpitHairlineSoftBrush", "#20242c"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(5),
-                Padding = new Thickness(6, 1),
+                Classes = { "tag" },
                 IsHitTestVisible = false,
-                Child = new TextBlock { Text = branchLabel, FontSize = 10, Opacity = 0.8 },
+                Child = new TextBlock { Text = branchLabel, Opacity = 0.8 },
             };
     }
 
