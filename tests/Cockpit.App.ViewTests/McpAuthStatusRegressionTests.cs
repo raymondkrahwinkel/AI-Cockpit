@@ -40,13 +40,39 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public async Task SignIn_AfterEditingTheUrl_AuthorizesAgainstWhatIsTypedButUnderTheStoredName()
+    public async Task SignIn_ForARowNeverSaved_UsesTheTypedName_NotThePlaceholderItWasCreatedWith()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+
+        // What "Add server" produces: a placeholder name the operator is about to replace, and nothing in the store.
+        var editable = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
+        editable.Name = "depot";
+        editable.Transport = McpTransport.Http;
+        editable.Url = "https://depot.example/mcp";
+        editable.Auth = McpServerAuth.OAuth;
+
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        // Pinning to the placeholder files the token under a name that is about to be replaced: saving writes
+        // "depot", the fan-out looks up "depot", and the bearer sits under "new server" behind a "signed in" badge.
+        await coordinator.Received().AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
+            true,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignIn_AfterRenamingAndEditingTheUrl_AuthorizesAgainstWhatIsTypedButUnderTheStoredName()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(McpOAuthAccess.Authorized("token"));
         var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
 
+        editable.Name = "depot-renamed";
         editable.Url = "https://depot.example/mcp/v2";
         await editable.SignInCommand.ExecuteAsync(null);
 
@@ -98,6 +124,69 @@ public class McpAuthStatusRegressionTests
             worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: coordinator);
 
         // Pairing the rows to the registry by name threw here, outside any catch, so the dialog did not open at all.
+        await viewModel.LoadAsync();
+
+        Assert.Equal(2, viewModel.McpServers.Count);
+    }
+
+    [Fact]
+    public void AddServer_MintsANameNothingElseIsUsing()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
+        var viewModel = new McpServersViewModel(store, []);
+
+        viewModel.AddServerCommand.Execute(null);
+        viewModel.AddServerCommand.Execute(null);
+
+        // A name is a key downstream, not a label: a token is filed under it and each agent's config is keyed by it,
+        // last one winning. Two rows called the same thing collapse into one mounted server while both sit ticked.
+        Assert.Equal(2, viewModel.Servers.Select(server => server.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
+    public async Task Save_RefusesTwoServersWithTheSameName()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "depot", Transport = McpTransport.Http, Url = "https://a.example/mcp" },
+            new() { Name = "depot", Transport = McpTransport.Http, Url = "https://b.example/mcp" },
+        });
+        var viewModel = new McpServersViewModel(store, []);
+        await viewModel.LoadAsync();
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        // Refusing here is the last place it can still be said plainly — afterwards the duplicate is silent.
+        Assert.Contains("depot", viewModel.StatusMessage);
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Rebuilding_AfterATickOnDuplicateNames_DoesNotThrow()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { profile });
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(profile).Returns(true);
+
+        var registry = new[] { _OAuthServer("new server"), _OAuthServer("new server", "https://other.example/mcp") };
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+
+        var viewModel = new NewSessionDialogViewModel(
+            profileStore, loginChecker, catalog, workingPathStore: null, conversationPickers: null,
+            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry: null,
+            worktreeManager: null, tokenEstimator: null, projectStore: null, oauthCoordinator: null);
+        await viewModel.LoadAsync();
+
+        // Ticking is what arms the second, separate name-keyed lookup: the one that carries the operator's own ticks
+        // across a rebuild. It threw on a duplicate exactly like the first one, and only after a tick — which is why
+        // a test that merely opens the dialog left it uncovered.
+        viewModel.McpServers[0].IsEnabledForSession = false;
         await viewModel.LoadAsync();
 
         Assert.Equal(2, viewModel.McpServers.Count);

@@ -95,9 +95,30 @@ public partial class McpServersViewModel : ViewModelBase
     [RelayCommand]
     private void AddServer()
     {
-        var added = new EditableMcpServerViewModel(new McpServerConfig { Name = "new server", Command = "npx" }, _oauthCoordinator);
+        // A distinct placeholder, because the name is a key elsewhere and not just a label: a token is filed under
+        // it, and the fan-out writes each server into the agent's config by it (last one wins). Two rows both called
+        // "new server" therefore collapse into one mounted server while both sit ticked in the checklist, and that
+        // is invisible until an agent is missing tools it was promised.
+        var added = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = _UnusedServerName(), Command = "npx" },
+            _oauthCoordinator,
+            isPersisted: false);
         Servers.Add(added);
         SelectedServer = added;
+    }
+
+    private string _UnusedServerName()
+    {
+        const string baseName = "new server";
+        var taken = Servers.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidate = baseName;
+        for (var suffix = 2; taken.Contains(candidate); suffix++)
+        {
+            candidate = $"{baseName} {suffix}";
+        }
+
+        return candidate;
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedServer))]
@@ -128,6 +149,15 @@ public partial class McpServersViewModel : ViewModelBase
         if (Servers.Any(server => !server.IsValid))
         {
             StatusMessage = "Every server needs a name, plus a command (stdio) or a URL (http).";
+            return;
+        }
+
+        // Names have to be unique because everything downstream treats one as an identity: the credential store files
+        // a token under it, and each agent's config is keyed by it so a repeat silently drops a server the operator
+        // ticked. Refusing the save is the only place that can still be said plainly.
+        if (Servers.GroupBy(server => server.Name.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } duplicate)
+        {
+            StatusMessage = $"Two servers are called \"{duplicate.Key}\". Names identify a server to the agents, so each one needs its own.";
             return;
         }
 

@@ -228,7 +228,22 @@ public class McpOAuthCoordinatorTests
 
         Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
         Assert.Null(access.AccessToken);
-        Assert.Null(await store.GetAsync("depot"));
+    }
+
+    [Fact]
+    public async Task Acquire_AskedInteractively_PutsTheOldTokenBack_WhenTheFlowProducesNothing()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        // Clearing first is mechanically necessary — the SDK answers from the cache, so leaving the token in place
+        // means the flow never runs. But closing the browser window should not cost the access you already had: one
+        // click on "Sign in again" would otherwise destroy a working credential with no way back.
+        var stored = await store.GetAsync("depot");
+        Assert.Equal("stored-token", stored?.AccessToken);
+        Assert.Equal("refresh", stored?.RefreshToken);
     }
 
     [Fact]

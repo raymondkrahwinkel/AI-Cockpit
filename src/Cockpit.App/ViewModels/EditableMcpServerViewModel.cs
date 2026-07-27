@@ -11,10 +11,10 @@ namespace Cockpit.App.ViewModels;
 /// (#26). Args are edited as one-per-line text; transport/auth are enum selections that drive which
 /// fields the dialog shows. <see cref="ToConfig"/> turns the edits back into a config on save.
 /// <para>
-/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They act
-/// on <see cref="ToConfig"/> rather than the original config, deliberately: signing in must go against the URL/auth
-/// currently typed, not whatever the server was saved with last, so an operator fixing a wrong authority before
-/// signing in gets what they just typed rather than a stale save.
+/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They act on
+/// <see cref="_AuthTarget"/>: the URL and auth as currently typed, so fixing a wrong authority and then signing in
+/// authorizes against what is on screen — but under the name the store knows, because that is the key a token is
+/// filed by and everything else looks it up with.
 /// </para>
 /// </summary>
 public partial class EditableMcpServerViewModel : ViewModelBase
@@ -22,13 +22,13 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
     /// <summary>
-    /// The name this server is stored under, as opposed to the one currently typed. A token is keyed by server name,
-    /// so signing in or out has to use the name the store knows: doing it against a renamed-but-unsaved row withdrew
-    /// nothing while telling the operator their access was gone, and signed in under a name the registry does not
-    /// contain. The typed URL and auth are still what gets authorized against — those are what the operator is
-    /// fixing when they edit before signing in; the name is only the key.
+    /// The name this server is already stored under, or <see langword="null"/> for a row that has never been saved.
+    /// A token is keyed by server name, so signing in or out has to use the name the store knows — doing it against
+    /// a renamed-but-unsaved row withdrew nothing while telling the operator their access was gone. A row that is
+    /// not in the store yet has no such name, and pinning it to the placeholder it was created with would file the
+    /// token under a name the operator is about to replace: for those, the typed name is the one that will be saved.
     /// </summary>
-    private readonly string _storedUnderName;
+    private readonly string? _storedUnderName;
 
     [ObservableProperty]
     private string _name;
@@ -185,10 +185,14 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         SignOutCommand.NotifyCanExecuteChanged();
     }
 
-    public EditableMcpServerViewModel(McpServerConfig server, IMcpOAuthCoordinator? oauthCoordinator = null)
+    /// <param name="isPersisted">
+    /// Whether <paramref name="server"/> came from the store. False for a row the operator has just added, whose name
+    /// is a placeholder they are about to replace — see <see cref="_storedUnderName"/>.
+    /// </param>
+    public EditableMcpServerViewModel(McpServerConfig server, IMcpOAuthCoordinator? oauthCoordinator = null, bool isPersisted = true)
     {
         _oauthCoordinator = oauthCoordinator;
-        _storedUnderName = server.Name;
+        _storedUnderName = isPersisted ? server.Name : null;
         _name = server.Name;
         _transport = server.Transport;
         _command = server.Command ?? string.Empty;
@@ -207,15 +211,15 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
     /// <summary>
-    /// What a sign-in, sign-out or status read is about: the edits as they stand, under the name the store knows.
-    /// The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing in
-    /// should get what they just typed — while the name stays the persisted one, because that is the key the token
-    /// is filed under and everything else looks it up by.
+    /// What a sign-in, sign-out or status read is about: the edits as they stand, under the name the token is filed
+    /// by. The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing
+    /// in should get what they just typed. The name is the one already in the store, or, for a row that has never
+    /// been saved, the typed one, since that is what saving is about to write.
     /// </summary>
-    private McpServerConfig _AuthTarget() => ToConfig() with { Name = _storedUnderName };
+    private McpServerConfig _AuthTarget() => ToConfig() with { Name = _storedUnderName ?? Name.Trim() };
 
+    /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
     public McpServerConfig ToConfig() => new()
     {
         Name = Name.Trim(),
@@ -272,8 +276,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     private bool CanSignIn => IsOAuthAuth && !IsAuthBusy;
 
     /// <summary>
-    /// The operator's own "log me in" act (AC-355) — the one call site allowed to open a browser. Runs against
-    /// <see cref="ToConfig"/> so it authorizes the URL/authority as currently typed, not the last-saved one.
+    /// The operator's own "log me in" act (AC-355) — the one call site anywhere that asks interactively, and so the
+    /// only one allowed to open a browser. Runs against <see cref="_AuthTarget"/>: the URL/authority as typed, filed
+    /// under the name the store knows.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()

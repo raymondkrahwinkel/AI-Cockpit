@@ -668,9 +668,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Reads each offered server's OAuth standing (AC-355) and writes it onto the matching checklist row, by name —
-    /// a no-op without a coordinator (design-time/no service) so the checklist behaves exactly as before AC-355 when
-    /// nobody asked for status.
+    /// Reads each offered server's OAuth standing (AC-355) and writes it onto the checklist row in the same position
+    /// — a no-op without a coordinator (design-time/no service) so the checklist behaves exactly as before AC-355
+    /// when nobody asked for status.
     /// </summary>
     private async Task _RefreshMcpAuthStatesAsync(IReadOnlyList<McpServerConfig> offered)
     {
@@ -683,10 +683,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // servers are allowed to share a name — "Add server" twice leaves two called "new server", and nothing on the
         // way to the store objects. Keying on the name turned that into an exception on the way into the dialog,
         // which meant the dialog did not open at all.
-        for (var index = 0; index < offered.Count && index < McpServers.Count; index++)
+        // Snapshot the rows before the first await. Pairing is by position — the rows were built from this same list
+        // in this same order — but the loop awaits per server, and a project switch rebuilds the collection without
+        // waiting for this to finish. Reading the live collection after a rebuild would write one list's status onto
+        // another list's row: a sign-in badge on the wrong server, silently, in the feature whose whole job is a
+        // badge that tells the truth. Writing to rows nobody is looking at any more is the harmless outcome.
+        var rows = McpServers.ToList();
+        for (var index = 0; index < offered.Count && index < rows.Count; index++)
         {
             var server = offered[index];
-            var item = McpServers[index];
+            var item = rows[index];
 
             McpAuthState state;
             try

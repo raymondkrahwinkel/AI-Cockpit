@@ -35,8 +35,20 @@ internal sealed class McpOAuthCoordinator(
         // honouring it. Clearing first is what makes the flow run rather than the cache answer.
         if (interactive)
         {
+            // Clearing first is mechanically necessary: the SDK reads the stored token through the cache, so leaving
+            // it in place means the flow never runs and the button does nothing. But losing a working credential
+            // because a browser window was closed is not a price for pressing "sign in again" — so the old one is
+            // put back when the flow produced nothing.
+            var previous = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
             await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
-            return await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
+
+            var signedIn = await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
+            if (signedIn.State != McpAuthState.Authorized && previous is not null)
+            {
+                await tokenStore.SaveAsync(server.Name, previous, cancellationToken).ConfigureAwait(false);
+            }
+
+            return signedIn;
         }
 
         // A token is stored under the server's name, and a name is not an identity — a project's own entry replaces a
