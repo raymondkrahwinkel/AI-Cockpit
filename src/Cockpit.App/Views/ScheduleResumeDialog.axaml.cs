@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -11,6 +12,7 @@ public partial class ScheduleResumeDialog : Window
     public ScheduleResumeDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

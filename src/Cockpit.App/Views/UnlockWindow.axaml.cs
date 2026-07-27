@@ -15,7 +15,7 @@ public partial class UnlockWindow : Window
     public UnlockWindow()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, "AI-Cockpit");
+        CockpitWindowChrome.Apply(this, "AI-Cockpit", titleBar: CockpitTitleBar.Window);
 
         Opened += (_, _) => TakeFocus();
 

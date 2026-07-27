@@ -19,11 +19,11 @@
 
     <DockPanel Margin="16">
 
-        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="Managed worktrees" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="Git worktrees the cockpit created to isolate sessions. A gone one — its session closed or crashed — can be reattached to a fresh session or removed. Removing a tree with unsaved changes always asks first."
-                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-        </StackPanel>
+        <!-- The window's title bar states the name; this is the paragraph under it, too long to be the one line
+             the title bar carries. -->
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12"
+                   Text="Git worktrees the cockpit created to isolate sessions. A gone one — its session closed or crashed — can be reattached to a fresh session or removed. Removing a tree with unsaved changes always asks first."
+                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
         <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0">
             <Button Grid.Column="0" Classes="Subtle Compact" HorizontalAlignment="Left" Command="{Binding RefreshCommand}">

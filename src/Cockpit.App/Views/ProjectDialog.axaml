@@ -37,24 +37,13 @@
         </Style>
     </Window.Styles>
 
-    <!-- Three explicit rows rather than a docked fill: the header and the footer are exactly as tall as they need
-         to be and the middle row gets what is left, so the scroll area can never be handed more height than there
-         is and paint its last row under the footer. -->
-    <Grid RowDefinitions="Auto,*,Auto">
-        <!-- Header: what this dialog is, in the words of someone who is not a developer. -->
-        <Border Grid.Row="0" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1" Padding="18,14">
-            <StackPanel Spacing="2">
-                <TextBlock Text="{Binding DialogTitle}" FontSize="18" FontWeight="SemiBold"
-                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
-                <TextBlock Text="Anyone can make one — it does not take a developer."
-                           FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </StackPanel>
-        </Border>
-
+    <!-- Two explicit rows rather than a docked fill: the footer is exactly as tall as it needs to be and the row
+         above gets what is left, so the scroll area can never be handed more height than there is and paint its
+         last row under the footer. The heading is the window's own title bar (CockpitWindowChrome). -->
+    <Grid RowDefinitions="*,Auto">
         <!-- Footer: Cancel and the confirm button, which is the only thing gated on a name. -->
-        <Border Grid.Row="2" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border Grid.Row="1" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
@@ -68,7 +57,7 @@
         <!-- Horizontal scrolling off, deliberately: left on, the scroller measures its content with unbounded
              width, so a star-sized column never has to fit and a long path pushed the row's buttons off the
              window instead of shrinking the box. -->
-        <ScrollViewer Grid.Row="1"
+        <ScrollViewer Grid.Row="0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <!-- Every inset lives on the content rather than as ScrollViewer.Padding, in both directions: the
                  scroller leaves its padding out of what it measures, so the bottom rows could not scroll clear of

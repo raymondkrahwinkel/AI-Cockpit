@@ -59,12 +59,15 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             buttons.Children.Add(save);
         }
 
+        // The same band the window's title bar sits on (AC-335), not the rail colour it used to use: the two are
+        // the top and bottom edge of one window, and a footer a shade darker than its own header reads as a
+        // different surface stuck to the bottom.
         var footer = new Border
         {
             Padding = new Thickness(14, 12),
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Background = _Brush("CockpitSecondaryBgBrush"),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitChromeBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineSoftBrush"),
             Child = buttons,
         };
         DockPanel.SetDock(footer, Dock.Bottom);

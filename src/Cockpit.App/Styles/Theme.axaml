@@ -23,6 +23,18 @@
             <Color x:Key="CockpitInsetBgColor">#202430</Color>
             <SolidColorBrush x:Key="CockpitInsetBgBrush" Color="{StaticResource CockpitInsetBgColor}"/>
 
+            <!-- The band a window's title bar and a dialog's footer sit on (the mockup's "top" surface). It is a
+                 shade *lighter* than the window fill, which is why the rail colour cannot stand in for it:
+                 CockpitSecondaryBgColor is darker than the window and reads as recessed, and a header that
+                 recedes puts the quietest surface where the dialog's name is. Its seam is softer than the
+                 general hairline (the mockup's soft line) so the header reads as joined to the content below
+                 rather than boxed off from it. -->
+            <Color x:Key="CockpitChromeBgColor">#12141a</Color>
+            <Color x:Key="CockpitHairlineSoftColor">#20242c</Color>
+
+            <SolidColorBrush x:Key="CockpitChromeBgBrush" Color="{StaticResource CockpitChromeBgColor}"/>
+            <SolidColorBrush x:Key="CockpitHairlineSoftBrush" Color="{StaticResource CockpitHairlineSoftColor}"/>
+
             <!-- Text -->
             <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
             <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>

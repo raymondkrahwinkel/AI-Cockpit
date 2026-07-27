@@ -23,8 +23,8 @@
 
         <!-- Footer: Close on the left, one shared Save on the right — replaces the six per-section
              Save buttons the flyout used to have (T13 dialog migration). -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <Button Grid.Column="0" Content="Close" Click="OnClose"/>
                 <TextBlock Grid.Column="1" Text="{Binding AllSettingsStatus}" HorizontalAlignment="Right"

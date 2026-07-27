@@ -19,8 +19,8 @@
     <DockPanel>
 
         <!-- Footer: the manager's status line on the left, Close on the right. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
                            MaxWidth="360" TextTrimming="CharacterEllipsis"
@@ -30,14 +30,11 @@
             </Grid>
         </Border>
 
-        <!-- Header: what a store is, and the add row. -->
+        <!-- What a store is, and the add row. The name is the window's title bar; this is the paragraph under it. -->
         <StackPanel DockPanel.Dock="Top" Margin="18,16,18,10" Spacing="10">
-            <StackPanel Spacing="3">
-                <TextBlock Text="Plugin stores" FontSize="16" FontWeight="SemiBold"/>
-                <TextBlock Text="A store is an index.json listing plugins and workflow templates — a public or private repo, or a folder on this machine. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
-                           FontSize="11.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </StackPanel>
+            <TextBlock Text="A store is an index.json listing plugins and workflow templates — a public or private repo, or a folder on this machine. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
+                       FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
 
             <!-- Remote (public or private) vs. a local folder — the fields below follow the choice. -->
             <StackPanel Orientation="Horizontal" Spacing="18">

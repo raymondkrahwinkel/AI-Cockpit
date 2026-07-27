@@ -17,11 +17,10 @@
 
     <DockPanel Margin="16">
 
-        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
-            <TextBlock Text="Verify runners" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="A verify runner is the command an agent may run to see the UI it changed: it renders the app and writes a text snapshot (and optionally a screenshot), which the cockpit feeds back into the session. The agent can only trigger a registered runner — it never chooses the command — and every run asks for your approval first."
-                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-        </StackPanel>
+        <!-- The window's title bar states the name; this is the paragraph under it. -->
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12"
+                   Text="A verify runner is the command an agent may run to see the UI it changed: it renders the app and writes a text snapshot (and optionally a screenshot), which the cockpit feeds back into the session. The agent can only trigger a registered runner — it never chooses the command — and every run asks for your approval first."
+                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
         <!-- List footer: only in the resting (list) state, so it never sits under the editor's own buttons. -->
         <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0" IsVisible="{Binding !IsEditing}">

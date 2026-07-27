@@ -21,7 +21,7 @@ public partial class SetStatusDialog : Window
         {
             if (DataContext is SetStatusDialogViewModel)
             {
-                CockpitWindowChrome.Apply(this, "Set status");
+                CockpitWindowChrome.Apply(this, "Set status", "What is this session working on? Shown under the session in the sidebar and header.");
             }
         };
 
