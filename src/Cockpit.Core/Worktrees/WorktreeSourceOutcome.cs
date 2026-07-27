@@ -13,6 +13,9 @@ public enum WorktreeSourceOutcome
     /// <summary>The source was behind and clean, so it was fast-forwarded and the worktree forked from the new tip.</summary>
     FastForwarded,
 
+    /// <summary>The source was behind and could have been updated, but this creation may not write to it — so the worktree forked from the upstream tip and the branch stayed where it was (AC-376).</summary>
+    ForkedFromUpstream,
+
     /// <summary>The source was behind but its working tree held changes, so it was left alone and the fork came from the local HEAD.</summary>
     KeptLocalChanges,
 

@@ -19,6 +19,26 @@ namespace Cockpit.Infrastructure.Tests.Worktrees;
 public class WorktreeToolsTests
 {
     [Fact]
+    public async Task CreateAsync_AsksForTheSourceToBeLeftAlone()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<CancellationToken>())
+            .Returns(_Record("pane", "/wt/path"));
+        var tools = new WorktreeTools(manager);
+
+        await tools.CreateAsync("pane", "/repo");
+
+        // `directory` is a folder the agent named, and the session was never scoped to whatever is checked out
+        // there — so this route may never be the reason that repository's branch or working tree is written to.
+        await manager.Received().CreateForSessionAsync(
+            "pane",
+            null,
+            "/repo",
+            WorktreeSourceHandling.LeaveSourceAlone,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Remove_RefusesAWorktreeOwnedByAnotherSession_KeyedOnTheVerifiedPane()
     {
         // AC-128: an agent may only remove a worktree it owns. Naming another session's path is a confused deputy.
@@ -50,7 +70,7 @@ public class WorktreeToolsTests
     {
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record("pane", "/wt/path");
-        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<CancellationToken>()).Returns(record);
+        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, Arg.Any<CancellationToken>()).Returns(record);
         var tools = new WorktreeTools(manager);
 
         using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));

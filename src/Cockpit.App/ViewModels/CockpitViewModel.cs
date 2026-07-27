@@ -5709,7 +5709,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken);
+        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken: cancellationToken);
         return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
@@ -5726,7 +5726,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var severity = refresh.Outcome == WorktreeSourceOutcome.FastForwarded
+        // Information for the two outcomes where everything went as it should — the branch was brought forward, or
+        // the session started from the upstream and left the branch alone. The rest are cases where the session is
+        // running on an older base than it could have, which is the kind of thing worth catching an eye.
+        var severity = refresh.Outcome is WorktreeSourceOutcome.FastForwarded or WorktreeSourceOutcome.ForkedFromUpstream
             ? ToastSeverity.Information
             : ToastSeverity.Warning;
 

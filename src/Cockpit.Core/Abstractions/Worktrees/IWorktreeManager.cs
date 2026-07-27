@@ -33,15 +33,30 @@ public interface IWorktreeManager
     /// that cannot be done the fork is from the local HEAD and <see cref="WorktreeRecord.SourceRefresh"/> says so.
     /// Throws when <paramref name="directory"/> is not a repository or <paramref name="branch"/> already exists — a
     /// session is never quietly given a branch that is not its own.
+    /// <para>
+    /// <paramref name="handling"/> decides whether that update may move the source branch. It may for a session the
+    /// operator started — their checkout comes along — and may not for one an agent asked for against a folder it
+    /// merely named, which forks from the upstream tip instead (AC-376).
+    /// </para>
     /// </summary>
-    Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, CancellationToken cancellationToken = default);
+    Task<WorktreeRecord> CreateAsync(
+        string sessionId,
+        string branch,
+        string directory,
+        WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a worktree for a session, generating a collision-free branch name from <paramref name="sessionLabel"/>
     /// and <paramref name="sessionId"/> (AC-85) — the convenience both the SDK/headless start path and the TTY launch
     /// path use, so branch naming lives in one place rather than each caller inventing its own.
     /// </summary>
-    Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, CancellationToken cancellationToken = default);
+    Task<WorktreeRecord> CreateForSessionAsync(
+        string sessionId,
+        string? sessionLabel,
+        string directory,
+        WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);
 

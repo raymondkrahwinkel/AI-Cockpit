@@ -579,6 +579,57 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_TheSourceMayNotBeTouched_ForksFromTheUpstreamTipWithoutMovingTheBranch()
+    {
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo, WorktreeSourceHandling.LeaveSourceAlone);
+        var refresh = _SourceRefreshOf(record);
+
+        // The session still starts on the latest state — that is the whole point of AC-349 — but a folder an agent
+        // merely named is not one to write to on its say-so. Same fork base, no branch moving under anyone.
+        record.BaseCommit.Should().Be(moved);
+        _Git(record.Path, "rev-parse", "HEAD").Should().Be(moved);
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.ForkedFromUpstream);
+        refresh.Notice.Should().Contain("left where it is");
+    }
+
+    [Fact]
+    public async Task CreateAsync_TheSourceMayNotBeTouchedAndHasUncommittedChanges_StillForksFromTheUpstreamTip()
+    {
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        File.WriteAllText(Path.Combine(_repo, "README.md"), "half-finished edit\n");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo, WorktreeSourceHandling.LeaveSourceAlone);
+
+        // An uncommitted edit is a reason not to *write* to the tree, and nothing is being written here — so it is
+        // no reason to hand the session an older base than it could have had. The edit is untouched either way.
+        record.BaseCommit.Should().Be(moved);
+        _SourceRefreshOf(record).Outcome.Should().Be(WorktreeSourceOutcome.ForkedFromUpstream);
+        File.ReadAllText(Path.Combine(_repo, "README.md")).Should().Be("half-finished edit\n");
+    }
+
+    [Fact]
+    public async Task CreateAsync_TheSourceMayNotBeTouchedAndHasDivergedCommits_ForksFromTheLocalHead()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        _Commit(_repo, "mine.txt", "not pushed yet\n");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo, WorktreeSourceHandling.LeaveSourceAlone);
+
+        // Commits that exist only here belong in what the session starts from: forking from the upstream instead
+        // would quietly hand the agent a base without the work that is actually being done.
+        record.BaseCommit.Should().Be(before);
+        _SourceRefreshOf(record).Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
+    }
+
+    [Fact]
     public async Task CreateAsync_SourceBranchBehindWithUntrackedFilesOnly_StillForksFromTheUpdatedTip()
     {
         _AddRemote();
@@ -797,14 +848,14 @@ public sealed class WorktreeManagerTests : IDisposable
         File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var repository = await _manager.DetectRepositoryAsync(_repo);
 
-        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), CancellationToken.None, TimeSpan.FromSeconds(1));
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), WorktreeSourceHandling.BringUpToDate, CancellationToken.None, TimeSpan.FromSeconds(1));
 
         // git moves the branch before it runs the post-merge hook, so a hook that outlives the guard is killed with
         // the update already done. Believing the exit code there would report failure and then fork the session from
         // the commit the branch has just left — the very staleness this exists to prevent.
         _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
         refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        refresh.UpdatedHeadCommit.Should().Be(moved);
+        refresh.ForkCommit.Should().Be(moved);
     }
 
     [Fact]
@@ -824,7 +875,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var repository = await _manager.DetectRepositoryAsync(_repo);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
-        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), cancellation.Token, TimeSpan.FromSeconds(30));
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), WorktreeSourceHandling.BringUpToDate, cancellation.Token, TimeSpan.FromSeconds(30));
 
         // The merge deliberately ignores the caller's token, so by the time someone gives up the tree has already
         // been written to. Asking the repository what happened has to ignore it for the same reason: a caller who
@@ -832,7 +883,7 @@ public sealed class WorktreeManagerTests : IDisposable
         // unreported while the start fails on the cancellation instead.
         _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
         refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        refresh.UpdatedHeadCommit.Should().Be(moved);
+        refresh.ForkCommit.Should().Be(moved);
     }
 
     [Fact]
@@ -853,7 +904,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _manager.SourceRefreshed += announced.Add;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
-        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellation.Token);
+        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellationToken: cancellation.Token);
 
         // The start is abandoned while the merge runs, so it never returns the record the notice used to travel on —
         // and by then the operator's own branch has already moved. Hearing about that cannot depend on a caller who
@@ -888,7 +939,7 @@ public sealed class WorktreeManagerTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
 
-        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellation.Token);
+        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellationToken: cancellation.Token);
 
         // The report of a move travels on the record this returns, and a caller who has given up never reads it. So
         // a start that is already cancelled must not move the branch at all — it would be a change nobody asked for
@@ -1029,7 +1080,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var repository = _Detected(await _manager.DetectRepositoryAsync(_repo));
         File.AppendAllText(Path.Combine(_repo, ".git", "config"), "\n[[[not a section\n");
 
-        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, CancellationToken.None);
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, WorktreeSourceHandling.BringUpToDate, CancellationToken.None);
 
         // "I could not tell" and "there is nothing to tell" are the same silence if you let them be, and only one of
         // them is honest. A config git refuses to parse is the former.
