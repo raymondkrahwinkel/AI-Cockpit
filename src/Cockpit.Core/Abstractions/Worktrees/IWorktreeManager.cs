@@ -10,6 +10,15 @@ namespace Cockpit.Core.Abstractions.Worktrees;
 public interface IWorktreeManager
 {
     /// <summary>
+    /// Raised once the source branch has been dealt with, before the worktree itself is made (AC-349) — the moment
+    /// the operator's own checkout may have moved. Deliberately not the returned record: a start that is cancelled
+    /// or fails after this point never hands that record to anyone, and a branch that moved without a word is the
+    /// thing this feature exists to prevent. Fires for every creation, including one an agent asked for, and may
+    /// arrive on any thread.
+    /// </summary>
+    event Action<WorktreeSourceRefresh>? SourceRefreshed;
+
+    /// <summary>
     /// Reports the git repository behind <paramref name="directory"/>, or <c>null</c> when it is not inside one (or
     /// has no commit to branch from) — the signal the New-session dialog uses to offer or grey out isolation,
     /// rather than failing at spawn time.
@@ -18,9 +27,12 @@ public interface IWorktreeManager
 
     /// <summary>
     /// Creates a worktree for <paramref name="sessionId"/> on a new branch <paramref name="branch"/>, forked from
-    /// the current HEAD of the repository behind <paramref name="directory"/>, and records it. Throws when
-    /// <paramref name="directory"/> is not a repository or <paramref name="branch"/> already exists — a session is
-    /// never quietly given a branch that is not its own.
+    /// the repository behind <paramref name="directory"/>, and records it. The source branch is fetched and — only
+    /// when it is clean, has nothing of its own and nothing on disk in the way — fast-forwarded first, so the
+    /// session starts on the latest state of that branch rather than on whatever was last pulled (AC-349); where
+    /// that cannot be done the fork is from the local HEAD and <see cref="WorktreeRecord.SourceRefresh"/> says so.
+    /// Throws when <paramref name="directory"/> is not a repository or <paramref name="branch"/> already exists — a
+    /// session is never quietly given a branch that is not its own.
     /// </summary>
     Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, CancellationToken cancellationToken = default);
 

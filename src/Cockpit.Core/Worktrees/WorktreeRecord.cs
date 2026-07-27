@@ -28,4 +28,11 @@ public sealed record WorktreeRecord(
 
     /// <summary>Set when teardown kept the worktree because it held uncommitted work or unmerged commits: shown for review, never auto-removed (cleanup-policy A).</summary>
     public bool IsRetained { get; init; }
+
+    /// <summary>
+    /// How the source branch was brought up to date before this worktree forked from it (AC-349) — the one thing on
+    /// this record that describes the moment of creation rather than the worktree itself. Deliberately not persisted:
+    /// it is what the operator is told once, at start, and a record read back from the registry carries null here.
+    /// </summary>
+    public WorktreeSourceRefresh? SourceRefresh { get; init; }
 }

@@ -9,13 +9,6 @@ namespace Cockpit.Infrastructure.Clones;
 /// <inheritdoc cref="IRepositoryCloneManager" />
 internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISingletonService
 {
-    // Turns off git's interactive credential prompting for every clone/fetch: without a helper (or headless) git
-    // fails fast with a message instead of blocking on a terminal prompt no window can answer. This is v1's whole
-    // auth story — lean on the host credential helper (GCM, `gh`) — and the seam a later in-memory token injection
-    // (AC-88: GIT_ASKPASS plus the token in this child env only) extends, never a token in the URL.
-    private static readonly IReadOnlyDictionary<string, string> _NonInteractiveEnvironment =
-        new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0" };
-
     private readonly IRepositoryCloneRegistry _registry;
 
     // Resolves the clones root each time it is needed: the operator's override (AC-90) if set, else the state-root
@@ -84,7 +77,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
                 parent,
                 ["clone", "--", parsed.RemoteUrl, resolvedTarget],
                 cancellationToken,
-                _NonInteractiveEnvironment).ConfigureAwait(false);
+                GitEnvironment.NonInteractive).ConfigureAwait(false);
         }
         catch (InvalidOperationException exception)
         {
@@ -138,7 +131,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
     {
         // Best-effort refresh: a reused clone should not be stale, but a fetch that fails (offline, auth lapsed) must
         // not deny the operator the checkout that is already here — the local repository is still usable.
-        await GitCli.RunAsync(targetPath, ["fetch", "--all", "--prune"], cancellationToken, _NonInteractiveEnvironment)
+        await GitCli.RunAsync(targetPath, ["fetch", "--all", "--prune"], cancellationToken, GitEnvironment.NonInteractive)
             .ConfigureAwait(false);
 
         var existing = (await _registry.ListAsync(cancellationToken).ConfigureAwait(false))

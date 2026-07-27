@@ -2385,6 +2385,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
+
+        // One subscription rather than a call after each of the three creation paths: the branch can move on any of
+        // them, and on the plugin-run path the start can still be cancelled afterwards, which would take the news
+        // with it (AC-349).
+        if (worktreeManager is not null)
+        {
+            worktreeManager.SourceRefreshed += _ToastWorktreeSource;
+        }
         _terminals = terminals;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
@@ -5705,6 +5713,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
+    // Where a freshly isolated session forked from, when that is not simply "the latest" (AC-349): the source branch
+    // was updated first, or it could not be and the fork is older than the remote. Silent in the ordinary case —
+    // there is no news in a session starting on the tip everyone expects it to. Driven by the manager's event rather
+    // than by the record each creation returns, so a start that is cancelled or fails afterwards still leaves the
+    // operator knowing their own branch moved. Raised on ToastHost rather than through IToastService for the same
+    // circular-dependency reason as the update toast above.
+    private void _ToastWorktreeSource(WorktreeSourceRefresh refresh)
+    {
+        if (refresh.Notice is not { } notice)
+        {
+            return;
+        }
+
+        var severity = refresh.Outcome == WorktreeSourceOutcome.FastForwarded
+            ? ToastSeverity.Information
+            : ToastSeverity.Warning;
+
+        // Marshalled, because this is reached from a plugin-driven run start as well as from the dialog, and there
+        // the await continuation carries no UI context: ToastHost.Add touches a bound collection and starts a
+        // DispatcherTimer, neither of which survives being done off the UI thread.
+        _OnUiThread(() => ToastHost.Add(notice, severity, null, null));
+    }
+
     // The permission mode an embedded run starts in: the request's named mode (matched case-insensitively), else the
     // app default ("ask"). A named mode that is not recognised falls back to the default rather than failing the start.
     private static PermissionModeOption _ResolveEmbeddedPermissionMode(EmbeddedSessionRequest request) =>
@@ -5811,8 +5842,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _periodicUpdateTimer?.Stop();
 
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
-        // past its window (AC-41).
+        // past its window (AC-41). The worktree manager is one too, and its notice handler holds this view model
+        // just as firmly (AC-349).
         _secretKeyHolder.UnprotectedSecretsWritten -= OnUnprotectedSecretsWritten;
+        if (_worktreeManager is not null)
+        {
+            _worktreeManager.SourceRefreshed -= _ToastWorktreeSource;
+        }
 
         foreach (var session in Sessions.ToList())
         {

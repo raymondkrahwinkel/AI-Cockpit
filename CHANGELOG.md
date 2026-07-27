@@ -514,6 +514,25 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - fixed: a run whose reviewing CEO never starts now fails the step and says why, instead of waiting for a verdict that
   can no longer come. The run would sit on its first step with the pipeline frozen and nothing on screen to explain it;
   it now reads like any other refusal, naming the profile that could not start.
+- fixed: a session you isolate in its own worktree starts on the latest state of the branch it forks from, instead of
+  on whatever your checkout last pulled. Nothing fetched before the worktree was made, so a folder you had not touched
+  in a while quietly handed every session a base tens of commits old. The branch the session forks from is now fetched
+  first and, where that is safe, fast-forwarded, so your own checkout comes along with it.
+- fixed: your working tree is only ever fast-forwarded, and only when there is genuinely nothing in it to lose — never
+  a merge, never a rebase. A branch with uncommitted changes, one holding commits that are not on the remote, or one
+  where the update would land on something git is not keeping a copy of is left exactly as it was, and the session
+  forks from it as it stands. That last case is worth spelling out: git declines to overwrite a file it does not
+  track, but a file you have told it to *ignore* — the local config, the environment file, the one thing there is no
+  second copy of anywhere — it replaces without a word. So the incoming paths are checked against what is actually
+  sitting in your folder first, and anything in the way stops the update rather than being written over.
+- fixed: you are told what happened to the branch rather than left to discover it. When your checkout was brought
+  forward, a notification says so and by how much — it is your folder that moved, after all. When the session forked
+  from something older than the remote instead, because the update was declined or the remote could not be reached, a
+  notification names what it forked from and how far behind that is where that could be measured. It does not depend
+  on the session actually starting: call the start off, or let it fail on a name already taken, and you are still told
+  that your own branch is no longer where you left it. An agent that isolates itself through the worktree tool is
+  handed the same sentence in the tool's answer. A branch that was already up to date, or that tracks nothing at all,
+  stays silent.
 - fixed: a worktree whose folder you deleted by hand can be removed from Managed worktrees again. git no longer knows
   such a tree, so it refused the removal and the row came straight back — with nothing on screen to say why. The row
   is now cleared away (the branch is kept, as always), "Clean up finished" sweeps one up too, and a removal git does

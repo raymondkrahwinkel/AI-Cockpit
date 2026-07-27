@@ -559,12 +559,498 @@ public sealed class WorktreeManagerTests : IDisposable
         Directory.Exists(record.Path).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task CreateAsync_SourceBranchBehindItsRemote_ForksFromTheUpdatedTip()
+    {
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The whole point of AC-349: the session starts on what the remote holds, not on what this checkout last
+        // pulled — and the operator's own branch is carried along, so it is no longer behind either.
+        record.BaseCommit.Should().Be(moved);
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
+        _Git(record.Path, "rev-parse", "HEAD").Should().Be(moved);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        record.SourceRefresh.BehindCount.Should().Be(1);
+        record.SourceRefresh.Notice.Should().Contain("origin/main");
+    }
+
+    [Fact]
+    public async Task CreateAsync_SourceBranchBehindWithUntrackedFilesOnly_StillForksFromTheUpdatedTip()
+    {
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        File.WriteAllText(Path.Combine(_repo, "scratch.log"), "build output\n");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Untracked leftovers are in nearly every checkout; counting them as work in progress would mean the source
+        // is never updated, which is the feature. This one is nowhere near an incoming path, so nothing can touch it.
+        record.BaseCommit.Should().Be(moved);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        File.Exists(Path.Combine(_repo, "scratch.log")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateAsync_UntrackedFileBesideAnIncomingOne_DoesNotCountAsInTheWay()
+    {
+        _AddRemote();
+        var moved = _PushFromAnotherClone("src/app/main.cs");
+        Directory.CreateDirectory(Path.Combine(_repo, "src", "app"));
+        File.WriteAllText(Path.Combine(_repo, "src", "app", "notes.txt"), "my scratch file\n");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Sharing a folder with an incoming file is not a collision — only the same path, or a folder standing where
+        // one has to go, is. Counting neighbours would stop the update in any repository with a stray file in a
+        // touched folder, which is nearly all of them: the feature would quietly never fire again.
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        record.BaseCommit.Should().Be(moved);
+        File.ReadAllText(Path.Combine(_repo, "src", "app", "notes.txt")).Should().Be("my scratch file\n");
+    }
+
+    [Fact]
+    public async Task CreateAsync_UntrackedFolderWhereAnIncomingFileMustGo_CountsAsInTheWay()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("libs");
+        Directory.CreateDirectory(Path.Combine(_repo, "libs"));
+        File.WriteAllText(Path.Combine(_repo, "libs", "mine.txt"), "not in git\n");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The other direction of the same question: here a folder of untracked files sits exactly where an incoming
+        // file has to be written. git lists what is inside it, not the folder, so the match has to run upwards.
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        File.ReadAllText(Path.Combine(_repo, "libs", "mine.txt")).Should().Be("not in git\n");
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpdateWouldOverwriteAnIgnoredFile_LeavesItAloneAndSaysSo()
+    {
+        _AddRemote();
+        File.WriteAllText(Path.Combine(_repo, ".gitignore"), ".env\n");
+        _Git(_repo, "add", "-A");
+        _Git(_repo, "commit", "-m", "ignore .env");
+        _Git(_repo, "push", "origin", "main");
+        File.WriteAllText(Path.Combine(_repo, ".env"), "API_KEY=the-only-copy\n");
+        _PushFromAnotherClone(".env");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // git refuses to overwrite an untracked file but overwrites an *ignored* one without a word, and a local
+        // .env is both the file that gets ignored and the one nobody has a second copy of. Asking about the incoming
+        // paths ourselves is the only thing standing between an update and that content.
+        File.ReadAllText(Path.Combine(_repo, ".env")).Should().Be("API_KEY=the-only-copy\n");
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        record.SourceRefresh.Notice.Should().Contain(".env");
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpdateWouldOverwriteAnUntrackedFile_LeavesItAloneAndSaysSo()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        File.WriteAllText(Path.Combine(_repo, "shipped.txt"), "mine, never committed\n");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        File.ReadAllText(Path.Combine(_repo, "shipped.txt")).Should().Be("mine, never committed\n");
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpdateWouldOverwriteAPathGitReadsAsPathspecMagic_LeavesItAlone()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // A colon cannot appear in a Windows filename, so the collision this is about cannot be built there.
+            return;
+        }
+
+        _AddRemote();
+        File.WriteAllText(Path.Combine(_repo, ".gitignore"), ":colon.txt\n");
+        _Git(_repo, "add", "-A");
+        _Git(_repo, "commit", "-m", "ignore it");
+        _Git(_repo, "push", "origin", "main");
+        File.WriteAllText(Path.Combine(_repo, ":colon.txt"), "the only copy\n");
+        _PushFromAnotherClone(":colon.txt");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Handing these paths to git as a pathspec is what makes this one dangerous: a leading colon is read as
+        // pathspec magic, the answer comes back empty, and "nothing in the way" is exactly the wrong conclusion.
+        File.ReadAllText(Path.Combine(_repo, ":colon.txt")).Should().Be("the only copy\n");
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpdateWouldReplaceASymlinkedDirectory_LeavesItAlone()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Creating a symlink on Windows needs privileges this test cannot assume.
+            return;
+        }
+
+        _AddRemote();
+        File.WriteAllText(Path.Combine(_repo, ".gitignore"), "libs\n");
+        _Git(_repo, "add", "-A");
+        _Git(_repo, "commit", "-m", "ignore libs");
+        _Git(_repo, "push", "origin", "main");
+        _PushFromAnotherClone("libs/dep.txt");
+        Directory.CreateDirectory(Path.Combine(_tempRoot, "elsewhere"));
+        File.WriteAllText(Path.Combine(_tempRoot, "elsewhere", "dep.txt"), "linked, not copied\n");
+        Directory.CreateSymbolicLink(Path.Combine(_repo, "libs"), Path.Combine(_tempRoot, "elsewhere"));
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Ignored on purpose: git refuses to replace an untracked symlink but replaces an ignored one without a
+        // word, and it never descends into it either — so asking about "libs/dep.txt" finds nothing while the link
+        // itself is what the update lands on. Without the check the operator's arrangement is simply gone.
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+
+        // What the update destroys is the link itself — it becomes a real folder with the incoming file in it, while
+        // the directory it pointed at is left untouched. So the link is what has to be asserted on.
+        new DirectoryInfo(Path.Combine(_repo, "libs")).LinkTarget.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_FastForwardRefused_ForksFromTheLocalHeadAndPassesOnWhatGitSaid()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        // An index git cannot take is the one refusal that needs no co-operation from the fixture: everything up to
+        // the merge succeeds, and the merge itself cannot start.
+        File.WriteAllText(Path.Combine(_repo, ".git", "index.lock"), string.Empty);
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwardFailed);
+        record.SourceRefresh.Notice.Should().Contain("could not be updated");
+
+        // The tree was never opened, so the operator must not be sent looking through it.
+        record.SourceRefresh.Notice.Should().NotContain("now has changes in it");
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpdateWouldOverwriteAnIgnoredFileDifferingOnlyInCase_LeavesItAloneWhereGitSaysCaseDoesNotCount()
+    {
+        _AddRemote();
+        File.WriteAllText(Path.Combine(_repo, ".gitignore"), "local.cfg\n");
+        _Git(_repo, "add", "-A");
+        _Git(_repo, "commit", "-m", "ignore it");
+        _Git(_repo, "push", "origin", "main");
+
+        // The filesystem under a repository does not have to agree with the operating system on it — a Linux
+        // checkout on a CIFS share or a WSL-mounted Windows drive is case-insensitive all the same. git probes and
+        // records the answer, so the check has to follow core.ignorecase rather than infer from the platform.
+        _Git(_repo, "config", "core.ignorecase", "true");
+        File.WriteAllText(Path.Combine(_repo, "local.cfg"), "the only copy\n");
+        _PushFromAnotherClone("LOCAL.CFG");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        File.ReadAllText(Path.Combine(_repo, "local.cfg")).Should().Be("the only copy\n");
+    }
+
+    [Fact]
+    public async Task BringUpToDateAsync_FastForwardKilledAfterTheBranchMoved_ReportsWhereItActuallyLanded()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Driven by a shell hook and a process-tree kill; both behave differently enough on Windows to prove
+            // something other than what this is about.
+            return;
+        }
+
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");
+        File.WriteAllText(hook, "#!/bin/sh\nsleep 30\n");
+        File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var repository = await _manager.DetectRepositoryAsync(_repo);
+
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository!, CancellationToken.None, TimeSpan.FromSeconds(1));
+
+        // git moves the branch before it runs the post-merge hook, so a hook that outlives the guard is killed with
+        // the update already done. Believing the exit code there would report failure and then fork the session from
+        // the commit the branch has just left — the very staleness this exists to prevent.
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        refresh.UpdatedHeadCommit.Should().Be(moved);
+    }
+
+    [Fact]
+    public async Task BringUpToDateAsync_CancelledWhileTheFastForwardRuns_StillReportsWhatItDid()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Paced by a shell hook, which behaves differently enough on Windows to prove something else.
+            return;
+        }
+
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");
+        File.WriteAllText(hook, "#!/bin/sh\nsleep 3\n");
+        File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var repository = await _manager.DetectRepositoryAsync(_repo);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository!, cancellation.Token, TimeSpan.FromSeconds(30));
+
+        // The merge deliberately ignores the caller's token, so by the time someone gives up the tree has already
+        // been written to. Asking the repository what happened has to ignore it for the same reason: a caller who
+        // walks away in this window would otherwise take the answer with them, leaving the update standing and
+        // unreported while the start fails on the cancellation instead.
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        refresh.UpdatedHeadCommit.Should().Be(moved);
+    }
+
+    [Fact]
+    public async Task CreateAsync_CancelledAfterTheBranchMoved_StillAnnouncesThatItMoved()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Paced by a shell hook, which behaves differently enough on Windows to prove something else.
+            return;
+        }
+
+        _AddRemote();
+        var moved = _PushFromAnotherClone("shipped.txt");
+        var hook = Path.Combine(_repo, ".git", "hooks", "post-merge");
+        File.WriteAllText(hook, "#!/bin/sh\nsleep 3\n");
+        File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var announced = new List<WorktreeSourceRefresh>();
+        _manager.SourceRefreshed += announced.Add;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellation.Token);
+
+        // The start is abandoned while the merge runs, so it never returns the record the notice used to travel on —
+        // and by then the operator's own branch has already moved. Hearing about that cannot depend on a caller who
+        // is no longer listening: a branch that moved without a word is the thing this whole feature is against.
+        await create.Should().ThrowAsync<OperationCanceledException>();
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
+        announced.Should().ContainSingle()
+            .Which.Should().Match<WorktreeSourceRefresh>(refresh =>
+                refresh.Outcome == WorktreeSourceOutcome.FastForwarded && refresh.Notice != null);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AnnouncementListenerThrows_StillMakesTheWorktree()
+    {
+        _AddRemote();
+        _manager.SourceRefreshed += _ => throw new InvalidOperationException("a listener with problems of its own");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Telling someone is best-effort; making the worktree is not. A subscriber that falls over is its own
+        // problem and must not become the reason a session cannot start.
+        Directory.Exists(record.Path).Should().BeTrue();
+        (await _manager.ListAsync()).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task CreateAsync_CancelledBeforeItStarts_LeavesTheSourceBranchWhereItWas()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        var create = async () => await _manager.CreateAsync(_sessionId, "wt", _repo, cancellation.Token);
+
+        // The report of a move travels on the record this returns, and a caller who has given up never reads it. So
+        // a start that is already cancelled must not move the branch at all — it would be a change nobody asked for
+        // and nobody would hear about. Nothing enforces that on purpose: it holds because every step from detecting
+        // the repository onwards runs on the caller's token, so an abandoned start stops while it is still reading.
+        // Pinned here because that is a property of the whole path rather than of any one line in it.
+        await create.Should().ThrowAsync<OperationCanceledException>();
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+    }
+
+    [Fact]
+    public async Task CreateAsync_FetchFailsAndTheUpstreamRefIsGone_StillReportsTheFailedFetch()
+    {
+        _AddRemote();
+        var before = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "update-ref", "-d", "refs/remotes/origin/main");
+        _Git(_repo, "remote", "set-url", "origin", Path.Combine(_tempRoot, "gone.git"));
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The branch still tracks origin/main in config, but with the remote-tracking ref gone @{upstream} cannot be
+        // resolved. Reading that as "this branch tracks nothing" would turn an unreachable remote into silence —
+        // which is the exact blind spot this ticket is about.
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
+        record.SourceRefresh.Notice.Should().Contain("Could not reach");
+    }
+
+    [Fact]
+    public async Task CreateAsync_SourceBranchBehindWithUncommittedChanges_LeavesTheWorkingTreeAlone()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+        File.WriteAllText(Path.Combine(_repo, "README.md"), "half-finished edit\n");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        File.ReadAllText(Path.Combine(_repo, "README.md")).Should().Be("half-finished edit\n");
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.KeptLocalChanges);
+        record.SourceRefresh.Notice.Should().Contain("uncommitted changes");
+    }
+
+    [Fact]
+    public async Task CreateAsync_SourceBranchDivergedFromItsRemote_KeepsTheLocalCommits()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        _Commit(_repo, "mine.txt", "not pushed yet\n");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // Nothing that only exists here may be silently rewound; a fast-forward would not have been one anyway.
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
+        record.SourceRefresh.Notice.Should().Contain("left");
+    }
+
+    [Fact]
+    public async Task CreateAsync_RemoteThatCannotBeReached_ForksFromTheLocalHeadAndSaysSo()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        _Git(_repo, "fetch", "origin");
+        var before = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "remote", "set-url", "origin", Path.Combine(_tempRoot, "gone.git"));
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The remote-tracking ref still says "one behind", but nothing confirmed that just now — so the session
+        // starts on the local head rather than on a claim about the past, and it is told which.
+        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        record.BaseCommit.Should().Be(before);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
+        record.SourceRefresh.Notice.Should().Contain("Could not reach");
+    }
+
+    [Fact]
+    public async Task CreateAsync_SourceBranchAlreadyOnTheRemoteTip_SaysNothing()
+    {
+        _AddRemote();
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UpToDate);
+        record.SourceRefresh.Notice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpstreamBranchDeletedOnTheRemote_SaysNothing()
+    {
+        _AddRemote();
+        _Git(_repo, "checkout", "-b", "feature");
+        _Git(_repo, "push", "-u", "origin", "feature");
+        _PushFromAnotherClone("shipped.txt");
+        _Git(_tempRoot, "clone", "--branch", "main", _RemotePath, Path.Combine(_tempRoot, "closer"));
+        _Git(Path.Combine(_tempRoot, "closer"), "push", "origin", "--delete", "feature");
+        _Git(_repo, "fetch", "--prune", "origin");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // A merged-and-deleted branch still carries its tracking config, but the ref it points at is gone. There is
+        // nothing left to be behind of, so this must stay as quiet as any other branch without an upstream —
+        // otherwise every session started from a finished feature branch opens with a warning about nothing.
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
+        record.SourceRefresh.Notice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_RepositoryWithoutARemote_SaysNothing()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        record.BaseCommit.Should().Be(_Git(_repo, "rev-parse", "HEAD"));
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
+        record.SourceRefresh.Notice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_DetachedHead_LeavesTheSourceUntouched()
+    {
+        _AddRemote();
+        _PushFromAnotherClone("shipped.txt");
+        var detachedAt = _Git(_repo, "rev-parse", "HEAD");
+        _Git(_repo, "checkout", detachedAt);
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // There is no source branch to update, so the commit HEAD points at stays the fork base.
+        record.BaseCommit.Should().Be(detachedAt);
+        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.DetachedHead);
+        record.SourceRefresh.Notice.Should().BeNull();
+    }
+
     public void Dispose() => TestGitDirectory.Remove(_tempRoot);
+
+    private string _RemotePath => Path.Combine(_tempRoot, "remote.git");
+
+    /// <summary>
+    /// Pushes one more commit to origin from a second clone and returns its sha — someone else moving the branch on
+    /// while this checkout stays where it was, which is the state the whole feature is about.
+    /// </summary>
+    private string _PushFromAnotherClone(string file)
+    {
+        var elsewhere = Path.Combine(_tempRoot, $"elsewhere-{Guid.NewGuid():n}");
+        // --branch main explicitly: a bare repository initialised here keeps its own idea of HEAD, so a plain clone
+        // can land on a branch that does not exist and the push would have nothing to send.
+        _Git(_tempRoot, "clone", "--branch", "main", _RemotePath, elsewhere);
+        _Git(elsewhere, "config", "user.email", "other@example.com");
+        _Git(elsewhere, "config", "user.name", "Other");
+
+        // --force on the add so a path the repository ignores can still be the incoming change: the file that lands
+        // on top of an ignored local one is exactly the case worth a fixture. ":(literal)" because a path starting
+        // with a colon is otherwise read as pathspec magic — the same trap the code under test has to survive.
+        var target = Path.Combine(elsewhere, file);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllText(target, "shipped elsewhere\n");
+        _Git(elsewhere, "add", "--force", "--", $":(literal){file}");
+        _Git(elsewhere, "commit", "-m", $"work on {file}");
+        _Git(elsewhere, "push", "origin", "main");
+
+        return _Git(elsewhere, "rev-parse", "HEAD");
+    }
 
     /// <summary>A bare repository as origin, with main already on it — the "has somewhere to be pushed to" fixture.</summary>
     private void _AddRemote()
     {
-        var remote = Path.Combine(_tempRoot, "remote.git");
+        var remote = _RemotePath;
         _Git(_tempRoot, "init", "--bare", remote);
         _Git(_repo, "remote", "add", "origin", remote);
         _Git(_repo, "push", "-u", "origin", "main");
