@@ -90,10 +90,13 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public void Redact(bool redacting)
     {
         Redacting = redacting && Selection is { Width: > 0, Height: > 0 };
+        RedactionNeedsARegion = redacting && !Redacting;
         if (Redacting)
         {
             PickWindows(false);
         }
+
+        OnPropertyChanged(nameof(Hint));
     }
 
     /// <summary>Takes back the last box. Only the last: an operator who wants the one before it presses it again.</summary>
@@ -209,12 +212,24 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// absence is said out loud rather than left as a key that does nothing — the failure AC-220 was rejected
     /// for was a mode that looked available and was not.
     /// </summary>
-    public string Hint =>
-        "Drag a region · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A takes everything · "
-        + (CanPickWindow
-            ? "W picks a window · "
-            : "Picking a window is not something this desktop will allow · ")
-        + "B hides a box, Ctrl+Z takes it back · Enter confirms · Esc cancels";
+    public string Hint => this switch
+    {
+        { Redacting: true } =>
+            "Drag over anything that should not be sent · Ctrl+Z takes back the last box · B stops hiding · Enter confirms · Esc cancels",
+        { PickingWindow: true } =>
+            "Click the window you want · W goes back to dragging a region · Esc cancels",
+        // Said as a refusal rather than left silent: pressing B with nothing marked out used to do nothing at
+        // all, which reads exactly like a key that is not wired up.
+        { RedactionNeedsARegion: true } =>
+            "Mark out a region first — B then hides part of what you are sending · Esc cancels",
+        _ =>
+            "Drag a region, or double-click one to take it · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A takes everything · "
+            + (CanPickWindow ? "W picks a window · " : "Picking a window is not something this desktop will allow · ")
+            + "B hides a box · Enter confirms · Esc cancels",
+    };
+
+    /// <summary>Whether B was asked for while there was nothing to hide part of — which is why nothing happened.</summary>
+    public bool RedactionNeedsARegion { get; private set; }
 
     /// <summary>The window the pointer is over, once <see cref="PickingWindow"/> is on. Null over the desktop, or where windows cannot be asked about.</summary>
     [ObservableProperty]
@@ -232,6 +247,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         {
             HoveredWindow = null;
         }
+
+        OnPropertyChanged(nameof(Hint));
     }
 
     /// <summary>

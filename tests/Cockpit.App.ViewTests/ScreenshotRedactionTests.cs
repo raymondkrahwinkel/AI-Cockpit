@@ -94,15 +94,34 @@ public class ScreenshotRedactionTests
         selection.Redactions.Should().Equal(new CaptureRect(10, 10, 40, 40));
     }
 
-    /// <summary>There is nothing to hide until something has been marked out, so the mode does not turn on over the whole desktop.</summary>
+    /// <summary>
+    /// There is nothing to hide until something has been marked out — and pressing the key then has to say so.
+    /// It used to do nothing at all and say nothing, which reads exactly like a key that is not wired up: the
+    /// operator could not tell the mode from a dead button.
+    /// </summary>
     [Fact]
-    public void WithNothingMarkedOut_RedactionCannotStart()
+    public void WithNothingMarkedOut_RedactionCannotStart_AndSaysWhy()
     {
         var selection = _Surface();
 
         selection.Redact(true);
 
         selection.Redacting.Should().BeFalse();
+        selection.Hint.Should().Contain("Mark out a region first");
+    }
+
+    /// <summary>A mode you cannot see is a mode that is not there — the surface says which of the two drags it is doing.</summary>
+    [Fact]
+    public void TheHintFollowsTheModeTheSurfaceIsIn()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 100, 100, 500, 400);
+
+        selection.Hint.Should().Contain("Drag a region");
+
+        selection.Redact(true);
+
+        selection.Hint.Should().Contain("should not be sent");
     }
 
     /// <summary>Dragging in redaction mode adds a box rather than moving the region the operator already settled on.</summary>

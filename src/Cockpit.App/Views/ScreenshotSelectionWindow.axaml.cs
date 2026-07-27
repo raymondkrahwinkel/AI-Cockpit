@@ -167,6 +167,21 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
+        // A second click inside what is already marked out takes it, the way a double-click accepts a choice
+        // everywhere else. Only inside: outside it is the start of a new region, which is what the first click
+        // of the pair already began.
+        if (e.ClickCount == 2 && selection.Selection is { } marked
+            && marked.Contains(selection.ToImagePixel(e.GetPosition(Surface).X, e.GetPosition(Surface).Y)))
+        {
+            selection.Confirm();
+            if (selection.IsClosed)
+            {
+                Close();
+            }
+
+            return;
+        }
+
         if (selection.BeginDrag(e.GetPosition(Surface).X, e.GetPosition(Surface).Y))
         {
             _Draw();
