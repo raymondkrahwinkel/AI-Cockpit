@@ -57,6 +57,19 @@ public partial class ThemeHexColorGuardTests
                 (1, "black modal scrim, not tied to any theme colour"),
         };
 
+    /// <summary>
+    /// Files whose hex literals are not the cockpit's colour at all, because they are not drawing the cockpit.
+    /// Listed whole rather than literal by literal: everything in them is picture, so a per-literal allowance
+    /// would be the same reason repeated and would break on every edit to the picture.
+    /// </summary>
+    private static readonly HashSet<string> AllowedFiles = new(StringComparer.Ordinal)
+    {
+        // The stand-in desktop the selection surface is rendered over headless (AC-357). Its colours are the
+        // *contents* of a screenshot — somebody else's screen — and pointing them at tokens would make the
+        // stand-in follow a repaint of the very app it exists to be independent of.
+        "Cockpit.App/ScreenshotSelectionScene.cs",
+    };
+
     [Fact]
     public void NoHardcodedColour_OutsideThemeAxaml()
     {
@@ -70,6 +83,13 @@ public partial class ThemeHexColorGuardTests
         scannedFiles.Should().HaveCountGreaterThan(100,
             "the two projects together have well over a hundred source files — finding almost none means the walk broke, not that the rule holds");
 
+        var scannedPaths = scannedFiles
+            .Select(file => Path.GetRelativePath(srcDirectory, file).Replace(Path.DirectorySeparatorChar, '/'))
+            .ToHashSet(StringComparer.Ordinal);
+
+        AllowedFiles.Should().BeSubsetOf(scannedPaths,
+            "a whole-file exemption that no longer names a file it can find has stopped exempting anything and started hiding a gap");
+
         var found = new Dictionary<(string Path, string Hex), int>();
         foreach (var file in scannedFiles)
         {
@@ -77,6 +97,11 @@ public partial class ThemeHexColorGuardTests
             if (relativePath == "Cockpit.App/Styles/Theme.axaml")
             {
                 continue; // the one file allowed to define the palette itself
+            }
+
+            if (AllowedFiles.Contains(relativePath))
+            {
+                continue; // not the cockpit's colour — see AllowedFiles
             }
 
             foreach (var line in File.ReadLines(file))
