@@ -261,17 +261,18 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 
-    // Header names are compared without regard to case, as HTTP defines them, so a hand-typed "authorization" cannot
-    // sit beside the one the auth setting produced and leave which of the two is sent to the dictionary's ordering.
+    // The same operator-headers-versus-managed-credential rule the spawn paths use (McpAgentHeaders), with the one
+    // difference that belongs to this route: in-process the cockpit sets the Authorization itself, where a spawned
+    // agent's config has its provider write it. Sharing the rule rather than restating it is the point — this is the
+    // second caller, and a rule stated twice is the one that drifts.
     private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken)
     {
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var header in server.Headers.Where(header => header.IsComplete))
-        {
-            headers[header.Name] = header.Value;
-        }
+        var bearer = server.CockpitHosted && sessionToken is not null
+            ? sessionToken
+            : CockpitMcpBearer.For(server, authKey);
 
-        if ((server.CockpitHosted && sessionToken is not null ? sessionToken : CockpitMcpBearer.For(server, authKey)) is { } bearer)
+        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer), StringComparer.OrdinalIgnoreCase);
+        if (bearer is not null)
         {
             headers["Authorization"] = $"Bearer {bearer}";
         }
