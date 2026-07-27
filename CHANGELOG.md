@@ -53,7 +53,7 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   a thing, along a path the boxes and arrows cannot describe. One line per press, and Ctrl+Z takes back the whole
   of it rather than the last few inches. What you get is the curve your hand made: a quick drag leaves the pointer's
   positions tens of pixels apart, and joining those with straight lines turns a circle into a polygon. It is drawn
-  with a ring around it in the opposite shade, so it stays visible over a terminal and a document alike.
+  in whichever ink you picked, so what it has to stand out against is your call.
 
 - added: you can highlight part of a screenshot without hiding it. Press H on the selection surface and drag a band
   over what should be read rather than skimmed. It works like a marker pen — the colour goes into the page and the
@@ -64,9 +64,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 - added: you can point at one thing on a screenshot. Press P on the selection surface and drag from where the arrow
   should start to the thing it should point at — the head lands where you let go and turns to face that way, so an
-  arrow can come in from an empty corner instead of lying across what it indicates. It is drawn with a ring around
-  it in the opposite shade, which is what keeps it readable over a black terminal and a white document in the same
-  picture; the whole arrow scales with its length, so a short one and a long one are the same shape at two sizes.
+  arrow can come in from an empty corner instead of lying across what it indicates. The whole arrow scales with its
+  length, so a short one and a long one are the same shape at two sizes.
   Ctrl+Z takes the last one back, on the same list as everything else you have put on the capture.
 
 - added: the selection surface tells you what it can do, instead of expecting you to know. A small panel sits at the
@@ -478,12 +477,6 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   link button, and the description — with the actions in one fixed row that no longer rearranges itself
   depending on what happens to be installed or running. The prompt that will be handed to a session sits under a
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
-
-### Changed
-
-- changed: arrows and freehand lines no longer carry a contrasting outline. It was there because a screenshot has
-  no single background and nothing could ask you what your mark would cross; now that you pick the colour
-  yourself, it was a white line around a red one you did not ask for.
 
 ### Fixed
 
