@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -47,9 +48,14 @@ internal sealed class WorktreeTools
             // owner keys its teardown (CloseSessionAsync releases by pane id), so a forged id would mis-attribute
             // cleanup. Falls back to `session` off the verified path (the in-process tool loop / tests).
             var owner = McpRequestContext.CurrentPaneId ?? session;
+
+            // LeaveSourceAlone, always: `directory` is a folder an agent named, and the session was never scoped to
+            // whatever is checked out there. It still starts on the latest state — the worktree forks from the
+            // upstream tip — but that repository's own branch and working tree are not written to on the strength of
+            // an agent's say-so (AC-376).
             var record = string.IsNullOrWhiteSpace(branch)
-                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory)
-                : await _worktreeManager.CreateAsync(owner, branch, directory);
+                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory, WorktreeSourceHandling.LeaveSourceAlone)
+                : await _worktreeManager.CreateAsync(owner, branch, directory, WorktreeSourceHandling.LeaveSourceAlone);
 
             // The notice rides along only when there is one (AC-349): an agent that reads "forked from your local
             // main, 30 commits behind" can say so instead of quietly building on a base nobody meant it to have.

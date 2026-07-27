@@ -480,6 +480,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an agent that isolates itself in a worktree no longer moves the branch in the folder it pointed at. Starting
+  a session yourself still brings your checkout forward with it — that is the point of it — but a session an agent
+  opens against a folder it merely named now starts from the remote's tip and leaves that branch exactly where it
+  was. The agent gets the same up-to-date base either way; what it no longer gets is the ability to rewrite a working
+  tree in a repository nobody pointed it at. Where the branch holds commits that were never pushed, both kinds of
+  session still start from those, because work that exists nowhere else belongs in what a session is built on.
+
 - fixed: the message about a remote that could not be reached no longer repeats what your repository has written
   down as that remote. Git is happy to take a whole URL where a remote's name would go, and a URL can carry a token
   in it — which would have gone straight into a notification and into the answer an agent reads. Only the host part

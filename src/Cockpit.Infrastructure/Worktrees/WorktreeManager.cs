@@ -82,7 +82,12 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             branch.Equals("HEAD", StringComparison.Ordinal) ? null : branch);
     }
 
-    public async Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, CancellationToken cancellationToken = default)
+    public async Task<WorktreeRecord> CreateAsync(
+        string sessionId,
+        string branch,
+        string directory,
+        WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        CancellationToken cancellationToken = default)
     {
         var repository = await DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
@@ -91,10 +96,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         // Fork from the latest the source branch can safely be brought to, not from whatever the operator's checkout
         // last pulled (AC-349). Best-effort: everything this cannot do — offline, a dirty tree, a diverged branch —
         // ends as the fork-from-local-HEAD this always did, with a sentence saying so.
-        var sourceRefresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, cancellationToken).ConfigureAwait(false);
-        if (sourceRefresh.UpdatedHeadCommit is { } movedHead)
+        var sourceRefresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, handling, cancellationToken).ConfigureAwait(false);
+        if (sourceRefresh.ForkCommit is { } forkAt)
         {
-            repository = repository with { HeadCommit = movedHead };
+            repository = repository with { HeadCommit = forkAt };
         }
 
         // Announced here rather than through the returned record, because from this line on the operator's checkout
@@ -153,8 +158,13 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         return record with { SourceRefresh = sourceRefresh };
     }
 
-    public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, CancellationToken cancellationToken = default) =>
-        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, cancellationToken);
+    public Task<WorktreeRecord> CreateForSessionAsync(
+        string sessionId,
+        string? sessionLabel,
+        string directory,
+        WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        CancellationToken cancellationToken = default) =>
+        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, handling, cancellationToken);
 
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);

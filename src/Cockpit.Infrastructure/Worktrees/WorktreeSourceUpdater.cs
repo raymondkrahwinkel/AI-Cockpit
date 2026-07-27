@@ -34,6 +34,7 @@ internal static class WorktreeSourceUpdater
     /// <param name="mergeTimeout">Test seam: shorten the guard on the fast-forward so a killed merge can be driven deliberately.</param>
     public static async Task<WorktreeSourceRefresh> BringUpToDateAsync(
         GitRepositoryInfo repository,
+        WorktreeSourceHandling handling,
         CancellationToken cancellationToken,
         TimeSpan? mergeTimeout = null)
     {
@@ -44,7 +45,7 @@ internal static class WorktreeSourceUpdater
 
         try
         {
-            return await _UpdateAsync(repository.Root, branch, mergeTimeout ?? MergeTimeout, cancellationToken).ConfigureAwait(false);
+            return await _UpdateAsync(repository.Root, branch, handling, mergeTimeout ?? MergeTimeout, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -58,7 +59,12 @@ internal static class WorktreeSourceUpdater
         }
     }
 
-    private static async Task<WorktreeSourceRefresh> _UpdateAsync(string root, string branch, TimeSpan mergeTimeout, CancellationToken cancellationToken)
+    private static async Task<WorktreeSourceRefresh> _UpdateAsync(
+        string root,
+        string branch,
+        WorktreeSourceHandling handling,
+        TimeSpan mergeTimeout,
+        CancellationToken cancellationToken)
     {
         // Refs are named in full for every revision range: a tag and a branch can share a name, and in a range the
         // tag wins — which would have this measuring the wrong history and calling a diverged branch up to date. The
@@ -140,6 +146,28 @@ internal static class WorktreeSourceUpdater
                 + "so it was left untouched and this session forked from it as it is.");
         }
 
+        var target = await _RevParseAsync(root, tracking.Reference, cancellationToken).ConfigureAwait(false);
+        if (target is null)
+        {
+            return _CouldNotCheck(branch);
+        }
+
+        // A creation that may not write to this checkout stops here and forks from the upstream tip instead: the
+        // same base the fast-forward below would have produced, without the operator's branch moving for something
+        // they did not ask for (AC-376). It sits after the diverged check and before the rest on purpose — commits
+        // that exist only here belong in what the session starts from, while an uncommitted edit and a file in the
+        // way are only ever reasons not to *write*, and nothing is being written on this path.
+        if (handling == WorktreeSourceHandling.LeaveSourceAlone)
+        {
+            return new WorktreeSourceRefresh(
+                WorktreeSourceOutcome.ForkedFromUpstream,
+                behind.Value,
+                tracking.Display,
+                $"This session starts from {tracking.Display}; your own '{branch}' is {_Commits(behind.Value)} behind "
+                + "it and was left where it is.",
+                target);
+        }
+
         // Not-knowing counts as holding changes here: leaving the operator's tree alone is the safe direction,
         // exactly as the worktree clean-gate treats an unreadable status.
         if (await _HasTrackedChangesAsync(root, cancellationToken).ConfigureAwait(false) is not false)
@@ -169,11 +197,6 @@ internal static class WorktreeSourceUpdater
                 + "forked from it as it is.");
         }
 
-        var target = await _RevParseAsync(root, tracking.Reference, cancellationToken).ConfigureAwait(false);
-        if (target is null)
-        {
-            return _CouldNotCheck(branch);
-        }
 
         // Only ever --ff-only, and only in a tree with nothing of its own to lose: this is the operator's real
         // checkout, and a merge or a rebase in it would be a change they never asked for. Deliberately NOT given the

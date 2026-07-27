@@ -11,18 +11,19 @@ namespace Cockpit.Core.Worktrees;
 /// <param name="BehindCount">How many commits the source branch was behind its upstream, as last known; 0 when there was nothing to be behind of.</param>
 /// <param name="Upstream">The upstream ref the source was measured against (e.g. "origin/main"), or null when the branch tracks nothing.</param>
 /// <param name="Notice">The operator-facing sentence, or null when there is nothing worth saying.</param>
-/// <param name="UpdatedHeadCommit">
-/// Where the source branch ended up when it was moved, so the worktree forks from that rather than from the commit
-/// read before the update. Null when the branch was left where it was — which includes an update that was cut short
-/// after git had already moved it, because this is read back from the repository afterwards rather than inferred
-/// from whether the command reported success.
+/// <param name="ForkCommit">
+/// The commit the worktree should fork from, when that is not the HEAD read before any of this ran — either because
+/// the source branch was moved there, or because it was left alone and the worktree starts from its upstream instead
+/// (AC-376). <see cref="Outcome"/> says which of the two happened. Null when the fork base is simply that HEAD, and
+/// read back from the repository rather than inferred from whether a command reported success, so an update cut
+/// short after git had already moved the branch is still reported as what it is.
 /// </param>
 public sealed record WorktreeSourceRefresh(
     WorktreeSourceOutcome Outcome,
     int BehindCount,
     string? Upstream,
     string? Notice,
-    string? UpdatedHeadCommit = null)
+    string? ForkCommit = null)
 {
     /// <summary>An outcome with nothing to report: the fork base is current, or there was never an upstream to compare it with.</summary>
     public static WorktreeSourceRefresh Quiet(WorktreeSourceOutcome outcome) => new(outcome, 0, null, null);
