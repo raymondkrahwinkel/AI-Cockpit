@@ -41,6 +41,13 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// </summary>
     private const int StrokeThickness = 6;
 
+    /// <summary>
+    /// How tall a typed note's letters are, in the captured image's pixels. Fixed rather than scaled to anything:
+    /// a label is read, and text that changed size with the picture it sits on would be unreadable on exactly the
+    /// large screenshots that need labelling most.
+    /// </summary>
+    private const int TextSize = 28;
+
     private readonly ScreenCapture _capture;
     private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
@@ -151,6 +158,79 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Whether the surface is drawing freehand on the capture.</summary>
     public bool Drawing => MarkingWith == MarkTool.Stroke;
 
+    /// <summary>Whether the surface is waiting for a spot to type a note on.</summary>
+    public bool Labelling => MarkingWith == MarkTool.Text;
+
+    /// <summary>
+    /// Whether a note is being typed right now (AC-363). While this is on, the surface's keys are not shortcuts:
+    /// they are what the operator is typing, and every one of them has to reach the note instead.
+    /// </summary>
+    /// <remarks>
+    /// Its own state rather than a consequence of the tool being in hand. Holding the tool means the next click
+    /// starts a note; this means one is open — and the difference is the whole of what stands the shortcuts down.
+    /// Without it, pressing the tool would silently disarm <c>Enter</c> and <c>Escape</c> before there was anything
+    /// to type into.
+    /// </remarks>
+    public bool Typing => TypingAt is not null;
+
+    /// <summary>Where the note being typed will sit, or nothing when none is open.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Typing))]
+    [NotifyPropertyChangedFor(nameof(PendingMarkPreview))]
+    private CapturePoint? _typingAt;
+
+    /// <summary>What has been typed into the open note so far.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PendingMarkPreview))]
+    private string _typed = string.Empty;
+
+    /// <summary>
+    /// Opens a note at a spot on the capture. Any note already open is finished first, so clicking somewhere else
+    /// puts down what you had rather than throwing it away.
+    /// </summary>
+    public void BeginTyping(CapturePoint at)
+    {
+        FinishTyping();
+        TypingAt = at;
+        Typed = string.Empty;
+        OnPropertyChanged(nameof(Hint));
+    }
+
+    /// <summary>Adds what was typed to the open note. Nothing happens when none is open — the keys are shortcuts again by then.</summary>
+    public void Type(string text)
+    {
+        if (Typing)
+        {
+            Typed += text;
+        }
+    }
+
+    /// <summary>Takes back the last character of the open note.</summary>
+    public void Backspace()
+    {
+        if (Typing && Typed.Length > 0)
+        {
+            Typed = Typed[..^1];
+        }
+    }
+
+    /// <summary>
+    /// Closes the open note, keeping it if anything was typed. A note with nothing on it is an invisible mark, and
+    /// an operator who opened one by accident should not have to find it again to take it off.
+    /// </summary>
+    public void FinishTyping()
+    {
+        if (TypingAt is { } at && Typed.Trim() is { Length: > 0 } written)
+        {
+            _marks.Add(new TextMark(at, written, _markColour, TextSize));
+            OnPropertyChanged(nameof(Marks));
+        }
+
+        TypingAt = null;
+        Typed = string.Empty;
+        OnPropertyChanged(nameof(Hint));
+    }
+
     /// <summary>
     /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
     /// no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
@@ -201,6 +281,17 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Turns freehand drawing on, on the same condition as the rest.</summary>
     public void Draw(bool drawing) => MarkWith(MarkTool.Stroke, drawing);
 
+    /// <summary>Takes up the label tool, on the same condition as the rest. Putting it down closes whatever note was open.</summary>
+    public void Label(bool labelling)
+    {
+        if (!labelling)
+        {
+            FinishTyping();
+        }
+
+        MarkWith(MarkTool.Text, labelling);
+    }
+
     /// <summary>
     /// Takes a mark tool up or puts it down. Every tool that marks needs something to mark on — a frame around
     /// the whole desktop and a box over it both have nowhere to end up, since what is sent is the region.
@@ -246,6 +337,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Pointing));
         OnPropertyChanged(nameof(Highlighting));
         OnPropertyChanged(nameof(Drawing));
+        OnPropertyChanged(nameof(Labelling));
         OnPropertyChanged(nameof(DraggingRegion));
         OnPropertyChanged(nameof(Hint));
     }
@@ -261,6 +353,14 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public bool BeginDrag(double surfaceX, double surfaceY)
     {
         var point = ToImagePixel(surfaceX, surfaceY);
+        // A note is opened by a press rather than dragged out: it has no extent to drag, and what decides how big
+        // it is, is what gets typed into it.
+        if (MarkingWith == MarkTool.Text)
+        {
+            BeginTyping(point);
+            return true;
+        }
+
         if (MarkingWith is not null)
         {
             // Anchored without the display check the region drag makes: a mark only ever goes on a region that
@@ -348,8 +448,14 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// dragged so far would not be a mark. Built here rather than in the surface so the preview cannot end up
     /// being a different kind of thing from what gets placed.
     /// </summary>
-    public Mark? PendingMarkPreview =>
-        MarkingWith is { } tool && _anchor is not null && PendingTo is not null ? _MarkOf(tool, _trail) : null;
+    public Mark? PendingMarkPreview => this switch
+    {
+        // A note is shown from the moment it is opened, before a character has been typed: an empty plate under
+        // the pointer is how the operator knows the surface is listening to them rather than to its shortcuts.
+        { TypingAt: { } at } => new TextMark(at, Typed.Length > 0 ? Typed : " ", _markColour, TextSize),
+        { MarkingWith: { } tool } when _anchor is not null && PendingTo is not null => _MarkOf(tool, _trail),
+        _ => null,
+    };
 
     /// <summary>
     /// The mark a drag along that path makes with the tool in hand, or nothing where the drag has no extent. What
@@ -373,6 +479,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             ? new OutlineMark(frame, _markColour, OutlineThickness)
             : null,
         MarkTool.Arrow => from == to ? null : new ArrowMark(from, to, _markColour, ArrowThickness),
+        // A note is not made from a drag at all — it is opened by a press and closed by a key, so a drag with this
+        // tool in hand leaves nothing behind.
+        MarkTool.Text => null,
         MarkTool.Highlight => _Between(from, to) is { Width: > 0, Height: > 0 } band
             ? new HighlightMark(band, _markColour, _BlendFor(band))
             : null,
@@ -465,6 +574,12 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         // covered what it marked would be the box that hides, drawn in a lighter colour.
         { Highlighting: true } =>
             "Drag a band over what should be read rather than skimmed — it stays legible · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
+        // Said while a note is open, because at that moment none of the other lines are true: the keys the rest of
+        // this hint names are letters until the note is closed.
+        { Typing: true } =>
+            "Type your note · Enter or Esc finishes it · Esc again cancels the capture",
+        { Labelling: true } =>
+            "Click where the note should go, then type · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
         { Drawing: true } =>
             "Draw on the capture — one line per press, and Ctrl+Z takes back the whole of it · Enter confirms · Esc cancels",
         { PickingWindow: true } =>

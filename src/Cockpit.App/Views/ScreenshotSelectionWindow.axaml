@@ -166,6 +166,16 @@
               </StackPanel>
             </Button>
 
+            <!-- The only tool that says what to think rather than where to look, which is why it is last on the
+                 row and last in this epic. -->
+            <Button Name="LabelTool" Classes="tool" Classes.active="{Binding Labelling}" Click="_OnLabelTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="FormatText" Width="15" Height="15" />
+                <TextBlock Text="Note" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="T" /></Border>
+              </StackPanel>
+            </Button>
+
             <!-- The tool for everything the shapes cannot say: round a thing, through a thing, along a path. -->
             <Button Name="DrawTool" Classes="tool" Classes.active="{Binding Drawing}" Click="_OnDrawTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">

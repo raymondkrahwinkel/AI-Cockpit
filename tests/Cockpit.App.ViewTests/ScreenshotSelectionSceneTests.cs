@@ -189,6 +189,22 @@ public class ScreenshotSelectionSceneTests
             200, "the ring around the line is white, and nothing else on that window is");
     });
 
+    /// <summary>
+    /// Two notes, typed through the window's own text input (AC-363) — and one of them is a word made of the
+    /// surface's own shortcuts, so the scene renders the case that would otherwise pick a window and take the shot.
+    /// </summary>
+    [Fact]
+    public void TheTextScene_LeavesTwoNotes_OneOfThemAWordMadeOfShortcuts() =>
+        _Staged(ScreenshotSelectionScene.Text, surface =>
+        {
+            var selection = _Model(surface);
+            var notes = selection.Marks.Should().HaveCount(2).And.AllBeOfType<TextMark>().Which.ToList();
+
+            notes[0].Text.Should().Be("Window is empty here");
+            selection.PickingWindow.Should().BeFalse("typing it picked no window");
+            selection.IsClosed.Should().BeFalse("and took no shot");
+        });
+
     /// <summary>The scenes that were already there still build, including the fallback an unknown name lands on.</summary>
     [Theory]
     [InlineData(null, typeof(MainWindow))]

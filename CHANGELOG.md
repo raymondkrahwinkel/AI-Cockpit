@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can type a note onto a screenshot. Press T on the selection surface, click where the note should go
+  and type — "expected 12 here", a name for the thing an arrow points at. Enter or Escape finishes the note and a
+  further Escape cancels the capture, so the key that ends your typing is not the one that throws it away. While a
+  note is open the surface's shortcuts stand down: typing the word "Window" types the word rather than picking a
+  window, blanking your region and taking the shot. The note is drawn on a plate in the opposite shade, which is
+  what keeps it readable wherever it lands. A note you typed nothing into leaves nothing behind.
+
 - added: you can draw on a screenshot freehand. Press D on the selection surface and draw — round a thing, through
   a thing, along a path the boxes and arrows cannot describe. One line per press, and Ctrl+Z takes back the whole
   of it rather than the last few inches. What you get is the curve your hand made: a quick drag leaves the pointer's
@@ -463,6 +470,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: double-clicking while a marking tool is in hand no longer takes the shot. Two quick marks in the same spot
+  are two marks; reading the second as "take it" handed over a screenshot you were still working on.
 
 - fixed: pressing Region on the selection surface now puts down whichever marking tool you were holding, not only
   the one that paints over things. Framing something and then pressing Region left you still framing, with the row

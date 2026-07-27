@@ -276,6 +276,20 @@ public class ScreenshotControlPanelTests
         centre.Should().BeApproximately(SurfaceWidth * 0.75, 2, "centred on that screen rather than merely on its side of the line");
     });
 
+    /// <summary>The note is on the panel and on T, and answers being pressed like the rest of the row.</summary>
+    [Fact]
+    public void PressingNote_TakesUpTheLabel_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
+    {
+        var selection = _Model(surface);
+        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+        _Press(surface, surface.LabelTool);
+
+        selection.Labelling.Should().BeTrue();
+        selection.Typing.Should().BeFalse("holding the tool is not the same as having a note open — nothing is typed yet");
+        surface.LabelTool.Classes.Should().Contain("active");
+    });
+
     /// <summary>Freehand drawing is on the panel and on D, and answers being pressed like the rest of the row.</summary>
     [Fact]
     public void PressingDraw_TakesUpThePencil_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
