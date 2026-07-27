@@ -22,6 +22,7 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 {
     private readonly ScreenCapture _capture;
+    private readonly List<CaptureRect> _redactions = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
     private CapturePoint? _anchor;
 
@@ -69,7 +70,41 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     private double _surfaceHeight;
 
     /// <summary>What the operator settled on, once they did. Null while the surface is still open, and after a cancel.</summary>
-    public CaptureRect? Result { get; private set; }
+    public ScreenshotSelection? Result { get; private set; }
+
+    /// <summary>
+    /// The boxes to obscure, in the captured image's pixels (AC-331). Held here rather than drawn on top,
+    /// because they are applied to the pixels that get sent — an overlay that could travel separately from the
+    /// image is a redaction that one day will not.
+    /// </summary>
+    public IReadOnlyList<CaptureRect> Redactions => _redactions;
+
+    /// <summary>Whether the surface is drawing boxes to hide rather than choosing what to take.</summary>
+    [ObservableProperty]
+    private bool _redacting;
+
+    /// <summary>
+    /// Turns redaction on, which needs something to redact — there is nothing to hide until a region has been
+    /// marked out, and boxes drawn over the whole desktop would have nowhere to end up.
+    /// </summary>
+    public void Redact(bool redacting)
+    {
+        Redacting = redacting && Selection is { Width: > 0, Height: > 0 };
+        if (Redacting)
+        {
+            PickWindows(false);
+        }
+    }
+
+    /// <summary>Takes back the last box. Only the last: an operator who wants the one before it presses it again.</summary>
+    public void UndoRedaction()
+    {
+        if (_redactions.Count > 0)
+        {
+            _redactions.RemoveAt(_redactions.Count - 1);
+            OnPropertyChanged(nameof(Redactions));
+        }
+    }
 
     /// <summary>Whether the surface is finished with — confirmed or cancelled, which the window watches to close itself.</summary>
     public bool IsClosed { get; private set; }
@@ -82,6 +117,14 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public bool BeginDrag(double surfaceX, double surfaceY)
     {
         var point = ToImagePixel(surfaceX, surfaceY);
+        if (Redacting)
+        {
+            // Anchored without the display check the region drag makes: a box only ever covers part of a region
+            // that was already chosen on a display, so there is nothing here that could be nobody's pixels.
+            _anchor = point;
+            return true;
+        }
+
 
         // Asked in the image's own space, because that is the space the point is in. DisplayAt takes a desktop
         // point and would answer against DesktopBounds — which on a scaled display is the smaller rectangle, so
@@ -105,6 +148,12 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
 
         var point = _Clamp(ToImagePixel(surfaceX, surfaceY));
+        if (Redacting)
+        {
+            PendingRedaction = _Between(anchor, point);
+            return;
+        }
+
         Selection = new CaptureRect(
             Math.Min(anchor.X, point.X),
             Math.Min(anchor.Y, point.Y),
@@ -116,11 +165,34 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public void EndDrag()
     {
         _anchor = null;
+        if (Redacting)
+        {
+            if (PendingRedaction is { Width: > 0, Height: > 0 } box)
+            {
+                _redactions.Add(box);
+                OnPropertyChanged(nameof(Redactions));
+            }
+
+            PendingRedaction = null;
+            return;
+        }
+
         if (Selection is { Width: 0 } or { Height: 0 })
         {
             Selection = null;
         }
     }
+
+    /// <summary>The box being dragged out right now, so the surface can draw it before it is let go of.</summary>
+    [ObservableProperty]
+    private CaptureRect? _pendingRedaction;
+
+    private static CaptureRect _Between(CapturePoint anchor, CapturePoint point) =>
+        new(
+            Math.Min(anchor.X, point.X),
+            Math.Min(anchor.Y, point.Y),
+            Math.Abs(point.X - anchor.X),
+            Math.Abs(point.Y - anchor.Y));
 
     /// <summary>Everything, in one press — the whole capture, gaps and all, since that is what was on the screens.</summary>
     public void SelectEverything() => Selection = new CaptureRect(0, 0, ImageWidth, ImageHeight);
@@ -142,7 +214,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         + (CanPickWindow
             ? "W picks a window · "
             : "Picking a window is not something this desktop will allow · ")
-        + "Enter confirms · Esc cancels";
+        + "B hides a box, Ctrl+Z takes it back · Enter confirms · Esc cancels";
 
     /// <summary>The window the pointer is over, once <see cref="PickingWindow"/> is on. Null over the desktop, or where windows cannot be asked about.</summary>
     [ObservableProperty]
@@ -271,11 +343,32 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Takes what is marked out. A surface with nothing on it confirms nothing rather than sending the whole desktop by accident.</summary>
     public void Confirm()
     {
-        if (Selection is { Width: > 0, Height: > 0 })
+        // A drag that is still in progress is finished first. Enter can arrive while the button is down — the
+        // keyboard and the mouse are used together — and a box that only lives in PendingRedaction until
+        // EndDrag would otherwise be dropped silently, sending the very region it was drawn to hide.
+        if (_anchor is not null)
         {
-            Result = Selection;
-            IsClosed = true;
+            EndDrag();
         }
+
+        if (Selection is not { Width: > 0, Height: > 0 } region)
+        {
+            return;
+        }
+
+        // Moved into the crop's own space here rather than when they were drawn: the operator draws on the
+        // whole capture, and what is sent is the crop — so a box has to be told where it sits in the picture
+        // that actually leaves the machine, which is not known until the region is settled.
+        Result = new ScreenshotSelection
+        {
+            Region = region,
+            Redactions = _redactions
+                .Select(box => _Overlap(box, region))
+                .OfType<CaptureRect>()
+                .Select(box => box with { X = box.X - region.X, Y = box.Y - region.Y })
+                .ToList(),
+        };
+        IsClosed = true;
     }
 
     /// <summary>

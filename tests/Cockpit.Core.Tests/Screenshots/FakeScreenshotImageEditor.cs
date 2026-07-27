@@ -11,9 +11,18 @@ internal sealed class FakeScreenshotImageEditor : IScreenshotImageEditor
 {
     public CaptureRect? Cropped { get; private set; }
 
+    /// <summary>The boxes redaction was asked for, or null when it was never asked.</summary>
+    public IReadOnlyList<CaptureRect>? Redacted { get; private set; }
+
     public byte[] Crop(byte[] png, CaptureRect region)
     {
         Cropped = region;
+        return png;
+    }
+
+    public byte[] Redact(byte[] png, IReadOnlyList<CaptureRect> regions)
+    {
+        Redacted = regions;
         return png;
     }
 }
