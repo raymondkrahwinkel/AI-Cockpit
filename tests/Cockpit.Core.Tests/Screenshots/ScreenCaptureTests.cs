@@ -144,16 +144,16 @@ public class ScreenCaptureTests
     }
 
     /// <summary>
-    /// What the picker-backed implementations still return until AC-326/327/328 replace them. Nothing can be
-    /// selected from it, and it says so by mapping nothing — the alternative is inventing a display and having
-    /// the first crop land somewhere plausible and wrong.
+    /// A capture nobody could put a layout on. No platform produces one since AC-326/327/328 — they refuse
+    /// instead — but the mapping still has to answer nothing rather than invent a display and land the first
+    /// crop somewhere plausible and wrong.
     /// </summary>
     [Fact]
     public void ACaptureWithoutLayout_MapsNothingInEitherDirection()
     {
         byte[] png = [0x89, 0x50];
 
-        var capture = ScreenCapture.WithoutLayout(png);
+        var capture = new ScreenCapture { Image = png, Displays = [] };
 
         capture.Image.Should().Equal(png);
         capture.Displays.Should().BeEmpty();

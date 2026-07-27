@@ -105,8 +105,7 @@ internal sealed class MacScreenshotCapture(IMacScreenReader screens, ILogger<Mac
 
         foreach (var (entry, place) in captured.Zip(layout))
         {
-            using var image = SKBitmap.Decode(entry.Image)
-                ?? throw new InvalidOperationException($"screencapture wrote something for display {entry.Display.Index} that is not a readable image.");
+            using var image = CaptureBitmap.Decode(entry.Image, $"What screencapture wrote for display {entry.Display.Index}");
 
             // What came back has to be the display it was asked for. Nothing else here would notice otherwise:
             // the draw stretches whatever it is given into the slot, so a capture of the wrong screen — the
