@@ -504,6 +504,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a usage warning takes itself down once the thing it warned about is gone. Clearing a session empties the
+  context and the very next reading says so, but the bar went on reading "Context is 50% used" until you dismissed
+  it by hand — a notice about a window that no longer existed, and clicking it away was the only way out. A warning
+  one signal raised is left standing when a different one goes quiet: a week that is nearly spent is exactly the
+  warning you would want kept while the context bar comes and goes. Where a later warning had covered one that
+  carries an offer to pick the session up again, the bar goes back to saying what that offer is for rather than
+  emptying and taking its buttons off screen with it. The offer itself goes when its own allowance rolls over,
+  since an allowance back at 5% has nothing to be picked up from; a resume you already scheduled stays, because
+  that is a moment you committed to rather than one on offer, and a bar you dismissed stays dismissed.
+
 - fixed: a resume you scheduled is actually sent when its moment arrives. The clock behind the feature was started on
   a thread that has no clock, so it never once ticked: the banner said "Resuming Mon 13:12", the moment came and went,
   and nothing was sent — for every scheduled resume since the feature shipped, not just some of them. Nothing said so

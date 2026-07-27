@@ -224,4 +224,91 @@ public class SessionResumeOfferTests
 
         session.CanOfferResume.Should().BeFalse();
     }
+
+    // The five below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
+    // here would only make that sweep bigger.
+
+    [Fact]
+    public void AnAllowanceThatRollsOver_TakesItsOfferWithIt()
+    {
+        // A week back at 5% has nothing to be picked up from later, so the button to schedule that pick-up goes
+        // with the warning that justified it.
+        var (session, _) = Build();
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
+        Assert.True(session.CanOfferResume);
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 5, DateTimeOffset.Now.AddDays(7))]);
+
+        Assert.False(session.HasUsageWarning);
+        Assert.False(session.CanOfferResume);
+        Assert.Null(session.ResumeAt);
+    }
+
+    [Fact]
+    public async Task AResumeAlreadyWaiting_SurvivesItsAllowanceRollingOver()
+    {
+        // The offer is ours to withdraw; a moment the operator has committed to is theirs to cancel. Dropping it
+        // because the figure behind it recovered would silently break a promise the cockpit made.
+        var (session, store) = Build();
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
+        await session.ScheduleResumeCommand.ExecuteAsync(null);
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 5, DateTimeOffset.Now.AddDays(7))]);
+
+        Assert.True(session.HasPendingResume);
+        Assert.Single(store.Saved);
+    }
+
+    [Fact]
+    public void AnOfferStandingUnderSomeoneElsesWarning_StaysOnScreenAndTakeable()
+    {
+        // The warning is one string shared by every signal, so a later crossing overwrites the words while the
+        // earlier signal's offer is still standing. Two things have to survive that: the offer must not be
+        // withdrawn because the context bar went quiet, and it must still be reachable — the buttons live inside
+        // the banner, and the banner is only on screen while there are words in it. Asserting CanOfferResume
+        // alone would pass with the offer sitting behind a hidden banner, which is not an offer at all.
+        var (session, _) = Build();
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 60, null)]);
+
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 4, null)]);
+
+        Assert.True(session.CanOfferResume, "the week is still spent, whatever the context bar is doing");
+        Assert.True(session.HasUsageWarning, "the banner carrying the offer's buttons must still be shown");
+        Assert.Contains("Week is 100% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public async Task AnOfferAlreadyActedOn_DoesNotGetItsWordsBack()
+    {
+        // The banner is handed back to a standing offer because the offer's buttons live in it. Once a resume is
+        // waiting there are no buttons left to reach, so there is nothing to keep on screen — and the old sentence
+        // would put a decision the operator already made back up with only a Dismiss underneath it.
+        var (session, _) = Build();
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
+        await session.ScheduleResumeCommand.ExecuteAsync(null);
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 60, null)]);
+
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 4, null)]);
+
+        Assert.False(session.HasUsageWarning, "the weekly offer has already been acted on");
+        Assert.True(session.HasPendingResume, "and the resume it was acted on into is still waiting");
+    }
+
+    [Fact]
+    public void ABannerClickedAway_DoesNotComeBackOnAnotherSignalsAccount()
+    {
+        // Handing the banner back to a standing offer is right when its words were overwritten, and wrong when
+        // the operator dismissed it — that was a decision about the whole bar. Dismiss forgets which signal is
+        // shown, which is what keeps the two cases apart.
+        var (session, _) = Build();
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage([Weekly, Context], [new PluginUsageReading("context", 4, null)]);
+
+        Assert.False(session.HasUsageWarning, "it was clicked away on purpose");
+    }
 }
