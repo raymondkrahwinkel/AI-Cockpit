@@ -224,6 +224,44 @@ public class ScreenshotControlPanelTests
     });
 
     /// <summary>
+    /// The arrow tool is on the panel and answers being pressed, like the rest of the row. Same call as its key,
+    /// which is the one thing this panel promises.
+    /// </summary>
+    [Fact]
+    public void PressingArrow_TakesUpTheArrow_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
+    {
+        var selection = _Model(surface);
+        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+        _Press(surface, surface.ArrowTool);
+
+        selection.Pointing.Should().BeTrue();
+        surface.ArrowTool.Classes.Should().Contain("active");
+    });
+
+    /// <summary>
+    /// The arrow is on P, not on A. A was taking everything first (AC-358), and a key that moved aside for a tool
+    /// added later would break the panel's one promise — that what it says is what the keyboard does. So both are
+    /// exercised in one go: P takes up the arrow, and A still takes the whole capture afterwards.
+    /// </summary>
+    [Fact]
+    public void TheArrowIsOnItsOwnKey_AndLeavesTakingEverythingAlone() =>
+        _Staged(ScreenshotSelectionScene.Idle, surface =>
+        {
+            var selection = _Model(surface);
+            surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+            surface.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
+            selection.Pointing.Should().BeTrue("P is the arrow's key");
+
+            surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+            selection.Selection.Should().Be(
+                new CaptureRect(0, 0, selection.ImageWidth, selection.ImageHeight),
+                "and A still takes the whole capture, which is what it did before the arrow existed");
+            surface.EverythingTool.Classes.Should().Contain("active");
+        });
+
+    /// <summary>
     /// The surface is one window across every screen, so the middle of it is a spot nobody is looking at. The
     /// panel belongs on the display the pointer is on.
     /// </summary>
@@ -236,6 +274,30 @@ public class ScreenshotControlPanelTests
             SurfaceWidth / 2.0,
             "the scene leaves the pointer on the right-hand screen, and the panel follows it there");
         centre.Should().BeApproximately(SurfaceWidth * 0.75, 2, "centred on that screen rather than merely on its side of the line");
+    });
+
+    /// <summary>
+    /// The panel fits on the display it is put on, rather than merely being aimed at one. Sitting on the screen
+    /// the operator is looking at is the whole reason it moves at all (AC-358) — and a row wider than that screen
+    /// cannot, however carefully it is placed: the clamp then keeps it on the window instead and it spills onto
+    /// the neighbouring monitor.
+    /// </summary>
+    /// <remarks>
+    /// Added when the sixth tool made this untrue. It went unnoticed here and failed on CI, whose fonts run a
+    /// little wider than this machine's — so the row fitted by a margin that was never a property of the design,
+    /// only of the letters it happened to be drawn with. The tools are on two rows since, the second of them
+    /// bounded, which is what makes this something the panel guarantees rather than something it gets away with.
+    /// </remarks>
+    [Fact]
+    public void ThePanelFitsOnTheDisplayItIsPutOn() => _Staged(ScreenshotSelectionScene.TwoDisplays, surface =>
+    {
+        var left = Canvas.GetLeft(surface.Controls);
+
+        surface.Controls.Bounds.Width.Should().BeLessThanOrEqualTo(
+            SurfaceWidth / 2.0, "the scene's screens are half the surface each");
+        left.Should().BeGreaterThanOrEqualTo(SurfaceWidth / 2.0, "the pointer is on the right-hand one");
+        (left + surface.Controls.Bounds.Width).Should().BeLessThanOrEqualTo(
+            SurfaceWidth, "and the whole of it is on that screen, not spilling past its far edge");
     });
 
     /// <summary>

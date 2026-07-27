@@ -39,6 +39,13 @@ internal static class ScreenshotSelectionScene
     public const string Marks = "screenshot-selection-marks";
 
     /// <summary>
+    /// Arrows across the stand-in desktop (AC-360), drawn deliberately from its light half into its dark half and
+    /// back the other way. Legibility over both is the thing this tool can most easily get wrong and the thing no
+    /// assertion catches: a mark that vanishes into a terminal is still a mark by every measure a test can take.
+    /// </summary>
+    public const string Arrow = "screenshot-selection-arrow";
+
+    /// <summary>
     /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
     /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
     /// whether the control panel found the screen the operator is actually on (AC-358).
@@ -55,7 +62,7 @@ internal static class ScreenshotSelectionScene
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
     public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or TwoDisplays;
+        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -110,6 +117,16 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.18, height * 0.28), new Point(width * 0.47, height * 0.52));
                 surface.KeyPressQwerty(PhysicalKey.B, RawInputModifiers.None);
                 _Drag(surface, new Point(width * 0.55, height * 0.62), new Point(width * 0.81, height * 0.68));
+                break;
+
+            case Arrow:
+                // Two of them, crossing between the light document and the dark editor, and pointing opposite
+                // ways. One arrow proves neither thing this scene exists for: a single direction cannot show that
+                // the head turns with the drag, and a single background cannot show that the mark survives both.
+                _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
+                surface.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
+                _Drag(surface, new Point(width * 0.80, height * 0.20), new Point(width * 0.28, height * 0.60));
+                _Drag(surface, new Point(width * 0.60, height * 0.80), new Point(width * 0.88, height * 0.44));
                 break;
 
             case Redaction:

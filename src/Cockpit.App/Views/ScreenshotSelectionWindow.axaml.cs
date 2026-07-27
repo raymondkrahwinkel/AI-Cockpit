@@ -10,6 +10,9 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
+// The shape, not the file system's. Both are in scope here through the implicit usings, and this file draws.
+using Path = Avalonia.Controls.Shapes.Path;
+
 namespace Cockpit.App.Views;
 
 /// <summary>
@@ -32,8 +35,8 @@ public partial class ScreenshotSelectionWindow : Window
     /// <summary>How far the control panel sits from the edge of the display it is on.</summary>
     private const double ControlsMargin = 24;
 
-    /// <summary>The rectangles standing in for the redaction boxes, one per box, added to the canvas as they are drawn.</summary>
-    private readonly List<Rectangle> _boxes = [];
+    /// <summary>The shapes standing in for the marks, one per mark, in the order they were placed. Added to the canvas as they are drawn and kept afterwards.</summary>
+    private readonly List<Shape> _shapes = [];
     private bool _wasActivated;
 
     /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
@@ -288,6 +291,12 @@ public partial class ScreenshotSelectionWindow : Window
             case Key.O:
                 selection.Outline(!selection.Outlining);
                 break;
+            case Key.P:
+                // P for pointing, not A for arrow: A takes the whole capture and had it first (AC-358), and a
+                // key that moved to make room for a later tool would break the one thing the panel promises —
+                // that what it says is what the keyboard does.
+                selection.Point(!selection.Pointing);
+                break;
             case Key.R:
                 // The way back to the ordinary drag. W and B toggle, so it was always reachable by pressing the
                 // one you were in again — but only if you knew which that was, which is what this epic is about.
@@ -361,6 +370,9 @@ public partial class ScreenshotSelectionWindow : Window
 
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
+
+    private void _OnArrowTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Point(!selection.Pointing));
 
     private void _OnRedactTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Redact(!selection.Redacting));
@@ -500,59 +512,135 @@ public partial class ScreenshotSelectionWindow : Window
             ? selection.Marks.Append(pending).ToList()
             : selection.Marks;
 
-        while (_boxes.Count < drawn.Count)
+        for (var index = 0; index < drawn.Count; index++)
         {
-            var box = new Rectangle();
-            _boxes.Add(box);
-            Shade.Children.Insert(Shade.Children.IndexOf(Marquee), box);
+            _Show(_ShapeAt(index, drawn[index]), drawn[index], selection);
         }
 
-        for (var index = 0; index < _boxes.Count; index++)
+        for (var index = drawn.Count; index < _shapes.Count; index++)
         {
-            if (index < drawn.Count)
-            {
-                var (x, y, width, height) = selection.ToSurface(_AreaOf(drawn[index]));
-                _Style(_boxes[index], drawn[index]);
-                _Place(_boxes[index], x, y, width, height);
-            }
-            else
-            {
-                // Kept rather than removed: an undo is very often followed by another box, and a handful of
-                // zero-sized rectangles costs nothing next to rebuilding the canvas on every pointer move.
-                _Place(_boxes[index], 0, 0, 0, 0);
-            }
+            // Kept rather than removed: an undo is very often followed by another mark, and a handful of
+            // emptied shapes costs nothing next to rebuilding the canvas on every pointer move. Emptied and not
+            // merely resized — a path draws the geometry it holds whatever it was told its size was, so a
+            // rectangle shrunk to nothing disappears and an arrow shrunk to nothing does not.
+            _Empty(_shapes[index]);
         }
     }
 
-    private static CaptureRect _AreaOf(Mark mark) => mark switch
+    /// <summary>
+    /// The shape standing in for the mark at that position, made afresh where the kind there has changed. A frame
+    /// is a rectangle and an arrow is a path, and no amount of restyling turns one into the other — where an undo
+    /// leaves a different kind of mark at an index, the shape has to be replaced rather than repainted.
+    /// </summary>
+    private Shape _ShapeAt(int index, Mark mark)
     {
-        RedactionMark redaction => redaction.Area,
-        OutlineMark outline => outline.Area,
-        _ => throw new NotSupportedException($"There is no way to show a {mark.GetType().Name} on the surface."),
-    };
+        if (index < _shapes.Count && _shapes[index] is Path == mark is ArrowMark)
+        {
+            return _shapes[index];
+        }
+
+        Shape shape = mark is ArrowMark ? new Path() : new Rectangle();
+        if (index < _shapes.Count)
+        {
+            Shade.Children[Shade.Children.IndexOf(_shapes[index])] = shape;
+            _shapes[index] = shape;
+        }
+        else
+        {
+            _shapes.Add(shape);
+            Shade.Children.Insert(Shade.Children.IndexOf(Marquee), shape);
+        }
+
+        return shape;
+    }
 
     /// <summary>
-    /// Makes one rectangle look like the mark it is standing in for. Restated on every draw rather than set when
-    /// the shape is made, because the shapes are kept and reused as marks come and go — one that was a redaction
-    /// a moment ago has to stop looking like one.
+    /// Makes one shape look like the mark it is standing in for, and puts it where that mark is. Restated on every
+    /// draw rather than set when the shape is made, because the shapes are kept and reused as marks come and go —
+    /// one that was a redaction a moment ago has to stop looking like one.
     /// </summary>
-    private void _Style(Rectangle shape, Mark mark)
+    /// <remarks>
+    /// Every thickness goes through the surface conversion rather than being used as it stands. A mark's thickness
+    /// is in the image's pixels; drawn as window units it comes out heavier than what will be burnt in by exactly
+    /// the display's scale, and the preview stops being a preview.
+    /// </remarks>
+    private void _Show(Shape shape, Mark mark, ScreenshotSelectionViewModel selection)
     {
         switch (mark)
         {
-            case RedactionMark:
+            case RedactionMark redaction:
                 shape.Fill = Marquee.Stroke;
                 shape.Stroke = null;
                 shape.Opacity = 0.85;
+                _Place(shape, selection.ToSurface(redaction.Area));
                 break;
             case OutlineMark outline:
                 shape.Fill = null;
                 shape.Stroke = new SolidColorBrush(Color.FromUInt32(outline.Colour));
-                shape.StrokeThickness = outline.Thickness;
+                shape.StrokeThickness = selection.ToSurfaceLength(outline.Thickness);
                 shape.Opacity = 1;
+                _Place(shape, selection.ToSurface(outline.Area));
                 break;
+            case ArrowMark arrow:
+                shape.Fill = new SolidColorBrush(Color.FromUInt32(arrow.Colour));
+                shape.Stroke = new SolidColorBrush(Color.FromUInt32(arrow.Halo));
+                shape.StrokeThickness = selection.ToSurfaceLength(arrow.HaloThickness);
+                shape.StrokeJoin = PenLineJoin.Miter;
+                shape.Opacity = 1;
+                _Trace((Path)shape, arrow, selection);
+                break;
+            default:
+                throw new NotSupportedException($"There is no way to show a {mark.GetType().Name} on the surface.");
         }
     }
+
+    /// <summary>
+    /// Lays the arrow's own outline into a path, in the window's units. The corners are the mark's — the same list
+    /// the imaging library fills — so the shape on screen and the shape in the delivered picture are one shape
+    /// converted twice rather than two shapes worked out twice.
+    /// </summary>
+    /// <remarks>
+    /// The geometry is written relative to the shape's top-left corner and the shape is then placed there, rather
+    /// than written in the surface's coordinates and placed at the origin. A path laid out at its own absolute
+    /// position measures as though it began at zero, and the empty space in front of it becomes part of its size.
+    /// </remarks>
+    private static void _Trace(Path path, ArrowMark arrow, ScreenshotSelectionViewModel selection)
+    {
+        if (arrow.Silhouette() is not { Count: > 0 } corners)
+        {
+            _Empty(path);
+            return;
+        }
+
+        var onSurface = corners.Select(selection.ToSurface).ToList();
+        var margin = selection.ToSurfaceLength(arrow.HaloThickness) / 2;
+        var left = onSurface.Min(corner => corner.X) - margin;
+        var top = onSurface.Min(corner => corner.Y) - margin;
+
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(new Point(onSurface[0].X - left, onSurface[0].Y - top), isFilled: true);
+            foreach (var corner in onSurface.Skip(1))
+            {
+                context.LineTo(new Point(corner.X - left, corner.Y - top));
+            }
+
+            context.EndFigure(isClosed: true);
+        }
+
+        path.Data = geometry;
+        Canvas.SetLeft(path, left);
+        Canvas.SetTop(path, top);
+
+        // Left to the geometry rather than sized: a path told how big to be stretches its shape to fit, which
+        // would bend the head by whatever the rounding of the box came to.
+        path.Width = double.NaN;
+        path.Height = double.NaN;
+    }
+
+    private static void _Place(Shape shape, (double X, double Y, double Width, double Height) area) =>
+        _Place(shape, area.X, area.Y, area.Width, area.Height);
 
     private static void _Place(Shape shape, double x, double y, double width, double height)
     {
@@ -560,6 +648,17 @@ public partial class ScreenshotSelectionWindow : Window
         Canvas.SetTop(shape, y);
         shape.Width = Math.Max(0, width);
         shape.Height = Math.Max(0, height);
+    }
+
+    /// <summary>Leaves a kept shape drawing nothing — its size taken away, and, where it holds one, its geometry too.</summary>
+    private static void _Empty(Shape shape)
+    {
+        if (shape is Path path)
+        {
+            path.Data = null;
+        }
+
+        _Place(shape, 0, 0, 0, 0);
     }
 
 }

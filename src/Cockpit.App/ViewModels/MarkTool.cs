@@ -12,4 +12,7 @@ public enum MarkTool
 
     /// <summary>Drag a frame around what the model should look at.</summary>
     Outline,
+
+    /// <summary>Drag from where the arrow starts to the one thing it points at.</summary>
+    Arrow,
 }

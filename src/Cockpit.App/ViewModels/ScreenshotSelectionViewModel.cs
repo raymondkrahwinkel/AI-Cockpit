@@ -28,14 +28,21 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// </summary>
     private const int OutlineThickness = 4;
 
+    /// <summary>
+    /// How thick an arrow's shaft is drawn at its thinnest, in the captured image's pixels. Heavier than a frame
+    /// because it is read as a shape rather than as a border: a frame is understood from the rectangle it
+    /// encloses, while an arrow has only itself to be seen by.
+    /// </summary>
+    private const int ArrowThickness = 6;
+
     private readonly ScreenCapture _capture;
     private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
-    private readonly uint _outlineColour;
+    private readonly uint _markColour;
     private CapturePoint? _anchor;
 
-    /// <param name="outlineColour">
-    /// What a frame is drawn in, as 0xAARRGGBB. Handed in without a default on purpose: the accent lives in the
+    /// <param name="markColour">
+    /// What a mark is drawn in, as 0xAARRGGBB. Handed in without a default on purpose: the accent lives in the
     /// theme, which is the view's to read, and a default here would be a second copy of a colour that is supposed
     /// to have exactly one home — the mistake AC-334 spent a ticket undoing.
     /// </param>
@@ -43,14 +50,14 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         ScreenCapture capture,
         int imageWidth,
         int imageHeight,
-        uint outlineColour,
+        uint markColour,
         CaptureRect? lastRegion = null,
         IDesktopWindows? windows = null)
     {
         _capture = capture;
         ImageWidth = imageWidth;
         ImageHeight = imageHeight;
-        _outlineColour = outlineColour;
+        _markColour = markColour;
 
         // Enumerated once, here, rather than per pointer move: the capture is already frozen, so a window that
         // moves afterwards has moved on a desktop this picture no longer shows. Reading it again would highlight
@@ -108,6 +115,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Whether the surface is drawing frames around what the model should look at.</summary>
     public bool Outlining => MarkingWith == MarkTool.Outline;
 
+    /// <summary>Whether the surface is drawing arrows at the one thing the model should look at.</summary>
+    public bool Pointing => MarkingWith == MarkTool.Arrow;
+
     /// <summary>
     /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
     /// no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
@@ -148,6 +158,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Turns frame-drawing on, which needs a region for the same reason redaction does.</summary>
     public void Outline(bool outlining) => MarkWith(MarkTool.Outline, outlining);
+
+    /// <summary>Turns arrow-drawing on. Same condition as the others: an arrow pointing at something outside what is being sent points at nothing.</summary>
+    public void Point(bool pointing) => MarkWith(MarkTool.Arrow, pointing);
 
     /// <summary>
     /// Takes a mark tool up or puts it down. Every tool that marks needs something to mark on — a frame around
@@ -191,6 +204,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(MarkingWith));
         OnPropertyChanged(nameof(Redacting));
         OnPropertyChanged(nameof(Outlining));
+        OnPropertyChanged(nameof(Pointing));
         OnPropertyChanged(nameof(DraggingRegion));
         OnPropertyChanged(nameof(Hint));
     }
@@ -239,7 +253,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         var point = _Clamp(ToImagePixel(surfaceX, surfaceY));
         if (MarkingWith is not null)
         {
-            PendingMark = _Between(anchor, point);
+            PendingTo = point;
             return;
         }
 
@@ -253,16 +267,19 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Ends the drag. A press that never moved leaves a rectangle with no area, which is not a selection.</summary>
     public void EndDrag()
     {
+        var anchor = _anchor;
         _anchor = null;
         if (MarkingWith is { } tool)
         {
-            if (PendingMark is { Width: > 0, Height: > 0 } area)
+            // The same call the preview was built from, so what is kept is exactly the shape that was on screen
+            // a moment ago rather than a second construction of it from the same two points.
+            if (anchor is { } from && PendingTo is { } to && _MarkOf(tool, from, to) is { } mark)
             {
-                _marks.Add(_MarkOf(tool, area));
+                _marks.Add(mark);
                 OnPropertyChanged(nameof(Marks));
             }
 
-            PendingMark = null;
+            PendingTo = null;
             return;
         }
 
@@ -272,22 +289,35 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
     }
 
-    /// <summary>The area being dragged out right now, so the surface can draw the mark before it is let go of.</summary>
+    /// <summary>
+    /// Where the mark being drawn right now has got to, so the surface can show it before it is let go of. The
+    /// point rather than the rectangle it would make: an arrow drawn up and to the left and one drawn down and to
+    /// the right cover the same rectangle and are opposite marks, so a rectangle cannot be what a drag is held as.
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PendingMarkPreview))]
-    private CaptureRect? _pendingMark;
+    private CapturePoint? _pendingTo;
 
     /// <summary>
-    /// That same area as the mark it is about to become, or nothing when no drag is under way. Built here rather
-    /// than in the surface so the preview cannot end up being a different kind of thing from what gets placed.
+    /// That drag as the mark it is about to become, or nothing when none is under way — or when what has been
+    /// dragged so far would not be a mark. Built here rather than in the surface so the preview cannot end up
+    /// being a different kind of thing from what gets placed.
     /// </summary>
     public Mark? PendingMarkPreview =>
-        MarkingWith is { } tool && PendingMark is { } area ? _MarkOf(tool, area) : null;
+        MarkingWith is { } tool && _anchor is { } from && PendingTo is { } to ? _MarkOf(tool, from, to) : null;
 
-    private Mark _MarkOf(MarkTool tool, CaptureRect area) => tool switch
+    /// <summary>
+    /// The mark a drag from one point to another makes with the tool in hand, or nothing where that drag has no
+    /// extent. What counts as no extent is the kind's own business: a box or a frame needs area, while an arrow
+    /// needs only to have gone somewhere — a tall thin one is a perfectly good arrow and a rectangle of no width.
+    /// </summary>
+    private Mark? _MarkOf(MarkTool tool, CapturePoint from, CapturePoint to) => tool switch
     {
-        MarkTool.Redaction => new RedactionMark(area),
-        MarkTool.Outline => new OutlineMark(area, _outlineColour, OutlineThickness),
+        MarkTool.Redaction => _Between(from, to) is { Width: > 0, Height: > 0 } box ? new RedactionMark(box) : null,
+        MarkTool.Outline => _Between(from, to) is { Width: > 0, Height: > 0 } frame
+            ? new OutlineMark(frame, _markColour, OutlineThickness)
+            : null,
+        MarkTool.Arrow => from == to ? null : new ArrowMark(from, to, _markColour, ArrowThickness),
         _ => throw new NotSupportedException($"There is no mark for {tool}."),
     };
 
@@ -299,20 +329,45 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             Math.Abs(point.Y - anchor.Y));
 
     /// <summary>Everything, in one press — the whole capture, gaps and all, since that is what was on the screens.</summary>
+    /// <remarks>
+    /// Says so out loud rather than leaving it to the selection changing. Coming back here from a mark tool, the
+    /// selection is <em>already</em> the whole capture — nothing changed, so nothing was raised, and the row stayed
+    /// dark while everything was taken. That is the dead button AC-358 exists to have got rid of, one path along.
+    /// <para>
+    /// Whichever mark tool was in hand is put down too, the way taking one up stops this from being lit. The row
+    /// lights exactly one tool, and it cannot do that if the two sides disagree about who clears whom.
+    /// </para>
+    /// </remarks>
     public void SelectEverything()
     {
+        if (MarkingWith is { } tool)
+        {
+            MarkWith(tool, false);
+        }
+
         _tookEverything = true;
         Selection = new CaptureRect(0, 0, ImageWidth, ImageHeight);
+        OnPropertyChanged(nameof(TakingEverything));
+        OnPropertyChanged(nameof(DraggingRegion));
     }
 
     /// <summary>
     /// Back to dragging out a region, from whichever tool was in hand — including from having taken everything,
     /// which leaves what is marked out alone and only says which tool the next drag belongs to.
     /// </summary>
+    /// <remarks>
+    /// Whatever mark tool is in hand is put down, rather than one named kind of it. This asked to put down
+    /// redaction by name until AC-360, from when redaction was the only tool there was to be holding — so pressing
+    /// Region while drawing frames left you drawing frames, and the row went on saying so.
+    /// </remarks>
     public void ChooseRegion()
     {
         PickWindows(false);
-        Redact(false);
+        if (MarkingWith is { } tool)
+        {
+            MarkWith(tool, false);
+        }
+
         _StopTakingEverything();
     }
 
@@ -334,6 +389,10 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             "Drag over anything that should not be sent · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
         { Outlining: true } =>
             "Drag a frame around what the model should look at · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
+        // Said as where-to-where rather than as "drag an arrow", because which end gets the head is the one thing
+        // about this tool that cannot be guessed from looking at it before you have used it once.
+        { Pointing: true } =>
+            "Drag from where the arrow starts to what it should point at · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
         { PickingWindow: true } =>
             "Click the window you want · W goes back to dragging a region · Esc cancels",
         // Said as a refusal rather than left silent: pressing a mark tool with nothing marked out used to do
@@ -536,6 +595,26 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         new(
             (int)Math.Floor(surfaceX * _RatioX),
             (int)Math.Floor(surfaceY * _RatioY));
+
+    /// <summary>
+    /// Where a corner of a mark's shape sits on the window. Kept in fractions on the way out as well as on the
+    /// way in: rounding here would put the arrow's barbs on whole window units, which on a scaled display are
+    /// further apart than the image's own pixels — so the preview would be the blunter shape of the two.
+    /// </summary>
+    public MarkPoint ToSurface(MarkPoint point) => new(point.X / _RatioX, point.Y / _RatioY);
+
+    /// <summary>
+    /// How wide a line of that many image pixels is on the window. A stroke has one width where the surface has
+    /// two ratios, so this takes the horizontal one — they are the same number whenever the window covers the
+    /// desktop at a single scale, which is the arrangement it is built for, and where a mixed-DPI window comes
+    /// out the wrong size a mark is drawn a hair off rather than in the wrong place.
+    /// </summary>
+    /// <remarks>
+    /// Without this the preview would be a different picture from the one that gets sent: a mark's thickness is
+    /// in the image's pixels, and drawing that number as window units makes it twice too heavy on a display
+    /// scaled by two — the operator checks a frame that is thicker than the one they are about to hand over.
+    /// </remarks>
+    public double ToSurfaceLength(double imagePixels) => imagePixels / _RatioX;
 
     /// <summary>Where a rectangle of the image sits on the window — the way back, for drawing what is selected.</summary>
     public (double X, double Y, double Width, double Height) ToSurface(CaptureRect region) =>

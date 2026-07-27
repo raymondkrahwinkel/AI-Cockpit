@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can point at one thing on a screenshot. Press P on the selection surface and drag from where the arrow
+  should start to the thing it should point at — the head lands where you let go and turns to face that way, so an
+  arrow can come in from an empty corner instead of lying across what it indicates. It is drawn with a ring around
+  it in the opposite shade, which is what keeps it readable over a black terminal and a white document in the same
+  picture; the whole arrow scales with its length, so a short one and a long one are the same shape at two sizes.
+  Ctrl+Z takes the last one back, on the same list as everything else you have put on the capture.
+
 - added: the selection surface tells you what it can do, instead of expecting you to know. A small panel sits at the
   top of it with the four tools on it — dragging a region, taking a whole window, taking everything, painting over
   what should not be sent — each showing its key, with the one you are in lit up, and each of them clickable: the
@@ -443,6 +450,18 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: pressing Region on the selection surface now puts down whichever marking tool you were holding, not only
+  the one that paints over things. Framing something and then pressing Region left you still framing, with the row
+  of tools quietly saying so.
+
+- fixed: taking everything after you had picked up a marking tool now lights the Everything button again. What was
+  marked out had not changed — it was already the whole capture — so nothing was said about it, and the button sat
+  dark while everything was taken.
+
+- fixed: a mark's thickness is now drawn at the size it will actually be. On a scaled display the preview drew
+  frames heavier than what got burnt into the picture, so what you checked before sending was not quite what you
+  sent.
 
 - fixed: a run that asks for its agent's file tools to stay inside the folder it works in is now refused when the
   profile it runs on cannot promise that — not only when the run has a worktree of its own. Autopilot works this way
