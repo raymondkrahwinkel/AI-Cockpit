@@ -30,6 +30,40 @@ internal sealed class AutopilotRunContext
     // the validate and tracker tools are present — the exact endpoint the validator/tracker brief tells it to call.
     internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
+    /// <summary>
+    /// The embed request for a run's validating CEO — a pure static so the shape it asks the host for can be exercised
+    /// without a host or a UI thread. Pointed at <paramref name="workingDirectory"/>: the run's worktree when it has
+    /// one, else the folder it runs in.
+    /// </summary>
+    internal static EmbeddedSessionRequest ValidatorCeoRequest(AutopilotSettings settings, string workingDirectory, AutopilotPlan plan) =>
+        new()
+        {
+            ProfileId = settings.CeoProfileLabel(),
+            Model = settings.CeoModel(),
+            McpServers = ValidatorCeoMcpServers,
+            // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
+            // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.
+            PreApprovedTools = AutopilotRunToolNames.ForValidatorCeo,
+            // "Worktree is the boundary": the validating CEO runs autonomously too — it may
+            // read the diff and run the tests (Bash) to check the work against acceptance — so it auto-allows
+            // every tool rather than stall on a prompt, contained by the run's worktree.
+            PreApproveAllTools = true,
+            WorkingDirectory = workingDirectory,
+            // Confine the validator's file tools to whatever directory it is pointed at: the
+            // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
+            // could not be created). A Claude/Codex CEO confines natively and ignores this; a local-model CEO
+            // would otherwise reach the operator's home, so it is held to the folder it validates — least
+            // privilege in every case, never wider than the run's own directory.
+            ConfineFileToolsToWorkingDirectory = true,
+            // The run's autonomy mode, for the same reason a step worker carries it (AC-209): it is coerced away from
+            // bypassPermissions, and naming it here drops whatever mode the CEO profile happens to have stored. Without
+            // it, a profile saved on bypassPermissions reaches the driver, a permission-based provider stops vouching
+            // confinement, and the host's fail-closed gate refuses the very confinement this request asks for — leaving
+            // the run waiting on a validator that never starts (AC-191).
+            PermissionMode = settings.AutonomyMode(),
+            AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
+        };
+
     public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
     {
         _host = host;
@@ -139,27 +173,8 @@ internal sealed class AutopilotRunContext
             IEmbeddedSession? ceo = null;
             await _runOnUi(() =>
             {
-                ceo = _context.EmbedSession(new EmbeddedSessionRequest
-                {
-                    ProfileId = _settings.CeoProfileLabel(),
-                    Model = _settings.CeoModel(),
-                    McpServers = ValidatorCeoMcpServers,
-                    // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
-                    // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.
-                    PreApprovedTools = AutopilotRunToolNames.ForValidatorCeo,
-                    // "Worktree is the boundary": the validating CEO runs autonomously too — it may
-                    // read the diff and run the tests (Bash) to check the work against acceptance — so it auto-allows
-                    // every tool rather than stall on a prompt, contained by the run's worktree.
-                    PreApproveAllTools = true,
-                    WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
-                    // Confine the validator's file tools to whatever directory it is pointed at: the
-                    // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
-                    // could not be created). A Claude/Codex CEO confines natively and ignores this; a local-model CEO
-                    // would otherwise reach the operator's home, so it is held to the folder it validates — least
-                    // privilege in every case, never wider than the run's own directory.
-                    ConfineFileToolsToWorkingDirectory = true,
-                    AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
-                });
+                ceo = _context.EmbedSession(
+                    ValidatorCeoRequest(_settings, runWorktree?.Path ?? repositoryDirectory, plan));
             });
 
             if (ceo is null)

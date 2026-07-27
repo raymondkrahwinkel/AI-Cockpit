@@ -90,6 +90,64 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_CeoSessionEndsBeforeValidating_FailsTheStep_RatherThanHangingOnAVerdictThatCannotCome()
+    {
+        // AC-191. The host refuses to start a CEO whose provider does not vouch that it confines its file tools — and
+        // several shipped providers do not vouch it — so the validation turn is sent to a pane that is already gone and
+        // is dropped in silence. Waiting on the verdict alone would hang the run on step one with nothing on screen to
+        // say why. The step must fail with the host's own reason instead, exactly as a step worker that ends early does.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var ceoEnded = new TaskCompletionSource<string?>();
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        // No verdict will ever arrive: the CEO's session ended with the host's refusal instead.
+        ceoEnded.TrySetResult("Could not confine this run: the \"kimi\" profile does not confine its file tools to its working directory.");
+
+        // The Timeout is the assertion: before this, the run waited here forever.
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        plan.Plan!.Steps[0].Note.Should().Contain("does not confine its file tools");
+    }
+
+    [Fact]
+    public async Task RunAsync_CeoValidates_ThenItsSessionEnds_KeepsTheVerdictItAlreadyGave()
+    {
+        // The race the guard above must not lose: a CEO that answers and then ends. Its verdict is the real outcome —
+        // reading the ending first would throw away a validation the run already earned and fail a passing step.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var ceoEnded = new TaskCompletionSource<string?>();
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: null).Should().BeTrue();
+        ceoEnded.TrySetResult("the workspace closed");
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+    }
+
+    [Fact]
     public async Task RunAsync_EmbedsEachStepWithItsComposerDisabled()
     {
         // AC-174: a step agent drives itself, so its session starts with input off (the operator intervenes explicitly).

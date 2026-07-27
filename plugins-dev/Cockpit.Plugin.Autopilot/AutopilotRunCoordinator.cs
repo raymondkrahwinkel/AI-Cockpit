@@ -653,7 +653,7 @@ internal sealed class AutopilotRunCoordinator(
             }
 
             await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries));
-            var passed = await validation.Task.WaitAsync(cancellationToken);
+            var passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
             if (!passed)
             {
                 // The CEO turned the step down; show its reason on the block so a failed step explains itself.
@@ -793,6 +793,30 @@ internal sealed class AutopilotRunCoordinator(
         var reason = await agent.Completion;
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason)
             ? "The step agent's session ended before it reported its work done."
+            : reason);
+    }
+
+    // The CEO's verdict, or its session ending before it gives one — the counterpart of _AwaitStepReportOrEndAsync for
+    // the validation window. A validation turn sent to a session the host already closed is dropped in silence
+    // (SendToSessionAsync mutates a pane that is no longer there), so waiting on the verdict alone waits forever: the
+    // run would hang on step one with nothing on screen to say why. That is reachable, not theoretical — a CEO profile
+    // whose provider does not vouch that it confines its file tools is refused at start by the host's fail-closed gate
+    // (AC-191), and several shipped providers do not vouch it. Fail the step with the host's own reason instead, which
+    // the caller's catch puts on the block, so a refusal reads as a refusal rather than as a run that stopped moving.
+    private static async Task<bool> _AwaitValidationOrCeoEndAsync(Task<bool> validation, IEmbeddedSession ceo, CancellationToken cancellationToken)
+    {
+        await Task.WhenAny(validation, ceo.Completion).WaitAsync(cancellationToken);
+
+        // A verdict that did arrive wins the race: the CEO may end immediately after answering, and its answer is the
+        // real outcome — reading the ending first would throw away a validation the operator's run already earned.
+        if (validation.IsCompleted)
+        {
+            return await validation;
+        }
+
+        var reason = await ceo.Completion;
+        throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason)
+            ? "The CEO's session ended before it validated this step."
             : reason);
     }
 
