@@ -262,15 +262,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             _ => ("User", "CockpitStatusDoneBrush"),
         };
 
+        // Border.tag — the theme's shape for a label that classifies the thing beside it. The colour stays here
+        // because that is the part that actually differs between a builtin, a plugin and a user template.
         return new Border
         {
-            Background = _Brush("CockpitPanelBgBrush"),
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeight.SemiBold, Foreground = _Brush(key) },
+            Classes = { "tag" },
+            Child = new TextBlock { Text = text, FontWeight = FontWeight.SemiBold, Foreground = _Brush(key) },
         };
     }
 
@@ -301,14 +298,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
         _ = _host.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
         {
+            // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
+            // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.
             var save = new Button
             {
+                Classes = { "Accent" },
                 Content = "Save",
-                Padding = new Thickness(15, 8),
-                CornerRadius = new CornerRadius(7),
-                FontWeight = FontWeight.SemiBold,
-                Background = _Brush("CockpitAccentBrush"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };
@@ -325,13 +320,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
             var cancel = new Button
             {
+                Classes = { "Ghost" },
                 Content = "Cancel",
-                Padding = new Thickness(13, 8),
                 Margin = new Thickness(0, 0, 8, 0),
-                CornerRadius = new CornerRadius(7),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(1),
-                BorderBrush = _Brush("CockpitHairlineBrush"),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };

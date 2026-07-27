@@ -458,7 +458,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // the in-the-moment nudge, this outlives it.
     private Control _BuildNeedsYouBadge(int count)
     {
-        var onWaiting = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E));
+        // The theme's ink for a bright status fill. It used to be a near-black mixed by hand for the old orange
+        // amber; white — the answer on the accent — reads at 2:1 on this one and is not an option.
+        var onWaiting = _Brush("CockpitTextOnStatusBrush");
         return new Border
         {
             [DockPanel.DockProperty] = Dock.Right,
@@ -880,14 +882,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         await _host.ShowDialogAsync("Start a run", () =>
         {
+            // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
+            // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.
             var start = new Button
             {
+                Classes = { "Accent" },
                 Content = "Continue",
-                Padding = new Thickness(15, 8),
-                CornerRadius = new CornerRadius(7),
-                FontWeight = FontWeight.SemiBold,
-                Background = _Brush("CockpitAccentBrush"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };
@@ -898,15 +898,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 (sender as Control)?.FindAncestorOfType<Window>()?.Close();
             };
 
+            // Button.Ghost: the app's shape for the dismissing half of a footer, so the pair reads as one decision
+            // with one obvious answer.
             var cancel = new Button
             {
+                Classes = { "Ghost" },
                 Content = "Cancel",
-                Padding = new Thickness(13, 8),
                 Margin = new Thickness(0, 0, 8, 0),
-                CornerRadius = new CornerRadius(7),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(1),
-                BorderBrush = _Brush("CockpitHairlineBrush"),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };
@@ -1198,7 +1196,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                     Width = 16,
                     Height = 16,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                    Foreground = _Brush("CockpitTextOnStatusBrush"),
                 },
                 new TextBlock
                 {
@@ -1206,7 +1204,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                     FontWeight = FontWeight.SemiBold,
                     FontSize = 12,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                    Foreground = _Brush("CockpitTextOnStatusBrush"),
                 },
             },
         },
@@ -1355,12 +1353,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         var button = new Button
         {
+            Classes = { "Accent" },
             Content = "Approve plan & start",
-            Padding = new Thickness(15, 8),
-            CornerRadius = new CornerRadius(7),
-            FontWeight = FontWeight.SemiBold,
-            Background = _Brush("CockpitAccentBrush"),
-            Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
             HorizontalAlignment = HorizontalAlignment.Right,
             [DockPanel.DockProperty] = Dock.Right,
         };
@@ -1388,13 +1382,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         var button = new Button
         {
+            Classes = { "Ghost" },
             Content = "Cancel",
-            Padding = new Thickness(13, 8),
             Margin = new Thickness(0, 0, 8, 0),
-            CornerRadius = new CornerRadius(7),
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
             HorizontalAlignment = HorizontalAlignment.Right,
             [DockPanel.DockProperty] = Dock.Right,
         };
@@ -1442,7 +1432,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 Height = 11,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                Foreground = _Brush("CockpitTextOnStatusBrush"),
             },
         };
 
@@ -1479,15 +1469,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         var model = _settings.CeoModel();
         var label = string.IsNullOrWhiteSpace(model) ? profile : $"{profile} · {model}";
+
+        // Border.tag — the theme's shape for a label that classifies the thing beside it, rather than a ninth
+        // hand-written copy of that same shape.
         return new Border
         {
-            Background = _Brush("CockpitPanelBgBrush"),
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(7, 1),
+            Classes = { "tag" },
             HorizontalAlignment = HorizontalAlignment.Left,
-            Child = new TextBlock { Text = label, FontSize = 10.5, Foreground = _Brush("CockpitTextSecondaryBrush") },
+            Child = new TextBlock { Text = label },
         };
     }
 
@@ -1653,7 +1642,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                         Width = 16,
                         Height = 16,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                        Foreground = _Brush("CockpitTextOnStatusBrush"),
                     },
                     new TextBlock
                     {
@@ -1661,7 +1650,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                         FontWeight = FontWeight.SemiBold,
                         FontSize = 12,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                        Foreground = _Brush("CockpitTextOnStatusBrush"),
                     },
                 },
             },
@@ -1707,12 +1696,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         var send = new Button
         {
+            Classes = { "Accent" },
             Content = "Send answer & resume",
-            Padding = new Thickness(15, 8),
-            CornerRadius = new CornerRadius(7),
-            FontWeight = FontWeight.SemiBold,
-            Background = _Brush("CockpitAccentBrush"),
-            Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         send.Click += (_, _) =>
@@ -1781,7 +1766,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = step.Status is AutopilotStepStatus.Pending
                     ? _Brush("CockpitTextFaintBrush")
-                    : new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                    : _Brush("CockpitTextOnStatusBrush"),
             },
         };
 
@@ -1868,13 +1853,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         return new Border
         {
-            Background = _Brush("CockpitPanelBgBrush"),
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(7, 1),
+            Classes = { "tag" },
             HorizontalAlignment = HorizontalAlignment.Left,
-            Child = new TextBlock { Text = label, FontSize = 10.5, Foreground = _Brush("CockpitTextSecondaryBrush") },
+            Child = new TextBlock { Text = label },
         };
     }
 

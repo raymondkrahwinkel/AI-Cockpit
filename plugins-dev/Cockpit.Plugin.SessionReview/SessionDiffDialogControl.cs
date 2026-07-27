@@ -138,7 +138,7 @@ internal sealed class SessionDiffDialogControl : UserControl
                 FontFamily = Mono,
                 FontSize = 12,
                 Margin = new Thickness(0, 6, 0, 0),
-                Foreground = _Brush("CockpitTextFaintBrush", Color.Parse("#656c78")),
+                Foreground = _Brush("CockpitTextFaintBrush", "#656c78"),
             });
         }
     }
@@ -181,17 +181,28 @@ internal sealed class SessionDiffDialogControl : UserControl
         }
     }
 
+    /// <summary>
+    /// A diff line's colour, taken from the theme rather than from git's own palette so the panel belongs to the
+    /// app it opens in. <c>FileHeader</c> asked for <c>CockpitTextBrush</c>, which is not a token this theme has
+    /// ever defined — the lookup could only miss, so every file header in every review drew in the literal beside
+    /// it. It is <c>CockpitTextPrimaryBrush</c>.
+    /// </summary>
     private static IBrush _Colour(DiffLineKind kind) => kind switch
     {
-        DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", Color.Parse("#6BBF59")),
-        DiffLineKind.Removed => _Brush("CockpitStatusErrorBrush", Color.Parse("#D9534F")),
-        DiffLineKind.Hunk => _Brush("CockpitAccentBrush", Color.Parse("#5A9BD4")),
-        DiffLineKind.FileHeader => _Brush("CockpitTextBrush", Color.Parse("#D0D0D0")),
-        _ => _Brush("CockpitTextFaintBrush", Color.Parse("#656c78")),
+        DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", "#5AA576"),
+        DiffLineKind.Removed => _Brush("CockpitStatusErrorBrush", "#D64545"),
+        DiffLineKind.Hunk => _Brush("CockpitAccentBrush", "#3b82f6"),
+        DiffLineKind.FileHeader => _Brush("CockpitTextPrimaryBrush", "#e8eaef"),
+        _ => _Brush("CockpitTextFaintBrush", "#656c78"),
     };
 
-    private static IBrush _Brush(string key, Color fallback) =>
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard, so it cannot drift away from the colour it stands in for.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
-            : new SolidColorBrush(fallback);
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

@@ -20,11 +20,6 @@ namespace Cockpit.Plugin.PromptLibrary;
 /// </summary>
 internal sealed class PromptQuickPickControl : UserControl
 {
-    // Dark-theme fallbacks used until the real host brushes are resolved on attach.
-    private static readonly IBrush AccentFallback = new SolidColorBrush(Color.Parse("#E2795A"));
-    private static readonly IBrush PillFallback = new SolidColorBrush(Color.Parse("#23262D"));
-    private static readonly IBrush HairlineFallback = new SolidColorBrush(Color.Parse("#363B45"));
-
     private readonly PromptLibrarySettings _settings;
     private readonly ICockpitActions _actions;
     private readonly Border _searchBar;
@@ -63,7 +58,7 @@ internal sealed class PromptQuickPickControl : UserControl
             FontWeight = FontWeight.Bold,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(2, 0, 12, 0),
-            Foreground = AccentFallback,
+            Foreground = _Brush("CockpitAccentBrush", "#3b82f6"),
         };
         var searchInner = new DockPanel();
         DockPanel.SetDock(_icon, Dock.Left);
@@ -72,10 +67,10 @@ internal sealed class PromptQuickPickControl : UserControl
 
         _searchBar = new Border
         {
-            Background = PillFallback,
-            BorderBrush = HairlineFallback,
+            Background = _Brush("CockpitSecondaryBgBrush", "#0c0e12"),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(14, 11),
             Child = searchInner,
         };
@@ -88,7 +83,6 @@ internal sealed class PromptQuickPickControl : UserControl
             ItemTemplate = new FuncDataTemplate<PromptTemplate>((template, _) =>
                 new TextBlock { Text = template?.Name, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(6, 5) }, true),
         };
-        PromptListSelectionStyle.Apply(_list);
         // A click injects the item just selected by that same click.
         _list.AddHandler(PointerReleasedEvent, (_, _) => _ = _InjectSelectedAndCloseAsync(), RoutingStrategies.Tunnel);
 
@@ -108,32 +102,28 @@ internal sealed class PromptQuickPickControl : UserControl
         _ApplyFilter();
 
         AttachedToVisualTree += (_, _) =>
-        {
-            _ApplyThemeBrushes();
             // Focus after the dialog window has settled — focusing during attach doesn't stick when the palette
             // is opened from the keyboard shortcut, so the search box wouldn't be ready to type into.
             Dispatcher.UIThread.Post(() => _search.Focus(), DispatcherPriority.Loaded);
-        };
     }
 
-    // Match the host theme where it is available (falls back to the built-in dark palette otherwise).
-    private void _ApplyThemeBrushes()
-    {
-        if (this.TryFindResource("CockpitAccentBrush", out var accent) && accent is IBrush a)
-        {
-            _icon.Foreground = a;
-        }
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard. This replaced three hand-held fallbacks that were applied first and swapped for the real brushes on
+    /// attach — a two-step that left the palette's own accent frozen at the pre-AC-334 orange in the one place it
+    /// could still be seen.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 
-        if (this.TryFindResource("CockpitSecondaryBgBrush", out var bg) && bg is IBrush b)
-        {
-            _searchBar.Background = b;
-        }
-
-        if (this.TryFindResource("CockpitHairlineBrush", out var line) && line is IBrush l)
-        {
-            _searchBar.BorderBrush = l;
-        }
-    }
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's inputs do.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private void _ApplyFilter()
     {

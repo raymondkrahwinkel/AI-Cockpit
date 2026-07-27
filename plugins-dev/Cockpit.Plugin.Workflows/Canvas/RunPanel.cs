@@ -24,8 +24,8 @@ internal sealed class RunPanel : Border
     public RunPanel()
     {
         Height = 190;
-        Background = _Brush("CockpitSecondaryBgBrush") ?? new SolidColorBrush(Color.Parse("#1E1E24"));
-        BorderBrush = _Brush("CockpitHairlineBrush");
+        Background = _Brush("CockpitSecondaryBgBrush", "#0c0e12");
+        BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39");
         BorderThickness = new Thickness(0, 1, 0, 0);
         IsVisible = false;
 
@@ -66,8 +66,8 @@ internal sealed class RunPanel : Border
             ? $"{verdict} in {_Ms(run.Duration)} — {error}"
             : $"{verdict} in {_Ms(run.Duration)} · {run.Steps.Count} step(s)";
         _summary.Foreground = run.Status == RunStatus.Failed
-            ? _Brush("CockpitStatusWaitingBrush") ?? Brushes.OrangeRed
-            : _Brush("CockpitTextSecondaryBrush");
+            ? _Brush("CockpitStatusErrorBrush", "#D64545")
+            : _Brush("CockpitTextSecondaryBrush", "#949aa5");
 
         _steps.Children.Clear();
         foreach (var step in run.Steps)
@@ -115,10 +115,10 @@ internal sealed class RunPanel : Border
         {
             lines.Children.Add(new Border
             {
-                Background = _Brush("CockpitPanelBgBrush"),
-                BorderBrush = _Brush("CockpitHairlineBrush"),
+                Background = _Brush("CockpitPanelBgBrush", "#1a1d24"),
+                BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                CornerRadius = _Radius("CockpitControlRadius", 9),
                 Padding = new Thickness(8, 6),
                 Margin = new Thickness(0, 4, 0, 2),
                 MaxWidth = 620,
@@ -162,9 +162,11 @@ internal sealed class RunPanel : Border
 
     private static IBrush? _StatusBrush(RunStatus status) => status switch
     {
-        RunStatus.Succeeded => _Brush("CockpitStatusDoneBrush"),
-        RunStatus.Failed => _Brush("CockpitStatusWaitingBrush") ?? Brushes.OrangeRed,
-        _ => _Brush("CockpitTextFaintBrush"),
+        RunStatus.Succeeded => _Brush("CockpitStatusDoneBrush", "#5AA576"),
+        // Failed used to take the waiting amber, which is the colour this app uses for "your turn". A run that
+        // broke is not waiting for anybody.
+        RunStatus.Failed => _Brush("CockpitStatusErrorBrush", "#D64545"),
+        _ => _Brush("CockpitTextFaintBrush", "#656c78"),
     };
 
     private static string _Ms(TimeSpan duration) =>
@@ -176,6 +178,19 @@ internal sealed class RunPanel : Border
         return control;
     }
 
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 }

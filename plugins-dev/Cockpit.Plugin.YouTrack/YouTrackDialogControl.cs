@@ -329,7 +329,7 @@ internal sealed class YouTrackDialogControl : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 4, 0, 0),
             Child = promptScroll,
@@ -390,7 +390,7 @@ internal sealed class YouTrackDialogControl : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
         };
 
@@ -702,15 +702,13 @@ internal sealed class YouTrackDialogControl : UserControl
         _detailStatusFor = issue.IdReadable;
     }
 
+    // Border.tag — the theme's shape for a label that classifies the thing beside it, rather than one more
+    // hand-written copy of that same shape.
     private Control _BuildChip(string text) => new Border
     {
-        Background = _Brush("CockpitSecondaryBgBrush"),
-        BorderBrush = _Brush("CockpitHairlineBrush"),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(4),
-        Padding = new Thickness(7, 2),
+        Classes = { "tag" },
         Margin = new Thickness(0, 0, 6, 0),
-        Child = new TextBlock { Text = text, FontSize = 11 },
+        Child = new TextBlock { Text = text },
     };
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
@@ -1019,6 +1017,12 @@ internal sealed class YouTrackDialogControl : UserControl
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

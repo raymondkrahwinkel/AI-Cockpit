@@ -416,6 +416,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the plugins are painted in the same colours as the rest of the cockpit. The repaint reached the app but
+  not the plugins that draw their own surfaces, so several were still finished in the old orange: the prompt
+  palette's search spark, the thin progress line above an issue list, the stripe down a workflow step. Buttons,
+  labels and boxes inside a plugin now take their shape from the same place the app's do, so a plugin's dialog no
+  longer reads as a window borrowed from another program.
+
+- changed: the workflow canvas is retuned. A step's leading stripe says what kind of step it is, and the plain one
+  used to be a muted blue — fine beside an orange accent, and a near-copy of the accent once that turned blue, so a
+  trigger stopped standing out among ordinary steps. It is a neutral slate now. The dotted background, the wire
+  labels and the ✕ that removes a connection follow the theme as well, instead of each holding a colour of its own.
+
 - changed: buttons, text fields and dropdowns are drawn to one shape. A field and the picker beside it are now the
   same height with their text on the same line, so a form of labels and controls lines up instead of stepping. A
   field also sits a shade lighter than the window rather than cut into it, which reads as something you type in.
@@ -527,6 +538,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: a workflow run that failed was reported in the amber the cockpit uses for "waiting for you" rather than in
+  red. A run that broke is not waiting for anybody, and in a list of runs the two looked the same.
+
+- fixed: the file headers in a session's diff came out a flat grey instead of the theme's text colour. They asked
+  for a colour that has never existed under that name, so the lookup could only ever miss and fall through to a
+  value written beside it.
+
+- fixed: the "needs you" badge, the "the CEO is working…" band and the number inside a step's dot were lettered in a
+  near-black mixed for the old orange. They sit on bright fills, which is the one place the theme's white cannot be
+  read — there is a colour for exactly that now, and it is the same one in all three places.
 
 - fixed: the offer to pick a session up again when its allowance returns now actually appears. It was only ever made
   on the reading that first passed the warning line, and only if that reading already showed the allowance fully

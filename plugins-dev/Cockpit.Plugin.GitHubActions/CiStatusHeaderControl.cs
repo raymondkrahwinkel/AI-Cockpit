@@ -118,12 +118,12 @@ internal sealed class CiStatusHeaderControl : UserControl
 
     private static (MaterialIconKind Kind, IBrush Brush) _Appearance(CiRunState state) => state switch
     {
-        CiRunState.Passed => (MaterialIconKind.CheckCircleOutline, _Brush("CockpitStatusDoneBrush", Color.Parse("#5AA576"))),
-        CiRunState.Failed => (MaterialIconKind.CloseCircleOutline, _Brush("CockpitStatusErrorBrush", Color.Parse("#D9534F"))),
-        CiRunState.Running => (MaterialIconKind.ProgressClock, _Brush("CockpitStatusWaitingBrush", Color.Parse("#E0A33E"))),
+        CiRunState.Passed => (MaterialIconKind.CheckCircleOutline, _Brush("CockpitStatusDoneBrush", "#5AA576")),
+        CiRunState.Failed => (MaterialIconKind.CloseCircleOutline, _Brush("CockpitStatusErrorBrush", "#D64545")),
+        CiRunState.Running => (MaterialIconKind.ProgressClock, _Brush("CockpitStatusWaitingBrush", "#E0A33E")),
         // Fallback only fires with no Application (designer/headless) — a plugin always runs inside the host, so
         // this never changes what a user sees.
-        _ => (MaterialIconKind.MinusCircleOutline, _Brush("CockpitTextFaintBrush", Color.Parse("#656c78"))),
+        _ => (MaterialIconKind.MinusCircleOutline, _Brush("CockpitTextFaintBrush", "#656c78")),
     };
 
     private static string _Describe(CiRun run)
@@ -173,8 +173,14 @@ internal sealed class CiStatusHeaderControl : UserControl
         }
     }
 
-    private static IBrush _Brush(string key, Color fallback) =>
+    /// <summary>
+    /// The host's theme brush, resolved at call time so a repaint of the token is followed rather than frozen. The
+    /// fallback hex is only reached with no <see cref="Application"/> (designer, headless test) and is held equal to
+    /// the token it stands in for by the repository's theme guard — a fallback that quietly disagrees is worse than
+    /// none, because it is the value nobody looks at.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
-            : new SolidColorBrush(fallback);
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

@@ -185,7 +185,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(10),
             Child = _promptPreview,
         };
@@ -238,7 +238,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
         };
 
@@ -504,6 +504,12 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
