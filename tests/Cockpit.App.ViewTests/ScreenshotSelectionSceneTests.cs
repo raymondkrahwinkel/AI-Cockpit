@@ -159,6 +159,36 @@ public class ScreenshotSelectionSceneTests
                 60, "and the line of text under it is still far darker than the band it lies on");
         });
 
+    /// <summary>
+    /// Two freehand lines, each of them one press (AC-362) and each a curve rather than a chain of segments. The
+    /// scene draws them the way a hand does, in many small moves round a shape.
+    /// </summary>
+    [Fact]
+    public void TheStrokeScene_LeavesTwoLines_EachOfThemACurve() =>
+        _Staged(ScreenshotSelectionScene.Stroke, surface =>
+        {
+            var lines = _Model(surface).Marks.Should().HaveCount(2).And.AllBeOfType<StrokeMark>().Which.ToList();
+
+            foreach (var line in lines)
+            {
+                line.Points.Should().HaveCountGreaterThan(20, "a ring is not two points and a hope");
+                line.Curve().Should().HaveCount(line.Thinned().Count - 1, "one length of curve between each pair");
+            }
+        });
+
+    /// <summary>
+    /// The line reads over the dark half of the desktop, which it only does because of the ring around it — the
+    /// accent alone on a near-black terminal is the case this tool most easily disappears into.
+    /// </summary>
+    [Fact]
+    public void TheStrokeStaysReadable_OverTheDarkHalf() => _Staged(ScreenshotSelectionScene.Stroke, surface =>
+    {
+        var acrossTheTerminal = _SampleInside(surface, 0.60, 0.685, 0.86, 0.715, step: 1);
+
+        acrossTheTerminal.Lightest.Should().BeGreaterThan(
+            200, "the ring around the line is white, and nothing else on that window is");
+    });
+
     /// <summary>The scenes that were already there still build, including the fallback an unknown name lands on.</summary>
     [Theory]
     [InlineData(null, typeof(MainWindow))]

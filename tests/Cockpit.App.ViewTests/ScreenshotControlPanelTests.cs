@@ -276,6 +276,22 @@ public class ScreenshotControlPanelTests
         centre.Should().BeApproximately(SurfaceWidth * 0.75, 2, "centred on that screen rather than merely on its side of the line");
     });
 
+    /// <summary>Freehand drawing is on the panel and on D, and answers being pressed like the rest of the row.</summary>
+    [Fact]
+    public void PressingDraw_TakesUpThePencil_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
+    {
+        var selection = _Model(surface);
+        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+        _Press(surface, surface.DrawTool);
+
+        selection.Drawing.Should().BeTrue();
+        surface.DrawTool.Classes.Should().Contain("active");
+
+        surface.KeyPressQwerty(PhysicalKey.D, RawInputModifiers.None);
+        selection.Drawing.Should().BeFalse("D is the same switch the button is");
+    });
+
     /// <summary>The wash is on the panel and on H, and answers being pressed like the rest of the row.</summary>
     [Fact]
     public void PressingHighlight_TakesUpTheWash_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>

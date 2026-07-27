@@ -18,4 +18,7 @@ public enum MarkTool
 
     /// <summary>Drag a band over something to wash it in colour without hiding what it says.</summary>
     Highlight,
+
+    /// <summary>Draw freehand — round a thing, through a thing, along a path the other tools cannot describe.</summary>
+    Stroke,
 }

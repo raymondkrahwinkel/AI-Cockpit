@@ -53,6 +53,12 @@ internal static class ScreenshotSelectionScene
     public const string Highlight = "screenshot-selection-highlight";
 
     /// <summary>
+    /// A freehand line drawn round something and another scribbled across the dark half (AC-362). Drawn as an arc
+    /// of many small steps, because the thing worth looking at is whether it comes out a curve or a polygon.
+    /// </summary>
+    public const string Stroke = "screenshot-selection-stroke";
+
+    /// <summary>
     /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
     /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
     /// whether the control panel found the screen the operator is actually on (AC-358).
@@ -69,7 +75,7 @@ internal static class ScreenshotSelectionScene
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
     public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or TwoDisplays;
+        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or Stroke or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -136,6 +142,16 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.60, height * 0.80), new Point(width * 0.88, height * 0.44));
                 break;
 
+            case Stroke:
+                // A ring round a paragraph of the light document, and a line struck through the dark terminal. The
+                // ring is what shows whether the curve survived: a circle made of straight segments is a polygon,
+                // and at this many samples that is exactly what a chain of lines would look like.
+                _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
+                surface.KeyPressQwerty(PhysicalKey.D, RawInputModifiers.None);
+                _Circle(surface, new Point(width * 0.74, height * 0.30), width * 0.10, height * 0.10);
+                _Circle(surface, new Point(width * 0.74, height * 0.70), width * 0.13, height * 0.02);
+                break;
+
             case Highlight:
                 // A band over a line of the light document and another over a line of the dark terminal. Both, and
                 // over text rather than over empty panel, because what has to be looked at is whether the words
@@ -159,6 +175,29 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.58, height * 0.62), new Point(width * 0.80, height * 0.67));
                 break;
         }
+    }
+
+    /// <summary>
+    /// A ring drawn round a point, as a hand would draw it: a great many small moves rather than a handful of long
+    /// ones. Far enough apart that none of them are thinned away — thinning is for a hand that hesitates or shakes,
+    /// and a scene that fired it would be showing the exception rather than the ordinary case.
+    /// </summary>
+    private static void _Circle(ScreenshotSelectionWindow surface, Point centre, double acrossX, double acrossY)
+    {
+        const int steps = 48;
+
+        var start = new Point(centre.X + acrossX, centre.Y);
+        surface.MouseDown(start, MouseButton.Left);
+
+        for (var step = 1; step <= steps; step++)
+        {
+            var angle = 2 * Math.PI * step / steps;
+            surface.MouseMove(
+                new Point(centre.X + (acrossX * Math.Cos(angle)), centre.Y + (acrossY * Math.Sin(angle))),
+                RawInputModifiers.LeftMouseButton);
+        }
+
+        surface.MouseUp(start, MouseButton.Left);
     }
 
     private static void _Drag(ScreenshotSelectionWindow surface, Point from, Point to)

@@ -342,6 +342,9 @@ public partial class ScreenshotSelectionWindow : Window
             case Key.O:
                 selection.Outline(!selection.Outlining);
                 break;
+            case Key.D:
+                selection.Draw(!selection.Drawing);
+                break;
             case Key.H:
                 selection.Highlight(!selection.Highlighting);
                 break;
@@ -424,6 +427,9 @@ public partial class ScreenshotSelectionWindow : Window
 
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
+
+    private void _OnDrawTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Draw(!selection.Drawing));
 
     private void _OnHighlightTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Highlight(!selection.Highlighting));
@@ -616,6 +622,9 @@ public partial class ScreenshotSelectionWindow : Window
     {
         ArrowMark => new Path(),
         HighlightMark => new Image { Stretch = Stretch.Fill },
+        // Two paths over each other: a line cannot be drawn and ringed at once the way a filled shape can, because
+        // the ring would be painted over the line rather than around it. The wider one goes underneath.
+        StrokeMark => new Panel { Children = { new Path(), new Path() } },
         _ => new Rectangle(),
     };
 
@@ -624,6 +633,7 @@ public partial class ScreenshotSelectionWindow : Window
     {
         (Path, ArrowMark) => true,
         (Image, HighlightMark) => true,
+        (Panel, StrokeMark) => true,
         (Rectangle, RedactionMark or OutlineMark) => true,
         _ => false,
     };
@@ -672,6 +682,9 @@ public partial class ScreenshotSelectionWindow : Window
                     ? BitmapBlendingMode.Multiply
                     : BitmapBlendingMode.Screen;
                 _Place(wash, selection.ToSurface(highlight.Area));
+                break;
+            case (StrokeMark stroke, Panel drawn):
+                _Trace(drawn, stroke, selection);
                 break;
             default:
                 throw new NotSupportedException(
@@ -724,6 +737,58 @@ public partial class ScreenshotSelectionWindow : Window
         path.Height = double.NaN;
     }
 
+    /// <summary>
+    /// Lays the freehand line into the pair of paths that stand in for it — the wider ring underneath, the line
+    /// over it — in the window's units, from the same curve the imaging library draws.
+    /// </summary>
+    private static void _Trace(Panel drawn, StrokeMark stroke, ScreenshotSelectionViewModel selection)
+    {
+        if (stroke.Start() is not { } start || stroke.Curve() is not { Count: > 0 } curves
+            || stroke.Bounds() is not { } bounds)
+        {
+            _Empty(drawn);
+            return;
+        }
+
+        var (left, top, width, height) = selection.ToSurface(bounds);
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            var from = selection.ToSurface(start);
+            context.BeginFigure(new Point(from.X - left, from.Y - top), isFilled: false);
+            foreach (var curve in curves)
+            {
+                context.CubicBezierTo(
+                    _At(selection, curve.FirstControl, left, top),
+                    _At(selection, curve.SecondControl, left, top),
+                    _At(selection, curve.End, left, top));
+            }
+
+            context.EndFigure(isClosed: false);
+        }
+
+        _Ink(drawn.Children[0], geometry, stroke.Halo, selection.ToSurfaceLength(stroke.HaloThickness));
+        _Ink(drawn.Children[1], geometry, stroke.Colour, selection.ToSurfaceLength(stroke.Thickness));
+        _Place(drawn, left, top, width, height);
+    }
+
+    private static void _Ink(Control shape, Geometry geometry, uint colour, double thickness)
+    {
+        var path = (Path)shape;
+        path.Data = geometry;
+        path.Stroke = new SolidColorBrush(Color.FromUInt32(colour));
+        path.StrokeThickness = thickness;
+        path.StrokeLineCap = PenLineCap.Round;
+        path.StrokeJoin = PenLineJoin.Round;
+    }
+
+    private static Point _At(ScreenshotSelectionViewModel selection, MarkPoint point, double left, double top)
+    {
+        var onSurface = selection.ToSurface(point);
+
+        return new Point(onSurface.X - left, onSurface.Y - top);
+    }
+
     private static void _Place(Control shape, (double X, double Y, double Width, double Height) area) =>
         _Place(shape, area.X, area.Y, area.Width, area.Height);
 
@@ -755,9 +820,18 @@ public partial class ScreenshotSelectionWindow : Window
     /// <summary>Leaves a kept shape drawing nothing — its size taken away, and, where it holds one, its geometry too.</summary>
     private static void _Empty(Control shape)
     {
-        if (shape is Path path)
+        switch (shape)
         {
-            path.Data = null;
+            case Path path:
+                path.Data = null;
+                break;
+            case Panel panel:
+                foreach (var child in panel.Children.OfType<Path>())
+                {
+                    child.Data = null;
+                }
+
+                break;
         }
 
         _Place(shape, 0, 0, 0, 0);

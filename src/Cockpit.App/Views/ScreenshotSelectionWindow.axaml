@@ -166,6 +166,15 @@
               </StackPanel>
             </Button>
 
+            <!-- The tool for everything the shapes cannot say: round a thing, through a thing, along a path. -->
+            <Button Name="DrawTool" Classes="tool" Classes.active="{Binding Drawing}" Click="_OnDrawTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="Draw" Width="15" Height="15" />
+                <TextBlock Text="Draw" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="D" /></Border>
+              </StackPanel>
+            </Button>
+
             <!-- Next to Hide on purpose: the two do opposite things to the same drag, and the row is where an
                  operator picks between "make sure they read this" and "make sure they never see it". -->
             <Button Name="HighlightTool" Classes="tool" Classes.active="{Binding Highlighting}" Click="_OnHighlightTool">

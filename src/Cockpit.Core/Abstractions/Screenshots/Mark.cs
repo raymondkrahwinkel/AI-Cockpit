@@ -23,4 +23,23 @@ public abstract record Mark
     /// </summary>
     /// <param name="region">The region being taken, in the capture's pixels.</param>
     public abstract Mark? ClipTo(CaptureRect region);
+
+    /// <summary>
+    /// White under a dark colour and black under a light one — the ring a mark that is drawn rather than filled
+    /// needs in order to survive whatever it lies on (AC-360, AC-362).
+    /// </summary>
+    /// <remarks>
+    /// A screenshot has no single background: the same stroke crosses a black terminal and a white document, and
+    /// one colour carries on neither with much margin. A shape with a light body and a dark ring — or the other
+    /// way round — always has one of the two contrasting with what is under it.
+    /// <para>
+    /// Brightness is weighted the way an eye weights the three channels rather than averaged: a saturated green
+    /// and a saturated blue of the same arithmetic mean are nowhere near equally bright, and picking the ring off
+    /// the mean would put a white ring around a colour brighter than most of what it lies on.
+    /// </para>
+    /// </remarks>
+    protected static uint ContrastingWith(uint colour) =>
+        ((0.299 * ((colour >> 16) & 0xFF)) + (0.587 * ((colour >> 8) & 0xFF)) + (0.114 * (colour & 0xFF))) < 128
+            ? 0xFFFFFFFF
+            : 0xFF000000;
 }

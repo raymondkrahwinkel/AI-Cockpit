@@ -74,6 +74,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
                 case HighlightMark highlight:
                     _Highlight(image, highlight);
                     break;
+                case StrokeMark stroke:
+                    _Stroke(image, stroke);
+                    break;
                 default:
                     throw new NotSupportedException($"There is no way to burn in a {mark.GetType().Name}.");
             }
@@ -111,6 +114,50 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
             new SKRect(area.X + inset, area.Y + inset, area.Right - inset, area.Bottom - inset),
             paint);
     }
+
+    /// <summary>
+    /// Draws the freehand line, ringed first and then drawn over, so it reads across whatever it crosses.
+    /// </summary>
+    /// <remarks>
+    /// The ring goes on underneath here rather than over the top as the arrow's does, because this is a line and
+    /// not a filled shape: a ring painted over a stroke would cover the stroke. Rounded at the joins and the ends —
+    /// a hand does not make corners, and a line that ends in a flat cut looks like it was interrupted.
+    /// </remarks>
+    private static void _Stroke(SKBitmap image, StrokeMark stroke)
+    {
+        if (stroke.Start() is not { } start || stroke.Curve() is not { Count: > 0 } curves)
+        {
+            return;
+        }
+
+        using var canvas = new SKCanvas(image);
+        using var path = new SKPath();
+
+        path.MoveTo((float)start.X, (float)start.Y);
+        foreach (var curve in curves)
+        {
+            path.CubicTo(
+                (float)curve.FirstControl.X, (float)curve.FirstControl.Y,
+                (float)curve.SecondControl.X, (float)curve.SecondControl.Y,
+                (float)curve.End.X, (float)curve.End.Y);
+        }
+
+        using var halo = _Pen(stroke.Halo, (float)stroke.HaloThickness);
+        using var line = _Pen(stroke.Colour, stroke.Thickness);
+
+        canvas.DrawPath(path, halo);
+        canvas.DrawPath(path, line);
+    }
+
+    private static SKPaint _Pen(uint colour, float width) => new()
+    {
+        Color = new SKColor(colour),
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = width,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round,
+        IsAntialias = true,
+    };
 
     /// <summary>
     /// Washes the band in its colour, multiplied into the pixels or lifted out of them depending on which way the

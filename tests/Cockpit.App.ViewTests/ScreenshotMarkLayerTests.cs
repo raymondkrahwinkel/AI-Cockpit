@@ -327,6 +327,49 @@ public class ScreenshotMarkLayerTests
             .Blend.Should().Be(HighlightBlend.Darken);
     }
 
+    /// <summary>
+    /// A stroke keeps the way the pointer got from one end to the other (AC-362). Every other mark is made from
+    /// the two ends of a drag and this one is the whole of it — which is why the drag is carried as a path.
+    /// </summary>
+    [Fact]
+    public void AStrokeKeepsThePathThePointerTook_NotOnlyItsEnds()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        selection.MarkWith(MarkTool.Stroke, true);
+        selection.BeginDrag(100, 100);
+        selection.DragTo(140, 180);
+        selection.DragTo(220, 190);
+        selection.EndDrag();
+
+        selection.Marks.Should().ContainSingle().Which
+            .Should().BeOfType<StrokeMark>().Which
+            .Points.Should().Equal(
+                new CapturePoint(100, 100), new CapturePoint(140, 180), new CapturePoint(220, 190));
+    }
+
+    /// <summary>
+    /// One line per press, and one Ctrl+Z takes the whole of it. Undoing the last few points of a gesture would
+    /// make the key useless — you would press it over and over and watch the line retreat.
+    /// </summary>
+    [Fact]
+    public void OneUndoTakesBackAWholeLine_NotItsLastFewPoints()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        selection.MarkWith(MarkTool.Stroke, true);
+        selection.BeginDrag(100, 100);
+        selection.DragTo(140, 180);
+        selection.DragTo(220, 190);
+        selection.EndDrag();
+
+        selection.Undo();
+
+        selection.Marks.Should().BeEmpty();
+    }
+
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
     {
         selection.BeginDrag(x, y);
