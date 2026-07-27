@@ -480,6 +480,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: "Pick another moment", offered when a session has spent its allowance, opens on your own clock instead of on
+  UTC. It was filling the pickers with the reset moment as the provider reported it, so anyone east of Greenwich saw a
+  time hours too early — and taking the suggestion as it stood scheduled the resume before the allowance had actually
+  returned, which is a resume that never fires, or fires straight away. A moment on one of the two nights the clocks
+  change is now read at the time you picked rather than at midnight of that day, so an afternoon in late October is no
+  longer an hour out.
+
 - fixed: an agent that isolates itself in a worktree no longer moves the branch in the folder it pointed at. Starting
   a session yourself still brings your checkout forward with it — that is the point of it — but a session an agent
   opens against a folder it merely named now starts from the remote's tip and leaves that branch exactly where it
