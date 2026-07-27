@@ -528,6 +528,25 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the offer to pick a session up again when its allowance returns now actually appears. It was only ever made
+  on the reading that first passed the warning line, and only if that reading already showed the allowance fully
+  spent — but an allowance climbs to spent rather than arriving there, so by the time it read 100% the moment to
+  offer had gone. In practice the button was reachable almost never. It is now offered as soon as the figure reads
+  100%, however gradually it got there, and made once rather than on every poll so a prompt you are part-way through
+  typing is not overwritten under your hands.
+
+- fixed: the bar keeps the figure it is showing current. It used to quote whatever the number was at the moment the
+  warning went up, so a week that went on filling from 91% to 100% still read 91% — understating exactly the thing
+  you would be watching it for. Nothing reappears because of this: a bar you took down stays down.
+
+- fixed: a warning that a newer one wrote over is no longer lost. The bar holds one sentence for every kind of usage
+  it reports, so a context window filling up would take the place of a week that is nearly spent — and because each
+  figure only speaks when it crosses its threshold, the week had already had its turn and said nothing more. Clear
+  the context and the bar went quiet on both. It now keeps what each of them has to say for as long as each is still
+  over its line, and falls back to the most recent one still standing rather than to nothing. Dismissing takes the
+  whole bar down, including what it was covering — a bar that reappears by itself after you click it away reads as
+  the click not having worked — and a figure that drops back and climbs again is news once more.
+
 - fixed: a control you cannot use now looks like one. A disabled button or dropdown kept its label at full strength,
   so the only sign it was unavailable was that clicking did nothing — the theme was setting the faded colour on the
   control while the text was being coloured by a rule of its own that won. The same rule had quietly been undoing

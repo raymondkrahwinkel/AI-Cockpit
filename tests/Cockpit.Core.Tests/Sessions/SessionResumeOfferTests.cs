@@ -225,9 +225,44 @@ public class SessionResumeOfferTests
         session.CanOfferResume.Should().BeFalse();
     }
 
-    // The five below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The seven below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
+
+    [Fact]
+    public void AnAllowanceThatClimbsToSpentAfterWarning_StillOffersTheResume()
+    {
+        // How an allowance actually reaches 100%: gradually, having warned somewhere on the way up. Measured only
+        // on the reading that crossed the warning line, the offer appeared for a signal whose very first reading
+        // past its line already read 100% — which is to say, in practice, for nobody at all.
+        var (session, _) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 95, returns)]);
+        Assert.False(session.CanOfferResume, "96% still leaves a session that can work");
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+
+        Assert.True(session.CanOfferResume, "the week is spent now, however gradually it got there");
+        Assert.Equal(returns.AddMinutes(1), session.ResumeAt);
+    }
+
+    [Fact]
+    public async Task APromptBeingTypedIntoTheBox_SurvivesTheNextPoll()
+    {
+        // The offer is made once per standing period rather than on every reading over 100%, because the polls
+        // keep coming while the box is open — rewriting the prompt each time would take the words out from under
+        // whoever is typing them.
+        var (session, store) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+
+        session.ResumePrompt = "pick up the migration where you left it";
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+        await session.ScheduleResumeCommand.ExecuteAsync(null);
+
+        Assert.Equal("pick up the migration where you left it", store.Saved[0].Prompt);
+    }
 
     [Fact]
     public void AnAllowanceThatRollsOver_TakesItsOfferWithIt()

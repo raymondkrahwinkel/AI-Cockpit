@@ -136,7 +136,7 @@ public class SessionUsageDisplayTests
         session.UsageWarning.Should().Contain("back");
     }
 
-    // The three below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The ten below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
 
@@ -181,6 +181,125 @@ public class SessionUsageDisplayTests
 
         Assert.True(session.HasUsageWarning);
         Assert.Contains("Context window is 51% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AWarningACrossingCoveredUp_ComesBackWhenTheCoverGoesQuiet()
+    {
+        // One string carries every signal, so a later crossing writes over an earlier one. The earlier figure has
+        // spent its crossing by then, so when the cover cleared it used to leave an empty bar and never speak
+        // again — the week stayed at 95% with nothing on screen saying so.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        Assert.Contains("Context window is 60% used", session.UsageWarning);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 95% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void TheBarGoesBackToTheMostRecentCrossing_NotTheOldestOneStillStanding()
+    {
+        // Which of several standing warnings gets the bar is the same rule that put it there to begin with: the
+        // newest crossing. Anything else would mean a bar clearing quietly promotes an older figure over a newer
+        // one, and the host has no ranking of its own to justify that — a provider's signals are its business.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.Contains("Session (5 hours) is 93% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void DismissingTheBar_SilencesWhatItWasCoveringUpAsWell()
+    {
+        // Dismiss is a decision about the bar, not about the sentence that happened to be in it. Silencing only
+        // the words on screen would leave the covered warning free to appear later, on the back of some third
+        // signal clearing — a bar that comes back on its own after a click reads as the click not having worked.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+        Assert.False(session.HasUsageWarning);
+
+        // A third signal speaks and then goes quiet again: the bar has somewhere to fall back to, and must not.
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 4, null)]);
+
+        Assert.False(session.HasUsageWarning, "the week went quiet along with the bar it was standing under");
+    }
+
+    [Fact]
+    public void ASilencedSignalThatGoesAwayAndComesBack_IsNewsAgain()
+    {
+        // Silence lasts until the figure has actually been away. Otherwise dismissing once would mute that signal
+        // for the life of the session, and the next genuine crossing — the one you would want — says nothing.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 96, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 96% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AFigureThatClimbsWhileItIsOnTheBar_IsKeptCurrent()
+    {
+        // The crossing is what speaks, but once the bar is up it should not be quoting a number from minutes ago.
+        // Nothing reappears here — the bar was already showing this signal — so this is not the noise the
+        // once-per-crossing rule exists to prevent.
+        var session = Build();
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 91, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 100, null)]);
+
+        Assert.Contains("Week is 100% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AFigureThatClimbedWhileCoveredUp_ComesBackWithItsCurrentNumber()
+    {
+        // Keeping each standing signal's sentence is what lets a covered warning return at all, so that sentence
+        // has to keep up. Frozen at the crossing, the week would come back saying 91% while sitting at 100 —
+        // trading a bar that said nothing for one that understates exactly when it matters most.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 91, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 100, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.Contains("Session (5 hours) is 100% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void ASignalThatCameBackAfterBeingSilenced_CanHoldTheBarAgain()
+    {
+        // Being away lifts the silence for the fallback too, not only for speaking. Kept, a spent silence would
+        // skip that signal for the rest of the session — it would say its piece on the crossing and then never
+        // be the one the bar falls back to, which is the swallowing this whole change is about.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 96, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 4, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 96% used", session.UsageWarning);
     }
 
     [Fact]
