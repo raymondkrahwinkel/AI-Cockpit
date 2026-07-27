@@ -475,6 +475,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   screen. It used to read exactly like a shortcut you had never switched on — an empty line, no error — and the
   only sign anything was wrong was the key doing nothing when you pressed it.
 
+- fixed: giving a project a new logo now shows the new one. Clearing the old picture and picking another left the
+  card on the one you had just thrown away, because a logo is filed under its project's name and the cockpit went
+  on showing the copy it had already read from that name.
+
+- fixed: the picker for a project's logo now offers SVG files, and vector formats generally. It always accepted one
+  — a logo that is a vector is drawn to a picture on the way in — but the dialog only listed photographs, so the
+  file you wanted was greyed out unless you typed its path by hand.
+
 - fixed: double-clicking while a marking tool is in hand no longer takes the shot. Two quick marks in the same spot
   are two marks; reading the second as "take it" handed over a screenshot you were still working on.
 
