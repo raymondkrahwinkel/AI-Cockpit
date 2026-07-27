@@ -234,21 +234,16 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Hint));
     }
 
-    /// <summary>Adds what was typed to the open note. Nothing happens when none is open — the keys are shortcuts again by then.</summary>
-    public void Type(string text)
+    /// <summary>
+    /// What the open note now says. The whole of it rather than what was added, because the text box the
+    /// characters land in owns the editing — corrections, deletions and whatever the keyboard's layout produced —
+    /// and a note built up character by character here would be a second, worse copy of that.
+    /// </summary>
+    public void SetTyped(string text)
     {
         if (Typing)
         {
-            Typed += text;
-        }
-    }
-
-    /// <summary>Takes back the last character of the open note.</summary>
-    public void Backspace()
-    {
-        if (Typing && Typed.Length > 0)
-        {
-            Typed = Typed[..^1];
+            Typed = text;
         }
     }
 

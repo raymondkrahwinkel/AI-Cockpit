@@ -190,6 +190,24 @@ public class ScreenshotLabelTests
     /// Drags a region out rather than pressing A for the whole capture, so that a stray A during typing would
     /// visibly change what is marked out. Starting from everything would make that assertion say nothing.
     /// </summary>
+    /// <summary>
+    /// The surface can hold focus, and does. Keys reach a window whether or not anything is focused; text goes to
+    /// the focused element, and every control on this surface is deliberately unfocusable so that clicking a tool
+    /// never costs you the keyboard — which leaves nothing to type into unless the window itself takes it.
+    /// </summary>
+    /// <remarks>
+    /// A thin assertion for a defect that was anything but. Without it a note opened, showed its plate and
+    /// swallowed every character, and every test in this file passed throughout: the headless harness delivers
+    /// text input to the window regardless of what is focused, so it was answering a question the real keyboard
+    /// asks differently. Raymond found it in the first minute of using it.
+    /// </remarks>
+    [Fact]
+    public void TheSurfaceTakesFocus_SoThatTypingHasSomewhereToLand() => _OnTheSurface(surface =>
+    {
+        surface.Focusable.Should().BeTrue("text input goes to the focused element, and nothing else here can be one");
+        surface.IsFocused.Should().BeTrue("and the surface asks for it as it opens");
+    });
+
     private static void _OpenNote(ScreenshotSelectionWindow surface, Point at)
     {
         surface.MouseDown(new Point(200, 200), MouseButton.Left);

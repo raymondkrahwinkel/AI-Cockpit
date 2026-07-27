@@ -68,6 +68,7 @@ public partial class ScreenshotSelectionWindow : Window
         InitializeComponent();
         Activated += (_, _) => _wasActivated = true;
         Deactivated += _OnDeactivated;
+        TypingTarget.TextChanged += _OnTypedTextChanged;
     }
 
     /// <summary>
@@ -224,6 +225,12 @@ public partial class ScreenshotSelectionWindow : Window
 
         // Focused explicitly: the keys are half of this surface, and a window that opens without focus swallows
         // the first Escape — which is the one an operator who opened it by accident reaches for.
+        //
+        // The window is declared Focusable for this to do anything, and that is not decoration. Keys reach a
+        // window whether or not anything is focused; *text* goes to the focused element, and every control on
+        // this surface is deliberately unfocusable so that clicking a tool never costs you the keyboard. With
+        // nothing focusable left, a typed note opened, showed its plate and swallowed every character — which no
+        // headless test caught, because the harness delivers text input to the window regardless of focus.
         Focus();
     }
 
@@ -456,8 +463,9 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
-    /// The three keys that mean something while a note is open. Everything else is marked handled and dropped
-    /// here — the characters themselves arrive as text input, not as keys, so nothing is lost by it.
+    /// The two keys that mean something to the surface while a note is open. Everything else is marked handled and
+    /// dropped here — the characters have already been dealt with by the text box they landed in, and what is
+    /// being stopped is the shortcut each of them would otherwise be.
     /// </summary>
     /// <remarks>
     /// Escape closes the note rather than the surface, and a second Escape then cancels as it always did: the
@@ -473,30 +481,48 @@ public partial class ScreenshotSelectionWindow : Window
             case Key.Escape:
             case Key.Enter:
                 selection.FinishTyping();
-                break;
-            case Key.Back:
-                selection.Backspace();
+
+                // Handled, because these two are the surface's and produce no character worth having.
+                e.Handled = true;
                 break;
         }
 
-        e.Handled = true;
+        // Everything else is left unhandled on purpose, and this is not a detail. Windows turns a key into a
+        // character only when the key event was not handled — so marking them all, which is what this did first,
+        // silently cut off the very typing it exists to protect: the note opened, took focus, and swallowed
+        // everything. What stands the shortcuts down is the return above, not the flag.
         _Draw();
     }
 
     /// <summary>
-    /// What the operator typed, while a note is open. Taken from text input rather than from keys, so that what
-    /// lands in the note is what their keyboard layout actually produces.
+    /// Points the keyboard at the hidden text box while a note is open, and takes it back afterwards. Everything
+    /// the operator types goes there — which is also what keeps the surface's shortcuts out of it, since the keys
+    /// are consumed before they are anything else.
     /// </summary>
-    protected override void OnTextInput(TextInputEventArgs e)
+    private void _FollowTyping(ScreenshotSelectionViewModel selection)
     {
-        base.OnTextInput(e);
-        if (_selection is not { Typing: true } selection || e.Text is not { Length: > 0 } typed)
+        if (selection.Typing && !TypingTarget.IsFocused)
+        {
+            TypingTarget.Text = selection.Typed;
+            TypingTarget.CaretIndex = TypingTarget.Text?.Length ?? 0;
+            TypingTarget.Focus();
+        }
+        else if (!selection.Typing && TypingTarget.IsFocused)
+        {
+            TypingTarget.Text = string.Empty;
+            Focus();
+        }
+    }
+
+    /// <summary>What is in that box is what the note says. Read whole rather than accumulated, because the box owns the editing.</summary>
+    private void _OnTypedTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_selection is not { Typing: true } selection)
         {
             return;
         }
 
-        selection.Type(typed);
-        e.Handled = true;
+        selection.SetTyped(TypingTarget.Text ?? string.Empty);
         _Draw();
     }
 
@@ -707,6 +733,7 @@ public partial class ScreenshotSelectionWindow : Window
 
         _PlaceControls();
         _ShowPalette(selection);
+        _FollowTyping(selection);
 
         var width = Surface.Bounds.Width;
         var height = Surface.Bounds.Height;
@@ -748,13 +775,15 @@ public partial class ScreenshotSelectionWindow : Window
     /// </remarks>
     private void _DrawMarks(ScreenshotSelectionViewModel selection)
     {
-        var drawn = selection.PendingMarkPreview is { } pending
-            ? selection.Marks.Append(pending).ToList()
-            : selection.Marks;
+        var beingMade = selection.PendingMarkPreview;
+        var drawn = beingMade is not null ? selection.Marks.Append(beingMade).ToList() : selection.Marks;
 
         for (var index = 0; index < drawn.Count; index++)
         {
-            _Show(_ShapeAt(index, drawn[index]), drawn[index], selection);
+            // The one still being made is always last — it is appended to the placed ones just above.
+            _Show(
+                _ShapeAt(index, drawn[index]), drawn[index], selection,
+                pending: beingMade is not null && index == drawn.Count - 1);
         }
 
         for (var index = drawn.Count; index < _shapes.Count; index++)
@@ -801,8 +830,17 @@ public partial class ScreenshotSelectionWindow : Window
         HighlightMark => new Image { Stretch = Stretch.Fill },
         StrokeMark => new Path(),
         // A plate with letters on it, which is what the mark is: the letters need one known background, and the
-        // plate is the only part of the picture underneath that can be relied on.
-        TextMark => new Border { Child = new TextBlock() },
+        // plate is the only part of the picture underneath that can be relied on. The bar beside them is the
+        // caret, which belongs to the preview and never to the mark — it says the surface is listening, and it
+        // must not end up in the picture.
+        TextMark => new Border
+        {
+            Child = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Children = { new TextBlock(), new Rectangle() },
+            },
+        },
         _ => new Rectangle(),
     };
 
@@ -826,7 +864,8 @@ public partial class ScreenshotSelectionWindow : Window
     /// is in the image's pixels; drawn as window units it comes out heavier than what will be burnt in by exactly
     /// the display's scale, and the preview stops being a preview.
     /// </remarks>
-    private void _Show(Control shape, Mark mark, ScreenshotSelectionViewModel selection)
+    /// <param name="pending">Whether this is the mark still being made rather than one already placed — which only the caret on a note cares about.</param>
+    private void _Show(Control shape, Mark mark, ScreenshotSelectionViewModel selection, bool pending)
     {
         switch (mark, shape)
         {
@@ -863,9 +902,24 @@ public partial class ScreenshotSelectionWindow : Window
                 plate.Background = new SolidColorBrush(Color.FromUInt32(note.Plate));
                 plate.CornerRadius = new CornerRadius(selection.ToSurfaceLength(note.Padding / 2));
                 plate.Padding = new Thickness(selection.ToSurfaceLength(note.Padding));
-                ((TextBlock)plate.Child!).Text = note.Text;
-                ((TextBlock)plate.Child!).FontSize = selection.ToSurfaceLength(note.Size);
-                ((TextBlock)plate.Child!).Foreground = new SolidColorBrush(Color.FromUInt32(note.Colour));
+
+                var written = (TextBlock)((StackPanel)plate.Child!).Children[0];
+                var caret = (Rectangle)((StackPanel)plate.Child!).Children[1];
+                var ink = new SolidColorBrush(Color.FromUInt32(note.Colour));
+                var letters = selection.ToSurfaceLength(note.Size);
+
+                written.Text = note.Text;
+                written.FontSize = letters;
+                written.Foreground = ink;
+
+                // Only while this note is the one being typed into. An empty plate says nothing about whether the
+                // surface is listening; a caret says it in the one way everyone already reads.
+                caret.IsVisible = pending && selection.Typing;
+                caret.Fill = ink;
+                caret.Width = Math.Max(1, letters / 12);
+                caret.Height = letters;
+                caret.Margin = new Thickness(letters / 8, 0, 0, 0);
+                caret.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
 
                 // Sized by what is in it rather than to a rectangle: how wide a label is, is how wide its letters
                 // came out, and that is not known until the font has drawn them.
