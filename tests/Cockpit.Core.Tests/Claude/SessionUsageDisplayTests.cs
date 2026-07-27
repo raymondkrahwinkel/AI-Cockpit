@@ -136,6 +136,53 @@ public class SessionUsageDisplayTests
         session.UsageWarning.Should().Contain("back");
     }
 
+    // The three below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
+    // here would only make that sweep bigger.
+
+    [Fact]
+    public void AReadingBackUnderItsThreshold_TakesItsOwnWarningDownWithIt()
+    {
+        // A /clear empties the context and the very next reading says so, but the bar went on repeating the figure
+        // from before it — a notice about a window that no longer existed, and only a click could remove it.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
+        Assert.True(session.HasUsageWarning);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.False(session.HasUsageWarning);
+    }
+
+    [Fact]
+    public void ASignalGoingQuiet_LeavesAnotherSignalsWarningStanding()
+    {
+        // One string carries all of them, so a context bar dropping to nothing must not wipe a week that is nearly
+        // spent. That is the warning you would most want kept and the one you are least likely to be watching for.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 95% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AWarningThatClearedItself_SpeaksAgainOnTheNextCrossing()
+    {
+        // The same re-crossing as DroppingBackAndClimbingAgain, minus the dismiss that used to be needed in
+        // between — the crossing is what speaks, and clearing on the way down must not have consumed it.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 51, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Context window is 51% used", session.UsageWarning);
+    }
+
     [Fact]
     public void AfterACompaction_TheContextFigureGoesBackToSilence()
     {
