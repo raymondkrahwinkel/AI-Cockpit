@@ -166,21 +166,19 @@ public class ScreenshotInjectionTests : IDisposable
             voiceSettingsStore);
     }
 
-    private static TtyViewModel _CreateTtySession()
+    private TtyViewModel _CreateTtySession()
     {
         var resolver = Substitute.For<ITtySessionProviderResolver>();
         resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver);
+
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver) { SpillDirectory = _spillDirectory };
     }
 
     /// <summary>A spill directory of this test's own, so a run leaves nothing in the operator's temp directory and two tests cannot see each other's files.</summary>
     private readonly string _spillDirectory = Path.Combine(Path.GetTempPath(), $"cockpit-screenshot-tests-{Guid.NewGuid():N}");
 
-    public ScreenshotInjectionTests() => TtyViewModel.SpillDirectory = _spillDirectory;
-
     public void Dispose()
     {
-        TtyViewModel.SpillDirectory = TtyViewModel.DefaultSpillDirectory;
         if (Directory.Exists(_spillDirectory))
         {
             Directory.Delete(_spillDirectory, recursive: true);

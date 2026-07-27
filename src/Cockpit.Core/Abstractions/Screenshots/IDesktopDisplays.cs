@@ -5,9 +5,9 @@ namespace Cockpit.Core.Abstractions.Screenshots;
 /// process that already tracks them, and answered for a capture that cannot work it out for itself.
 /// </summary>
 /// <remarks>
-/// Lives here rather than in Infrastructure for the same reason <see cref="IScreenshotClipboard"/> does: the
-/// answer comes from Avalonia, Avalonia hangs off the app's own window, and Infrastructure does not reference a
-/// UI framework. The Linux capture is the caller — Windows and macOS enumerate displays through the same API
+/// Lives here rather than in Infrastructure because the answer comes from Avalonia, Avalonia hangs off the app's
+/// own window, and Infrastructure does not reference a UI framework — so the interface sits here and the
+/// implementation with the views. The Linux capture is the caller — Windows and macOS enumerate displays through the same API
 /// that reads their pixels, which is a stronger guarantee than this can offer and so is preferred there.
 /// </remarks>
 public interface IDesktopDisplays

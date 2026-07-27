@@ -9,8 +9,7 @@ namespace Cockpit.App.Services;
 /// <summary>
 /// Reports the desktop's displays through Avalonia for the Linux screenshot capture (AC-326), which gets one
 /// composed image from the portal and no word about what went into it. Lives here rather than in Infrastructure
-/// for the same reason <see cref="AvaloniaScreenshotClipboard"/> does: Avalonia's screen list hangs off a window,
-/// and the only window is this app's.
+/// because Avalonia's screen list hangs off a window, and the only window is this app's.
 /// </summary>
 /// <remarks>
 /// Every read is marshalled to the UI thread — the capture asks from a background task, and the screen list is

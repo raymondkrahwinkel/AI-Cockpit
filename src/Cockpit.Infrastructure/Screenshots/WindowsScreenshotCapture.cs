@@ -14,11 +14,8 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// clipboard was overwritten, any other image copied within the two-minute window was taken for the snip, and a
 /// capture identical to what was already on the clipboard read as a cancel. None of that was a defect to fix —
 /// it is what borrowing a fire-and-forget protocol costs. Reading the pixels here removes the whole class, along
-/// with the timeout.
-/// <para>
-/// <c>IScreenshotClipboard</c> is untouched: TTY injection still pastes through it. It is only no longer how a
-/// capture finds out what happened.
-/// </para>
+/// with the timeout. Nothing here touches the clipboard any more, and since AC-341 nothing downstream does
+/// either — a capture reaches a terminal session as a file the agent is handed the path to.
 /// </remarks>
 internal sealed class WindowsScreenshotCapture(IWindowsScreenReader screen, ILogger<WindowsScreenshotCapture> logger)
     : IScreenshotCapture

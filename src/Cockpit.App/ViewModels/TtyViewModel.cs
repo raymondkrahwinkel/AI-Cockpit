@@ -271,9 +271,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// agents running in these sessions do understand is a path: <c>claude</c> reads the file and attaches it. The
     /// route used to go the long way round — put the image on the system clipboard, press the terminal's paste
     /// key, and let the terminal write the image to a temp file and paste <em>that</em> path. Every step after the
-    /// first was already this. So the clipboard bought nothing and cost the operator whatever they had copied,
-    /// which is the trade Raymond turned down (2026-07-27): "het hoeft van mij ook niet op het klembord, liever
-    /// zelfs niet".
+    /// first was already this. So the clipboard bought nothing and cost the operator whatever they had copied —
+    /// a trade Raymond declined outright when he saw it (2026-07-27): the capture should reach the session, and
+    /// preferably not by way of the clipboard at all.
     /// <para>
     /// It is also the reason this now works the same everywhere. The clipboard route had to negotiate image
     /// formats with three different windowing systems and got it wrong on Windows for a fortnight; a file has no
@@ -310,18 +310,19 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return null;
     }
 
-    /// <summary>The default place a capture is spilled to: under the OS temp directory, in a folder of ours so the files are recognisable as the cockpit's.</summary>
-    internal static string DefaultSpillDirectory { get; } = Path.Combine(Path.GetTempPath(), "cockpit-screenshots");
-
-    /// <summary>Where a capture is spilled so the agent can read it. Settable so a test can write somewhere it owns rather than into the operator's temp directory, the same way the terminal control lets a host redirect its own paste spill.</summary>
-    internal static string SpillDirectory { get; set; } = DefaultSpillDirectory;
+    /// <summary>
+    /// Where this session's captures are spilled so the agent can read them: under the OS temp directory, in a
+    /// folder of ours so the files are recognisable as the cockpit's. Per session rather than static, so a test
+    /// can point one at a directory it owns without reaching into what every other session is using.
+    /// </summary>
+    internal string SpillDirectory { get; set; } = Path.Combine(Path.GetTempPath(), "cockpit-screenshots");
 
     /// <summary>
     /// Writes the capture where the agent can pick it up and returns the path. The file outlives the paste on
     /// purpose: the agent reads it when it gets round to the prompt, which is after the operator has typed their
     /// sentence, so deleting it here would race them.
     /// </summary>
-    private static async Task<string> _SpillAsync(byte[] screenshotPng)
+    private async Task<string> _SpillAsync(byte[] screenshotPng)
     {
         Directory.CreateDirectory(SpillDirectory);
         var path = Path.Combine(SpillDirectory, $"screenshot-{Guid.NewGuid():N}.png");
