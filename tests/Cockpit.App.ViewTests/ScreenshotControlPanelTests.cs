@@ -224,6 +224,44 @@ public class ScreenshotControlPanelTests
     });
 
     /// <summary>
+    /// The arrow tool is on the panel and answers being pressed, like the rest of the row. Same call as its key,
+    /// which is the one thing this panel promises.
+    /// </summary>
+    [Fact]
+    public void PressingArrow_TakesUpTheArrow_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
+    {
+        var selection = _Model(surface);
+        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+        _Press(surface, surface.ArrowTool);
+
+        selection.Pointing.Should().BeTrue();
+        surface.ArrowTool.Classes.Should().Contain("active");
+    });
+
+    /// <summary>
+    /// The arrow is on P, not on A. A was taking everything first (AC-358), and a key that moved aside for a tool
+    /// added later would break the panel's one promise — that what it says is what the keyboard does. So both are
+    /// exercised in one go: P takes up the arrow, and A still takes the whole capture afterwards.
+    /// </summary>
+    [Fact]
+    public void TheArrowIsOnItsOwnKey_AndLeavesTakingEverythingAlone() =>
+        _Staged(ScreenshotSelectionScene.Idle, surface =>
+        {
+            var selection = _Model(surface);
+            surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+            surface.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
+            selection.Pointing.Should().BeTrue("P is the arrow's key");
+
+            surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+            selection.Selection.Should().Be(
+                new CaptureRect(0, 0, selection.ImageWidth, selection.ImageHeight),
+                "and A still takes the whole capture, which is what it did before the arrow existed");
+            surface.EverythingTool.Classes.Should().Contain("active");
+        });
+
+    /// <summary>
     /// The surface is one window across every screen, so the middle of it is a spot nobody is looking at. The
     /// panel belongs on the display the pointer is on.
     /// </summary>

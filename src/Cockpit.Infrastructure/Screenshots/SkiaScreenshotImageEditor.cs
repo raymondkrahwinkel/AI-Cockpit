@@ -68,6 +68,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
                 case OutlineMark outline:
                     _Outline(image, outline);
                     break;
+                case ArrowMark arrow:
+                    _Arrow(image, arrow);
+                    break;
                 default:
                     throw new NotSupportedException($"There is no way to burn in a {mark.GetType().Name}.");
             }
@@ -104,6 +107,58 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         canvas.DrawRect(
             new SKRect(area.X + inset, area.Y + inset, area.Right - inset, area.Bottom - inset),
             paint);
+    }
+
+    /// <summary>
+    /// Draws the arrow as one closed shape — shaft and head together — filled in its colour and then ringed in
+    /// the contrasting one, so it stays readable over whatever part of the screen it happens to cross.
+    /// </summary>
+    /// <remarks>
+    /// Filled first and ringed after, which is the order Avalonia draws a shape in as well. That matters more
+    /// than which order looks better: the surface shows the operator this arrow before it exists, and a preview
+    /// that put the ring under the body would be a slightly different arrow from the one they get.
+    /// <para>
+    /// The shape itself comes from the mark rather than from here. Two libraries draw this arrow and only one of
+    /// them can decide what it is.
+    /// </para>
+    /// </remarks>
+    private static void _Arrow(SKBitmap image, ArrowMark arrow)
+    {
+        if (arrow.Silhouette() is not { Count: > 0 } corners)
+        {
+            return;
+        }
+
+        using var canvas = new SKCanvas(image);
+        using var path = new SKPath();
+
+        path.MoveTo((float)corners[0].X, (float)corners[0].Y);
+        foreach (var corner in corners.Skip(1))
+        {
+            path.LineTo((float)corner.X, (float)corner.Y);
+        }
+
+        path.Close();
+
+        using var body = new SKPaint
+        {
+            Color = new SKColor(arrow.Colour),
+            Style = SKPaintStyle.Fill,
+            IsAntialias = true,
+        };
+        using var halo = new SKPaint
+        {
+            Color = new SKColor(arrow.Halo),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = (float)arrow.HaloThickness,
+            // Mitred, like the shape's own corners: a round join would blunt the tip into a dome, which is the
+            // one part of an arrow that has to stay sharp to say which way it is pointing.
+            StrokeJoin = SKStrokeJoin.Miter,
+            IsAntialias = true,
+        };
+
+        canvas.DrawPath(path, body);
+        canvas.DrawPath(path, halo);
     }
 
     /// <summary>

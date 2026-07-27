@@ -145,6 +145,16 @@
               </StackPanel>
             </Button>
 
+            <!-- The one tool that says "that" rather than "this area" — which is what an operator most often
+                 wants from a screenshot, and the reason the mark layer exists at all. -->
+            <Button Name="ArrowTool" Classes="tool" Classes.active="{Binding Pointing}" Click="_OnArrowTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="ArrowTopRight" Width="15" Height="15" />
+                <TextBlock Text="Arrow" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="P" /></Border>
+              </StackPanel>
+            </Button>
+
             <Button Name="RedactTool" Classes="tool" Classes.active="{Binding Redacting}" Click="_OnRedactTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="EyeOff" Width="15" Height="15" />

@@ -155,6 +155,119 @@ public class ScreenshotMarkLayerTests
             .Colour.Should().Be(green);
     }
 
+    /// <summary>
+    /// An arrow remembers which way it was dragged (AC-360). The layer held a drag as a rectangle until this tool
+    /// arrived, and a rectangle cannot say this: up-and-left and down-and-right cover the very same one, and are
+    /// opposite arrows.
+    /// </summary>
+    [Fact]
+    public void AnArrowKeepsTheDirectionItWasDraggedIn()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+        _DrawArrow(selection, 400, 300, 150, 120);
+
+        selection.Marks.Should().ContainSingle().Which
+            .Should().BeOfType<ArrowMark>().Which
+            .Should().BeEquivalentTo(new
+            {
+                From = new CapturePoint(400, 300),
+                To = new CapturePoint(150, 120),
+            });
+    }
+
+    /// <summary>
+    /// What counts as a drag going nowhere is the kind's own business. A box needs area; an arrow needs only to
+    /// have travelled, so one drawn straight down is a perfectly good arrow and a rectangle of no width.
+    /// </summary>
+    [Fact]
+    public void AnArrowStraightDown_IsAMark_WhereABoxOfNoWidthIsNot()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        _DrawArrow(selection, 200, 100, 200, 400);
+        selection.Marks.Should().ContainSingle("an arrow that went somewhere is an arrow");
+
+        _DrawBox(selection, 300, 100, 0, 300);
+        selection.Marks.Should().ContainSingle("but a box with no width covers nothing, so nothing is placed");
+    }
+
+    /// <summary>A press that never moved has no direction, and an arrow with no direction points at nothing.</summary>
+    [Fact]
+    public void AnArrowThatWentNowhere_PlacesNoMark()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        _DrawArrow(selection, 200, 200, 200, 200);
+
+        selection.Marks.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Region takes back whichever mark tool is in hand. It asked to put down redaction by name until AC-360 — from
+    /// when that was the only tool there was to be holding — so pressing Region while drawing frames left you
+    /// drawing frames, and the row went on saying so.
+    /// </summary>
+    [Theory]
+    [InlineData(MarkTool.Redaction)]
+    [InlineData(MarkTool.Outline)]
+    [InlineData(MarkTool.Arrow)]
+    public void ChoosingRegion_PutsDownWhicheverMarkToolIsInHand(MarkTool tool)
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+        selection.MarkWith(tool, true);
+
+        selection.ChooseRegion();
+
+        selection.MarkingWith.Should().BeNull();
+        selection.DraggingRegion.Should().BeTrue("and the row has to be able to say so");
+    }
+
+    /// <summary>
+    /// What is previewed mid-drag is the mark that is about to be placed, built by the same call. A preview made
+    /// separately is a second opinion about the picture rather than a look at it.
+    /// </summary>
+    [Fact]
+    public void TheMarkBeingDragged_IsPreviewedAsTheKindItWillBecome()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        selection.MarkWith(MarkTool.Arrow, true);
+        selection.BeginDrag(100, 100);
+        selection.DragTo(300, 260);
+
+        selection.PendingMarkPreview.Should().BeOfType<ArrowMark>().Which
+            .Should().BeEquivalentTo(new { To = new CapturePoint(300, 260) });
+
+        selection.EndDrag();
+
+        selection.PendingMarkPreview.Should().BeNull("the drag is over");
+        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<ArrowMark>().Which
+            .Should().BeEquivalentTo(new { To = new CapturePoint(300, 260) }, "and what was previewed is what was kept");
+    }
+
+    /// <summary>
+    /// A mark's thickness is in the captured image's pixels, and the surface draws in its own units. Left
+    /// unconverted the preview is heavier than the picture by exactly the display's scale — so the operator checks
+    /// a frame that is not the frame they are about to hand over.
+    /// </summary>
+    [Fact]
+    public void AMarksThickness_IsGivenInTheWindowsUnitsWhenItIsDrawn()
+    {
+        var selection = new ScreenshotSelectionViewModel(
+            new ScreenCapture { Image = [0x89, 0x50, 0x4E, 0x47], Displays = [Panel] }, 1920, 1080, Accent)
+        {
+            SurfaceWidth = 960,
+            SurfaceHeight = 540,
+        };
+
+        selection.ToSurfaceLength(8).Should().Be(4, "the capture is twice the size of the window drawing it");
+    }
+
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
     {
         selection.BeginDrag(x, y);
@@ -167,6 +280,15 @@ public class ScreenshotMarkLayerTests
 
     private static void _DrawFrame(ScreenshotSelectionViewModel selection, int x, int y, int width, int height) =>
         _DrawWith(selection, MarkTool.Outline, x, y, width, height);
+
+    /// <summary>Taken as two points rather than as a corner and a size, because that is what an arrow is — the size would throw away which end the head goes on.</summary>
+    private static void _DrawArrow(ScreenshotSelectionViewModel selection, int fromX, int fromY, int toX, int toY)
+    {
+        selection.MarkWith(MarkTool.Arrow, true);
+        selection.BeginDrag(fromX, fromY);
+        selection.DragTo(toX, toY);
+        selection.EndDrag();
+    }
 
     private static void _DrawWith(
         ScreenshotSelectionViewModel selection, MarkTool tool, int x, int y, int width, int height)
