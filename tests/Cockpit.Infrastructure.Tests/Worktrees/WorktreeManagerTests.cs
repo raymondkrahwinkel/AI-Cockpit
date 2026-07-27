@@ -572,9 +572,10 @@ public sealed class WorktreeManagerTests : IDisposable
         record.BaseCommit.Should().Be(moved);
         _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
         _Git(record.Path, "rev-parse", "HEAD").Should().Be(moved);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        record.SourceRefresh.BehindCount.Should().Be(1);
-        record.SourceRefresh.Notice.Should().Contain("origin/main");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        refresh.BehindCount.Should().Be(1);
+        refresh.Notice.Should().Contain("origin/main");
     }
 
     [Fact]
@@ -589,7 +590,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // Untracked leftovers are in nearly every checkout; counting them as work in progress would mean the source
         // is never updated, which is the feature. This one is nowhere near an incoming path, so nothing can touch it.
         record.BaseCommit.Should().Be(moved);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
         File.Exists(Path.Combine(_repo, "scratch.log")).Should().BeTrue();
     }
 
@@ -606,7 +608,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // Sharing a folder with an incoming file is not a collision — only the same path, or a folder standing where
         // one has to go, is. Counting neighbours would stop the update in any repository with a stray file in a
         // touched folder, which is nearly all of them: the feature would quietly never fire again.
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
         record.BaseCommit.Should().Be(moved);
         File.ReadAllText(Path.Combine(_repo, "src", "app", "notes.txt")).Should().Be("my scratch file\n");
     }
@@ -624,7 +627,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // The other direction of the same question: here a folder of untracked files sits exactly where an incoming
         // file has to be written. git lists what is inside it, not the folder, so the match has to run upwards.
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         File.ReadAllText(Path.Combine(_repo, "libs", "mine.txt")).Should().Be("not in git\n");
     }
@@ -649,8 +653,9 @@ public sealed class WorktreeManagerTests : IDisposable
         File.ReadAllText(Path.Combine(_repo, ".env")).Should().Be("API_KEY=the-only-copy\n");
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
-        record.SourceRefresh.Notice.Should().Contain(".env");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        refresh.Notice.Should().Contain(".env");
     }
 
     [Fact]
@@ -665,7 +670,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         File.ReadAllText(Path.Combine(_repo, "shipped.txt")).Should().Be("mine, never committed\n");
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
     }
 
     [Fact]
@@ -690,7 +696,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // Handing these paths to git as a pathspec is what makes this one dangerous: a leading colon is read as
         // pathspec magic, the answer comes back empty, and "nothing in the way" is exactly the wrong conclusion.
         File.ReadAllText(Path.Combine(_repo, ":colon.txt")).Should().Be("the only copy\n");
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
     }
 
     [Fact]
@@ -718,7 +725,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // Ignored on purpose: git refuses to replace an untracked symlink but replaces an ignored one without a
         // word, and it never descends into it either — so asking about "libs/dep.txt" finds nothing while the link
         // itself is what the update lands on. Without the check the operator's arrangement is simply gone.
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
 
         // What the update destroys is the link itself — it becomes a real folder with the incoming file in it, while
@@ -741,11 +749,12 @@ public sealed class WorktreeManagerTests : IDisposable
 
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FastForwardFailed);
-        record.SourceRefresh.Notice.Should().Contain("could not be updated");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwardFailed);
+        refresh.Notice.Should().Contain("could not be updated");
 
         // The tree was never opened, so the operator must not be sent looking through it.
-        record.SourceRefresh.Notice.Should().NotContain("now has changes in it");
+        refresh.Notice.Should().NotContain("now has changes in it");
     }
 
     [Fact]
@@ -766,7 +775,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
         File.ReadAllText(Path.Combine(_repo, "local.cfg")).Should().Be("the only copy\n");
     }
 
@@ -787,7 +797,7 @@ public sealed class WorktreeManagerTests : IDisposable
         File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var repository = await _manager.DetectRepositoryAsync(_repo);
 
-        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository!, CancellationToken.None, TimeSpan.FromSeconds(1));
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), CancellationToken.None, TimeSpan.FromSeconds(1));
 
         // git moves the branch before it runs the post-merge hook, so a hook that outlives the guard is killed with
         // the update already done. Believing the exit code there would report failure and then fork the session from
@@ -814,7 +824,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var repository = await _manager.DetectRepositoryAsync(_repo);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
 
-        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository!, cancellation.Token, TimeSpan.FromSeconds(30));
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(_Detected(repository), cancellation.Token, TimeSpan.FromSeconds(30));
 
         // The merge deliberately ignores the caller's token, so by the time someone gives up the tree has already
         // been written to. Asking the repository what happened has to ignore it for the same reason: a caller who
@@ -903,8 +913,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // resolved. Reading that as "this branch tracks nothing" would turn an unreachable remote into silence —
         // which is the exact blind spot this ticket is about.
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
-        record.SourceRefresh.Notice.Should().Contain("Could not reach");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
+        refresh.Notice.Should().Contain("Could not reach");
     }
 
     [Fact]
@@ -920,8 +931,9 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         File.ReadAllText(Path.Combine(_repo, "README.md")).Should().Be("half-finished edit\n");
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.KeptLocalChanges);
-        record.SourceRefresh.Notice.Should().Contain("uncommitted changes");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.KeptLocalChanges);
+        refresh.Notice.Should().Contain("uncommitted changes");
     }
 
     [Fact]
@@ -937,8 +949,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // Nothing that only exists here may be silently rewound; a fast-forward would not have been one anyway.
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
-        record.SourceRefresh.Notice.Should().Contain("left");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
+        refresh.Notice.Should().Contain("left");
     }
 
     [Fact]
@@ -956,8 +969,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // starts on the local head rather than on a claim about the past, and it is told which.
         _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
         record.BaseCommit.Should().Be(before);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
-        record.SourceRefresh.Notice.Should().Contain("Could not reach");
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
+        refresh.Notice.Should().Contain("Could not reach");
     }
 
     [Fact]
@@ -967,8 +981,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.UpToDate);
-        record.SourceRefresh.Notice.Should().BeNull();
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UpToDate);
+        refresh.Notice.Should().BeNull();
     }
 
     [Fact]
@@ -987,8 +1002,39 @@ public sealed class WorktreeManagerTests : IDisposable
         // A merged-and-deleted branch still carries its tracking config, but the ref it points at is gone. There is
         // nothing left to be behind of, so this must stay as quiet as any other branch without an upstream —
         // otherwise every session started from a finished feature branch opens with a warning about nothing.
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
-        record.SourceRefresh.Notice.Should().BeNull();
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
+        refresh.Notice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnreachableRemoteSpelledAsACredentialledUrl_KeepsTheCredentialOutOfWhatItSays()
+    {
+        _AddRemote();
+        _Git(_repo, "config", "branch.main.remote", "https://someone:s3cr3t-token@127.0.0.1:1/repo.git");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        var refresh = _SourceRefreshOf(record);
+
+        // git takes a URL where a remote's name would go, and a URL can carry a token. This sentence reaches a toast
+        // and, through the worktree tool, an agent's context — so not one character of it may be the token.
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
+        refresh.Notice.Should().NotBeNull().And.Subject.As<string>().Should().NotContain("s3cr3t-token").And.NotContain("someone");
+    }
+
+    [Fact]
+    public async Task BringUpToDateAsync_ConfigItCannotRead_SaysSoRatherThanNothing()
+    {
+        _AddRemote();
+        var repository = _Detected(await _manager.DetectRepositoryAsync(_repo));
+        File.AppendAllText(Path.Combine(_repo, ".git", "config"), "\n[[[not a section\n");
+
+        var refresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, CancellationToken.None);
+
+        // "I could not tell" and "there is nothing to tell" are the same silence if you let them be, and only one of
+        // them is honest. A config git refuses to parse is the former.
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.CheckFailed);
+        refresh.Notice.Should().NotBeNull();
     }
 
     [Fact]
@@ -997,8 +1043,9 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
         record.BaseCommit.Should().Be(_Git(_repo, "rev-parse", "HEAD"));
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
-        record.SourceRefresh.Notice.Should().BeNull();
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
+        refresh.Notice.Should().BeNull();
     }
 
     [Fact]
@@ -1013,13 +1060,22 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // There is no source branch to update, so the commit HEAD points at stays the fork base.
         record.BaseCommit.Should().Be(detachedAt);
-        record.SourceRefresh!.Outcome.Should().Be(WorktreeSourceOutcome.DetachedHead);
-        record.SourceRefresh.Notice.Should().BeNull();
+        var refresh = _SourceRefreshOf(record);
+        refresh.Outcome.Should().Be(WorktreeSourceOutcome.DetachedHead);
+        refresh.Notice.Should().BeNull();
     }
 
     public void Dispose() => TestGitDirectory.Remove(_tempRoot);
 
     private string _RemotePath => Path.Combine(_tempRoot, "remote.git");
+
+    // The two shapes this file kept reaching for a null-forgiving "!" to express. Failing the test with a sentence
+    // beats suppressing the compiler: when one of these is unexpectedly null, the message says which and why.
+    private static WorktreeSourceRefresh _SourceRefreshOf(WorktreeRecord record) =>
+        record.SourceRefresh ?? throw new InvalidOperationException("the record carries no source refresh.");
+
+    private static GitRepositoryInfo _Detected(GitRepositoryInfo? repository) =>
+        repository ?? throw new InvalidOperationException("the fixture folder was not detected as a git repository.");
 
     /// <summary>
     /// Pushes one more commit to origin from a second clone and returns its sha — someone else moving the branch on
