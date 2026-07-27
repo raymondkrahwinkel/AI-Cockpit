@@ -1,4 +1,5 @@
 using System.Net.NetworkInformation;
+using Cockpit.TestSupport;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 

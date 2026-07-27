@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cockpit.Core.Tests;
+namespace Cockpit.TestSupport;
 
 /// <summary>
 /// A loopback HTTP server on an OS-assigned port, for tests that need a request to travel over a real socket.
@@ -17,7 +17,7 @@ namespace Cockpit.Core.Tests;
 /// hand the bare number to an <c>HttpListener</c> — leaves a window in which the OS can give that same port to
 /// something else, and a loaded CI runner is exactly where that window gets hit.
 /// </remarks>
-internal sealed class LoopbackHttpServer : IAsyncDisposable
+public sealed class LoopbackHttpServer : IAsyncDisposable
 {
     private readonly WebApplication _app;
 

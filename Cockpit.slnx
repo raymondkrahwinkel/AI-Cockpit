@@ -6,6 +6,7 @@
     <Project Path="src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Cockpit.TestSupport/Cockpit.TestSupport.csproj" />
     <Project Path="tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj" />
     <Project Path="tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj" />
     <Project Path="tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj" />

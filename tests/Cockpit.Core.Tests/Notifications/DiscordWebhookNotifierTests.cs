@@ -1,5 +1,6 @@
 using System.Net;
 using Cockpit.Core.Notifications;
+using Cockpit.TestSupport;
 using Cockpit.Infrastructure.Notifications;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
