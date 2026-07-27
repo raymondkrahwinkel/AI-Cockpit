@@ -372,13 +372,21 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         {
             foreach (var spent in new DirectoryInfo(SpillDirectory).EnumerateFiles("screenshot-*.png").Where(file => file.LastWriteTimeUtc < spentBefore))
             {
-                spent.Delete();
+                try
+                {
+                    spent.Delete();
+                }
+                catch (Exception)
+                {
+                    // Per file rather than per round: an agent reading one of these holds it open, and one
+                    // stubborn file must not stop the rest from going. It will be tried again next capture.
+                }
             }
         }
         catch (Exception)
         {
-            // Housekeeping is not the job here: a file another process still holds open, or a directory that
-            // turned read-only, must not cost the operator the screenshot they just took.
+            // Housekeeping is not the job here: a directory that turned read-only, or went missing under us,
+            // must not cost the operator the screenshot they just took.
         }
     }
 
