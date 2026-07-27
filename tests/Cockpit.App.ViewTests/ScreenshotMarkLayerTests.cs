@@ -288,24 +288,25 @@ public class ScreenshotMarkLayerTests
     }
 
     /// <summary>
-    /// Decided once, when the band is placed. The same wash is drawn on the surface and burnt into the delivered
-    /// picture, and a direction worked out separately in each place is two answers to one question.
+    /// The picture is asked about the band itself, not about the region the band sits in. A page with a terminal
+    /// on one side of it averages to something that is neither, and the wash would then be drawn the wrong way
+    /// round for both halves.
     /// </summary>
     [Fact]
-    public void TheDirectionIsAskedOnce_WhenTheBandIsPlaced()
+    public void TheDirectionIsAskedAboutTheBand_NotAboutTheWholeRegion()
     {
-        var asked = 0;
-        var selection = _Surface(_ =>
+        var asked = new List<CaptureRect>();
+        var selection = _Surface(area =>
         {
-            asked++;
+            asked.Add(area);
             return 240;
         });
         _MarkOut(selection, 0, 0, 800, 600);
 
         _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
-        _ = selection.Marks.Single();
 
-        asked.Should().Be(1, "the drag placed one band, and the preview during it is the same mark being built");
+        asked.Should().NotBeEmpty().And.AllBeEquivalentTo(
+            new CaptureRect(100, 100, 200, 40), "which is the band that was dragged, not the region under it");
     }
 
     /// <summary>
