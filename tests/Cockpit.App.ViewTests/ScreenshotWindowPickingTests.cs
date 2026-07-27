@@ -90,11 +90,15 @@ public class ScreenshotWindowPickingTests
         selection.Hint.Should().Contain("not something this desktop will allow");
     }
 
-    /// <summary>Where it does exist, the key that turns it on is named — an operator cannot use a mode nobody mentioned.</summary>
+    /// <summary>
+    /// Where it does exist, the mode is on offer — an operator cannot use one nobody mentioned. What does the
+    /// mentioning is the panel's Window tool, which carries the key beside its name; that it is offered rather
+    /// than greyed out is <see cref="ScreenshotControlPanelTests.AnAvailableTool_IsOfferedRatherThanGreyedOut"/>.
+    /// </summary>
     [Fact]
-    public void OnADesktopThatCanPickWindows_TheKeyIsNamed()
+    public void OnADesktopThatCanPickWindows_TheModeIsAvailable()
     {
-        _Surface(_Window("Editor", 0, 0, 100, 100)).Hint.Should().Contain("W picks a window");
+        _Surface(_Window("Editor", 0, 0, 100, 100)).CanPickWindow.Should().BeTrue();
     }
 
     /// <summary>A window off the edge of every display — minimised, or on a screen this capture does not cover — has no pixels here to crop.</summary>

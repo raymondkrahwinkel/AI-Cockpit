@@ -1,7 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -24,9 +27,15 @@ public partial class ScreenshotSelectionWindow : Window
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
 
+    /// <summary>How far the control panel sits from the edge of the display it is on.</summary>
+    private const double ControlsMargin = 24;
+
     /// <summary>The rectangles standing in for the redaction boxes, one per box, added to the canvas as they are drawn.</summary>
     private readonly List<Rectangle> _boxes = [];
     private bool _wasActivated;
+
+    /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
+    private Point _pointer;
 
     public ScreenshotSelectionWindow()
     {
@@ -153,6 +162,14 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
+        // A press anywhere on the control panel belongs to the panel, not to the picture. Self included: the
+        // padding and the gaps between the rows have no child control to catch them, so a press there resolves to
+        // the panel itself — and that is a good part of what an operator sees as the panel.
+        if (e.Source is Visual source && source.GetSelfAndVisualAncestors().Contains(Controls))
+        {
+            return;
+        }
+
         // In window mode the press is the confirmation, not the start of a drag. Falling through to BeginDrag
         // would put a zero-size rectangle where the highlighted window was, and EndDrag would then clear it —
         // so the click that is meant to take the window is exactly what threw it away.
@@ -195,6 +212,13 @@ public partial class ScreenshotSelectionWindow : Window
         {
             return;
         }
+
+        _pointer = e.GetPosition(Surface);
+
+        // Placed on every move, not only on the ones that redraw the selection. The panel follows the display the
+        // pointer is on, and moving between screens without a button down is exactly how an operator gets there —
+        // so leaving it to the drag and window-mode branches below left it on whichever screen the surface opened.
+        _PlaceControls();
 
         // Window mode first: the button may well be down — an operator holding it while moving is still
         // pointing at windows, and treating that as a drag would replace the highlight with a rectangle of
@@ -241,13 +265,17 @@ public partial class ScreenshotSelectionWindow : Window
                 selection.Confirm();
                 break;
             case Key.A:
-                selection.PickWindows(false);
-                selection.SelectEverything();
+                _ChooseEverything(selection);
                 break;
             case Key.B:
                 // Boxes are a mode too: the same drag either marks out what to take or what to hide, and the
                 // operator says which before moving the pointer.
                 selection.Redact(!selection.Redacting);
+                break;
+            case Key.R:
+                // The way back to the ordinary drag. W and B toggle, so it was always reachable by pressing the
+                // one you were in again — but only if you knew which that was, which is what this epic is about.
+                selection.ChooseRegion();
                 break;
             case Key.Z when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 selection.UndoRedaction();
@@ -303,6 +331,91 @@ public partial class ScreenshotSelectionWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// The tools, chosen with the mouse (AC-358). Each makes exactly the call its key makes and is followed by
+    /// the same redraw — a button that did something subtly different from the key beside it would be worse than
+    /// no button at all.
+    /// </summary>
+    private void _OnRegionTool(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseRegion());
+
+    private void _OnWindowTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.PickWindows(!selection.PickingWindow));
+
+    private void _OnEverythingTool(object? sender, RoutedEventArgs e) => _Tool(_ChooseEverything);
+
+    private void _OnRedactTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Redact(!selection.Redacting));
+
+    private void _Tool(Action<ScreenshotSelectionViewModel> choose)
+    {
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        choose(selection);
+        _Draw();
+    }
+
+    /// <summary>
+    /// The whole capture in one press. Named here rather than written out twice so the button and the key it
+    /// carries cannot drift apart — the one thing this panel promises is that the two are the same surface said
+    /// twice. Window mode comes off first: what it marks out is a window, and taking everything is not that.
+    /// </summary>
+    private static void _ChooseEverything(ScreenshotSelectionViewModel selection)
+    {
+        selection.PickWindows(false);
+        selection.SelectEverything();
+    }
+
+    /// <summary>
+    /// Puts the control panel at the top of the display the pointer is on. The window spans every screen at once,
+    /// so its own middle is a spot nobody is looking at; the display under the pointer is the one they are.
+    /// </summary>
+    /// <remarks>
+    /// It stays there — it does not step aside for what is being marked out, though an earlier version of this did
+    /// (AC-358). Nothing here remembers where the panel was, so every reason to move away became a reason to move
+    /// back the moment it lapsed, and the row rocked between the two edges while the operator was trying to use
+    /// it. A tool that moves while you are reaching for it costs more than one that sits over the picture, and the
+    /// picture is frozen anyway. The price, said plainly: a drag cannot be *started* on the strip the panel
+    /// occupies, since a press there belongs to the panel — dragging through it and letting go past it is fine.
+    /// </remarks>
+    private void _PlaceControls()
+    {
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        // Bounds until it has been arranged once, DesiredSize before that — the first placement happens as the
+        // window opens, and a panel measured at nothing would be pinned to the corner it started in.
+        var size = Controls.Bounds.Width > 0 ? Controls.Bounds.Size : Controls.DesiredSize;
+        if (size.Width <= 0)
+        {
+            return;
+        }
+
+        // Left where it was when the pointer is on no display at all — the gap a staggered arrangement leaves.
+        // Centring on the whole window would put the panel in that gap, which is the one place with no screen
+        // behind it.
+        if (selection.DisplayAt(_pointer.X, _pointer.Y) is not { } bounds)
+        {
+            return;
+        }
+
+        var display = _ToRect(selection.ToSurface(bounds));
+        var left = display.X + ((display.Width - size.Width) / 2);
+        var top = display.Y + ControlsMargin;
+
+        // Clamped last, against the window rather than the display: a screen narrower or shorter than the panel
+        // would otherwise push it off the edge, and a panel half outside the window is a tool you cannot press.
+        Canvas.SetLeft(Controls, Math.Clamp(left, 0, Math.Max(0, Surface.Bounds.Width - size.Width)));
+        Canvas.SetTop(Controls, Math.Clamp(top, 0, Math.Max(0, Surface.Bounds.Height - size.Height)));
+    }
+
+    private static Rect _ToRect((double X, double Y, double Width, double Height) area) =>
+        new(area.X, area.Y, area.Width, area.Height);
+
     private void _Measure()
     {
         if (_selection is not { } selection)
@@ -321,6 +434,8 @@ public partial class ScreenshotSelectionWindow : Window
         {
             return;
         }
+
+        _PlaceControls();
 
         var width = Surface.Bounds.Width;
         var height = Surface.Bounds.Height;

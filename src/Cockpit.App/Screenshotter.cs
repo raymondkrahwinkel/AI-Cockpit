@@ -90,7 +90,7 @@ internal static class Screenshotter
             // The selection surface, one scene per mode (AC-357). Their names live with the scene rather than
             // here because the mode is something the surface is driven into after it is shown, not a window that
             // opens in it — so the name means nothing until then.
-            _ when ScreenshotSelectionScene.Covers(scene) => ScreenshotSelectionScene.Build(width, height),
+            _ when ScreenshotSelectionScene.Covers(scene) => ScreenshotSelectionScene.Build(scene, width, height),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
 

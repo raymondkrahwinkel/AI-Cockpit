@@ -59,6 +59,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>The region the operator has marked out, in image pixels, or nothing yet.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TakingEverything))]
+    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
     private CaptureRect? _selection;
 
     /// <summary>How wide the window is drawing the image, in whatever units it lays out in. Set by the view once it knows.</summary>
@@ -81,7 +83,40 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Whether the surface is drawing boxes to hide rather than choosing what to take.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
     private bool _redacting;
+
+    /// <summary>
+    /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
+    /// no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
+    /// replaced it; without the flag, pressing Region here would light nothing, because everything is a region
+    /// too — and a tool that does not answer being pressed is what marking the resting one was added to stop.
+    /// </summary>
+    public bool TakingEverything => _tookEverything && Selection == new CaptureRect(0, 0, ImageWidth, ImageHeight);
+
+    /// <summary>
+    /// Whether the pointer is doing the ordinary thing — dragging out a region. The resting state said as a
+    /// property of its own, so the control panel can mark it the same way it marks the other two rather than
+    /// leaving the one you are actually in as the only unlit button (AC-358).
+    /// </summary>
+    /// <remarks>
+    /// Taking everything is subtracted so that exactly one tool is ever lit: two at once stops answering the
+    /// question the row is there for. It is safe to subtract because choosing this tool clears it — the operator
+    /// who presses Region while everything is marked has said which tool is in hand, and gets told so.
+    /// </remarks>
+    public bool DraggingRegion => !PickingWindow && !Redacting && !TakingEverything;
+
+    // Set by taking everything, cleared by choosing any other tool. What the selection is cannot answer this on
+    // its own: the whole capture is a perfectly ordinary region to be standing in with the region tool.
+    private bool _tookEverything;
+
+    /// <summary>
+    /// What the window tool says when you hover it — including, where this desktop will not allow it, why it is
+    /// greyed out. A disabled control that says nothing is the failure AC-220 was rejected for, one layer down.
+    /// </summary>
+    public string WindowToolTip => CanPickWindow
+        ? "Take a whole window: click the one you want"
+        : "Picking a window is not something this desktop will allow — it will not say where other applications' windows are";
 
     /// <summary>
     /// Turns redaction on, which needs something to redact — there is nothing to hide until a region has been
@@ -94,6 +129,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         if (Redacting)
         {
             PickWindows(false);
+            _StopTakingEverything();
         }
 
         OnPropertyChanged(nameof(Hint));
@@ -198,7 +234,22 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             Math.Abs(point.Y - anchor.Y));
 
     /// <summary>Everything, in one press — the whole capture, gaps and all, since that is what was on the screens.</summary>
-    public void SelectEverything() => Selection = new CaptureRect(0, 0, ImageWidth, ImageHeight);
+    public void SelectEverything()
+    {
+        _tookEverything = true;
+        Selection = new CaptureRect(0, 0, ImageWidth, ImageHeight);
+    }
+
+    /// <summary>
+    /// Back to dragging out a region, from whichever tool was in hand — including from having taken everything,
+    /// which leaves what is marked out alone and only says which tool the next drag belongs to.
+    /// </summary>
+    public void ChooseRegion()
+    {
+        PickWindows(false);
+        Redact(false);
+        _StopTakingEverything();
+    }
 
     /// <summary>
     /// Whether picking a window is available at all (AC-330). False on a desktop that will not say where its
@@ -222,10 +273,12 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         // all, which reads exactly like a key that is not wired up.
         { RedactionNeedsARegion: true } =>
             "Mark out a region first — B then hides part of what you are sending · Esc cancels",
+        // What the tools do is on the tools, keys and all, so this says only what has no button: the drag itself,
+        // the arrows, and the two keys that end it.
         _ =>
-            "Drag a region, or double-click one to take it · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A takes everything · "
-            + (CanPickWindow ? "W picks a window · " : "Picking a window is not something this desktop will allow · ")
-            + "B hides a box · Enter confirms · Esc cancels",
+            "Drag a region, or double-click one to take it · Arrow keys nudge, Shift resizes, Ctrl for larger steps · "
+            + (CanPickWindow ? "" : "Picking a window is not something this desktop will allow · ")
+            + "Enter confirms · Esc cancels",
     };
 
     /// <summary>Whether B was asked for while there was nothing to hide part of — which is why nothing happened.</summary>
@@ -237,6 +290,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Whether the surface is highlighting whole windows rather than waiting for a drag.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
     private bool _pickingWindow;
 
     /// <summary>Turns window picking on, if this desktop can do it. Off again puts the surface back to dragging a region.</summary>
@@ -247,8 +301,20 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         {
             HoveredWindow = null;
         }
+        else
+        {
+            _StopTakingEverything();
+        }
 
         OnPropertyChanged(nameof(Hint));
+    }
+
+    /// <summary>Another tool is in hand now, so the row stops marking the one that took everything.</summary>
+    private void _StopTakingEverything()
+    {
+        _tookEverything = false;
+        OnPropertyChanged(nameof(TakingEverything));
+        OnPropertyChanged(nameof(DraggingRegion));
     }
 
     /// <summary>
@@ -396,6 +462,18 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     {
         Result = null;
         IsClosed = true;
+    }
+
+    /// <summary>
+    /// The display a point on the window falls on, as its rectangle in the image's pixels — or nothing where the
+    /// point is in the gap a staggered arrangement leaves. The control panel is put on it rather than on the
+    /// window, because the window spans every screen at once and its middle is a place nobody is looking (AC-358).
+    /// </summary>
+    public CaptureRect? DisplayAt(double surfaceX, double surfaceY)
+    {
+        var point = ToImagePixel(surfaceX, surfaceY);
+
+        return _capture.Displays.FirstOrDefault(display => display.ImageBounds.Contains(point))?.ImageBounds;
     }
 
     /// <summary>Where a point on the window falls in the image, through the one ratio everything here goes by.</summary>
