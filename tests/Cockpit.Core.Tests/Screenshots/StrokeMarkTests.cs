@@ -83,27 +83,15 @@ public class StrokeMarkTests
             .Should().BeNull();
     }
 
-    /// <summary>The ring is the other colour from the line, so whatever the line crosses, one of the two contrasts with it.</summary>
-    [Theory]
-    [InlineData(0xFF3B82F6, 0xFFFFFFFFu)]
-    [InlineData(0xFFF4C150, 0xFF000000u)]
-    public void TheRingIsTheOppositeOfTheLine(uint colour, uint expected)
-    {
-        new StrokeMark([new(0, 0), new(50, 50)], colour, Thickness).Halo.Should().Be(expected);
-    }
-
-    /// <summary>
-    /// The ring is wide enough to be seen once the capture has been scaled down onto a window. A couple of pixels
-    /// wider than the line puts well under a pixel outside it, and a ring nobody can see is a ring that is not
-    /// there — which was true of the first version of this and only showed up in a render.
-    /// </summary>
+    /// <summary>The box covers the line's own width, or a stroke at the edge of a crop would be dropped while its ink was still in the picture.</summary>
     [Fact]
-    public void TheRingIsWideEnoughToShowOutsideTheLine()
+    public void TheBoundsCoverTheWidthOfTheLine()
     {
-        var stroke = new StrokeMark([new(0, 0), new(50, 50)], Accent, Thickness);
+        var stroke = _Stroke([new(100, 100), new(300, 100)]);
+        var bounds = stroke.Bounds()!.Value;
 
-        ((stroke.HaloThickness - stroke.Thickness) / 2).Should().BeGreaterThanOrEqualTo(
-            Thickness / 2.0, "half a line's width shows on either side");
+        bounds.Y.Should().BeLessThanOrEqualTo(100 - (Thickness / 2));
+        bounds.Bottom.Should().BeGreaterThanOrEqualTo(100 + (Thickness / 2));
     }
 
     private static StrokeMark _Stroke(IReadOnlyList<CapturePoint> points) => new(points, Accent, Thickness);

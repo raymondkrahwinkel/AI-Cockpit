@@ -155,12 +155,16 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
     }
 
     /// <summary>
-    /// Draws the freehand line, ringed first and then drawn over, so it reads across whatever it crosses.
+    /// Draws the freehand line in its own colour, and nothing else.
     /// </summary>
     /// <remarks>
-    /// The ring goes on underneath here rather than over the top as the arrow's does, because this is a line and
-    /// not a filled shape: a ring painted over a stroke would cover the stroke. Rounded at the joins and the ends —
-    /// a hand does not make corners, and a line that ends in a flat cut looks like it was interrupted.
+    /// Rounded at the joins and the ends — a hand does not make corners, and a line that ends in a flat cut looks
+    /// like it was interrupted.
+    /// <para>
+    /// It carried a contrasting ring until AC-375, on the argument that a screenshot has no single background and
+    /// nobody could be asked what this line would cross. The palette answers that: the operator picks the ink, and
+    /// once they can, the ring is a white outline they did not ask for around a red line they did.
+    /// </para>
     /// </remarks>
     private static void _Stroke(SKBitmap image, StrokeMark stroke)
     {
@@ -181,10 +185,8 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
                 (float)curve.End.X, (float)curve.End.Y);
         }
 
-        using var halo = _Pen(stroke.Halo, (float)stroke.HaloThickness);
         using var line = _Pen(stroke.Colour, stroke.Thickness);
 
-        canvas.DrawPath(path, halo);
         canvas.DrawPath(path, line);
     }
 
@@ -223,16 +225,14 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
     }
 
     /// <summary>
-    /// Draws the arrow as one closed shape — shaft and head together — filled in its colour and then ringed in
-    /// the contrasting one, so it stays readable over whatever part of the screen it happens to cross.
+    /// Draws the arrow as one closed shape — shaft and head together — filled in its colour.
     /// </summary>
     /// <remarks>
-    /// Filled first and ringed after, which is the order Avalonia draws a shape in as well. That matters more
-    /// than which order looks better: the surface shows the operator this arrow before it exists, and a preview
-    /// that put the ring under the body would be a slightly different arrow from the one they get.
-    /// <para>
     /// The shape itself comes from the mark rather than from here. Two libraries draw this arrow and only one of
     /// them can decide what it is.
+    /// <para>
+    /// It carried a contrasting ring until AC-375, for want of knowing what it would be drawn over. The palette
+    /// makes that the operator's answer to give.
     /// </para>
     /// </remarks>
     private static void _Arrow(SKBitmap image, ArrowMark arrow)
@@ -259,19 +259,7 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
             Style = SKPaintStyle.Fill,
             IsAntialias = true,
         };
-        using var halo = new SKPaint
-        {
-            Color = new SKColor(arrow.Halo),
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = (float)arrow.HaloThickness,
-            // Mitred, like the shape's own corners: a round join would blunt the tip into a dome, which is the
-            // one part of an arrow that has to stay sharp to say which way it is pointing.
-            StrokeJoin = SKStrokeJoin.Miter,
-            IsAntialias = true,
-        };
-
         canvas.DrawPath(path, body);
-        canvas.DrawPath(path, halo);
     }
 
     /// <summary>

@@ -26,19 +26,17 @@ public class SkiaStrokeTests
     }
 
     /// <summary>
-    /// The ring is under the line rather than over it. Over it would cover the very thing it exists to make
-    /// visible — which is the one way round a filled shape can be ringed and a line cannot.
+    /// The line is its colour and nothing else. It carried a contrasting ring until AC-375, for want of knowing
+    /// what it would cross; the palette makes that the operator's answer to give, and a white outline they did not
+    /// ask for around a red line they did is noise.
     /// </summary>
     [Fact]
-    public void TheRingIsUnderTheLine_NotOverIt()
+    public void TheLineIsItsOwnColour_WithNothingDrawnAroundIt()
     {
         using var image = _Burn(new StrokeMark([new(40, 60), new(240, 60)], Blue, Thickness));
 
-        image.GetPixel(140, 60).Should().Be(new SKColor(0, 0, 255), "the middle of it is still the line's colour");
-
-        var besideIt = image.GetPixel(140, 64);
-        besideIt.Red.Should().BeGreaterThan(200);
-        besideIt.Green.Should().BeGreaterThan(200);
+        image.GetPixel(140, 60).Should().Be(new SKColor(0, 0, 255), "the middle of it is the ink it was given");
+        image.GetPixel(140, 70).Should().Be(SKColors.Black, "and clear of it the picture is untouched");
     }
 
     /// <summary>
@@ -60,11 +58,11 @@ public class SkiaStrokeTests
 
         using var image = _Burn(new StrokeMark(ring, Blue, Thickness), 300, 300);
 
-        // Halfway between two of the samples, on the ring itself. A straight run between them passes about eight
-        // pixels inside this, which is further than the line and its own ring reach.
+        // Halfway between two of the samples, just inside the ring. A straight run between them turns in to about
+        // r=92 there and is six pixels wide, so it cannot reach this; the curve runs at about r=99.
         var between = 2 * Math.PI / 16;
-        var x = centre.X + (int)Math.Round(radius * Math.Cos(between));
-        var y = centre.Y + (int)Math.Round(radius * Math.Sin(between));
+        var x = centre.X + (int)Math.Round(98 * Math.Cos(between));
+        var y = centre.Y + (int)Math.Round(98 * Math.Sin(between));
 
         image.GetPixel(x, y).Should().NotBe(SKColors.Black, "the curve bulges out to where the hand went");
     }

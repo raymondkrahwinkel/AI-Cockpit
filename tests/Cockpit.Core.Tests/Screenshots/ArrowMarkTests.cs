@@ -159,48 +159,17 @@ public class ArrowMarkTests
     }
 
     /// <summary>
-    /// The ring is the other colour from the body, so that whatever the arrow lies on, one of the two contrasts
-    /// with it. A screenshot has no single background — the same arrow crosses a terminal and a document.
-    /// </summary>
-    [Theory]
-    [InlineData(0xFF3B82F6, 0xFFFFFFFFu)]
-    [InlineData(0xFF000000, 0xFFFFFFFFu)]
-    [InlineData(0xFFF4C150, 0xFF000000u)]
-    [InlineData(0xFFFFFFFF, 0xFF000000u)]
-    public void TheRingIsTheOppositeOfTheBody(uint body, uint expected)
-    {
-        new ArrowMark(new CapturePoint(0, 0), new CapturePoint(10, 10), body, Thickness)
-            .Halo.Should().Be(expected);
-    }
-
-    /// <summary>
-    /// Brightness is weighted the way an eye weights it. A saturated green and a saturated blue have the same
-    /// arithmetic mean and are nowhere near equally bright, so an unweighted test would put a white ring around
-    /// the brightest colour on the screen.
+    /// The bounding box covers every corner of the shape, or an arrow at the very edge of a crop would be dropped
+    /// while its ink was still in the picture.
     /// </summary>
     [Fact]
-    public void BrightnessIsWeighted_SoASaturatedGreenCountsAsLight()
-    {
-        var green = new ArrowMark(new CapturePoint(0, 0), new CapturePoint(10, 10), 0xFF00FF00, Thickness);
-        var blue = new ArrowMark(new CapturePoint(0, 0), new CapturePoint(10, 10), 0xFF0000FF, Thickness);
-
-        green.Halo.Should().Be(0xFF000000, "green carries most of what the eye reads as brightness");
-        blue.Halo.Should().Be(0xFFFFFFFF, "and blue carries least of it");
-    }
-
-    /// <summary>
-    /// The bounding box has to cover the ring as well as the body, or an arrow at the very edge of a crop would
-    /// be dropped while half its ink was still in the picture.
-    /// </summary>
-    [Fact]
-    public void TheBoundsCoverTheRingAndNotOnlyTheBody()
+    public void TheBoundsCoverTheWholeShape()
     {
         var arrow = _Arrow(100, 100, 400, 100);
         var bounds = arrow.Bounds()!.Value;
-        var margin = arrow.HaloThickness / 2;
 
-        bounds.X.Should().BeLessThanOrEqualTo((int)(arrow.Silhouette().Min(corner => corner.X) - margin));
-        bounds.Bottom.Should().BeGreaterThanOrEqualTo((int)(arrow.Silhouette().Max(corner => corner.Y) + margin));
+        bounds.X.Should().BeLessThanOrEqualTo((int)arrow.Silhouette().Min(corner => corner.X));
+        bounds.Bottom.Should().BeGreaterThanOrEqualTo((int)arrow.Silhouette().Max(corner => corner.Y));
     }
 
     private static ArrowMark _Arrow(int fromX, int fromY, int toX, int toY) =>

@@ -121,10 +121,10 @@ public class ScreenshotSelectionSceneTests
             var onTheDarkEditor = _SampleInside(surface, 0.30, 0.53, 0.36, 0.59, step: 1);
             var onTheLightDocument = _SampleInside(surface, 0.84, 0.445, 0.875, 0.49, step: 1);
 
-            onTheDarkEditor.Lightest.Should().BeGreaterThan(
-                200, "the ring around the arrow is white, and nothing else on that window is");
+            onTheDarkEditor.WidestColourSpread.Should().BeGreaterThan(
+                100, "the arrow's ink is the only strongly coloured thing on a window drawn in greys");
             onTheLightDocument.WidestColourSpread.Should().BeGreaterThan(
-                60, "the body of the arrow is the only coloured thing on a page drawn in greys");
+                100, "and the same on the page, which is drawn in greys too");
         });
 
     /// <summary>
@@ -185,8 +185,8 @@ public class ScreenshotSelectionSceneTests
     {
         var acrossTheTerminal = _SampleInside(surface, 0.60, 0.685, 0.86, 0.715, step: 1);
 
-        acrossTheTerminal.Lightest.Should().BeGreaterThan(
-            200, "the ring around the line is white, and nothing else on that window is");
+        acrossTheTerminal.WidestColourSpread.Should().BeGreaterThan(
+            100, "the line's ink is the only strongly coloured thing on that window");
     });
 
     /// <summary>
