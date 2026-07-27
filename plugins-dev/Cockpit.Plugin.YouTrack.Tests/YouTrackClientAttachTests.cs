@@ -1,15 +1,15 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
+using Cockpit.TestSupport;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>The attachment upload (AC-14): a multipart POST to the issue's attachments endpoint, authenticated with the instance's bearer token, carrying the file bytes.</summary>
-public class YouTrackClientAttachTests : IDisposable
+public class YouTrackClientAttachTests : IAsyncLifetime
 {
-    private readonly HttpListener _listener = new();
-    private readonly string _prefix;
+    private LoopbackHttpServer? _server;
+    private string _prefix = string.Empty;
 
     private string? _path;
     private string? _method;
@@ -17,12 +17,10 @@ public class YouTrackClientAttachTests : IDisposable
     private string? _contentType;
     private string _body = string.Empty;
 
-    public YouTrackClientAttachTests()
+    public async Task InitializeAsync()
     {
-        _prefix = $"http://127.0.0.1:{_FreePort()}/";
-        _listener.Prefixes.Add(_prefix);
-        _listener.Start();
-        _ = _ServeAsync();
+        _server = await LoopbackHttpServer.StartAsync(_RecordAndAnswerAsync);
+        _prefix = _server.BaseUrl;
     }
 
     [Fact]
@@ -43,61 +41,40 @@ public class YouTrackClientAttachTests : IDisposable
     [Fact]
     public async Task AttachFileAsync_ThrowsWithYouTrackReasonOnRefusal()
     {
+        // An address nothing answers on: a server that was started and then shut down again. Asking the OS for
+        // a port and letting go of it would leave the same gap AC-350 removed — something else can take it,
+        // and then this posts at a stranger instead of at nobody.
+        var abandoned = await LoopbackHttpServer.StartAsync(_ => Task.CompletedTask);
+        var abandonedUrl = abandoned.BaseUrl;
+        await abandoned.DisposeAsync();
+
         var client = new YouTrackClient();
 
-        // Point at a port with nothing listening → the send fails; the client surfaces it rather than swallowing.
-        var act = () => client.AttachFileAsync($"http://127.0.0.1:{_FreePort()}/api", "t", "AC-1", "x.png", [1, 2, 3], "image/png", CancellationToken.None);
+        var act = () => client.AttachFileAsync($"{abandonedUrl}api", "t", "AC-1", "x.png", [1, 2, 3], "image/png", CancellationToken.None);
 
         await act.Should().ThrowAsync<Exception>();
     }
 
-    private async Task _ServeAsync()
+    private async Task _RecordAndAnswerAsync(HttpContext context)
     {
-        while (_listener.IsListening)
+        _method = context.Request.Method;
+        _path = context.Request.Path.ToString();
+        _authorization = context.Request.Headers.TryGetValue("Authorization", out var authorization) ? authorization.ToString() : null;
+        _contentType = context.Request.ContentType;
+
+        using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
         {
-            HttpListenerContext context;
-            try
-            {
-                context = await _listener.GetContextAsync();
-            }
-            catch (Exception)
-            {
-                return;
-            }
-
-            _method = context.Request.HttpMethod;
-            _path = context.Request.Url!.AbsolutePath;
-            _authorization = context.Request.Headers["Authorization"];
-            _contentType = context.Request.ContentType;
-            using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
-            {
-                _body = await reader.ReadToEndAsync();
-            }
-
-            context.Response.StatusCode = 200;
-            var ok = Encoding.UTF8.GetBytes("""{ "id": "1" }""");
-            await context.Response.OutputStream.WriteAsync(ok);
-            context.Response.Close();
-        }
-    }
-
-    private static int _FreePort()
-    {
-        var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-
-        return port;
-    }
-
-    public void Dispose()
-    {
-        if (_listener.IsListening)
-        {
-            _listener.Stop();
+            _body = await reader.ReadToEndAsync();
         }
 
-        _listener.Close();
+        await context.Response.WriteAsync("""{ "id": "1" }""");
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_server is not null)
+        {
+            await _server.DisposeAsync();
+        }
     }
 }

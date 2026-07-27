@@ -1,24 +1,22 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.TestSupport;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>The shared upload loop (AC-116): every image in a message is attached, and one that fails does not stop the rest — the outcome counts both.</summary>
-public class YouTrackAttachUploadTests : IDisposable
+public class YouTrackAttachUploadTests : IAsyncLifetime
 {
-    private readonly HttpListener _listener = new();
-    private readonly string _prefix;
+    private LoopbackHttpServer? _server;
+    private string _prefix = string.Empty;
     private int _requests;
 
-    public YouTrackAttachUploadTests()
+    public async Task InitializeAsync()
     {
-        _prefix = $"http://127.0.0.1:{_FreePort()}/";
-        _listener.Prefixes.Add(_prefix);
-        _listener.Start();
-        _ = _ServeAsync();
+        _server = await LoopbackHttpServer.StartAsync(_CountAndAnswerAsync);
+        _prefix = _server.BaseUrl;
     }
 
     [Fact]
@@ -54,45 +52,18 @@ public class YouTrackAttachUploadTests : IDisposable
         outcome.Errors.Should().ContainSingle();
     }
 
-    private async Task _ServeAsync()
+    private async Task _CountAndAnswerAsync(HttpContext context)
     {
-        while (_listener.IsListening)
-        {
-            HttpListenerContext context;
-            try
-            {
-                context = await _listener.GetContextAsync();
-            }
-            catch (Exception)
-            {
-                return;
-            }
+        Interlocked.Increment(ref _requests);
 
-            Interlocked.Increment(ref _requests);
-            context.Response.StatusCode = 200;
-            var ok = Encoding.UTF8.GetBytes("""{ "id": "1" }""");
-            await context.Response.OutputStream.WriteAsync(ok);
-            context.Response.Close();
-        }
+        await context.Response.WriteAsync("""{ "id": "1" }""");
     }
 
-    private static int _FreePort()
+    public async Task DisposeAsync()
     {
-        var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-
-        return port;
-    }
-
-    public void Dispose()
-    {
-        if (_listener.IsListening)
+        if (_server is not null)
         {
-            _listener.Stop();
+            await _server.DisposeAsync();
         }
-
-        _listener.Close();
     }
 }

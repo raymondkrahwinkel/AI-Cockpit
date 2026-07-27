@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Test infrastructure shared by the host's test projects and the plugin test projects under plugins-dev/
+       (AC-371). Those two live in different places and neither can see the other's internals, so a helper both
+       need has nowhere else to go: the alternative was a second copy, which is exactly what AC-350 set out to
+       remove. Nothing here is a test itself — it holds only what more than one test project needs. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- LoopbackHttpServer runs on Kestrel. Declared here rather than leaned on transitively, because the
+         plugin test projects reference no ASP.NET of their own. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

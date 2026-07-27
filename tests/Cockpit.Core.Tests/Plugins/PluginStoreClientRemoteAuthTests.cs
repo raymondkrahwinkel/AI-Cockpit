@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using FluentAssertions;
+using Cockpit.TestSupport;
 using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Core.Tests.Plugins;

@@ -41,6 +41,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj" />
+    <!-- The loopback test server these attachment tests post against (AC-371). Shared with the host's test
+         projects rather than copied, because a copy is how the port race in AC-350 got to exist twice. -->
+    <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>
