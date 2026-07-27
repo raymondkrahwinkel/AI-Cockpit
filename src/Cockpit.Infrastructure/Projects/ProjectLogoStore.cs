@@ -22,8 +22,6 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
     /// <summary>A logo is a small image; anything past this is not one, and downloading it would be someone else's file transfer.</summary>
     private const int MaxBytes = 8 * 1024 * 1024;
 
-    private static readonly string[] _ImageExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico", ".svg"];
-
     /// <summary>How large a rasterised SVG is stored, on its longest side: comfortably past the 34px card well and the dialog's preview on a high-DPI screen, and still a small file.</summary>
     private const float RasterSize = 256f;
 
@@ -207,6 +205,6 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
     private static string _ExtensionOf(string source)
     {
         var extension = Path.GetExtension(source).ToLowerInvariant();
-        return Array.IndexOf(_ImageExtensions, extension) >= 0 ? extension : ".png";
+        return ProjectLogoFormats.Extensions.Contains(extension) ? extension : ".png";
     }
 }

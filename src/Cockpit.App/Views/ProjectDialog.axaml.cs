@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.App.Views;
@@ -65,6 +66,16 @@ public partial class ProjectDialog : Window
         }
     }
 
+    // Patterns carry Windows, mime types carry the Linux portals, and the uniform type identifier carries macOS —
+    // Avalonia's own ImageAll sets all three, and a filter that leaves one out does not narrow the dialog on that
+    // platform, it breaks it.
+    private static FilePickerFileType _LogoFiles { get; } = new("Images")
+    {
+        Patterns = [.. ProjectLogoFormats.Extensions.Select(extension => $"*{extension}")],
+        AppleUniformTypeIdentifiers = ["public.image"],
+        MimeTypes = ["image/*"],
+    };
+
     // The picked file's path lands in LogoSource; the manager takes the copy when the project is saved, so a
     // cancelled dialog leaves the operator's pictures and the stored one alone.
     private async Task _PickLogoAsync(ProjectDialogViewModel viewModel)
@@ -75,7 +86,10 @@ public partial class ProjectDialog : Window
             {
                 Title = "Choose the project's logo",
                 AllowMultiple = false,
-                FileTypeFilter = [FilePickerFileTypes.ImageAll],
+                // Built from what the store accepts rather than from the platform's stock image filter, which
+                // leaves out SVG — and a company logo is very often exactly that. The store rasterises one, so
+                // offering it here is the whole difference between a usable file and an invisible one.
+                FileTypeFilter = [_LogoFiles],
             });
 
             if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
