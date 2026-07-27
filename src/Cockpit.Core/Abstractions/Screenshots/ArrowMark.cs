@@ -48,26 +48,6 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
     public double Weight => Math.Clamp(_Length * WeightOfLength, Thickness, Thickness * HeaviestInThicknesses);
 
     /// <summary>
-    /// The ring drawn around the body so the arrow survives whatever is underneath it. White under a dark colour
-    /// and black under a light one, because contrast against the background is the thing being bought, and the
-    /// body's own colour is the only part of the background that is known in advance.
-    /// </summary>
-    /// <remarks>
-    /// A screenshot has no single background: the same arrow crosses a black terminal and a white document, and
-    /// the accent alone carries on neither with much margin. A shape with a light body and a dark ring — or the
-    /// other way round — always has one of the two contrasting with whatever it lies on, which is why map labels
-    /// and subtitles have been drawn this way for as long as either has existed.
-    /// </remarks>
-    public uint Halo => ContrastingWith(Colour);
-
-    /// <summary>
-    /// How wide that ring is drawn, in the image's pixels. Centred on the outline of the shape, so half of it lies
-    /// outside — that half is the ring you see, and the other half is what stops the body and the ring from
-    /// leaving a seam between them.
-    /// </summary>
-    public double HaloThickness => Math.Max(2, Weight / 3);
-
-    /// <summary>
     /// The outline of the whole arrow — shaft and head as one closed shape, running from one side of the tail
     /// round the tip and back. Empty for a drag that went nowhere, which is not an arrow: it has no direction to
     /// point in.
@@ -144,7 +124,8 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
             return null;
         }
 
-        var margin = HaloThickness / 2;
+        // A pixel for what antialiasing puts past the shape's own corners.
+        const double margin = 1;
         var left = (int)Math.Floor(corners.Min(corner => corner.X) - margin);
         var top = (int)Math.Floor(corners.Min(corner => corner.Y) - margin);
         var right = (int)Math.Ceiling(corners.Max(corner => corner.X) + margin);

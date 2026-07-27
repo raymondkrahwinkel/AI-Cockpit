@@ -44,6 +44,44 @@
     <Style Selector="Button.tool:disabled /template/ ContentPresenter">
       <Setter Property="Opacity" Value="0.4" />
     </Style>
+    <!-- Both panels are the same object with different tools on it, so they are one style rather than two copies
+         of five setters that would drift apart the first time one of them was adjusted. -->
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,10" />
+      <!-- The hand you get when the pointer is over something you can pick up, which is the only thing that says
+           a panel can be moved at all. -->
+      <Setter Property="Cursor" Value="SizeAll" />
+    </Style>
+    <Style Selector="Border.panel Button.tool">
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- The ink and weight buttons. Smaller than a tool and unlabelled: what they are is what they look like. -->
+    <Style Selector="Button.swatch">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="5,4" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Focusable" Value="False" />
+    </Style>
+    <Style Selector="Button.swatch:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}" />
+    </Style>
+    <!-- The chosen one, said with the same accent ring the tools use, so "which is on" reads the same way twice. -->
+    <Style Selector="Button.swatch.active">
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}" />
+      <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}" />
+    </Style>
+    <Style Selector="Ellipse.dot">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+    </Style>
     <Style Selector="Border.key">
       <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}" />
       <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}" />
@@ -87,24 +125,17 @@
       </Border>
     </Canvas>
 
-    <!-- The control panel (AC-358), on a Canvas of its own so it can be put where the pointer's display is and
-         moved out from under whatever is being dragged. The Canvas has no background, so only the panel itself
-         takes the pointer — the rest of the surface still starts a drag. -->
+    <!-- The control panels (AC-358, split in AC-374), on a Canvas of their own so each can be put where the
+         pointer's display is and then moved by hand. The Canvas has no background, so only the panels themselves
+         take the pointer — the rest of the surface still starts a drag.
+
+         Two of them rather than one: what is being taken, and what is being put on it. They were one panel on two
+         rows until an operator wanted the marking tools somewhere else — which is the whole reason to split them,
+         because the reason to move a panel is almost always that *one* of the two groups is over the thing you
+         are working on, and that is the one that has to move. -->
     <Canvas>
-      <Border Name="Controls"
-              Background="{StaticResource CockpitPanelBgBrush}"
-              BorderBrush="{StaticResource CockpitHairlineBrush}"
-              BorderThickness="1"
-              CornerRadius="12"
-              Padding="12,10">
-        <StackPanel Spacing="9">
-          <!-- Two rows, split where the tools already differed in kind: what is being taken, then what is being
-               put on it. One row held all of them until AC-360, and at six tools it outgrew half of a 1440-unit
-               surface on a machine whose fonts run a little wider than this one's — at which point the panel can
-               no longer sit on the display the pointer is on, which is the one thing AC-358 built it to do. Split
-               by meaning rather than by width, because a row that wraps wherever it happens to run out puts half
-               a group on each line, and the grouping is what the row is for. -->
-          <StackPanel Orientation="Horizontal" Spacing="6">
+      <Border Name="Controls" Classes="panel">
+        <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Name="RegionTool" Classes="tool" Classes.active="{Binding DraggingRegion}" Click="_OnRegionTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="SelectDrag" Width="15" Height="15" />
@@ -141,12 +172,14 @@
               </StackPanel>
             </Button>
 
-          </StackPanel>
+        </StackPanel>
+      </Border>
 
-          <!-- The mark tools, on a row of their own under the three that answer what is being taken. They all go
-               on the picture rather than deciding what it is, and they share a drag, a list and one Ctrl+Z. This
-               row is the one this epic keeps adding to, so it wraps within a fixed width rather than growing the
-               panel sideways without limit. -->
+      <!-- The marking panel. Everything on it goes on the picture rather than deciding what it is, and they share
+           a drag, a list and one Ctrl+Z. This is the panel the epic keeps adding to, so its row wraps within a
+           fixed width rather than growing sideways without limit. -->
+      <Border Name="MarkControls" Classes="panel">
+        <StackPanel Spacing="9">
           <WrapPanel MaxWidth="430" ItemSpacing="6" LineSpacing="6">
             <Button Name="OutlineTool" Classes="tool" Classes.active="{Binding Outlining}" Click="_OnOutlineTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -205,6 +238,35 @@
           </WrapPanel>
 
           <Rectangle Height="1" Fill="{StaticResource CockpitHairlineBrush}" MaxWidth="430" />
+
+          <!-- What the next mark is drawn in (AC-375). Inks on the left, line weight on the right, because they
+               are two different questions about the same next mark. Redaction is missing from both on purpose: it
+               pixelates, and has neither a colour nor a line. -->
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Button Name="InkAccent" Classes="swatch" Click="_OnInkAccent"><Ellipse Name="InkAccentDot" Classes="dot" /></Button>
+              <Button Name="InkRed" Classes="swatch" Click="_OnInkRed"><Ellipse Name="InkRedDot" Classes="dot" /></Button>
+              <Button Name="InkYellow" Classes="swatch" Click="_OnInkYellow"><Ellipse Name="InkYellowDot" Classes="dot" /></Button>
+              <Button Name="InkGreen" Classes="swatch" Click="_OnInkGreen"><Ellipse Name="InkGreenDot" Classes="dot" /></Button>
+              <Button Name="InkWhite" Classes="swatch" Click="_OnInkWhite"><Ellipse Name="InkWhiteDot" Classes="dot" /></Button>
+            </StackPanel>
+
+            <Rectangle Width="1" Height="18" Fill="{StaticResource CockpitHairlineBrush}" VerticalAlignment="Center" />
+
+            <!-- The weights are drawn rather than named: "thin" and "thick" are the same length in words and
+                 nothing at all in pixels, and what is being chosen is a line. -->
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Button Name="WeightThin" Classes="swatch" Click="_OnWeightThin">
+                <Rectangle Width="18" Height="1.5" Fill="{StaticResource CockpitTextPrimaryBrush}" VerticalAlignment="Center" />
+              </Button>
+              <Button Name="WeightMedium" Classes="swatch" Click="_OnWeightMedium">
+                <Rectangle Width="18" Height="3.5" Fill="{StaticResource CockpitTextPrimaryBrush}" VerticalAlignment="Center" />
+              </Button>
+              <Button Name="WeightThick" Classes="swatch" Click="_OnWeightThick">
+                <Rectangle Width="18" Height="6" Fill="{StaticResource CockpitTextPrimaryBrush}" VerticalAlignment="Center" />
+              </Button>
+            </StackPanel>
+          </StackPanel>
 
           <TextBlock Name="HintText"
                      Foreground="{StaticResource CockpitTextSecondaryBrush}"

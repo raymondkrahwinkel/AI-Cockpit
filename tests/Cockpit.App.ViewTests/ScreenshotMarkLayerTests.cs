@@ -370,6 +370,96 @@ public class ScreenshotMarkLayerTests
         selection.Marks.Should().BeEmpty();
     }
 
+    /// <summary>Every mark that has a colour is drawn in the ink that was chosen (AC-375).</summary>
+    [Theory]
+    [InlineData(MarkTool.Outline)]
+    [InlineData(MarkTool.Arrow)]
+    [InlineData(MarkTool.Highlight)]
+    [InlineData(MarkTool.Stroke)]
+    public void AMarkIsDrawnInTheChosenInk(MarkTool tool)
+    {
+        const uint red = 0xFFE5484D;
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        selection.ChooseInk(red);
+        _DrawWith(selection, tool, 100, 100, 200, 120);
+
+        _ColourOf(selection.Marks.Should().ContainSingle().Subject).Should().Be(red);
+    }
+
+    /// <summary>
+    /// And what is already down keeps the ink it was drawn in. A mark is finished when the drag ends — this layer
+    /// has a list and an undo, not a selected mark to recolour.
+    /// </summary>
+    [Fact]
+    public void ChoosingAnInk_LeavesWhatIsAlreadyOnTheCaptureAlone()
+    {
+        const uint red = 0xFFE5484D;
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+        _DrawFrame(selection, 100, 100, 60, 40);
+
+        selection.ChooseInk(red);
+        _DrawFrame(selection, 300, 300, 60, 40);
+
+        _ColourOf(selection.Marks[0]).Should().Be(Accent, "the first was drawn before the ink changed");
+        _ColourOf(selection.Marks[1]).Should().Be(red);
+    }
+
+    /// <summary>The weight scales the lines, in the order the operator would expect and never down to nothing.</summary>
+    [Fact]
+    public void TheWeightScalesTheLines()
+    {
+        var thicknesses = new List<int>();
+        foreach (var weight in new[] { MarkWeight.Thin, MarkWeight.Medium, MarkWeight.Thick })
+        {
+            var selection = _Surface();
+            _MarkOut(selection, 0, 0, 800, 600);
+            selection.ChooseWeight(weight);
+            _DrawFrame(selection, 100, 100, 60, 40);
+
+            thicknesses.Add(selection.Marks.OfType<OutlineMark>().Single().Thickness);
+        }
+
+        thicknesses.Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
+        thicknesses[0].Should().BeGreaterThan(0, "a line the operator asked to be thin is still a line");
+    }
+
+    /// <summary>
+    /// A note's letters are not scaled by it (Raymond, 2026-07-27). A label is there to be read, and at "thin"
+    /// that would not be a stylistic choice but an unreadable one.
+    /// </summary>
+    [Fact]
+    public void ANotesLetters_AreNotScaledByTheWeight()
+    {
+        var sizes = new List<int>();
+        foreach (var weight in new[] { MarkWeight.Thin, MarkWeight.Thick })
+        {
+            var selection = _Surface();
+            _MarkOut(selection, 0, 0, 800, 600);
+            selection.ChooseWeight(weight);
+            selection.MarkWith(MarkTool.Text, true);
+            selection.BeginDrag(200, 200);
+            selection.Type("expected 12");
+            selection.FinishTyping();
+
+            sizes.Add(selection.Marks.OfType<TextMark>().Single().Size);
+        }
+
+        sizes[0].Should().Be(sizes[1]);
+    }
+
+    private static uint _ColourOf(Mark mark) => mark switch
+    {
+        OutlineMark outline => outline.Colour,
+        ArrowMark arrow => arrow.Colour,
+        StrokeMark stroke => stroke.Colour,
+        HighlightMark highlight => highlight.Colour,
+        TextMark note => note.Colour,
+        _ => throw new NotSupportedException($"A {mark.GetType().Name} has no ink."),
+    };
+
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
     {
         selection.BeginDrag(x, y);

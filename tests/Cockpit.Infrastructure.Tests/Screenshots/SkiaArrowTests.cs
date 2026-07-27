@@ -49,20 +49,17 @@ public class SkiaArrowTests
     }
 
     /// <summary>
-    /// The ring is burnt in around the body. Without it a dark arrow on a dark terminal is a mark nobody can see,
-    /// which is the same as no mark — and this is the one thing about the tool that a picture of a light desktop
-    /// would never show going wrong.
+    /// The arrow is its colour and nothing else. It carried a contrasting ring until AC-375, for want of knowing
+    /// what it would be drawn over; the palette makes that the operator's answer to give, and an outline they did
+    /// not ask for around a colour they did is noise.
     /// </summary>
     [Fact]
-    public void TheRingIsBurntAroundTheBody_SoTheArrowSurvivesADarkBackground()
+    public void TheArrowIsItsOwnColour_WithNothingDrawnAroundIt()
     {
         using var image = _Burn(_Arrow(40, 100, 260, 100));
 
-        var besideTheShaft = image.GetPixel(150, 93);
-
-        besideTheShaft.Red.Should().BeGreaterThan(200);
-        besideTheShaft.Green.Should().BeGreaterThan(200);
-        besideTheShaft.Blue.Should().BeGreaterThan(200);
+        image.GetPixel(150, 100).Should().Be(new SKColor(0, 0, 255), "the shaft is the ink it was given");
+        image.GetPixel(150, 93).Should().Be(SKColors.Black, "and just outside it the picture is untouched");
     }
 
     /// <summary>A press that never moved has no direction to point in, so nothing is drawn and the picture is the one that came in.</summary>

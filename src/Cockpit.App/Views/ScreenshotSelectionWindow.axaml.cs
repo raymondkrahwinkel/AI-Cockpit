@@ -33,8 +33,20 @@ public partial class ScreenshotSelectionWindow : Window
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
 
-    /// <summary>How far the control panel sits from the edge of the display it is on.</summary>
+    /// <summary>How far the control panels sit from the edge of the display they are on.</summary>
     private const double ControlsMargin = 24;
+
+    /// <summary>How much air is left between the two panels while they are still stacked where they were put.</summary>
+    private const double PanelGap = 10;
+
+    /// <summary>
+    /// The panels the operator has moved themselves. Those stop following the pointer's display: having been put
+    /// somewhere by hand is the strongest statement about where a panel belongs that this surface can receive.
+    /// </summary>
+    private readonly HashSet<Control> _movedByHand = [];
+
+    /// <summary>The panel being dragged and where it was gripped, or nothing when none is.</summary>
+    private (Control Panel, Point Grip)? _panelDrag;
 
     /// <summary>
     /// What stands in for each mark on the canvas, one per mark, in the order they were placed. Added as they are
@@ -229,11 +241,17 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
-        // A press anywhere on the control panel belongs to the panel, not to the picture. Self included: the
-        // padding and the gaps between the rows have no child control to catch them, so a press there resolves to
-        // the panel itself — and that is a good part of what an operator sees as the panel.
-        if (e.Source is Visual source && source.GetSelfAndVisualAncestors().Contains(Controls))
+        // A press anywhere on a panel belongs to that panel, not to the picture. Self included: the padding and
+        // the gaps between the rows have no child control to catch them, so a press there resolves to the panel
+        // itself — and that is a good part of what an operator sees as the panel.
+        if (_PanelUnder(e.Source) is { } panel)
         {
+            // And picks it up. A press on a tool never arrives here at all — a button handles its own press, so
+            // it does not reach the window — which is what leaves pressing a tool as pressing a tool rather than
+            // as the start of a drag. Everything that does arrive is padding, a gap between rows, a label or the
+            // panel itself, and all of those are things an operator would call "the panel".
+            _panelDrag = (panel, e.GetPosition(panel));
+            e.Pointer.Capture(this);
             return;
         }
 
@@ -285,7 +303,17 @@ public partial class ScreenshotSelectionWindow : Window
 
         _pointer = e.GetPosition(Surface);
 
-        // Placed on every move, not only on the ones that redraw the selection. The panel follows the display the
+        // A panel being moved takes the pointer entirely. Nothing else may read this move: the picture underneath
+        // is not being marked, no window is being hovered, and the panels are certainly not to be re-placed on the
+        // display the pointer happens to have crossed into while carrying one.
+        if (_panelDrag is { } moving)
+        {
+            _movedByHand.Add(moving.Panel);
+            _Put(moving.Panel, _pointer.X - moving.Grip.X, _pointer.Y - moving.Grip.Y);
+            return;
+        }
+
+        // Placed on every move, not only on the ones that redraw the selection. A panel follows the display the
         // pointer is on, and moving between screens without a button down is exactly how an operator gets there —
         // so leaving it to the drag and window-mode branches below left it on whichever screen the surface opened.
         _PlaceControls();
@@ -305,9 +333,28 @@ public partial class ScreenshotSelectionWindow : Window
         }
     }
 
+    /// <summary>
+    /// The panel a press landed on, or nothing where it landed on the picture. Self and ancestors, because the
+    /// padding between the tools has no child control of its own and a press there resolves to the panel.
+    /// </summary>
+    private Border? _PanelUnder(object? source) =>
+        source is Visual pressed && pressed.GetSelfAndVisualAncestors().ToList() is { } chain
+            ? chain.Contains(Controls) ? Controls : chain.Contains(MarkControls) ? MarkControls : null
+            : null;
+
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        // Letting go of a panel ends only that. Falling through to EndDrag would finish a mark the operator never
+        // began — the press that started this was on the panel, so there is no drag on the picture to end.
+        if (_panelDrag is not null)
+        {
+            _panelDrag = null;
+            e.Pointer.Capture(null);
+            return;
+        }
+
         if (_selection is { PickingWindow: false })
         {
             _selection.EndDrag();
@@ -488,6 +535,53 @@ public partial class ScreenshotSelectionWindow : Window
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
 
+    /// <summary>
+    /// The inks and the line weights (AC-375). Each is the same shape of call as a tool, and each redraws — the
+    /// mark being dragged right now is previewed in what has just been chosen.
+    /// </summary>
+    private void _OnInkAccent(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(_AccentColour()));
+
+    private void _OnInkRed(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(MarkInk.Red));
+
+    private void _OnInkYellow(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(MarkInk.Yellow));
+
+    private void _OnInkGreen(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(MarkInk.Green));
+
+    private void _OnInkWhite(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseInk(MarkInk.White));
+
+    private void _OnWeightThin(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseWeight(MarkWeight.Thin));
+
+    private void _OnWeightMedium(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseWeight(MarkWeight.Medium));
+
+    private void _OnWeightThick(object? sender, RoutedEventArgs e) => _Tool(selection => selection.ChooseWeight(MarkWeight.Thick));
+
+    /// <summary>
+    /// Paints the swatches in the inks they stand for, and marks the chosen ink and weight. Restated on every draw
+    /// rather than bound, because which one is on is one value against eight controls — eight bindings, each of
+    /// which would have to be told what the other seven mean.
+    /// </summary>
+    private void _ShowPalette(ScreenshotSelectionViewModel selection)
+    {
+        var inks = new (Button Button, Ellipse Dot, uint Colour)[]
+        {
+            (InkAccent, InkAccentDot, _AccentColour()),
+            (InkRed, InkRedDot, MarkInk.Red),
+            (InkYellow, InkYellowDot, MarkInk.Yellow),
+            (InkGreen, InkGreenDot, MarkInk.Green),
+            (InkWhite, InkWhiteDot, MarkInk.White),
+        };
+
+        foreach (var (button, dot, colour) in inks)
+        {
+            dot.Fill = new SolidColorBrush(Color.FromUInt32(colour));
+            button.Classes.Set("active", selection.MarkColour == colour);
+        }
+
+        WeightThin.Classes.Set("active", selection.Weight == MarkWeight.Thin);
+        WeightMedium.Classes.Set("active", selection.Weight == MarkWeight.Medium);
+        WeightThick.Classes.Set("active", selection.Weight == MarkWeight.Thick);
+    }
+
     private void _OnLabelTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Label(!selection.Labelling));
 
@@ -526,16 +620,16 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
-    /// Puts the control panel at the top of the display the pointer is on. The window spans every screen at once,
-    /// so its own middle is a spot nobody is looking at; the display under the pointer is the one they are.
+    /// Puts both panels at the top of the display the pointer is on, one under the other. The window spans every
+    /// screen at once, so its own middle is a spot nobody is looking at; the display under the pointer is the one
+    /// they are.
     /// </summary>
     /// <remarks>
-    /// It stays there — it does not step aside for what is being marked out, though an earlier version of this did
-    /// (AC-358). Nothing here remembers where the panel was, so every reason to move away became a reason to move
-    /// back the moment it lapsed, and the row rocked between the two edges while the operator was trying to use
-    /// it. A tool that moves while you are reaching for it costs more than one that sits over the picture, and the
-    /// picture is frozen anyway. The price, said plainly: a drag cannot be *started* on the strip the panel
-    /// occupies, since a press there belongs to the panel — dragging through it and letting go past it is fine.
+    /// They follow the pointer's display until the operator moves one by hand, and that one then stops — the drag
+    /// <em>is</em> the memory of where it should be. An earlier version of this stepped aside on its own for
+    /// whatever was being marked out (AC-358), and nothing remembered where it had been, so every reason to move
+    /// away became a reason to move back the moment it lapsed and the row rocked under the operator's hand. A
+    /// panel that moves because it was pulled there has no such argument with itself.
     /// </remarks>
     private void _PlaceControls()
     {
@@ -544,16 +638,8 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
-        // Bounds until it has been arranged once, DesiredSize before that — the first placement happens as the
-        // window opens, and a panel measured at nothing would be pinned to the corner it started in.
-        var size = Controls.Bounds.Width > 0 ? Controls.Bounds.Size : Controls.DesiredSize;
-        if (size.Width <= 0)
-        {
-            return;
-        }
-
         // Left where it was when the pointer is on no display at all — the gap a staggered arrangement leaves.
-        // Centring on the whole window would put the panel in that gap, which is the one place with no screen
+        // Centring on the whole window would put a panel in that gap, which is the one place with no screen
         // behind it.
         if (selection.DisplayAt(_pointer.X, _pointer.Y) is not { } bounds)
         {
@@ -561,13 +647,40 @@ public partial class ScreenshotSelectionWindow : Window
         }
 
         var display = _ToRect(selection.ToSurface(bounds));
-        var left = display.X + ((display.Width - size.Width) / 2);
         var top = display.Y + ControlsMargin;
 
-        // Clamped last, against the window rather than the display: a screen narrower or shorter than the panel
-        // would otherwise push it off the edge, and a panel half outside the window is a tool you cannot press.
-        Canvas.SetLeft(Controls, Math.Clamp(left, 0, Math.Max(0, Surface.Bounds.Width - size.Width)));
-        Canvas.SetTop(Controls, Math.Clamp(top, 0, Math.Max(0, Surface.Bounds.Height - size.Height)));
+        foreach (var panel in new[] { Controls, MarkControls })
+        {
+            // Bounds until it has been arranged once, DesiredSize before that — the first placement happens as
+            // the window opens, and a panel measured at nothing would be pinned to the corner it started in.
+            var size = panel.Bounds.Width > 0 ? panel.Bounds.Size : panel.DesiredSize;
+            if (size.Width <= 0)
+            {
+                return;
+            }
+
+            if (!_movedByHand.Contains(panel))
+            {
+                _Put(panel, display.X + ((display.Width - size.Width) / 2), top);
+            }
+
+            // Stacked from the one above whether or not it moved, so a panel left where it was does not end up
+            // under one that was dragged away from over it.
+            top = Canvas.GetTop(panel) + (_movedByHand.Contains(panel) ? 0 : size.Height + PanelGap);
+        }
+    }
+
+    /// <summary>
+    /// Puts a panel at a place on the surface, clamped so that all of it stays reachable. Clamped against the
+    /// window rather than the display: a screen narrower or shorter than the panel would otherwise push it off
+    /// the edge, and a panel half outside the window is a tool you cannot press.
+    /// </summary>
+    private void _Put(Control panel, double left, double top)
+    {
+        var size = panel.Bounds.Width > 0 ? panel.Bounds.Size : panel.DesiredSize;
+
+        Canvas.SetLeft(panel, Math.Clamp(left, 0, Math.Max(0, Surface.Bounds.Width - size.Width)));
+        Canvas.SetTop(panel, Math.Clamp(top, 0, Math.Max(0, Surface.Bounds.Height - size.Height)));
     }
 
     private static Rect _ToRect((double X, double Y, double Width, double Height) area) =>
@@ -593,6 +706,7 @@ public partial class ScreenshotSelectionWindow : Window
         }
 
         _PlaceControls();
+        _ShowPalette(selection);
 
         var width = Surface.Bounds.Width;
         var height = Surface.Bounds.Height;
@@ -685,9 +799,7 @@ public partial class ScreenshotSelectionWindow : Window
     {
         ArrowMark => new Path(),
         HighlightMark => new Image { Stretch = Stretch.Fill },
-        // Two paths over each other: a line cannot be drawn and ringed at once the way a filled shape can, because
-        // the ring would be painted over the line rather than around it. The wider one goes underneath.
-        StrokeMark => new Panel { Children = { new Path(), new Path() } },
+        StrokeMark => new Path(),
         // A plate with letters on it, which is what the mark is: the letters need one known background, and the
         // plate is the only part of the picture underneath that can be relied on.
         TextMark => new Border { Child = new TextBlock() },
@@ -697,11 +809,9 @@ public partial class ScreenshotSelectionWindow : Window
     /// <summary>Whether a kept control is still the right thing for the mark now at its position.</summary>
     private static bool _Suits(Control shape, Mark mark) => (shape, mark) switch
     {
-        (Path, ArrowMark) => true,
+        (Path, ArrowMark or StrokeMark) => true,
         (Image, HighlightMark) => true,
-        // Asked before the panel, since a Border is a Panel to nobody but happens to be checked after it here.
         (Border, TextMark) => true,
-        (Panel, StrokeMark) => true,
         (Rectangle, RedactionMark or OutlineMark) => true,
         _ => false,
     };
@@ -735,9 +845,7 @@ public partial class ScreenshotSelectionWindow : Window
                 break;
             case (ArrowMark arrow, Path drawn):
                 drawn.Fill = new SolidColorBrush(Color.FromUInt32(arrow.Colour));
-                drawn.Stroke = new SolidColorBrush(Color.FromUInt32(arrow.Halo));
-                drawn.StrokeThickness = selection.ToSurfaceLength(arrow.HaloThickness);
-                drawn.StrokeJoin = PenLineJoin.Miter;
+                drawn.Stroke = null;
                 drawn.Opacity = 1;
                 _Trace(drawn, arrow, selection);
                 break;
@@ -767,7 +875,7 @@ public partial class ScreenshotSelectionWindow : Window
                 plate.Width = double.NaN;
                 plate.Height = double.NaN;
                 break;
-            case (StrokeMark stroke, Panel drawn):
+            case (StrokeMark stroke, Path drawn):
                 _Trace(drawn, stroke, selection);
                 break;
             default:
@@ -795,7 +903,7 @@ public partial class ScreenshotSelectionWindow : Window
         }
 
         var onSurface = corners.Select(selection.ToSurface).ToList();
-        var margin = selection.ToSurfaceLength(arrow.HaloThickness) / 2;
+        var margin = selection.ToSurfaceLength(1);
         var left = onSurface.Min(corner => corner.X) - margin;
         var top = onSurface.Min(corner => corner.Y) - margin;
 
@@ -822,10 +930,15 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
-    /// Lays the freehand line into the pair of paths that stand in for it — the wider ring underneath, the line
-    /// over it — in the window's units, from the same curve the imaging library draws.
+    /// Lays the freehand line into the path that stands in for it, in the window's units, from the same curve the
+    /// imaging library draws.
     /// </summary>
-    private static void _Trace(Panel drawn, StrokeMark stroke, ScreenshotSelectionViewModel selection)
+    /// <remarks>
+    /// It took a pair of paths until AC-375 — a wider ring underneath and the line over it — because a line cannot
+    /// be drawn and ringed at once the way a filled shape can. The ring is gone with the palette, and the second
+    /// path went with it.
+    /// </remarks>
+    private static void _Trace(Path drawn, StrokeMark stroke, ScreenshotSelectionViewModel selection)
     {
         if (stroke.Start() is not { } start || stroke.Curve() is not { Count: > 0 } curves
             || stroke.Bounds() is not { } bounds)
@@ -851,19 +964,13 @@ public partial class ScreenshotSelectionWindow : Window
             context.EndFigure(isClosed: false);
         }
 
-        _Ink(drawn.Children[0], geometry, stroke.Halo, selection.ToSurfaceLength(stroke.HaloThickness));
-        _Ink(drawn.Children[1], geometry, stroke.Colour, selection.ToSurfaceLength(stroke.Thickness));
+        drawn.Data = geometry;
+        drawn.Fill = null;
+        drawn.Stroke = new SolidColorBrush(Color.FromUInt32(stroke.Colour));
+        drawn.StrokeThickness = selection.ToSurfaceLength(stroke.Thickness);
+        drawn.StrokeLineCap = PenLineCap.Round;
+        drawn.StrokeJoin = PenLineJoin.Round;
         _Place(drawn, left, top, width, height);
-    }
-
-    private static void _Ink(Control shape, Geometry geometry, uint colour, double thickness)
-    {
-        var path = (Path)shape;
-        path.Data = geometry;
-        path.Stroke = new SolidColorBrush(Color.FromUInt32(colour));
-        path.StrokeThickness = thickness;
-        path.StrokeLineCap = PenLineCap.Round;
-        path.StrokeJoin = PenLineJoin.Round;
     }
 
     private static Point _At(ScreenshotSelectionViewModel selection, MarkPoint point, double left, double top)

@@ -51,7 +51,6 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     private readonly ScreenCapture _capture;
     private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
-    private readonly uint _markColour;
     private readonly Func<CaptureRect, int>? _brightnessUnder;
 
     /// <summary>
@@ -90,7 +89,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         _capture = capture;
         ImageWidth = imageWidth;
         ImageHeight = imageHeight;
-        _markColour = markColour;
+        MarkColour = markColour;
         _brightnessUnder = brightnessUnder;
 
         // Enumerated once, here, rather than per pointer move: the capture is already frozen, so a window that
@@ -112,6 +111,45 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>The captured image's height in its own pixels.</summary>
     public int ImageHeight { get; }
+
+    /// <summary>
+    /// What the next mark is drawn in, as 0xAARRGGBB (AC-375). Starts as the theme's accent — the one colour this
+    /// app owns — and changes when the operator picks an ink.
+    /// </summary>
+    /// <remarks>
+    /// The <em>next</em> mark, not the ones already placed. A mark is finished when the drag ends, the same as
+    /// everywhere else on this surface; recolouring what is already down would need a notion of "the selected
+    /// mark", which this layer deliberately does not have — there is a list and an undo, and that is all.
+    /// </remarks>
+    public uint MarkColour { get; private set; }
+
+    /// <summary>How heavily the next mark's lines are drawn. A note's letters are not affected — see <see cref="ViewModels.MarkWeight"/>.</summary>
+    public MarkWeight Weight { get; private set; } = MarkWeight.Medium;
+
+    /// <summary>Takes up an ink. The next mark placed is drawn in it; what is already on the capture is untouched.</summary>
+    public void ChooseInk(uint colour)
+    {
+        MarkColour = colour;
+        OnPropertyChanged(nameof(MarkColour));
+    }
+
+    /// <summary>Takes up a line weight, on the same terms.</summary>
+    public void ChooseWeight(MarkWeight weight)
+    {
+        Weight = weight;
+        OnPropertyChanged(nameof(Weight));
+    }
+
+    /// <summary>
+    /// A kind's own thickness at the chosen weight, in the image's pixels. Never below one: a line the operator
+    /// asked to be thin is still a line, and a thickness of zero is a mark that is not there.
+    /// </summary>
+    private int _Weighed(int thickness) => Math.Max(1, (int)Math.Round(thickness * Weight switch
+    {
+        MarkWeight.Thin => 0.6,
+        MarkWeight.Thick => 1.7,
+        _ => 1.0,
+    }));
 
     /// <summary>The region the operator has marked out, in image pixels, or nothing yet.</summary>
     [ObservableProperty]
@@ -222,7 +260,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     {
         if (TypingAt is { } at && Typed.Trim() is { Length: > 0 } written)
         {
-            _marks.Add(new TextMark(at, written, _markColour, TextSize));
+            _marks.Add(new TextMark(at, written, MarkColour, TextSize));
             OnPropertyChanged(nameof(Marks));
         }
 
@@ -452,7 +490,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     {
         // A note is shown from the moment it is opened, before a character has been typed: an empty plate under
         // the pointer is how the operator knows the surface is listening to them rather than to its shortcuts.
-        { TypingAt: { } at } => new TextMark(at, Typed.Length > 0 ? Typed : " ", _markColour, TextSize),
+        { TypingAt: { } at } => new TextMark(at, Typed.Length > 0 ? Typed : " ", MarkColour, TextSize),
         { MarkingWith: { } tool } when _anchor is not null && PendingTo is not null => _MarkOf(tool, _trail),
         _ => null,
     };
@@ -471,19 +509,19 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     private Mark? _MarkOf(MarkTool tool, CapturePoint from, CapturePoint to, IReadOnlyList<CapturePoint> trail) => tool switch
     {
-        MarkTool.Stroke => new StrokeMark([.. trail], _markColour, StrokeThickness) is { } drawn && drawn.Curve().Count > 0
+        MarkTool.Stroke => new StrokeMark([.. trail], MarkColour, _Weighed(StrokeThickness)) is { } drawn && drawn.Curve().Count > 0
             ? drawn
             : null,
         MarkTool.Redaction => _Between(from, to) is { Width: > 0, Height: > 0 } box ? new RedactionMark(box) : null,
         MarkTool.Outline => _Between(from, to) is { Width: > 0, Height: > 0 } frame
-            ? new OutlineMark(frame, _markColour, OutlineThickness)
+            ? new OutlineMark(frame, MarkColour, _Weighed(OutlineThickness))
             : null,
-        MarkTool.Arrow => from == to ? null : new ArrowMark(from, to, _markColour, ArrowThickness),
+        MarkTool.Arrow => from == to ? null : new ArrowMark(from, to, MarkColour, _Weighed(ArrowThickness)),
         // A note is not made from a drag at all — it is opened by a press and closed by a key, so a drag with this
         // tool in hand leaves nothing behind.
         MarkTool.Text => null,
         MarkTool.Highlight => _Between(from, to) is { Width: > 0, Height: > 0 } band
-            ? new HighlightMark(band, _markColour, _BlendFor(band))
+            ? new HighlightMark(band, MarkColour, _BlendFor(band))
             : null,
         _ => throw new NotSupportedException($"There is no mark for {tool}."),
     };

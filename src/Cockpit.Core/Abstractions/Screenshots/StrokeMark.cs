@@ -35,21 +35,6 @@ public sealed record StrokeMark(IReadOnlyList<CapturePoint> Points, uint Colour,
     /// </summary>
     private const double Reach = 6;
 
-    /// <summary>The ring around the line, for the same reason the arrow has one — a stroke crosses whatever is on the screen.</summary>
-    public uint Halo => ContrastingWith(Colour);
-
-    /// <summary>
-    /// How wide that ring is drawn, in the image's pixels — twice the line, so that half a line's width of it
-    /// shows on either side.
-    /// </summary>
-    /// <remarks>
-    /// Wide enough to be seen, which took measuring rather than guessing. A ring a couple of pixels wider than the
-    /// line puts well under a pixel outside it once the capture is scaled down onto a window, and a ring nobody
-    /// can see is a ring that is not there — the line then disappears into a dark terminal exactly as it would
-    /// have without one.
-    /// </remarks>
-    public double HaloThickness => Thickness * 2;
-
     /// <summary>
     /// The points worth keeping: the ones far enough apart to be about the gesture rather than about the hand and
     /// the sampling. The first and the last are always kept — a stroke starts and ends where the operator says.
@@ -139,7 +124,8 @@ public sealed record StrokeMark(IReadOnlyList<CapturePoint> Points, uint Colour,
             return null;
         }
 
-        var margin = HaloThickness / 2;
+        // Half the line, and a pixel for what antialiasing puts past that.
+        var margin = (Thickness / 2.0) + 1;
         var left = (int)Math.Floor(points.Min(point => point.X) - margin);
         var top = (int)Math.Floor(points.Min(point => point.Y) - margin);
         var right = (int)Math.Ceiling(points.Max(point => point.X) + margin);
