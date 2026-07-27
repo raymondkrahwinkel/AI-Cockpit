@@ -331,6 +331,11 @@ display needed) — the screenshots in this README are produced by it:
 dotnet run --project src/Cockpit.App -- --screenshot out.png --scene session
 ```
 
+The screenshot tool's own selection surface has scenes too: `screenshot-selection` for the resting surface, and
+`screenshot-selection-region`, `screenshot-selection-window` and `screenshot-selection-redaction` for the states
+it is dragged, keyed and clicked into. It covers the whole screen and takes every key, so it is the one window
+that cannot be looked at by running the app.
+
 Tests:
 
 ```

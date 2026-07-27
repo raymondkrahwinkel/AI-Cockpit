@@ -24,6 +24,42 @@ internal static class Screenshotter
     {
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
 
+        var window = BuildScene(scene, width, height);
+        window.Show();
+
+        // The selection surface's modes are states an operator drives it into, not windows that open in them, so
+        // the scene reaches them here — after the window is up and has a size to measure positions against.
+        if (window is ScreenshotSelectionWindow surface)
+        {
+            ScreenshotSelectionScene.Stage(surface, scene);
+        }
+
+        var frame = window.CaptureRenderedFrame()
+            ?? throw new InvalidOperationException("Headless renderer produced no frame to capture.");
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outputPngPath));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        frame.Save(outputPngPath);
+
+        if (!string.IsNullOrEmpty(snapshotPath))
+        {
+            _WriteSnapshot(window, snapshotPath, snapshotTarget);
+        }
+
+        window.Close();
+    }
+
+    /// <summary>
+    /// The window a scene name asks for, built and sized but not shown. Its own step so the table below can be
+    /// held to a test — a scene that stopped building was otherwise found by whoever next asked for a render,
+    /// which on this surface has meant finding it after it shipped.
+    /// </summary>
+    internal static Window BuildScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
+    {
         Window window = scene switch
         {
             "about" => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
@@ -51,6 +87,10 @@ internal static class Screenshotter
             "terminal" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
             "plugin-update-badge" => _PluginUpdateBadge(),
             "toolbar-actions" => _ToolbarActions(),
+            // The selection surface, one scene per mode (AC-357). Their names live with the scene rather than
+            // here because the mode is something the surface is driven into after it is shown, not a window that
+            // opens in it — so the name means nothing until then.
+            _ when ScreenshotSelectionScene.Covers(scene) => ScreenshotSelectionScene.Build(width, height),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
 
@@ -61,25 +101,7 @@ internal static class Screenshotter
             window.Height = height;
         }
 
-        window.Show();
-
-        var frame = window.CaptureRenderedFrame()
-            ?? throw new InvalidOperationException("Headless renderer produced no frame to capture.");
-
-        var directory = Path.GetDirectoryName(Path.GetFullPath(outputPngPath));
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        frame.Save(outputPngPath);
-
-        if (!string.IsNullOrEmpty(snapshotPath))
-        {
-            _WriteSnapshot(window, snapshotPath, snapshotTarget);
-        }
-
-        window.Close();
+        return window;
     }
 
     private static void _WriteSnapshot(Visual root, string snapshotPath, string? target)
