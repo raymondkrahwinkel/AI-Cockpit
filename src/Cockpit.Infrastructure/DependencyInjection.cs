@@ -124,12 +124,15 @@ public static class DependencyInjection
     //
     // Unlike the hotkey, Linux does not split on the session type. The Screenshot portal is served by
     // xdg-desktop-portal on X11 as well as Wayland — it predates GlobalShortcuts and every desktop that ships a
-    // screenshot tool backs it — so there is no X11 hole here to route around. Windows gets the Snip overlay,
-    // macOS screencapture, and anything else says it cannot rather than pretending.
+    // screenshot tool backs it — so there is no X11 hole here to route around. Windows reads the virtual screen
+    // through GDI, macOS through screencapture, and anything else says it cannot rather than pretending.
     private static void AddScreenshotCapture(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
+            // The screen reader is registered alongside rather than resolved by the marker scan: it is
+            // Windows-only, and a scan that bound it everywhere would drag GDI into the graph on Linux.
+            services.AddSingleton<IWindowsScreenReader, Win32ScreenReader>();
             services.AddSingleton<IScreenshotCapture, WindowsScreenshotCapture>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))

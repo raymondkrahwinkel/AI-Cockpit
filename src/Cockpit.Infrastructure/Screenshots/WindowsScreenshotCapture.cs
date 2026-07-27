@@ -1,102 +1,92 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Infrastructure.Screenshots;
 
 /// <summary>
-/// Screen capture on Windows through the <c>ms-screenclip:</c> protocol (AC-220) — the native Snip overlay
-/// the operator already knows from Win+Shift+S, with its region, window, full-screen and freeform modes. The
-/// ticket's alternative, a selection overlay of our own, would mean reimplementing all four plus the
-/// screen-pixel reads behind them; this borrows the one Windows ships.
+/// Screen capture on Windows: the whole virtual screen read in one go, with no UI of its own (AC-327). The
+/// selection is the cockpit's own (AC-329); this only supplies the pixels and says where each monitor's are.
 /// </summary>
 /// <remarks>
-/// What it costs is the return path. The protocol launch is fire-and-forget: it reports neither completion nor
-/// cancellation, and the snip lands on the clipboard rather than coming back to the caller. So this watches the
-/// clipboard for an image that was not there before and gives up after <see cref="_timeout"/>. Two consequences
-/// worth stating rather than hiding:
-/// <list type="bullet">
-/// <item>A cancelled snip and a snip the operator never got round to look identical — both end as "nothing captured".</item>
-/// <item>The snip replaces whatever was on the clipboard. That is Snip's doing, not ours, and the same thing happens on Win+Shift+S; nothing here clears or restores it.</item>
-/// <item>
-/// Any <em>other</em> image copied while the overlay is open is taken for the snip — the clipboard is all this can
-/// see, and a new image on it is the only signal there is. It needs the operator to copy a second picture in the
-/// seconds they are dragging a region, so it is unlikely rather than impossible; the honest bound is that this
-/// watches the clipboard, not the overlay.
-/// </item>
-/// <item>
-/// The mirror of that: a snip byte-for-byte identical to what was already on the clipboard — the same static
-/// region grabbed twice in a row — is indistinguishable from nothing having happened, and ends as a cancel.
-/// </item>
-/// </list>
+/// AC-220 launched the <c>ms-screenclip:</c> overlay and then watched the clipboard for an image that was not
+/// there before, because a protocol activation reports neither completion nor cancellation. Its own documentation
+/// listed what that cost: a cancelled snip and a snip nobody got round to were indistinguishable, the operator's
+/// clipboard was overwritten, any other image copied within the two-minute window was taken for the snip, and a
+/// capture identical to what was already on the clipboard read as a cancel. None of that was a defect to fix —
+/// it is what borrowing a fire-and-forget protocol costs. Reading the pixels here removes the whole class, along
+/// with the timeout.
 /// <para>
-/// Interim against <see cref="IScreenshotCapture"/> (AC-333): the contract asks for every display and no UI, and
-/// this still launches Snip. What lands on the clipboard is whatever the operator chose, with no layout that
-/// could honestly be put on it — hence <see cref="ScreenCapture.WithoutLayout"/>. AC-327 replaces the whole
-/// route with a DXGI/BitBlt read, which both removes the overlay and makes the layout knowable.
+/// <c>IScreenshotClipboard</c> is untouched: TTY injection still pastes through it. It is only no longer how a
+/// capture finds out what happened.
 /// </para>
 /// </remarks>
-internal sealed class WindowsScreenshotCapture(IScreenshotClipboard clipboard, ILogger<WindowsScreenshotCapture> logger) : IScreenshotCapture
+internal sealed class WindowsScreenshotCapture(IWindowsScreenReader screen, ILogger<WindowsScreenshotCapture> logger)
+    : IScreenshotCapture
 {
-    private TimeSpan _pollInterval = TimeSpan.FromMilliseconds(400);
-    private TimeSpan _timeout = TimeSpan.FromMinutes(2);
-    private Action _launchOverlay = _LaunchSnipOverlay;
-    private Func<TimeSpan, CancellationToken, Task> _wait = Task.Delay;
-
     public bool IsSupported => true;
 
-    /// <summary>Nothing to ask anyone: Windows ships the route this takes.</summary>
+    /// <summary>Nothing to ask anyone: the route this takes is part of Windows.</summary>
     public Task SupportSettled => Task.CompletedTask;
 
-    /// <summary>
-    /// Test seam: swap the protocol launch and the wait between polls, so the clipboard-watching loop — the part
-    /// with the actual logic in it — is assertable without a Snip overlay or two minutes of real time.
-    /// </summary>
-    internal void UseTestHarness(Action launchOverlay, Func<TimeSpan, CancellationToken, Task> wait, TimeSpan pollInterval, TimeSpan timeout)
+    public Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
     {
-        _launchOverlay = launchOverlay;
-        _wait = wait;
-        _pollInterval = pollInterval;
-        _timeout = timeout;
-    }
+        // Checked before the blit rather than around it: reading the screen is one synchronous call of a few
+        // milliseconds, so there is no wait to interrupt — the only useful moment to give up is before starting.
+        cancellationToken.ThrowIfCancellationRequested();
 
-    public async Task<ScreenCapture?> CaptureAsync(CancellationToken cancellationToken = default)
-    {
-        // Read first, launch second: whatever is on the clipboard now is what a new snip has to differ from.
-        var before = await clipboard.TryReadImageAsync(cancellationToken).ConfigureAwait(false);
-
-        _launchOverlay();
-
-        // Both operands are settings, not arithmetic to trust: a zero interval divides by zero and an interval
-        // longer than the timeout would yield no attempt at all, which is a capture that never even looks.
-        var attempts = _pollInterval > TimeSpan.Zero ? Math.Max(1, (int)(_timeout.Ticks / _pollInterval.Ticks)) : 1;
-        for (var attempt = 0; attempt < attempts; attempt++)
+        var layout = screen.ReadLayout();
+        if (layout.VirtualBounds is not { Width: > 0, Height: > 0 })
         {
-            await _wait(_pollInterval, cancellationToken).ConfigureAwait(false);
-
-            var current = await clipboard.TryReadImageAsync(cancellationToken).ConfigureAwait(false);
-            if (current is { Length: > 0 } && !_IsSameImage(before, current))
-            {
-                return ScreenCapture.WithoutLayout(current);
-            }
+            throw new InvalidOperationException("Windows reports a virtual screen with no area, so there is nothing to capture.");
         }
 
-        logger.LogInformation(
-            "No snip reached the clipboard within {Timeout}; treating it as cancelled.", _timeout);
+        if (!screen.IsPerMonitorDpiAware)
+        {
+            // Not fatal, and not silent either. An unaware process is handed coordinates scaled to the primary
+            // monitor's DPI, which is self-consistent on one screen and wrong across monitors that differ.
+            logger.LogWarning(
+                "This process is not per-monitor DPI aware, so a capture spanning monitors of different scales will not line up.");
+        }
 
-        return null;
+        var image = screen.CapturePng(layout.VirtualBounds);
+
+        // Reading the layout and reading the pixels are two calls, and a display can be unplugged or moved
+        // between them — at which point BitBlt has quietly clipped to a desktop the layout no longer describes.
+        // Asking again is two system metrics; a crop against a stale layout is a screenshot of the wrong place.
+        if (screen.ReadLayout().VirtualBounds != layout.VirtualBounds)
+        {
+            throw new InvalidOperationException("The displays changed while the screen was being read, so the capture and the layout describe different desktops.");
+        }
+
+        return Task.FromResult<ScreenCapture?>(new ScreenCapture
+        {
+            Image = image,
+            Displays = _Place(layout),
+        });
     }
 
     /// <summary>
-    /// Whether the clipboard still holds what it held before the overlay opened. Length first, because a new
-    /// screenshot almost never encodes to the byte count of the old one — the full compare is the rare path.
+    /// Each monitor's place in the image. The blit starts at the virtual screen's own corner, which is not the
+    /// origin — a second monitor to the left of the primary puts it at a negative x — so the image's coordinates
+    /// are the desktop's shifted by that corner, and nothing else.
     /// </summary>
-    private static bool _IsSameImage(byte[]? before, byte[] current) =>
-        before is not null && before.Length == current.Length && before.AsSpan().SequenceEqual(current);
-
-    // UseShellExecute is what makes a protocol activation work at all: ms-screenclip: is a registered URI
-    // handler, not an executable to start. The process handle it returns is the shell's, not the overlay's,
-    // which is the other half of why completion has to be watched for on the clipboard.
-    private static void _LaunchSnipOverlay() =>
-        Process.Start(new ProcessStartInfo("ms-screenclip:") { UseShellExecute = true })?.Dispose();
+    /// <remarks>
+    /// No scaling enters into it. A per-monitor-aware process is given both the virtual-screen metrics and the
+    /// monitor rectangles in real pixels, and the blit copies those same pixels, so a display's width on the
+    /// desktop is its width in the image. That the two coordinate spaces coincide here is a fact about Windows,
+    /// not an assumption the contract makes — under Wayland they do not (AC-326).
+    /// </remarks>
+    private static IReadOnlyList<CapturedDisplay> _Place(WindowsScreenLayout layout) =>
+        layout.Displays
+            .Select(display => new CapturedDisplay
+            {
+                DesktopBounds = display.Bounds,
+                Scale = display.Scale,
+                ImageBounds = new CaptureRect(
+                    display.Bounds.X - layout.VirtualBounds.X,
+                    display.Bounds.Y - layout.VirtualBounds.Y,
+                    display.Bounds.Width,
+                    display.Bounds.Height),
+            })
+            .ToList();
 }

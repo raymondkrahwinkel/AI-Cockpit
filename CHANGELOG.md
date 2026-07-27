@@ -310,6 +310,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: taking a screenshot on Windows no longer opens the Snip overlay and no longer touches your clipboard.
+  The cockpit used to launch Windows' own snipping tool and then watch the clipboard for a picture that had not been
+  there before, because the overlay reports nothing back. That guesswork is gone, and with it the two-minute wait, the
+  clipboard you had something else on being overwritten, and a snip that happened to match what you already copied
+  being read as a cancel. It now reads the screen directly, in a moment.
 - changed: taking a screenshot on Linux no longer opens your desktop's own screenshot dialog. Pressing the key used
   to hand you whichever form your desktop ships — on KDE an Area dropdown, a Delay spinner and a Take button, three
   clicks before anything was captured, and a different UI on every desktop. The cockpit now asks the desktop for the
