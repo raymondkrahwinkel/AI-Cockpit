@@ -50,6 +50,13 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
+        // cockpit-agents (AC-391): the foundation of an agent-to-agent communication line — for now, one tool,
+        // list_agents, so a session can see the other agents sharing its workspace. A tickable server rather than
+        // AlwaysMounted, like cockpit-verify/cockpit-worktrees: seeing who else is around is a capability an agent
+        // opts into, not cockpit plumbing every session needs whether it asked or not (unlike cockpit-session's
+        // status line, which the header itself depends on).
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools)));
+
         AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);
