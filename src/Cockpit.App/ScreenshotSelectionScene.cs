@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -80,10 +81,15 @@ internal static class ScreenshotSelectionScene
     /// </summary>
     private const int CaptureScale = 2;
 
+    /// <summary>
+    /// This surface's scene names. One list rather than a name test written out a second time, so a mode that is
+    /// added here cannot be missing from whatever walks the scenes — the theme baseline (AC-338) reads it.
+    /// </summary>
+    public static IReadOnlyList<string> Names { get; } =
+        [Idle, Region, WindowPick, Redaction, Marks, Arrow, Highlight, Stroke, Text, TwoDisplays];
+
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
-    public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or Stroke or Text
-            or TwoDisplays;
+    public static bool Covers(string? scene) => scene is not null && Names.Contains(scene);
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -155,7 +161,10 @@ internal static class ScreenshotSelectionScene
                 // "Window" begins with the key that picks a window, and typing it must not.
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
-                _Note(surface, new Point(width * 0.58, height * 0.32), "Window is empty here");
+                // Both notes sit clear of the control panel, and the first one has to be said out loud: at 0.32 it
+                // landed under the panel, so the press belonged to the panel, no note opened, and the string that
+                // followed ran as shortcuts until Enter took the shot and closed the surface.
+                _Note(surface, new Point(width * 0.58, height * 0.42), "Window is empty here");
                 _Note(surface, new Point(width * 0.58, height * 0.70), "expected 12, got 7");
                 break;
 
@@ -176,8 +185,10 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
                 // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
-                // panel, so a band begun under it is a band that never gets drawn at all.
-                _Drag(surface, new Point(width * 0.56, height * 0.305), new Point(width * 0.90, height * 0.35));
+                // panel, so a band begun under it is a band that never gets drawn at all. Which is what 0.305 had
+                // become — the panel moved and this line did not, so this scene had been rendering one band over
+                // the terminal and none over the document, showing exactly the half that proves nothing.
+                _Drag(surface, new Point(width * 0.56, height * 0.42), new Point(width * 0.90, height * 0.465));
                 _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
 
@@ -191,6 +202,44 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.20, height * 0.30), new Point(width * 0.44, height * 0.35));
                 _Drag(surface, new Point(width * 0.58, height * 0.62), new Point(width * 0.80, height * 0.67));
                 break;
+        }
+
+        _AssertStaged(surface, scene);
+    }
+
+    /// <summary>
+    /// How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
+    /// a press that lands somewhere it is not wanted is simply lost — and the scene then renders perfectly well,
+    /// one mark short, looking like a tool that works. Both scenes this caught had been doing that since the
+    /// panels moved (AC-374/375) while these positions did not: the highlighter had lost the band that proves it
+    /// stays readable over a document, and the note scene had lost both notes and taken the shot instead.
+    /// </summary>
+    private static readonly Dictionary<string, int> StagedMarks = new(StringComparer.Ordinal)
+    {
+        [Marks] = 2,
+        [Arrow] = 2,
+        [Highlight] = 2,
+        [Stroke] = 2,
+        [Redaction] = 2,
+        [Text] = 2,
+    };
+
+    private static void _AssertStaged(ScreenshotSelectionWindow surface, string? scene)
+    {
+        if (scene is null || !StagedMarks.TryGetValue(scene, out var expected))
+        {
+            return;
+        }
+
+        var selection = surface.DataContext as ScreenshotSelectionViewModel
+            ?? throw new InvalidOperationException($"The '{scene}' surface has no selection to have staged onto.");
+
+        if (selection.Marks.Count != expected)
+        {
+            throw new InvalidOperationException(
+                $"Scene '{scene}' staged {selection.Marks.Count} of its {expected} marks. A press that lands on the "
+                + "control panel belongs to the panel, so a mark begun under it is never drawn — check the positions "
+                + "against where the panels rest now.");
         }
     }
 

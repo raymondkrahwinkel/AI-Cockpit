@@ -67,22 +67,23 @@ public partial class TtyView : UserControl
     // pty.Resize equal to the previous pty size) can be confirmed from %APPDATA%\Cockpit\logs\cockpit.log.
     // Resolved from the app's DI container rather than injected: this UserControl is constructed by the
     // XAML view locator/designer, not by the container, matching the existing Program.Services lookups in
-    // App.axaml.cs. Skipped in the XAML previewer, where Program.Services is never assigned.
+    // App.axaml.cs. Absent wherever no container was built — the XAML previewer, and the headless harness the view
+    // tests render scenes in, which is the same condition and used to be checked as if it were only the first one.
     private readonly ILogger<TtyView>? _logger =
-        Design.IsDesignMode ? null : Program.Services.GetService<ILogger<TtyView>>();
+        Program.Services?.GetService<ILogger<TtyView>>();
 
     // AC-2 user feedback: a toast when claude's clipboard write (OSC 52) actually reaches the OS clipboard and
     // when a clicked link is handed to the browser, so the action is visibly acknowledged. Resolved from the app
     // container the same way as _logger (this control is built by the view locator, not the DI graph).
     private readonly IToastService? _toast =
-        Design.IsDesignMode ? null : Program.Services.GetService<IToastService>();
+        Program.Services?.GetService<IToastService>();
 
     // AC-34: the terminal-access registry this pane feeds when an agent is coupled to it — the pane registers on
     // launch, unregisters on close, and hands its rendered output to the registry (only while coupled, so read-scope
     // starts at the coupling). Resolved from the app container like the logger/toast, since this control is built by
     // the view locator, not the DI graph.
     private readonly ITerminalAccessRegistry? _terminals =
-        Design.IsDesignMode ? null : Program.Services.GetService<ITerminalAccessRegistry>();
+        Program.Services?.GetService<ITerminalAccessRegistry>();
 
     // AC-34: the operator types on the UI thread while a coupled agent's send_terminal arrives on an MCP request
     // thread, both into this pane's single pty stdin. A Stream is not thread-safe, so two writes can interleave into
@@ -92,7 +93,7 @@ public partial class TtyView : UserControl
 
     // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
     private readonly IPluginTtyProviderRegistry? _ttyProviders =
-        Design.IsDesignMode ? null : Program.Services.GetService<IPluginTtyProviderRegistry>();
+        Program.Services?.GetService<IPluginTtyProviderRegistry>();
 
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
@@ -207,7 +208,7 @@ public partial class TtyView : UserControl
             return agentSession;
         }
 
-        var name = (Design.IsDesignMode ? null : Program.Services.GetService<CockpitViewModel>())?
+        var name = Program.Services?.GetService<CockpitViewModel>()?
             .Sessions.FirstOrDefault(session => string.Equals(session.PaneId, agentSession, StringComparison.Ordinal))?
             .Title;
 

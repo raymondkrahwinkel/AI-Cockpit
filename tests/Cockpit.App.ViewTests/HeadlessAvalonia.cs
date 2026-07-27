@@ -66,6 +66,12 @@ public sealed class HeadlessAvalonia : IDisposable
     public static void Run(Action body) => Dispatcher.UIThread.Invoke(body);
 
     /// <summary>
+    /// The same, for a body that produces something the assertions need. Without it the result has to be caught in
+    /// a captured local, which starts life null and has to be forgiven for it.
+    /// </summary>
+    public static T Run<T>(Func<T> body) => Dispatcher.UIThread.Invoke(body);
+
+    /// <summary>
     /// The same, for a body that awaits. Needed by anything that has to let the dispatcher keep running while it
     /// waits — a timer cannot be shown to tick from a body that blocks the thread it ticks on.
     /// </summary>
