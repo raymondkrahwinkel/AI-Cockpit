@@ -46,6 +46,58 @@ public class McpOAuthTokenCacheTests
     }
 
     [Fact]
+    public async Task StoreTokens_WithoutARefreshToken_KeepsTheOneAlreadyHeld()
+    {
+        var (cache, store) = _Create();
+        await store.SaveAsync("depot", new McpOAuthToken
+        {
+            AccessToken = "old-access",
+            RefreshToken = "the-refresh-token",
+            ResourceUrl = ResourceUrl,
+        });
+
+        // RFC 6749 §6 lets a refresh response omit the refresh token, meaning "keep the one you have". Discarding it
+        // would ask the operator to sign in again at the next expiry, against any server that does not rotate.
+        await cache.StoreTokensAsync(new TokenContainer
+        {
+            AccessToken = "new-access",
+            TokenType = "Bearer",
+            ExpiresIn = 3600,
+            ObtainedAt = DateTimeOffset.UtcNow,
+        }, CancellationToken.None);
+
+        var stored = await store.GetAsync("depot");
+        Assert.Equal("new-access", stored?.AccessToken);
+        Assert.Equal("the-refresh-token", stored?.RefreshToken);
+    }
+
+    [Fact]
+    public async Task StoreTokens_DoesNotInheritARefreshTokenHeldForADifferentHost()
+    {
+        var (cache, store) = _Create("https://depot.example/mcp");
+        await store.SaveAsync("depot", new McpOAuthToken
+        {
+            AccessToken = "old-access",
+            RefreshToken = "somebody-elses-refresh-token",
+            ResourceUrl = "https://somewhere-else.example/mcp",
+        });
+
+        await cache.StoreTokensAsync(new TokenContainer
+        {
+            AccessToken = "new-access",
+            TokenType = "Bearer",
+            ExpiresIn = 3600,
+            ObtainedAt = DateTimeOffset.UtcNow,
+        }, CancellationToken.None);
+
+        // Keeping what you have must not mean keeping what belonged to another host: the record is found by name, and
+        // if the name has changed hands, inheriting its grant would launder one host's credential into another's.
+        var stored = await store.GetAsync("depot");
+        Assert.Equal("new-access", stored?.AccessToken);
+        Assert.Null(stored?.RefreshToken);
+    }
+
+    [Fact]
     public async Task GetTokens_ForATokenIssuedToADifferentHost_IsNull()
     {
         var (cache, store) = _Create("https://depot.example/mcp");

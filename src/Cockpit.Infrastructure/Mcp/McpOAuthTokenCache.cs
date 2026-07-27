@@ -26,8 +26,12 @@ internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl,
         // RFC 6749 §6: a refresh response may leave the refresh token out, which means "keep the one you have". Taking
         // the response at face value would throw it away on the first renewal against any server that does not rotate,
         // and every later expiry would then ask the operator to sign in again for no reason.
+        // The one it keeps has to be its own, though: the stored record is found by name, and if that name has since
+        // come to mean a different host, carrying its refresh token over would launder one host's grant into another
+        // host's record — the same leak the origin check exists to stop, one layer down.
         var existing = await store.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
-        var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? existing?.RefreshToken : token.RefreshToken;
+        var inheritable = existing is not null && existing.IsForResource(resourceUrl) ? existing.RefreshToken : null;
+        var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? inheritable : token.RefreshToken;
 
         await store.SaveAsync(
             serverName,
