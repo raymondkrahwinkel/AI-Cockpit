@@ -12,17 +12,17 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual"
         Title="AI-Cockpit voice overlay">
-    <!-- Transcription of pill-mockup.html/.png: dark translucent pill, hairline border, Claude-coral
-         accent — see the plan (#34) for the mockup source. Listening/Transcribing are mutually
+    <!-- Transcription of pill-mockup.html/.png: dark translucent pill, hairline border, accent
+         colour — see the plan (#34) for the mockup source. Listening/Transcribing are mutually
          exclusive rows overlaid in one cell so the window (SizeToContent) always sizes to whichever
          one is showing. -->
-    <Border Background="#F01E2128" BorderBrush="#1AFFFFFF" BorderThickness="1"
+    <Border Background="#F01a1d24" BorderBrush="#1AFFFFFF" BorderThickness="1"
             CornerRadius="24" Padding="18,12,22,12">
         <Grid>
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsListening}">
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
                         Background="{StaticResource CockpitAccentBrush}"
-                        BoxShadow="0 0 0 4 #2ED97757"/>
+                        BoxShadow="0 0 0 4 #2E3b82f6"/>
                 <!-- Live microphone waveform (#34b): each bar's height tracks a captured level, newest on
                      the right, so the pill shows sound actually coming in rather than a static graphic.
                      Fixed 20px cell so the pill height never jumps as the bars move. -->
@@ -44,7 +44,7 @@
             </StackPanel>
             <!-- The key is held but nothing is being recorded. Deliberately unlike the other three rows: no
                  waveform and no spinner, because nothing is moving — a flat waveform under "Listening" is
-                 exactly what this replaces. The dot is hollow and grey rather than the coral of a live mic. -->
+                 exactly what this replaces. The dot is hollow and grey rather than the accent colour of a live mic. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsUnavailable}">
                 <Ellipse Width="9" Height="9" VerticalAlignment="Center" StrokeThickness="1.5"
                          Stroke="{StaticResource CockpitTextSecondaryBrush}"/>
@@ -59,7 +59,7 @@
             </StackPanel>
             <!-- Read-aloud is playing (#34, Raymond 2026-07-15). No waveform: the playback queue reports that it
                  is speaking, not how loudly, and bars driven by nothing are a meter that measures nothing. A
-                 filled coral dot like Listening's — sound is moving — but no glow, because this row yields to
+                 filled accent-coloured dot like Listening's — sound is moving — but no glow, because this row yields to
                  any dictation and should not read as the louder of the two. -->
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsSpeaking}">
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"

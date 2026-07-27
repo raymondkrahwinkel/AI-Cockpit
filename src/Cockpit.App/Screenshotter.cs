@@ -135,7 +135,7 @@ internal static class Screenshotter
     }
 
     // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's
-    // coral update badge is verifiable headless.
+    // accent update badge is verifiable headless.
     private static MainWindow _PluginUpdateBadge()
     {
         var cockpit = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true };

@@ -8,20 +8,25 @@
         <ResourceDictionary>
 
             <!-- Surfaces -->
-            <Color x:Key="CockpitWindowBgColor">#16181D</Color>
-            <Color x:Key="CockpitPanelBgColor">#1E2128</Color>
-            <Color x:Key="CockpitSecondaryBgColor">#131519</Color>
-            <Color x:Key="CockpitHairlineColor">#2C2F37</Color>
+            <Color x:Key="CockpitWindowBgColor">#0f1116</Color>
+            <Color x:Key="CockpitPanelBgColor">#1a1d24</Color>
+            <Color x:Key="CockpitSecondaryBgColor">#0c0e12</Color>
+            <Color x:Key="CockpitHairlineColor">#2a2f39</Color>
 
             <SolidColorBrush x:Key="CockpitWindowBgBrush" Color="{StaticResource CockpitWindowBgColor}"/>
             <SolidColorBrush x:Key="CockpitPanelBgBrush" Color="{StaticResource CockpitPanelBgColor}"/>
             <SolidColorBrush x:Key="CockpitSecondaryBgBrush" Color="{StaticResource CockpitSecondaryBgColor}"/>
             <SolidColorBrush x:Key="CockpitHairlineBrush" Color="{StaticResource CockpitHairlineColor}"/>
 
+            <!-- The layer above the panel (chips, the markdown code-chip, a table header) — one step lighter than
+                 CockpitPanelBgColor so a chip sitting on a panel still reads as raised. -->
+            <Color x:Key="CockpitInsetBgColor">#202430</Color>
+            <SolidColorBrush x:Key="CockpitInsetBgBrush" Color="{StaticResource CockpitInsetBgColor}"/>
+
             <!-- Text -->
-            <Color x:Key="CockpitTextPrimaryColor">#E6E7EA</Color>
-            <Color x:Key="CockpitTextSecondaryColor">#9498A3</Color>
-            <Color x:Key="CockpitTextFaintColor">#6B6F79</Color>
+            <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
+            <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>
+            <Color x:Key="CockpitTextFaintColor">#656c78</Color>
 
             <SolidColorBrush x:Key="CockpitTextPrimaryBrush" Color="{StaticResource CockpitTextPrimaryColor}"/>
             <SolidColorBrush x:Key="CockpitTextSecondaryBrush" Color="{StaticResource CockpitTextSecondaryColor}"/>
@@ -32,19 +37,31 @@
             <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
             <SolidColorBrush x:Key="CockpitUserBubbleBrush" Color="{StaticResource CockpitUserBubbleColor}"/>
 
+            <!-- The session header's "isolated" badge (a session running in its own git worktree, AC-334): its own
+                 violet, apart from the grey kind chip and the status colours, so an isolated session is recognisable
+                 at a glance regardless of what the accent/status colours are set to. -->
+            <Color x:Key="CockpitIsolatedBadgeBgColor">#332b47</Color>
+            <Color x:Key="CockpitIsolatedBadgeTextColor">#a78bda</Color>
+            <SolidColorBrush x:Key="CockpitIsolatedBadgeBgBrush" Color="{StaticResource CockpitIsolatedBadgeBgColor}"/>
+            <SolidColorBrush x:Key="CockpitIsolatedBadgeTextBrush" Color="{StaticResource CockpitIsolatedBadgeTextColor}"/>
+
             <!-- Accent + status -->
-            <Color x:Key="CockpitAccentColor">#D97757</Color>
-            <Color x:Key="CockpitStatusBusyColor">#4A90E2</Color>
+            <Color x:Key="CockpitAccentColor">#3b82f6</Color>
+            <Color x:Key="CockpitAccentHoverColor">#4a8bf7</Color>
+            <Color x:Key="CockpitAccentPressedColor">#2563eb</Color>
+            <!-- Cyan rather than a second blue: the accent moved onto blue (AC-334), and a blue "busy" dot next to a
+                 blue accent border would stop reading as its own signal. Raymond's call, 2026-07-27. -->
+            <Color x:Key="CockpitStatusBusyColor">#22D3EE</Color>
             <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
             <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
-            <!-- "Working (background)": sub-agents still running while the main agent is quiet. Purple so it reads apart from the blue "busy" and green "done" dots. -->
+            <!-- "Working (background)": sub-agents still running while the main agent is quiet. Purple so it reads apart from the cyan "busy" and green "done" dots. -->
             <Color x:Key="CockpitStatusBackgroundColor">#A67CD8</Color>
             <!-- Error toast severity (#61) — no session status used red before this, so a new token. -->
             <Color x:Key="CockpitStatusErrorColor">#D64545</Color>
 
             <SolidColorBrush x:Key="CockpitAccentBrush" Color="{StaticResource CockpitAccentColor}"/>
-            <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="#E08867"/>
-            <SolidColorBrush x:Key="CockpitAccentPressedBrush" Color="#C4694A"/>
+            <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="{StaticResource CockpitAccentHoverColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentPressedBrush" Color="{StaticResource CockpitAccentPressedColor}"/>
             <SolidColorBrush x:Key="CockpitStatusBusyBrush" Color="{StaticResource CockpitStatusBusyColor}"/>
             <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{StaticResource CockpitStatusWaitingColor}"/>
             <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{StaticResource CockpitStatusDoneColor}"/>
@@ -425,10 +442,10 @@
 
     <!-- Cockpit sidebar session item. State is driven only by classes (never inline on the Border) so
          style setters actually win: the base row is flat and transparent, blending into the sidebar; the
-         active row lifts to a filled card with a Claude-orange left edge so the selected session is
+         active row lifts to a filled card with an accent-coloured left edge so the selected session is
          unmistakable. The 2px left gutter is reserved as transparent on every row so text doesn't shift
          when selection moves. Order matters: .attention is declared after .active so its tinted fill wins
-         for a row that is both selected and waiting, while .active still supplies the orange edge. -->
+         for a row that is both selected and waiting, while .active still supplies the accent edge. -->
     <Style Selector="Border.sessionItem">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="2,0,0,0"/>
@@ -442,14 +459,14 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
 
-    <!-- Active session panel (main grid): the selected panel carries the Claude-orange edge so the
+    <!-- Active session panel (main grid): the selected panel carries the accent edge so the
          one you're driving jumps out of the grid; inactive panels keep the quiet hairline. -->
     <Style Selector="Border.panel">
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>
     <!-- Needs-attention grid panel: an amber edge so a session that needs you jumps out of the grid
-         even while you're driving another one. The active panel's orange edge below still wins when a
+         even while you're driving another one. The active panel's accent edge below still wins when a
          panel is both selected and waiting (that one already has your eye). -->
     <Style Selector="Border.panel.attention">
         <Setter Property="BorderThickness" Value="1.5"/>
@@ -461,7 +478,7 @@
     </Style>
 
     <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot.
-         Declared after .active so an active+waiting row keeps this tint (with .active's orange edge). -->
+         Declared after .active so an active+waiting row keeps this tint (with .active's accent edge). -->
     <Style Selector="Border.sessionItem.attention">
         <Setter Property="Background" Value="#2E2A26"/>
     </Style>
@@ -536,7 +553,7 @@
     <!-- Options sub-navigation (AC-69): the left rail inside each Options tab. It splits a tab into
          sub-pages so a tab scales by gaining a rail item instead of growing into one long scroll — the
          top tab-bar stays short while a full tab (Voice) fans out below it. The rail is a recessed
-         secondary surface with a hairline against the detail column; the active sub-page carries a coral
+         secondary surface with a hairline against the detail column; the active sub-page carries the
          accent bar, the same accent the top tabs use as their selected fill. A ListBox drives it so a
          single-page tab can show a one-item rail today and grow items later without a structural change. -->
     <Style Selector="Border.subnavRail">
@@ -582,7 +599,7 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
     <!-- Neutralise the default ListBoxItem fills (they paint the inner ContentPresenter); the rail's own
-         ItemBg border is the surface, so the coral accent bar reads as the state signal, not a box fill. -->
+         ItemBg border is the surface, so the accent bar reads as the state signal, not a box fill. -->
     <Style Selector="ListBox.subnav ListBoxItem:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
     </Style>

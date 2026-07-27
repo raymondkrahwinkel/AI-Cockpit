@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.App.Theming;
 
 namespace Cockpit.App.Controls;
 
@@ -47,22 +48,16 @@ public sealed class MicLevelMeter : Control
 
         // Cockpit palette resolved from Theme.axaml at render so a future light/alt theme swap is followed: hairline
         // track, "done" green while below the threshold, accent once it would trip barge-in, near-white marker line.
-        context.DrawRectangle(_Resource("CockpitHairlineBrush", "#2C2F37"), null, new RoundedRect(new Rect(0, 0, width, height), radius));
+        context.DrawRectangle(ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"), null, new RoundedRect(new Rect(0, 0, width, height), radius));
 
         var fillWidth = level * width;
         if (fillWidth > 0)
         {
-            var fill = level >= threshold ? _Resource("CockpitAccentBrush", "#D97757") : _Resource("CockpitStatusDoneBrush", "#5AA576");
+            var fill = level >= threshold ? ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") : ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576");
             context.DrawRectangle(fill, null, new RoundedRect(new Rect(0, 0, fillWidth, height), radius));
         }
 
         var markerX = threshold * width;
-        context.DrawLine(new Pen(_Resource("CockpitTextPrimaryBrush", "#E6E7EA"), 1.5), new Point(markerX, 0), new Point(markerX, height));
+        context.DrawLine(new Pen(ThemeBrush.Resolve("CockpitTextPrimaryBrush", "#e8eaef"), 1.5), new Point(markerX, 0), new Point(markerX, height));
     }
-
-    // Theme brush by key, falling back to the literal only when no Application resources exist (design-time/tests).
-    private static IBrush _Resource(string key, string fallbackHex) =>
-        Application.Current is { } app && app.TryGetResource(key, null, out var value) && value is IBrush brush
-            ? brush
-            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

@@ -138,7 +138,7 @@ internal sealed class SessionDiffDialogControl : UserControl
                 FontFamily = Mono,
                 FontSize = 12,
                 Margin = new Thickness(0, 6, 0, 0),
-                Foreground = _Brush("CockpitTextFaintBrush", Color.Parse("#9AA0A6")),
+                Foreground = _Brush("CockpitTextFaintBrush", Color.Parse("#656c78")),
             });
         }
     }
@@ -187,7 +187,7 @@ internal sealed class SessionDiffDialogControl : UserControl
         DiffLineKind.Removed => _Brush("CockpitStatusErrorBrush", Color.Parse("#D9534F")),
         DiffLineKind.Hunk => _Brush("CockpitAccentBrush", Color.Parse("#5A9BD4")),
         DiffLineKind.FileHeader => _Brush("CockpitTextBrush", Color.Parse("#D0D0D0")),
-        _ => _Brush("CockpitTextFaintBrush", Color.Parse("#9AA0A6")),
+        _ => _Brush("CockpitTextFaintBrush", Color.Parse("#656c78")),
     };
 
     private static IBrush _Brush(string key, Color fallback) =>

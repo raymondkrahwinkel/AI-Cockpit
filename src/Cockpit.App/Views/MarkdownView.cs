@@ -6,6 +6,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.App.Services;
+using Cockpit.App.Theming;
 using Cockpit.Core.Markdown;
 
 namespace Cockpit.App.Views;
@@ -20,14 +21,19 @@ public sealed class MarkdownView : ContentControl
 {
     private static readonly FontFamily MonoFont =
         new("Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace");
-    private static readonly IBrush CodeBackground = SolidColorBrush.Parse("#232830");
-    private static readonly IBrush CodeBlockBackground = SolidColorBrush.Parse("#131519");
-    private static readonly IBrush Hairline = SolidColorBrush.Parse("#2C2F37");
-    private static readonly IBrush TableHeaderBackground = SolidColorBrush.Parse("#232833");
-    private static readonly IBrush Accent = SolidColorBrush.Parse("#D97757");
-    private static readonly IBrush TextPrimary = SolidColorBrush.Parse("#E6E7EA");
-    private static readonly IBrush TextSecondary = SolidColorBrush.Parse("#9498A3");
-    private static readonly IBrush TextFaint = SolidColorBrush.Parse("#6B6F79");
+
+    // Resolved through ThemeBrush on every access rather than cached in a static readonly field, so a theme swap
+    // is picked up the next time a message renders instead of staying pinned to whatever was current at type-load.
+    // The two colours with no dedicated token (code chip, table header) share CockpitInsetBgBrush — the layer
+    // above the panel that both chips and the code block sit on.
+    private static IBrush CodeBackground => ThemeBrush.Resolve("CockpitInsetBgBrush", "#202430");
+    private static IBrush CodeBlockBackground => ThemeBrush.Resolve("CockpitSecondaryBgBrush", "#0c0e12");
+    private static IBrush Hairline => ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39");
+    private static IBrush TableHeaderBackground => ThemeBrush.Resolve("CockpitInsetBgBrush", "#202430");
+    private static IBrush Accent => ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6");
+    private static IBrush TextPrimary => ThemeBrush.Resolve("CockpitTextPrimaryBrush", "#e8eaef");
+    private static IBrush TextSecondary => ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#949aa5");
+    private static IBrush TextFaint => ThemeBrush.Resolve("CockpitTextFaintBrush", "#656c78");
 
     public static readonly StyledProperty<string?> MarkdownProperty =
         AvaloniaProperty.Register<MarkdownView, string?>(nameof(Markdown));

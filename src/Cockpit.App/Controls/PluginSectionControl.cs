@@ -11,7 +11,7 @@ namespace Cockpit.App.Controls;
 /// <summary>
 /// A collapsible left-menu section for a plugin contribution (#14), built in code to match the cockpit
 /// theme. It deliberately replaces Avalonia's <c>Expander</c>, whose header is an internal ToggleButton
-/// that inherits the app's accent-on-checked style (a stray orange header). Here the header is a plain
+/// that inherits the app's accent-on-checked style (a stray accent-coloured header). Here the header is a plain
 /// themed row — secondary background, hairline border, a chevron and the title — that toggles the content.
 /// </summary>
 internal sealed class PluginSectionControl : UserControl

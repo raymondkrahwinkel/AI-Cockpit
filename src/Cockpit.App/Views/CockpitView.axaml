@@ -59,7 +59,7 @@
         <Style Selector="Border.workspaceTab.active TextBlock">
             <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         </Style>
-        <!-- A widget is being dragged over this tab and would land there: the same coral outline the drop ghost
+        <!-- A widget is being dragged over this tab and would land there: the same accent outline the drop ghost
              draws on the grid, because it answers the same question in the same gesture — only here the answer
              is "on that desk" rather than "on this cell".
              The class goes on the generated container (the strip's children) and the selector reaches through to
@@ -127,7 +127,7 @@
              say, so it costs no height until a build is waiting. -->
         <Border DockPanel.Dock="Top"
                 IsVisible="{Binding UpdateBannerVisible}"
-                Background="#26D97757"
+                Background="#263b82f6"
                 BorderBrush="{StaticResource CockpitAccentBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16,9">
@@ -288,7 +288,7 @@
                             Command="{Binding OpenPluginStoreCommand}"
                             ToolTip.Tip="Browse, install and update plugins — and the workflow templates they ship with">
                         <DockPanel>
-                            <!-- AC-76: a persistent coral count-pill on the right when plugin updates are waiting, so
+                            <!-- AC-76: a persistent accent count-pill on the right when plugin updates are waiting, so
                                  an update shows in the main window rather than only a transient toast. The button
                                  opens the store on the Updates filter while the badge is showing. -->
                             <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasUpdateBadge}"
