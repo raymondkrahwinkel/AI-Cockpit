@@ -58,7 +58,7 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
     /// other way round — always has one of the two contrasting with whatever it lies on, which is why map labels
     /// and subtitles have been drawn this way for as long as either has existed.
     /// </remarks>
-    public uint Halo => _IsDark(Colour) ? 0xFFFFFFFF : 0xFF000000;
+    public uint Halo => ContrastingWith(Colour);
 
     /// <summary>
     /// How wide that ring is drawn, in the image's pixels. Centred on the outline of the shape, so half of it lies
@@ -158,10 +158,4 @@ public sealed record ArrowMark(CapturePoint From, CapturePoint To, uint Colour, 
 
     private static MarkPoint _Offset(double x, double y, double acrossX, double acrossY, double distance) =>
         new(x + (acrossX * distance), y + (acrossY * distance));
-
-    // Weighted the way the eye weights the three channels rather than averaged: a saturated green and a saturated
-    // blue of the same arithmetic mean are nowhere near equally bright, and picking the ring off the mean would
-    // put a white ring around a colour that is already brighter than most of what it lies on.
-    private static bool _IsDark(uint colour) =>
-        ((0.299 * ((colour >> 16) & 0xFF)) + (0.587 * ((colour >> 8) & 0xFF)) + (0.114 * (colour & 0xFF))) < 128;
 }

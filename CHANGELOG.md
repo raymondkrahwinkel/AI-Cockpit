@@ -32,6 +32,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can draw on a screenshot freehand. Press D on the selection surface and draw — round a thing, through
+  a thing, along a path the boxes and arrows cannot describe. One line per press, and Ctrl+Z takes back the whole
+  of it rather than the last few inches. What you get is the curve your hand made: a quick drag leaves the pointer's
+  positions tens of pixels apart, and joining those with straight lines turns a circle into a polygon. It is drawn
+  with a ring around it in the opposite shade, so it stays visible over a terminal and a document alike.
+
 - added: you can highlight part of a screenshot without hiding it. Press H on the selection surface and drag a band
   over what should be read rather than skimmed. It works like a marker pen — the colour goes into the page and the
   text on it stays where it was, rather than being painted over at half strength, which costs most of what makes

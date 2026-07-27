@@ -35,11 +35,24 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// </summary>
     private const int ArrowThickness = 6;
 
+    /// <summary>
+    /// How thick a freehand line is, in the captured image's pixels. Lighter than the arrow's shaft: a stroke is
+    /// often drawn <em>around</em> something rather than at it, and a heavy line closing on a word covers the word.
+    /// </summary>
+    private const int StrokeThickness = 6;
+
     private readonly ScreenCapture _capture;
     private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
     private readonly uint _markColour;
     private readonly Func<CaptureRect, int>? _brightnessUnder;
+
+    /// <summary>
+    /// Where the pointer has been since a mark tool's drag began, in the order it went there. Most marks only ever
+    /// look at the two ends of this; a stroke is the whole of it (AC-362), which is why the drag is kept as a path
+    /// rather than as a pair of points.
+    /// </summary>
+    private readonly List<CapturePoint> _trail = [];
     private CapturePoint? _anchor;
 
     /// <param name="markColour">
@@ -135,6 +148,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Whether the surface is washing bands of colour over what the model should read rather than skim.</summary>
     public bool Highlighting => MarkingWith == MarkTool.Highlight;
 
+    /// <summary>Whether the surface is drawing freehand on the capture.</summary>
+    public bool Drawing => MarkingWith == MarkTool.Stroke;
+
     /// <summary>
     /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
     /// no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
@@ -182,6 +198,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Turns the wash on, on the same condition as the rest — there is nothing to emphasise until something is being sent.</summary>
     public void Highlight(bool highlighting) => MarkWith(MarkTool.Highlight, highlighting);
 
+    /// <summary>Turns freehand drawing on, on the same condition as the rest.</summary>
+    public void Draw(bool drawing) => MarkWith(MarkTool.Stroke, drawing);
+
     /// <summary>
     /// Takes a mark tool up or puts it down. Every tool that marks needs something to mark on — a frame around
     /// the whole desktop and a box over it both have nowhere to end up, since what is sent is the region.
@@ -226,6 +245,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Outlining));
         OnPropertyChanged(nameof(Pointing));
         OnPropertyChanged(nameof(Highlighting));
+        OnPropertyChanged(nameof(Drawing));
         OnPropertyChanged(nameof(DraggingRegion));
         OnPropertyChanged(nameof(Hint));
     }
@@ -246,6 +266,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             // Anchored without the display check the region drag makes: a mark only ever goes on a region that
             // was already chosen on a display, so there is nothing here that could be nobody's pixels.
             _anchor = point;
+            _trail.Clear();
+            _trail.Add(point);
             return true;
         }
 
@@ -274,6 +296,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         var point = _Clamp(ToImagePixel(surfaceX, surfaceY));
         if (MarkingWith is not null)
         {
+            _trail.Add(point);
             PendingTo = point;
             return;
         }
@@ -294,13 +317,14 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         {
             // The same call the preview was built from, so what is kept is exactly the shape that was on screen
             // a moment ago rather than a second construction of it from the same two points.
-            if (anchor is { } from && PendingTo is { } to && _MarkOf(tool, from, to) is { } mark)
+            if (anchor is not null && _MarkOf(tool, _trail) is { } mark)
             {
                 _marks.Add(mark);
                 OnPropertyChanged(nameof(Marks));
             }
 
             PendingTo = null;
+            _trail.Clear();
             return;
         }
 
@@ -325,15 +349,25 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// being a different kind of thing from what gets placed.
     /// </summary>
     public Mark? PendingMarkPreview =>
-        MarkingWith is { } tool && _anchor is { } from && PendingTo is { } to ? _MarkOf(tool, from, to) : null;
+        MarkingWith is { } tool && _anchor is not null && PendingTo is not null ? _MarkOf(tool, _trail) : null;
 
     /// <summary>
-    /// The mark a drag from one point to another makes with the tool in hand, or nothing where that drag has no
-    /// extent. What counts as no extent is the kind's own business: a box or a frame needs area, while an arrow
-    /// needs only to have gone somewhere — a tall thin one is a perfectly good arrow and a rectangle of no width.
+    /// The mark a drag along that path makes with the tool in hand, or nothing where the drag has no extent. What
+    /// counts as no extent is the kind's own business: a box or a frame needs area, an arrow needs only to have
+    /// gone somewhere — a tall thin one is a perfectly good arrow and a rectangle of no width.
     /// </summary>
-    private Mark? _MarkOf(MarkTool tool, CapturePoint from, CapturePoint to) => tool switch
+    /// <remarks>
+    /// Most kinds are made from the two ends and ignore the rest of the path. A stroke is the exception and is the
+    /// reason the path is carried at all: the way the pointer got from one end to the other <em>is</em> the mark.
+    /// </remarks>
+    private Mark? _MarkOf(MarkTool tool, IReadOnlyList<CapturePoint> trail) =>
+        trail.Count == 0 ? null : _MarkOf(tool, trail[0], trail[^1], trail);
+
+    private Mark? _MarkOf(MarkTool tool, CapturePoint from, CapturePoint to, IReadOnlyList<CapturePoint> trail) => tool switch
     {
+        MarkTool.Stroke => new StrokeMark([.. trail], _markColour, StrokeThickness) is { } drawn && drawn.Curve().Count > 0
+            ? drawn
+            : null,
         MarkTool.Redaction => _Between(from, to) is { Width: > 0, Height: > 0 } box ? new RedactionMark(box) : null,
         MarkTool.Outline => _Between(from, to) is { Width: > 0, Height: > 0 } frame
             ? new OutlineMark(frame, _markColour, OutlineThickness)
@@ -431,6 +465,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         // covered what it marked would be the box that hides, drawn in a lighter colour.
         { Highlighting: true } =>
             "Drag a band over what should be read rather than skimmed — it stays legible · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
+        { Drawing: true } =>
+            "Draw on the capture — one line per press, and Ctrl+Z takes back the whole of it · Enter confirms · Esc cancels",
         { PickingWindow: true } =>
             "Click the window you want · W goes back to dragging a region · Esc cancels",
         // Said as a refusal rather than left silent: pressing a mark tool with nothing marked out used to do
