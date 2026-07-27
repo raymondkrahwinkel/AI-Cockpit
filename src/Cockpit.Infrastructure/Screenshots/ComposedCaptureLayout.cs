@@ -3,24 +3,25 @@ using Cockpit.Core.Abstractions.Screenshots;
 namespace Cockpit.Infrastructure.Screenshots;
 
 /// <summary>
-/// Reconciles what the desktop says its displays are with the single image the screenshot portal hands back
-/// (AC-326), and refuses when the two cannot be made to agree.
+/// Places displays into one image that covers the whole desktop at a single scale (AC-326), and refuses when the
+/// image is not the size those displays imply.
 /// </summary>
 /// <remarks>
-/// The portal composes the whole desktop at one scale — KWin renders every output into a single buffer — so the
-/// image is the displays' bounding box, multiplied by one factor. That is the only composition this accepts. It
-/// is not the only one that exists: Windows lays each monitor's native pixels into the virtual screen and macOS
-/// captures each display at its own resolution, and there the capture composes the image itself and knows where
-/// everything went. Here nothing is known, so a layout that does not account for the image exactly is a wrong
-/// crop waiting to happen and is turned down instead.
+/// Two callers, for opposite reasons. Linux is <em>given</em> such an image — KWin renders every output into one
+/// buffer — and has to check the desktop's own display list accounts for it, because the portal says nothing
+/// about what went into what it hands back; a layout that does not add up is a wrong crop waiting to happen and
+/// is turned down instead. macOS captures each display separately and <em>builds</em> one, so it asks this where
+/// to draw each of them (AC-328). Windows needs neither: its blit already produces the virtual screen, monitors
+/// laid into it at their own pixels.
 /// <para>
-/// The consequence worth stating: on a single display this always works, whatever the scale, because one display
-/// is trivially its own bounding box. On several it holds as long as the compositor really does use one scale for
-/// the lot — measured on Plasma 6.7 for the single-display case only. A multi-monitor desktop that composes some
-/// other way ends as a refusal naming both sizes, which is the answer that can be acted on; guessing is not.
+/// The consequence worth stating on the Linux side: with one display this always works, whatever the scale,
+/// because one display is trivially its own bounding box. With several it holds as long as the compositor really
+/// does use one scale for the lot — measured on Plasma 6.7 for the single-display case only. A multi-monitor
+/// desktop that composes some other way ends as a refusal naming both sizes, which is an answer that can be
+/// acted on; guessing is not.
 /// </para>
 /// </remarks>
-internal static class PortalCaptureLayout
+internal static class ComposedCaptureLayout
 {
     /// <summary>
     /// The displays placed into the image, or <see langword="null"/> when the image is not the size those

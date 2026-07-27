@@ -9,13 +9,13 @@ namespace Cockpit.Infrastructure.Tests.Screenshots;
 /// says nothing about what went into that image, so this is the only thing standing between a display list that
 /// describes a different desktop and a selection UI cropping the wrong region with nothing looking amiss.
 /// </summary>
-public class PortalCaptureLayoutTests
+public class ComposedCaptureLayoutTests
 {
     /// <summary>One display at 100%: the image is the display, and the two coordinate spaces coincide.</summary>
     [Fact]
     public void OneUnscaledDisplay_FillsTheImage()
     {
-        var layout = PortalCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1080);
+        var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1080);
 
         layout.Should().ContainSingle();
         layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
@@ -30,7 +30,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void OneScaledDisplay_TakesTheWholeImage_AtWhateverFactorTheCompositorUsed()
     {
-        var layout = PortalCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, 1620);
+        var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, 1620);
 
         layout.Should().ContainSingle();
         layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
@@ -44,7 +44,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void TwoDisplaysAtOneScale_TileTheImageInOrder()
     {
-        var layout = PortalCaptureLayout.TryCompose(
+        var layout = ComposedCaptureLayout.TryCompose(
             [_Display(0, 0, 1920, 1080, scale: 1.5), _Display(1920, 0, 1920, 1080, scale: 1.5)],
             5760,
             1620);
@@ -62,7 +62,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void DisplaysLaidEdgeToEdge_LeaveNoGapInTheImage()
     {
-        var layout = PortalCaptureLayout.TryCompose(
+        var layout = ComposedCaptureLayout.TryCompose(
             [_Display(0, 0, 1001, 1000), _Display(1001, 0, 1001, 1000)],
             3003,
             1500);
@@ -79,7 +79,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void AnImageThatIsNotTheSizeTheDisplaysImply_IsRefused()
     {
-        var layout = PortalCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1200);
+        var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1200);
 
         layout.Should().BeNull();
     }
@@ -92,7 +92,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void DisplaysComposedAtDifferentScales_AreRefusedRatherThanGuessedAt()
     {
-        var layout = PortalCaptureLayout.TryCompose(
+        var layout = ComposedCaptureLayout.TryCompose(
             [_Display(0, 0, 1920, 1080, scale: 1.5), _Display(1920, 0, 1920, 1080)],
             4800,
             1620);
@@ -109,7 +109,7 @@ public class PortalCaptureLayoutTests
     [InlineData(1622, false)]
     public void RoundingCostsAtMostAPixel(int imageHeight, bool accepted)
     {
-        var layout = PortalCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, imageHeight);
+        var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, imageHeight);
 
         (layout is not null).Should().Be(accepted);
     }
@@ -121,7 +121,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void AnImageSmallerThanTheDesktop_IsRefused()
     {
-        var layout = PortalCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 960, 540);
+        var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 960, 540);
 
         layout.Should().BeNull();
     }
@@ -129,7 +129,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void NoDisplays_ComposeToNothing()
     {
-        PortalCaptureLayout.TryCompose([], 1920, 1080).Should().BeNull();
+        ComposedCaptureLayout.TryCompose([], 1920, 1080).Should().BeNull();
     }
 
     /// <summary>
@@ -140,7 +140,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void ADisplayWithNoExtent_IsRefused_EvenWhenTheImageStillFitsTheRest()
     {
-        var layout = PortalCaptureLayout.TryCompose(
+        var layout = ComposedCaptureLayout.TryCompose(
             [_Display(0, 0, 1920, 1080), _Display(1920, 0, 0, 1080)],
             1920,
             1080);
@@ -155,7 +155,7 @@ public class PortalCaptureLayoutTests
     [Fact]
     public void ADesktopExtendingLeftOfTheOrigin_IsPlacedFromTheImagesOwnCorner()
     {
-        var layout = PortalCaptureLayout.TryCompose(
+        var layout = ComposedCaptureLayout.TryCompose(
             [_Display(-1920, 0, 1920, 1080), _Display(0, 0, 1920, 1080)],
             3840,
             1080);
