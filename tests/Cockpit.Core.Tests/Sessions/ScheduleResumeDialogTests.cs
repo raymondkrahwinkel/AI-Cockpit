@@ -90,14 +90,15 @@ public class ScheduleResumeDialogTests
         // The calendar picker hands back a DateTime that is Local as often as not, and pairing that kind with
         // an offset it disagrees with is something DateTimeOffset refuses outright rather than converting.
         // A different day, not the one already loaded: DateTime equality ignores Kind, so re-assigning the same
-        // date in another kind is a no-op the observable property never stores.
-        var dialog = new ScheduleResumeDialogViewModel(
-            new DateTimeOffset(2026, 7, 27, 11, 11, 0, TimeSpan.Zero), "continue", Elsewhere);
+        // date in another kind is a no-op the observable property never stores. Everything is expressed against
+        // the suggestion rather than in figures, because where Elsewhere lands depends on the machine.
+        var suggested = new DateTimeOffset(2026, 7, 27, 11, 11, 0, TimeSpan.Zero);
+        var dialog = new ScheduleResumeDialogViewModel(suggested, "continue", Elsewhere);
 
-        dialog.Day = DateTime.SpecifyKind(new DateTime(2026, 7, 28), DateTimeKind.Local);
+        dialog.Day = DateTime.SpecifyKind(dialog.Day.AddDays(1), DateTimeKind.Local);
 
         Assert.Equal(DateTimeKind.Local, dialog.Day.Kind);
-        Assert.Equal(new DateTimeOffset(2026, 7, 28, 11, 11, 0, Elsewhere.BaseUtcOffset), dialog.Moment);
+        Assert.Equal(suggested.AddDays(1), dialog.Moment);
     }
 
     [Fact]
