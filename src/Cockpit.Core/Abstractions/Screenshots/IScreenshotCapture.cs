@@ -31,6 +31,19 @@ public interface IScreenshotCapture
     bool IsSupported { get; }
 
     /// <summary>
+    /// Completes once <see cref="IsSupported"/> has settled — immediately on a platform that knows the answer
+    /// outright, and after a round trip to the desktop on Linux, where nothing but the session bus can say
+    /// whether a screenshot portal is being served (AC-326).
+    /// </summary>
+    /// <remarks>
+    /// A caller that reads <see cref="IsSupported"/> before this completes gets "no" from a machine that may
+    /// well be able to capture, and the cockpit wires the composer's button in the same statement that builds
+    /// this — so a button disabled once at startup would stay disabled for the rest of the run. Wire from
+    /// whatever is known now, and again from here.
+    /// </remarks>
+    Task SupportSettled { get; }
+
+    /// <summary>
     /// Reads every display and returns the composed image with the layout behind it, or <see langword="null"/>
     /// when there was nothing to capture.
     /// </summary>

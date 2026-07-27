@@ -310,6 +310,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: taking a screenshot on Linux no longer opens your desktop's own screenshot dialog. Pressing the key used
+  to hand you whichever form your desktop ships — on KDE an Area dropdown, a Delay spinner and a Take button, three
+  clicks before anything was captured, and a different UI on every desktop. The cockpit now asks the desktop for the
+  screen itself and gets it in a moment, with your consent asked once and remembered. A desktop that has no
+  screenshot support at all now says so on the button instead of failing when you press it.
 - changed: every link the cockpit opens for you — in a reply, in the terminal, on the About screen, in the plugin
   store, and the release page behind the update banner — now goes through one place, so all of them apply the same
   rule: only a plain web address is handed to your browser, and a browser that will not start never takes the
