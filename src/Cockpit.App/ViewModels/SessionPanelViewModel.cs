@@ -416,14 +416,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
         var says = $"{name} is {used:0}% used{returns}.";
 
-        if (_standing.Any(standing => standing.Key == signal.Key))
+        var already = _standing.FindIndex(standing => standing.Key == signal.Key);
+        if (already >= 0)
         {
-            return;
-        }
+            // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
+            // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
+            // climbs while another warning covers it must not come back afterwards understating itself.
+            _standing[already] = (signal.Key, says);
 
-        _standing.Add((signal.Key, says));
-        UsageWarning = says;
-        _warnedSignal = signal.Key;
+            if (_warnedSignal == signal.Key)
+            {
+                UsageWarning = says;
+            }
+        }
+        else
+        {
+            _standing.Add((signal.Key, says));
+            UsageWarning = says;
+            _warnedSignal = signal.Key;
+        }
 
         // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
         // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
@@ -432,7 +443,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         //
         // Only an allowance can carry it at all: a context window empties on a compaction rather than at a
         // moment, so there is no reset to time a resume to however full it gets.
-        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
+        // Measured on every reading, not only on the one that crossed the warning threshold: an allowance climbs to
+        // spent, it does not usually arrive there. Gated on the first crossing, the offer only ever appeared for a
+        // signal whose very first reading past its line already read 100% — so in practice it appeared for nobody.
+        // Once per standing period, so a prompt being typed into the box is not overwritten by the next poll.
+        if (_offeredSignal != signal.Key
+            && signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
             && used >= 100
             && reading.ResetsAt is { } moment)
         {

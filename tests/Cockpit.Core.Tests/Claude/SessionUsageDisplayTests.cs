@@ -136,7 +136,7 @@ public class SessionUsageDisplayTests
         session.UsageWarning.Should().Contain("back");
     }
 
-    // The eight below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The ten below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
 
@@ -250,6 +250,36 @@ public class SessionUsageDisplayTests
 
         Assert.True(session.HasUsageWarning);
         Assert.Contains("Week is 96% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AFigureThatClimbsWhileItIsOnTheBar_IsKeptCurrent()
+    {
+        // The crossing is what speaks, but once the bar is up it should not be quoting a number from minutes ago.
+        // Nothing reappears here — the bar was already showing this signal — so this is not the noise the
+        // once-per-crossing rule exists to prevent.
+        var session = Build();
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 91, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 100, null)]);
+
+        Assert.Contains("Week is 100% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AFigureThatClimbedWhileCoveredUp_ComesBackWithItsCurrentNumber()
+    {
+        // Keeping each standing signal's sentence is what lets a covered warning return at all, so that sentence
+        // has to keep up. Frozen at the crossing, the week would come back saying 91% while sitting at 100 —
+        // trading a bar that said nothing for one that understates exactly when it matters most.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 91, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 100, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.Contains("Session (5 hours) is 100% used", session.UsageWarning);
     }
 
     [Fact]
