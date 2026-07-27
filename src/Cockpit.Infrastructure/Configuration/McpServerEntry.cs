@@ -25,7 +25,12 @@ internal sealed class McpServerEntry
 
     public string? OAuthClientId { get; set; }
 
-    public List<McpHeaderEntry> Headers { get; set; } = [];
+    /// <summary>
+    /// Nullable and left out when there are none, the way <c>ProjectEntry.AdditionalInfo</c> is: most servers carry no
+    /// custom headers, and writing <c>"Headers": []</c> into every entry is noise in a file the operator reads and
+    /// hand-edits. Nullable also because a hand-edited config can put null here and the deserializer will assign it.
+    /// </summary>
+    public List<McpHeaderEntry>? Headers { get; set; }
 
     public bool Enabled { get; set; } = true;
 
@@ -41,7 +46,7 @@ internal sealed class McpServerEntry
         ApiKey = server.ApiKey,
         OAuthAuthority = server.OAuthAuthority,
         OAuthClientId = server.OAuthClientId,
-        Headers = [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
+        Headers = server.Headers.Count == 0 ? null : [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
         Enabled = server.Enabled,
     };
 

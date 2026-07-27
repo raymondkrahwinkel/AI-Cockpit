@@ -191,6 +191,13 @@
          this assembly, so an older host loads an older SDK where the new member is absent and the call fails before
          any default body runs. A plugin calling it raises its manifest's minHostVersion. Additions only — a minor;
          major and abstractionsVersion stay 1. -->
+    <!-- 1.30.0 (AC-354): PluginMcpServer gains Headers, the operator's own headers for an MCP server that wants
+         X-Api-Key or a scheme other than Bearer rather than Authorization: Bearer. An init-only property on a record,
+         so it is binary-safe by the AC-40 rule — no positional constructor, and every published plugin zip that builds
+         a PluginMcpServer by object initializer keeps working untouched. The host fills it; a provider that ignores it
+         behaves exactly as before. The other direction still holds: a provider that *reads* it fails on an older host
+         whose SDK has no such member, so the three that do (claude-provider, cli-agent-provider, kimi-provider) raise
+         their manifest's minHostVersion to 0.7.0. Additions only — a minor; major and abstractionsVersion stay 1. -->
     <Version>1.30.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

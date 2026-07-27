@@ -69,13 +69,35 @@ public class McpAgentHeadersTests
     }
 
     [Fact]
-    public void For_WithNoCredential_LeavesAHandTypedAuthorizationAlone()
+    public void For_ForAServerThatAuthenticatesItself_LeavesAHandTypedAuthorizationAlone()
     {
         var server = _ServerWith(new McpHeader("Authorization", "Token abc123"));
 
-        // Nothing is displacing it, and a server wanting a non-Bearer scheme on the standard header is exactly the
-        // case this feature exists for.
+        // Auth is None here, so nothing of the cockpit's is competing for the header — and a scheme other than Bearer
+        // on the standard header is one of the things this feature exists for.
         Assert.Equal("Token abc123", McpAgentHeaders.For(server, bearerToken: null)["Authorization"]);
+    }
+
+    [Fact]
+    public void For_ForAnOAuthServer_DropsAHandTypedAuthorization_EvenWithNoTokenInHand()
+    {
+        var server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.OAuth };
+
+        // The case a "is a bearer going out?" test would have missed. In-process an OAuth server produces no bearer at
+        // all — the MCP SDK negotiates the authorization itself — so a hand-typed Authorization would have survived on
+        // exactly the route that cannot take a second one, while the spawn route dropped it. Two routes, one server,
+        // two answers is the drift this rule exists to prevent.
+        Assert.Empty(McpAgentHeaders.For(server, bearerToken: null));
+    }
+
+    [Fact]
+    public void For_ForAnApiKeyServerWithNoKeyFilledIn_StillDropsAHandTypedAuthorization()
+    {
+        var server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.ApiKey };
+
+        // Half-configured is still the cockpit's to answer for: the operator said this server authenticates by API
+        // key, so the fix is to fill the key in, not to have a hand-typed header quietly stand in for it.
+        Assert.Empty(McpAgentHeaders.For(server, bearerToken: null));
     }
 
     [Fact]

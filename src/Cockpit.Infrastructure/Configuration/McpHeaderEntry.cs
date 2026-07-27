@@ -14,9 +14,11 @@ namespace Cockpit.Infrastructure.Configuration;
 /// </summary>
 internal sealed class McpHeaderEntry
 {
-    public string Name { get; set; } = string.Empty;
+    /// <summary>Nullable because a hand-edited config can write null here, and the deserializer assigns it.</summary>
+    public string? Name { get; set; }
 
-    public string SecretValue { get; set; } = string.Empty;
+    /// <summary>Nullable for the same reason as <see cref="Name"/>.</summary>
+    public string? SecretValue { get; set; }
 
     public static McpHeaderEntry FromDomain(McpHeader header) => new()
     {
