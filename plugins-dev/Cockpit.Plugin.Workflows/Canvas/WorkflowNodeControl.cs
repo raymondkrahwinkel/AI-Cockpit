@@ -41,7 +41,7 @@ internal sealed class WorkflowNodeControl : Border
         {
             Width = 4,
             Background = _KindBrush(node.Kind),
-            CornerRadius = isTrigger ? new CornerRadius(8, 0, 0, 8) : new CornerRadius(3, 0, 0, 3),
+            CornerRadius = isTrigger ? new CornerRadius(_CardCorner, 0, 0, _CardCorner) : new CornerRadius(3, 0, 0, 3),
         };
 
         var icon = node.Type?.IconKind is { } kind
@@ -104,12 +104,14 @@ internal sealed class WorkflowNodeControl : Border
         {
             Width = CardWidth,
             Height = CardHeight,
-            Background = _Brush("CockpitPanelBgBrush") ?? new SolidColorBrush(Color.Parse("#26262E")),
+            Background = _Brush("CockpitPanelBgBrush", "#1a1d24"),
             BorderBrush = _Hairline,
             BorderThickness = new Thickness(1),
             // A trigger's leading edge is round: a flow visibly starts somewhere rather than merely having a
             // leftmost box.
-            CornerRadius = isTrigger ? new CornerRadius(CardHeight / 2, 8, 8, CardHeight / 2) : new CornerRadius(8),
+            CornerRadius = isTrigger
+                ? new CornerRadius(CardHeight / 2, _CardCorner, _CardCorner, CardHeight / 2)
+                : new CornerRadius(_CardCorner),
             ClipToBounds = true,
             Child = new Panel
             {
@@ -214,7 +216,7 @@ internal sealed class WorkflowNodeControl : Border
     {
         set
         {
-            _card.BorderBrush = value ? _Brush("CockpitAccentBrush") ?? Brushes.Orange : _Hairline;
+            _card.BorderBrush = value ? _Accent : _Hairline;
             _card.BorderThickness = new Thickness(value ? 2 : 1);
         }
     }
@@ -229,7 +231,11 @@ internal sealed class WorkflowNodeControl : Border
             return;
         }
 
-        _card.BorderBrush = _Brush(statusKey) ?? _Hairline;
+        // The key comes from the run, not from this file, so there is no single fallback to pair it with — an
+        // unresolvable status simply leaves the card on its resting edge.
+        _card.BorderBrush = Application.Current?.TryFindResource(statusKey, out var status) == true && status is IBrush brush
+            ? brush
+            : _Hairline;
         _card.BorderThickness = new Thickness(2);
     }
 
@@ -240,7 +246,7 @@ internal sealed class WorkflowNodeControl : Border
         {
             if (value)
             {
-                _card.BorderBrush = _Brush("CockpitAccentBrush") ?? Brushes.Orange;
+                _card.BorderBrush = _Accent;
                 _card.BorderThickness = new Thickness(2);
             }
         }
@@ -248,11 +254,12 @@ internal sealed class WorkflowNodeControl : Border
 
     public WorkflowPin OutputPin(int index) => _outputs.FirstOrDefault(pin => pin.OutputIndex == index) ?? _outputs[0];
 
-    /// <summary>The colour of a failure, on the pin and on the wire that leaves by it.</summary>
-    public static IBrush ErrorBrush { get; } =
-        Application.Current?.TryFindResource("CockpitStatusErrorBrush", out var value) == true && value is IBrush brush
-            ? brush
-            : new SolidColorBrush(Color.Parse("#D64545"));
+    /// <summary>
+    /// The colour of a failure, on the pin and on the wire that leaves by it. A property rather than a once-computed
+    /// static: a static is resolved when the type first loads and keeps that brush for the life of the process,
+    /// which is the same freezing the host's own helper exists to avoid.
+    /// </summary>
+    public static IBrush ErrorBrush => _Brush("CockpitStatusErrorBrush", "#D64545");
 
     public WorkflowPin InputPin() => _input ?? _outputs[0];
 
@@ -296,11 +303,23 @@ internal sealed class WorkflowNodeControl : Border
         return configured ?? node.Type?.Name ?? node.TypeId;
     }
 
+    /// <summary>
+    /// The stripe down a card's leading edge, saying what kind of step it is. A categorical palette, not a set of
+    /// meanings: the card's <em>border</em> is the channel that carries run status, so painting a kind in a status
+    /// colour would leave a decision node looking permanently blocked next to one that actually is.
+    /// <para>
+    /// A trigger takes the app's accent — a flow's starting point is the one thing on the canvas that should follow
+    /// the accent wherever it goes. That is why the other two have to stay clear of it, and why the plain-step
+    /// stripe is no longer <c>#5B7FA6</c>: against the old orange it was simply "blue", and against the accent's own
+    /// blue (AC-334) it became a slightly-faded copy of the trigger. It is a neutral slate now, with no hue to
+    /// confuse — a plain step should read as plain.
+    /// </para>
+    /// </summary>
     private static IBrush _KindBrush(WorkflowNodeKind kind) => kind switch
     {
-        WorkflowNodeKind.Trigger => _Brush("CockpitAccentBrush") ?? new SolidColorBrush(Color.Parse("#E4874F")),
+        WorkflowNodeKind.Trigger => _Accent,
         WorkflowNodeKind.Decision => new SolidColorBrush(Color.Parse("#C79A4A")),
-        _ => new SolidColorBrush(Color.Parse("#5B7FA6")),
+        _ => new SolidColorBrush(Color.Parse("#7A8290")),
     };
 
     private static Control _Docked(Control control, Dock dock)
@@ -309,10 +328,29 @@ internal sealed class WorkflowNodeControl : Border
         return control;
     }
 
-    private static IBrush _Hairline => _Brush("CockpitHairlineBrush") ?? new SolidColorBrush(Color.Parse("#3C3C46"));
+    private static IBrush _Hairline => _Brush("CockpitHairlineBrush", "#2a2f39");
 
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+    private static IBrush _Accent => _Brush("CockpitAccentBrush", "#3b82f6");
+
+    /// <summary>
+    /// A card's corner, from the theme's control radius, so a step on the canvas rounds like every other box in the
+    /// app. Taken as a single number rather than the <see cref="CornerRadius"/> itself because a trigger's card is
+    /// round down one side and needs the corners set one at a time.
+    /// </summary>
+    private static double _CardCorner =>
+        Application.Current?.TryFindResource("CockpitControlRadius", out var value) == true && value is CornerRadius radius
+            ? radius.TopLeft
+            : 9;
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }
 
 /// <summary>A connection point: pull a wire out of a way out, and drop it on the step it should run to.</summary>
@@ -358,15 +396,22 @@ internal sealed class WorkflowPin : Ellipse
         set
         {
             Width = Height = value ? 15 : 10;
-            Fill = value
-                ? Application.Current?.TryFindResource("CockpitAccentBrush", out var accent) == true && accent is IBrush brush
-                    ? brush
-                    : Brushes.Orange
-                : Idle;
+            Fill = value ? _Brush("CockpitAccentBrush", "#3b82f6") : Idle;
         }
     }
 
-    private static IBrush Idle { get; } = new SolidColorBrush(Color.Parse("#8A8A99"));
+    /// <summary>A pin nobody is dragging onto: the theme's faint text, the quietest ink the app owns.</summary>
+    private static IBrush Idle => _Brush("CockpitTextFaintBrush", "#656c78");
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. A copy of the one on <see cref="WorkflowNodeControl"/> because
+    /// this is a type of its own; the fallback hex is only reached with no <see cref="Application"/> (designer,
+    /// headless test) and is held equal to its token by the repository's theme guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 
     /// <summary>Where the wire attaches, in canvas coordinates — asked fresh on every redraw, because the pin moves with its step.</summary>
     public Point AnchorOn(Visual surface) => this.TranslatePoint(new Point(Width / 2, Height / 2), surface) ?? default;

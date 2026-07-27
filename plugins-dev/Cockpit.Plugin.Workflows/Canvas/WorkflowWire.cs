@@ -48,9 +48,10 @@ internal sealed class WorkflowWire
 
         Remove = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#22222A")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#3C3C46")),
+            Background = _Brush("CockpitPanelBgBrush", "#1a1d24"),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             BorderThickness = new Thickness(1),
+            // Half the button's size: a circle, not a rounded square — geometry, so no token answers to it.
             CornerRadius = new CornerRadius(10),
             Width = 20,
             Height = 20,
@@ -86,15 +87,17 @@ internal sealed class WorkflowWire
         // label on every other wire is noise.
         Label = string.IsNullOrEmpty(branchLabel)
             ? null
+            // The same shape the app labels anything else with — the theme's tag, borrowed by hand because a wire
+            // label is drawn onto a canvas rather than placed in a styled visual tree.
             : new Border
             {
-                Background = new SolidColorBrush(Color.Parse("#22222A")),
-                BorderBrush = new SolidColorBrush(Color.Parse("#3C3C46")),
+                Background = _Brush("CockpitInsetBgBrush", "#202430"),
+                BorderBrush = _Brush("CockpitHairlineSoftBrush", "#20242c"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(5, 1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(6, 1),
                 IsHitTestVisible = false,
-                Child = new TextBlock { Text = branchLabel, FontSize = 9, Opacity = 0.8 },
+                Child = new TextBlock { Text = branchLabel, FontSize = 10, Opacity = 0.8 },
             };
     }
 
@@ -185,8 +188,16 @@ internal sealed class WorkflowWire
     }
 
     // The cockpit's own hairline, so a wire belongs to this app rather than to the one we borrowed the shape from.
-    private static IBrush WireBrush { get; } =
-        Application.Current?.TryFindResource("CockpitTextFaintBrush", out var value) == true && value is IBrush brush
+    // A property, not a once-computed static: a static freezes the brush at type-load for the life of the process.
+    private static IBrush WireBrush => _Brush("CockpitTextFaintBrush", "#656c78");
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
             ? brush
-            : new SolidColorBrush(Color.Parse("#6E6E7C"));
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

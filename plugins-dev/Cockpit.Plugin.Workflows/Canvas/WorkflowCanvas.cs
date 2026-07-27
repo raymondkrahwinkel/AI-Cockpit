@@ -79,7 +79,7 @@ internal sealed class WorkflowCanvas : Border
             FitToContent(e.NewSize);
         };
 
-        Background = DotGrid.Brush;
+        Background = DotGrid.Build();
         ClipToBounds = true;
         Focusable = true;
 

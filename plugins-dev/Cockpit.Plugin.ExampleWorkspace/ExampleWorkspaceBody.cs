@@ -24,7 +24,7 @@ internal sealed class ExampleWorkspaceBody : UserControl
         {
             Padding = new Thickness(16, 12),
             BorderThickness = new Thickness(0, 0, 0, 1),
-            BorderBrush = new SolidColorBrush(Colors.Gray, 0.25),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             [DockPanel.DockProperty] = Dock.Top,
             Child = new StackPanel
             {
@@ -53,4 +53,15 @@ internal sealed class ExampleWorkspaceBody : UserControl
             },
         };
     }
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard. The example is the one a plugin author reads first, so it shows the shape they should copy — a
+    /// translucent grey stood in for the hairline here and did not follow the repaint.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }
