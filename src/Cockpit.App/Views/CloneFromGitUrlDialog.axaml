@@ -23,7 +23,7 @@
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding IsCloning}"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                    <Button Content="Cancel" Click="OnCancel"/>
+                    <Button Classes="Ghost" Content="Cancel" Click="OnCancel"/>
                     <Button Content="Clone" Classes="Accent"
                             Command="{Binding CloneCommand}"/>
                 </StackPanel>

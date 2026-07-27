@@ -12,6 +12,9 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="Auto,*,Auto">
+                <!-- Not Ghost here: this footer puts Cancel hard left and Restore hard right with a gap between
+                     them, so a chromeless Cancel would sit alone in a corner as bare text with nothing to read as
+                     a button. Ghost works where the pair sits together and one of them has to step back. -->
                 <Button Grid.Column="0" Content="Cancel" Click="OnCancel"/>
                 <Button Grid.Column="2" Content="Restore" Classes="Accent" Click="OnRestore"
                         IsEnabled="{Binding HasSelection}"/>

@@ -35,6 +35,30 @@
             <SolidColorBrush x:Key="CockpitChromeBgBrush" Color="{StaticResource CockpitChromeBgColor}"/>
             <SolidColorBrush x:Key="CockpitHairlineSoftBrush" Color="{StaticResource CockpitHairlineSoftColor}"/>
 
+            <!-- The edge a secondary control lifts to under the pointer. The mockup answers hover on a
+                 neutral button by brightening its *edge* and leaving the fill alone, which keeps a row of
+                 buttons still while the pointer crosses it — a fill that changes moves the eye to whatever
+                 the pointer happens to be over rather than to what the operator is looking for. -->
+            <Color x:Key="CockpitHairlineHoverColor">#38404d</Color>
+            <SolidColorBrush x:Key="CockpitHairlineHoverBrush" Color="{StaticResource CockpitHairlineHoverColor}"/>
+
+            <!-- Text on an accent fill. Not CockpitTextPrimaryColor: that is a near-white tuned to sit on the
+                 dark surfaces, and on the blue it loses the bit of contrast the label needs to stay crisp. -->
+            <Color x:Key="CockpitTextOnAccentColor">#ffffff</Color>
+            <SolidColorBrush x:Key="CockpitTextOnAccentBrush" Color="{StaticResource CockpitTextOnAccentColor}"/>
+
+            <!-- Accent at 16% (#29 alpha) — the fill behind a selected row in an open dropdown. A solid accent
+                 there would make the list read as one loud band; tinted, the row is picked out without the
+                 text on it having to fight the fill. -->
+            <Color x:Key="CockpitAccentSelectionColor">#293b82f6</Color>
+            <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{StaticResource CockpitAccentSelectionColor}"/>
+
+            <!-- White at 4% (#0a alpha) — the wash under a chromeless button on hover. A token rather than a
+                 literal because it is the one place the theme paints with light instead of with a surface
+                 colour: a ghost button has no fill to brighten, so it borrows one from whatever it sits on. -->
+            <Color x:Key="CockpitGhostHoverColor">#0affffff</Color>
+            <SolidColorBrush x:Key="CockpitGhostHoverBrush" Color="{StaticResource CockpitGhostHoverColor}"/>
+
             <!-- Text -->
             <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
             <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>
@@ -89,6 +113,11 @@
             <CornerRadius x:Key="CockpitPanelRadius">12</CornerRadius>
             <Thickness x:Key="CockpitHairlineThickness">1</Thickness>
 
+            <!-- Fully round, for the things that are read as a word rather than as a box: a chip, a count
+                 badge, a switch track. 20 is past half the height of all three, so each one ends in a
+                 semicircle no matter how the text inside it grows. -->
+            <CornerRadius x:Key="CockpitPillRadius">20</CornerRadius>
+
             <!-- The sub-navigation rail's width (Border.subnavRail below). A token rather than a literal on the
                  setter because a plugin's settings dialog has to widen itself by exactly this before the rail
                  exists to be measured (PluginDialogHost) — two hand-kept copies of one number would drift. -->
@@ -124,7 +153,15 @@
 
 
     <!-- Base text. :is() so SelectableTextBlock (transcript rows, T3) inherits the same treatment as
-         plain TextBlock — an exact-type selector would skip the derived SelectableTextBlock. -->
+         plain TextBlock — an exact-type selector would skip the derived SelectableTextBlock.
+         ⚠️ This rule names the text element itself, and a rule that names an element outranks a value
+         inherited from an ancestor. So a control cannot tint its own label by setting Foreground on itself:
+         the label keeps this colour regardless. Any variant that needs another one has to name the text too
+         (`Button.Ghost :is(TextBlock)`), which is what the rules below do. Measured, not assumed — the
+         disabled states looked enabled until a render showed it (AC-336).
+         Setting the base colour on the top level instead, so it would inherit, was tried and does not work:
+         a popup is its own root and does not inherit from the window, which left every open dropdown, menu
+         and tooltip drawn in Fluent's white. -->
     <Style Selector=":is(TextBlock)">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
@@ -213,29 +250,112 @@
     </Style>
 
     <!-- Buttons: flat, hairline border, rounded corners. Accent reserved for primary actions
-         via the "Accent" style class (applied explicitly, not globally). -->
+         via the "Accent" style class (applied explicitly, not globally).
+         Every state below is spelled out. A Fluent button answers hover, press, disable and keyboard
+         focus out of the box in Fluent's own colours; the moment the theme takes one of them over it
+         owns them all, because an unclaimed state falls back to a palette this app never uses. -->
     <Style Selector="Button">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
-        <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="Padding" Value="14,8"/>
+        <Setter Property="FontSize" Value="12.5"/>
     </Style>
+    <!-- Hover brightens the edge and leaves the fill; press is the one that moves the surface, so the
+         two states stay distinguishable without either of them shouting. -->
     <Style Selector="Button:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <!-- Disabled keeps the shape: the control still reads as a button you cannot use now, rather than as the
+         grey slab Fluent paints, which reads as a mis-styled one. The label is faded by a third rule further
+         down (`Button:disabled :is(TextBlock)`) — setting Foreground here is not enough on its own, and that
+         rule has to come after every variant to be able to override them. -->
+    <Style Selector="Button:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <!-- :focus-visible, not :focus — a click focuses too, and a ring left behind by the pointer marks the
+         last thing touched rather than where the keyboard is. -->
+    <Style Selector="Button:focus-visible /template/ ContentPresenter">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
 
     <Style Selector="Button.Accent">
         <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.Accent :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextOnAccentBrush}"/>
     </Style>
     <Style Selector="Button.Accent:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
     <Style Selector="Button.Accent:pressed /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentPressedBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentPressedBrush}"/>
+    </Style>
+    <!-- A disabled primary drops the accent entirely. Dimming the blue would leave a washed-out blue that
+         still reads as "the button to press", which is the opposite of what disabled has to say. -->
+    <Style Selector="Button.Accent:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="Button.Accent:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+
+    <!-- Ghost: the dismissing half of a dialog footer (Cancel next to a primary). It carries no chrome at
+         rest so the pair reads as one decision with one obvious answer, and gains a wash on hover so it
+         is still visibly a button and not a line of text that happens to be clickable. Distinct from
+         Button.Subtle, which is a chromeless *icon* button at 2px padding — this one keeps the full
+         button footprint so it lines up with the primary beside it. -->
+    <Style Selector="Button.Ghost">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.Ghost :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.Ghost:pointerover :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.Ghost /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.Ghost:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitGhostHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.Ghost:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.Ghost:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="Button.Ghost:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+
+    <!-- Declared after every variant on purpose: each of those names the label to tint it, and between two
+         rules that both name it the later one wins. Disabled has to be able to override Ghost's grey and
+         Accent's white, so it comes last and covers every variant in one rule. -->
+    <Style Selector="Button:disabled :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- Subtle buttons used as toggles (chevrons, "Thinking..." collapsers) — no chrome, just text. -->
@@ -252,7 +372,6 @@
          default theme paints a grey disabled box, which reads as a broken/mis-styled button. -->
     <Style Selector="Button.Subtle:disabled /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- Compact button: denser secondary action (Stop) that must not compete with the accent. Shares
@@ -289,7 +408,6 @@
     </Style>
     <Style Selector="Button.RowAction:disabled /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
-        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- ToggleButton (e.g. the Zoom toggle): flat like a neutral button, cockpit accent when
@@ -348,26 +466,67 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
-    <!-- ComboBox: flat, hairline, compact -->
+    <!-- ComboBox: the same box as a TextBox, so a form reads as one column of controls rather than as
+         inputs and pickers drawn by two different hands. -->
     <Style Selector="ComboBox">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
-        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Padding" Value="12,9"/>
+        <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <!-- The template paints its own surface over the control's: setting Background on the ComboBox alone
+         leaves Fluent's fill on Border#Background underneath every state below. -->
+    <Style Selector="ComboBox /template/ Border#Background">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="ComboBox:pointerover /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="ComboBox:focus /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <!-- Fluent lights Border#HighlightBackground in its own blue while the picker is pressed or open.
+         Neutralised rather than recoloured: the accent edge above already says which picker is live, and a
+         second accent surface underneath it would double the signal. -->
+    <Style Selector="ComboBox /template/ Border#HighlightBackground">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <!-- A disabled picker recedes. Left to Fluent it goes *lighter* than the fields around it and steps
+         forward instead — the "Provider (fixed after creation)" row was the loudest thing in a form whose
+         other controls were all still editable. -->
+    <Style Selector="ComboBox:disabled /template/ Border#Background">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="ComboBox:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <!-- Same as the disabled button: the chosen value has to be named to be faded, not inherited into. -->
+    <Style Selector="ComboBox:disabled :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="ComboBox:disabled /template/ PathIcon#DropDownGlyph">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
-    <!-- ComboBox dropdown items: quiet cockpit selection (panel-bg highlight) instead of the default
-         Fluent-blue, so an open mode/model/effort picker matches the dark theme. -->
+    <!-- ComboBox dropdown items: the selected row is an accent *tint*, not the Fluent-blue fill and not
+         the old panel-bg, which was indistinguishable from a hovered row on a dark list. -->
     <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
     </Style>
     <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
-        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
     </Style>
     <Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
-        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
     </Style>
 
     <!-- Compact selectors: the per-session mode/model/effort pickers are context controls, not the
@@ -381,17 +540,23 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
-    <!-- TextBox: dark input surface -->
+    <!-- TextBox: an input sits a step *above* the window rather than sunk into it, so a form reads as a
+         column of things you can type in. It shares its fill, radius and padding with ComboBox, which is
+         what makes a label/field grid line up whether the row is typed or picked. -->
     <Style Selector="TextBox">
-        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="CaretBrush" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
-        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="Padding" Value="12,9"/>
+        <Setter Property="FontSize" Value="13"/>
     </Style>
-    <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+    <!-- PART_Placeholder, measured off the Avalonia 12 template. The selector this replaced named
+         PART_Watermark, which no longer exists there: it had been matching nothing, and every placeholder
+         in the app was drawing in Fluent's grey rather than the theme's. -->
+    <Style Selector="TextBox /template/ TextBlock#PART_Placeholder">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
     <!-- Focused input: cockpit accent border instead of the default Fluent-blue focus ring (L10). -->
@@ -399,7 +564,18 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
     <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <!-- Read-only fields recede, for the same reason a disabled picker does. -->
+    <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="TextBox:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="TextBox:disabled :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- NumericUpDown (e.g. the idle-minutes input): match the cockpit inputs — secondary background,
@@ -420,6 +596,124 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <!-- CheckBox: the box follows CockpitAccentColor. Until now it drew with Avalonia's *system* accent —
+         they happen to coincide since the theme moved onto blue (AC-334), but nothing connects them, so a
+         change to the token would have quietly left every tick behind on the old colour. -->
+    <Style Selector="CheckBox /template/ Border#NormalRectangle">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:pointerover /template/ Border#NormalRectangle">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:indeterminate /template/ Border#NormalRectangle">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:checked /template/ Path#CheckGlyph">
+        <Setter Property="Fill" Value="{StaticResource CockpitTextOnAccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:disabled /template/ Border#NormalRectangle">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
+    <!-- Switch: a setting that is on or off, drawn as a track the knob slides along rather than as a box
+         you tick. Applied by class, not to every CheckBox: a list of options you pick from is a set of
+         checkboxes and stays one — a switch says "this is running now", which is a different sentence.
+         Built on CheckBox because that is the control these settings already bind to; swapping them for
+         ToggleSwitch would change the views to gain a shape the template can give them here.
+         The knob moves by transform, so it slides instead of jumping — HorizontalAlignment cannot animate. -->
+    <Style Selector="CheckBox.Switch">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Name="Track" Width="34" Height="19" VerticalAlignment="Top" Margin="0,2,11,0"
+                            CornerRadius="{StaticResource CockpitPillRadius}"
+                            Background="{StaticResource CockpitInsetBgBrush}"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}"
+                            BorderThickness="{StaticResource CockpitHairlineThickness}">
+                        <Ellipse Name="Knob" Width="15" Height="15" Margin="2,0,0,0"
+                                 HorizontalAlignment="Left" VerticalAlignment="Center"
+                                 Fill="{StaticResource CockpitTextFaintBrush}"
+                                 RenderTransform="translateX(0px)">
+                            <Ellipse.Transitions>
+                                <Transitions>
+                                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+                                </Transitions>
+                            </Ellipse.Transitions>
+                        </Ellipse>
+                    </Border>
+                    <ContentPresenter Grid.Column="1"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      VerticalAlignment="Top"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="CheckBox.Switch:pointerover /template/ Border#Track">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:checked /template/ Border#Track">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:checked:pointerover /template/ Border#Track">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:checked /template/ Ellipse#Knob">
+        <Setter Property="Fill" Value="{StaticResource CockpitTextOnAccentBrush}"/>
+        <Setter Property="RenderTransform" Value="translateX(15px)"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:focus-visible /template/ Border#Track">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox.Switch:disabled /template/ Border#Track">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+
+    <!-- Tag: the small label that classifies the thing next to it — a session's kind, a branch's state, a
+         plugin's category. The app had nine of these, each with its own hand-written radius, padding and
+         size; the shape is the same thing nine times, so it belongs here, while the colour stays at the
+         call site because that is the part that actually differs (a kind tag is grey, an isolated one
+         violet, a branch state amber). Sits on the layer above the panel so a tag on a card still reads
+         as raised.
+         Named for the mockup's `.ctag` (5px radius, a classifying label), not its `.chip` (a full 20px
+         pill naming a thing — an MCP server that is on). The app has no surface carrying that second shape
+         yet; it arrives with the projects flow, and calling this one "chip" would take the name it needs. -->
+    <Style Selector="Border.tag">
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="5"/>
+        <Setter Property="Padding" Value="6,1"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <!-- Direct child, so a ToolTip.Tip hung on the tag keeps its own text colour.
+         Secondary rather than faint, which is what the mockup asks for and what the contrast needs: faint on
+         the inset fill is 2.93:1, below the 4.5:1 a label has to clear, and worse than the 3.65:1 these tags
+         had on the darker surface they used to sit on. Secondary on inset is 5.47:1. -->
+    <Style Selector="Border.tag > :is(TextBlock)">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
@@ -514,6 +808,19 @@
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
     </Style>
     <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <!-- Selected *and* focused — the state a row is in the moment you click it, and the one that was
+         missing. Without these three the row fell through to Fluent and turned light grey with dark text
+         in the middle of a dark list, which reads as a rendering fault rather than as a selection
+         (Discover in the plugin store, the picked profile in ManageProfiles). -->
+    <Style Selector="ListBoxItem:selected:focus /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected:focus-within /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
 
