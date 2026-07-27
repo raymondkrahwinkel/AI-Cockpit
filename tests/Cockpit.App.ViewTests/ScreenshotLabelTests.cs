@@ -149,6 +149,27 @@ public class ScreenshotLabelTests
         selection.Typing.Should().BeTrue("and the next one is open where the click landed");
     });
 
+    /// <summary>
+    /// Clicking the same spot twice opens another note rather than taking the shot. A double-click inside what is
+    /// marked out is how the surface is confirmed — which makes the ordinary act of clicking a place twice, with a
+    /// tool in hand, a way to hand over a screenshot you were still working on.
+    /// </summary>
+    [Fact]
+    public void ClickingTheSameSpotTwice_OpensAnotherNote_RatherThanTakingTheShot() => _OnTheSurface(surface =>
+    {
+        var selection = _Model(surface);
+        var spot = new Point(600, 400);
+        _OpenNote(surface, spot);
+        surface.KeyTextInput("first");
+
+        surface.MouseDown(spot, MouseButton.Left);
+        surface.MouseUp(spot, MouseButton.Left);
+
+        selection.IsClosed.Should().BeFalse("the second click was a note, not a confirmation");
+        selection.Result.Should().BeNull();
+        selection.Typing.Should().BeTrue("and it opened another note where it landed");
+    });
+
     private static void _OpenNote(ScreenshotSelectionWindow surface, Point at)
     {
         surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
