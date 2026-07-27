@@ -32,6 +32,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can paint over what should not leave your machine. Press B on the selection surface and drag a box over
+  anything you would rather the model did not see — a token in a terminal, a mail address, a password manager open
+  behind the window — and Ctrl+Z takes the last one back. The blocks are applied to the picture itself, not drawn on
+  top of it, so what is sent is the only version there is: there is no copy underneath and nothing that could travel
+  separately from it. It goes to a terminal session the same way it goes to a chat one.
+
 - added: you can take a whole window instead of dragging its edges. On the selection surface, press W and the window
   under your pointer lights up; click it and that is what you get, cropped out of the capture already taken — nothing
   is asked of the window itself, and it is never brought to the front. Where two windows overlap you get the one on

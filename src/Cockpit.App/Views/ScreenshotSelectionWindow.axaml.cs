@@ -24,6 +24,9 @@ public partial class ScreenshotSelectionWindow : Window
 {
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
+
+    /// <summary>The rectangles standing in for the redaction boxes, one per box, added to the canvas as they are drawn.</summary>
+    private readonly List<Rectangle> _boxes = [];
     private bool _wasActivated;
 
     public ScreenshotSelectionWindow()
@@ -37,7 +40,7 @@ public partial class ScreenshotSelectionWindow : Window
     /// Puts the surface over the desktop the capture came off and waits for the operator, handing back the
     /// region they marked out in the image's own pixels — or nothing, if they changed their mind.
     /// </summary>
-    public static async Task<CaptureRect?> PickAsync(ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner)
+    public static async Task<ScreenshotSelection?> PickAsync(ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner)
     {
         using var stream = new MemoryStream(capture.Image);
         var bitmap = new Bitmap(stream);
@@ -214,6 +217,14 @@ public partial class ScreenshotSelectionWindow : Window
                 selection.PickWindows(false);
                 selection.SelectEverything();
                 break;
+            case Key.B:
+                // Boxes are a mode too: the same drag either marks out what to take or what to hide, and the
+                // operator says which before moving the pointer.
+                selection.Redact(!selection.Redacting);
+                break;
+            case Key.Z when e.KeyModifiers.HasFlag(KeyModifiers.Control):
+                selection.UndoRedaction();
+                break;
             case Key.W:
                 // Window picking is a mode rather than a click target: the pointer is already the selection's,
                 // so the operator says which of the two it means before moving it.
@@ -306,10 +317,45 @@ public partial class ScreenshotSelectionWindow : Window
 
         // The size is reported in the image's pixels, which is what the session receives — the window's units
         // would be a different number on a scaled display and would read as a lie next to the attachment.
+        _DrawRedactions(selection);
         ReadoutText.Text = $"{region.Width} × {region.Height}";
         Readout.IsVisible = true;
         Canvas.SetLeft(Readout, x);
         Canvas.SetTop(Readout, Math.Max(0, y - 24));
+    }
+
+    /// <summary>
+    /// Shows which areas will be obscured, before the operator commits to sending it. Solid rather than an
+    /// outline: what they are checking is that nothing readable is left, and a border around legible text would
+    /// say the opposite of what the box is going to do.
+    /// </summary>
+    private void _DrawRedactions(ScreenshotSelectionViewModel selection)
+    {
+        var drawn = selection.PendingRedaction is { } pending
+            ? selection.Redactions.Append(pending).ToList()
+            : selection.Redactions;
+
+        while (_boxes.Count < drawn.Count)
+        {
+            var box = new Rectangle { Fill = Marquee.Stroke, Opacity = 0.85 };
+            _boxes.Add(box);
+            Shade.Children.Insert(Shade.Children.IndexOf(Marquee), box);
+        }
+
+        for (var index = 0; index < _boxes.Count; index++)
+        {
+            if (index < drawn.Count)
+            {
+                var (x, y, width, height) = selection.ToSurface(drawn[index]);
+                _Place(_boxes[index], x, y, width, height);
+            }
+            else
+            {
+                // Kept rather than removed: an undo is very often followed by another box, and a handful of
+                // zero-sized rectangles costs nothing next to rebuilding the canvas on every pointer move.
+                _Place(_boxes[index], 0, 0, 0, 0);
+            }
+        }
     }
 
     private static void _Place(Shape shape, double x, double y, double width, double height)

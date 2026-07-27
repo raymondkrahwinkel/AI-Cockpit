@@ -10,6 +10,13 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// </summary>
 internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingletonService
 {
+    /// <summary>
+    /// How coarse a redaction block is, in the image's pixels. Big enough that a line of text inside one is a
+    /// single flat square rather than a smear that still has letter shapes in it — the failure mode of every
+    /// redaction that gets reversed.
+    /// </summary>
+    private const int BlockSize = 16;
+
     public byte[] Crop(byte[] png, CaptureRect region)
     {
         using var image = CaptureBitmap.Decode(png, "The capture");
@@ -38,5 +45,77 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
             ?? throw new InvalidOperationException("The cropped capture could not be encoded as a PNG.");
 
         return encoded.ToArray();
+    }
+
+    public byte[] Redact(byte[] png, IReadOnlyList<CaptureRect> regions)
+    {
+        if (regions.Count == 0)
+        {
+            return png;
+        }
+
+        using var image = CaptureBitmap.Decode(png, "The capture");
+        foreach (var region in regions)
+        {
+            _Pixelate(image, region);
+        }
+
+        using var encoded = SKImage.FromBitmap(image).Encode(SKEncodedImageFormat.Png, 100)
+            ?? throw new InvalidOperationException("The redacted capture could not be encoded as a PNG.");
+
+        return encoded.ToArray();
+    }
+
+    /// <summary>
+    /// Replaces each block of the region with its own average colour. Averaging rather than sampling one pixel
+    /// of the block: a block that took its colour from a corner keeps whatever happened to be there, which for a
+    /// character's stroke is the character.
+    /// </summary>
+    private static void _Pixelate(SKBitmap image, CaptureRect region)
+    {
+        var left = Math.Clamp(region.X, 0, image.Width);
+        var top = Math.Clamp(region.Y, 0, image.Height);
+        var right = Math.Clamp(region.Right, 0, image.Width);
+        var bottom = Math.Clamp(region.Bottom, 0, image.Height);
+
+        for (var blockTop = top; blockTop < bottom; blockTop += BlockSize)
+        {
+            for (var blockLeft = left; blockLeft < right; blockLeft += BlockSize)
+            {
+                var blockRight = Math.Min(blockLeft + BlockSize, right);
+                var blockBottom = Math.Min(blockTop + BlockSize, bottom);
+                var colour = _AverageOf(image, blockLeft, blockTop, blockRight, blockBottom);
+
+                for (var y = blockTop; y < blockBottom; y++)
+                {
+                    for (var x = blockLeft; x < blockRight; x++)
+                    {
+                        image.SetPixel(x, y, colour);
+                    }
+                }
+            }
+        }
+    }
+
+    private static SKColor _AverageOf(SKBitmap image, int left, int top, int right, int bottom)
+    {
+        long red = 0, green = 0, blue = 0;
+        var count = 0;
+
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                var pixel = image.GetPixel(x, y);
+                red += pixel.Red;
+                green += pixel.Green;
+                blue += pixel.Blue;
+                count++;
+            }
+        }
+
+        return count == 0
+            ? SKColors.Black
+            : new SKColor((byte)(red / count), (byte)(green / count), (byte)(blue / count));
     }
 }

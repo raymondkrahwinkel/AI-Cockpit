@@ -116,7 +116,7 @@ public class ScreenshotSelectionTests
 
         selection.Confirm();
 
-        selection.Result.Should().Be(new CaptureRect(15, 15, 150, 150));
+        selection.Result!.Region.Should().Be(new CaptureRect(15, 15, 150, 150));
         selection.IsClosed.Should().BeTrue();
     }
 

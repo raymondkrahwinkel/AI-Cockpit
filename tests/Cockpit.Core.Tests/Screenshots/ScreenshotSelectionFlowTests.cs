@@ -36,7 +36,7 @@ public class ScreenshotSelectionFlowTests
     public async Task TheRegionTheOperatorMarkedOut_IsWhatGetsCropped()
     {
         var region = new CaptureRect(100, 200, 640, 480);
-        var (coordinator, session, editor, _) = _Flow(_ => region);
+        var (coordinator, session, editor, _) = _Flow(_ => new ScreenshotSelection { Region = region });
 
         await coordinator.CaptureIntoAsync(session);
 
@@ -49,7 +49,7 @@ public class ScreenshotSelectionFlowTests
     public async Task TheRegion_IsWaitingOnTheSurfaceNextTime()
     {
         var region = new CaptureRect(10, 20, 30, 40);
-        var (coordinator, session, _, settings) = _Flow(_ => region);
+        var (coordinator, session, _, settings) = _Flow(_ => new ScreenshotSelection { Region = region });
 
         await coordinator.CaptureIntoAsync(session);
 
@@ -64,13 +64,34 @@ public class ScreenshotSelectionFlowTests
         var (coordinator, session, _, settings) = _Flow(last =>
         {
             offered = last;
-            return new CaptureRect(0, 0, 10, 10);
+            return new ScreenshotSelection { Region = new CaptureRect(0, 0, 10, 10) };
         });
         await settings.SaveAsync(settings.Settings with { LastRegion = remembered });
 
         await coordinator.CaptureIntoAsync(session);
 
         offered.Should().Be(remembered);
+    }
+
+    /// <summary>
+    /// What the operator hid is applied to the pixels that are sent, after the crop — so the boxes are in the
+    /// coordinates of the picture that actually leaves the machine (AC-331).
+    /// </summary>
+    [Fact]
+    public async Task WhatWasHidden_IsRedactedOutOfWhatIsSent()
+    {
+        var box = new CaptureRect(10, 10, 50, 50);
+        var (coordinator, session, editor, _) = _Flow(_ => new ScreenshotSelection
+        {
+            Region = new CaptureRect(100, 100, 400, 300),
+            Redactions = [box],
+        });
+
+        await coordinator.CaptureIntoAsync(session);
+
+        editor.Cropped.Should().Be(new CaptureRect(100, 100, 400, 300));
+        editor.Redacted.Should().Equal(box);
+        session.InjectedScreenshots.Should().ContainSingle();
     }
 
     /// <summary>
@@ -92,7 +113,7 @@ public class ScreenshotSelectionFlowTests
     }
 
     private static (ScreenshotCoordinator Coordinator, RecordingSession Session, FakeScreenshotImageEditor Editor, FakeScreenshotSettingsStore Settings) _Flow(
-        Func<CaptureRect?, CaptureRect?> pick)
+        Func<CaptureRect?, ScreenshotSelection?> pick)
     {
         var session = new RecordingSession();
         var cockpit = TestCockpit.NewViewModel();

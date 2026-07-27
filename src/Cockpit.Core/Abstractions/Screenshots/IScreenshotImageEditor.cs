@@ -16,4 +16,20 @@ public interface IScreenshotImageEditor
     /// it — a caller working from <see cref="ScreenCapture.Displays"/> already is.
     /// </summary>
     byte[] Crop(byte[] png, CaptureRect region);
+
+    /// <summary>
+    /// The image with every given rectangle pixelated beyond reading (AC-331), applied to the pixels themselves
+    /// so the result carries no copy of what was there.
+    /// </summary>
+    /// <remarks>
+    /// Destructive on purpose, and this is the whole point of the operation. An overlay drawn on top would be a
+    /// second thing that has to travel with the image, and the moment the two can be separated — a preview that
+    /// shows one and an injection that sends the other, a path that forgets to composite — the redaction is
+    /// gone and nobody finds out. What goes to the model has to be the only version there is.
+    /// <para>
+    /// Pixelation rather than a blur: a weak gaussian is recoverable, and coarse blocks are not. The regions are
+    /// in the image's own pixels, so a caller crops first and redacts second.
+    /// </para>
+    /// </remarks>
+    byte[] Redact(byte[] png, IReadOnlyList<CaptureRect> regions);
 }

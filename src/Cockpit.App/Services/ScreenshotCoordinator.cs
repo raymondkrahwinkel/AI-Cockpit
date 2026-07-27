@@ -45,7 +45,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     /// over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
     /// altogether. Swappable so the crop-and-remember path can be tested without a desktop.
     /// </summary>
-    private Func<ScreenCapture, CaptureRect?, Task<CaptureRect?>>? _showSelection;
+    private Func<ScreenCapture, CaptureRect?, Task<ScreenshotSelection?>>? _showSelection;
 
     public ScreenshotCoordinator(
         GlobalHotkeyCoordinator hotkeys,
@@ -85,7 +85,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     }
 
     /// <summary>Test seam: stands in for the selection surface, which needs a desktop to be put over.</summary>
-    internal void UseSelection(Func<ScreenCapture, CaptureRect?, Task<CaptureRect?>> showSelection) =>
+    internal void UseSelection(Func<ScreenCapture, CaptureRect?, Task<ScreenshotSelection?>> showSelection) =>
         _showSelection = showSelection;
 
     /// <summary>Test seam, like push-to-talk's: puts what the desktop bound where the operator can see it. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
@@ -201,16 +201,28 @@ public sealed class ScreenshotCoordinator : ISingletonService
         }
 
         var settings = await _settings.LoadAsync().ConfigureAwait(true);
-        if (await show(capture, settings.LastRegion).ConfigureAwait(true) is not { } region)
+        if (await show(capture, settings.LastRegion).ConfigureAwait(true) is not { } chosen)
         {
             return null;
         }
 
-        // Saved after the crop rather than before: a region that turned out not to fit was never restored, and
-        // remembering one the operator never actually got is worse than remembering nothing.
-        var cropped = _editor.Crop(capture.Image, region);
-        await _settings.SaveAsync(settings with { LastRegion = region }).ConfigureAwait(true);
+        // Cropped first, then redacted: the boxes are in the crop's coordinates, and doing it the other way
+        // round would obscure part of a picture that is about to be thrown away and leave the kept part bare.
+        // Off the UI thread: redaction walks every pixel of every box, and "everything" on a multi-monitor
+        // desktop is millions of them. Doing that on the thread that draws would freeze the cockpit at the one
+        // moment the operator is waiting to see their screenshot land.
+        var redacted = await Task.Run(() =>
+        {
+            var cropped = _editor.Crop(capture.Image, chosen.Region);
+            return _editor.Redact(cropped, chosen.Redactions);
+        }).ConfigureAwait(true);
 
-        return cropped;
+        // Saved after the crop rather than before: a region that turned out not to fit was never restored, and
+        // remembering one the operator never actually got is worse than remembering nothing. The boxes are not
+        // kept — what was worth hiding once is not the same thing next time, and offering yesterday's redaction
+        // over today's screen would be a promise nobody checked.
+        await _settings.SaveAsync(settings with { LastRegion = chosen.Region }).ConfigureAwait(true);
+
+        return redacted;
     }
 }
