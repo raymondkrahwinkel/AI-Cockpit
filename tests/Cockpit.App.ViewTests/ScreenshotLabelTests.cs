@@ -40,10 +40,12 @@ public class ScreenshotLabelTests
 
         // Read after the note is open, since opening one needs a region and taking one is what A does.
         var region = selection.Selection;
+        // Each of them once. Pressing one twice would toggle its tool on and straight back off, and the assertion
+        // that it never came on would then pass on a surface where every key was live.
         foreach (var key in new[]
                  {
-                     PhysicalKey.W, PhysicalKey.I, PhysicalKey.N, PhysicalKey.D, PhysicalKey.O, PhysicalKey.W,
-                     PhysicalKey.A, PhysicalKey.B, PhysicalKey.H, PhysicalKey.P, PhysicalKey.R, PhysicalKey.T,
+                     PhysicalKey.W, PhysicalKey.A, PhysicalKey.B, PhysicalKey.D,
+                     PhysicalKey.H, PhysicalKey.O, PhysicalKey.P, PhysicalKey.R,
                  })
         {
             surface.KeyPressQwerty(key, RawInputModifiers.None);
@@ -184,9 +186,16 @@ public class ScreenshotLabelTests
         selection.Typing.Should().BeTrue("and it opened another note where it landed");
     });
 
+    /// <summary>
+    /// Drags a region out rather than pressing A for the whole capture, so that a stray A during typing would
+    /// visibly change what is marked out. Starting from everything would make that assertion say nothing.
+    /// </summary>
     private static void _OpenNote(ScreenshotSelectionWindow surface, Point at)
     {
-        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+        surface.MouseDown(new Point(200, 200), MouseButton.Left);
+        surface.MouseMove(new Point(1100, 750), RawInputModifiers.LeftMouseButton);
+        surface.MouseUp(new Point(1100, 750), MouseButton.Left);
+
         surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
         surface.MouseDown(at, MouseButton.Left);
         surface.MouseUp(at, MouseButton.Left);
