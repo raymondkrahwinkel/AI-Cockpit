@@ -276,6 +276,22 @@ public class ScreenshotControlPanelTests
         centre.Should().BeApproximately(SurfaceWidth * 0.75, 2, "centred on that screen rather than merely on its side of the line");
     });
 
+    /// <summary>The wash is on the panel and on H, and answers being pressed like the rest of the row.</summary>
+    [Fact]
+    public void PressingHighlight_TakesUpTheWash_AndMarksItself() => _Staged(ScreenshotSelectionScene.Idle, surface =>
+    {
+        var selection = _Model(surface);
+        surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+
+        _Press(surface, surface.HighlightTool);
+
+        selection.Highlighting.Should().BeTrue();
+        surface.HighlightTool.Classes.Should().Contain("active");
+
+        surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
+        selection.Highlighting.Should().BeFalse("H is the same switch the button is");
+    });
+
     /// <summary>
     /// The panel fits on the display it is put on, rather than merely being aimed at one. Sitting on the screen
     /// the operator is looking at is the whole reason it moves at all (AC-358) — and a row wider than that screen

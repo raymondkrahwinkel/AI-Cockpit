@@ -268,6 +268,64 @@ public class ScreenshotMarkLayerTests
         selection.ToSurfaceLength(8).Should().Be(4, "the capture is twice the size of the window drawing it");
     }
 
+    /// <summary>
+    /// A wash asks the picture which way it has to go (AC-361). Ink over paper and ink over a terminal move the
+    /// pixels in opposite directions, and only what is underneath can say which of the two this is.
+    /// </summary>
+    [Theory]
+    [InlineData(240, HighlightBlend.Darken)]
+    [InlineData(20, HighlightBlend.Lighten)]
+    public void AWashTakesItsDirectionFromWhatIsUnderIt(int brightness, HighlightBlend expected)
+    {
+        var selection = _Surface(_ => brightness);
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
+
+        selection.Marks.Should().ContainSingle().Which
+            .Should().BeOfType<HighlightMark>().Which
+            .Blend.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// Decided once, when the band is placed. The same wash is drawn on the surface and burnt into the delivered
+    /// picture, and a direction worked out separately in each place is two answers to one question.
+    /// </summary>
+    [Fact]
+    public void TheDirectionIsAskedOnce_WhenTheBandIsPlaced()
+    {
+        var asked = 0;
+        var selection = _Surface(_ =>
+        {
+            asked++;
+            return 240;
+        });
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
+        _ = selection.Marks.Single();
+
+        asked.Should().Be(1, "the drag placed one band, and the preview during it is the same mark being built");
+    }
+
+    /// <summary>
+    /// A surface with no way to look at its own picture washes the way a marker pen does. It is a fallback rather
+    /// than a preference — over a terminal this one is close to invisible, which is exactly why the real surface
+    /// hands in a way to look.
+    /// </summary>
+    [Fact]
+    public void WithNoWayToLookAtThePicture_AWashDarkens()
+    {
+        var selection = _Surface();
+        _MarkOut(selection, 0, 0, 800, 600);
+
+        _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
+
+        selection.Marks.Should().ContainSingle().Which
+            .Should().BeOfType<HighlightMark>().Which
+            .Blend.Should().Be(HighlightBlend.Darken);
+    }
+
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
     {
         selection.BeginDrag(x, y);
@@ -299,8 +357,10 @@ public class ScreenshotMarkLayerTests
         selection.EndDrag();
     }
 
-    private static ScreenshotSelectionViewModel _Surface() =>
-        new(new ScreenCapture { Image = [0x89, 0x50, 0x4E, 0x47], Displays = [Panel] }, 1920, 1080, Accent)
+    private static ScreenshotSelectionViewModel _Surface(Func<CaptureRect, int>? brightnessUnder = null) =>
+        new(
+            new ScreenCapture { Image = [0x89, 0x50, 0x4E, 0x47], Displays = [Panel] }, 1920, 1080, Accent,
+            lastRegion: null, windows: null, brightnessUnder)
         {
             SurfaceWidth = 1920,
             SurfaceHeight = 1080,

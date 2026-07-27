@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -35,8 +36,16 @@ public partial class ScreenshotSelectionWindow : Window
     /// <summary>How far the control panel sits from the edge of the display it is on.</summary>
     private const double ControlsMargin = 24;
 
-    /// <summary>The shapes standing in for the marks, one per mark, in the order they were placed. Added to the canvas as they are drawn and kept afterwards.</summary>
-    private readonly List<Shape> _shapes = [];
+    /// <summary>
+    /// What stands in for each mark on the canvas, one per mark, in the order they were placed. Added as they are
+    /// drawn and kept afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Controls rather than shapes since AC-361: a wash is the one mark that is not drawn but blended, and in
+    /// Avalonia only an image carries a blend mode. A rectangle painted at a fraction of its strength would be a
+    /// different picture from the one that gets sent.
+    /// </remarks>
+    private readonly List<Control> _shapes = [];
     private bool _wasActivated;
 
     /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
@@ -84,7 +93,8 @@ public partial class ScreenshotSelectionWindow : Window
         var window = new ScreenshotSelectionWindow
         {
             _selection = new ScreenshotSelectionViewModel(
-                capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, _AccentColour(), lastRegion, windows),
+                capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, _AccentColour(), lastRegion, windows,
+                area => _BrightnessIn(bitmap, area)),
             _bitmap = bitmap,
         };
 
@@ -92,6 +102,47 @@ public partial class ScreenshotSelectionWindow : Window
         window.Capture.Source = bitmap;
 
         return window;
+    }
+
+    /// <summary>
+    /// How light the capture is inside a rectangle, 0 to 255 — what a wash needs in order to know whether it is
+    /// ink over paper or ink over a terminal (AC-361).
+    /// </summary>
+    /// <remarks>
+    /// Read off the middle of the band rather than all of it. A highlight is dragged over one piece of text, so
+    /// its middle is what it is about; copying every row of a band the width of a 4K screen would be megabytes
+    /// moved to answer one question with a yes or a no in it.
+    /// </remarks>
+    private static int _BrightnessIn(Bitmap bitmap, CaptureRect area)
+    {
+        const int sample = 32;
+
+        var width = Math.Clamp(Math.Min(area.Width, sample), 1, bitmap.PixelSize.Width);
+        var height = Math.Clamp(Math.Min(area.Height, sample), 1, bitmap.PixelSize.Height);
+        var left = Math.Clamp(area.X + ((area.Width - width) / 2), 0, bitmap.PixelSize.Width - width);
+        var top = Math.Clamp(area.Y + ((area.Height - height) / 2), 0, bitmap.PixelSize.Height - height);
+
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        try
+        {
+            bitmap.CopyPixels(new PixelRect(left, top, width, height), handle.AddrOfPinnedObject(), pixels.Length, stride);
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        long total = 0;
+        for (var index = 0; index < pixels.Length; index += 4)
+        {
+            // The first three channels whichever way round they sit: their sum is the same in BGRA as in RGBA,
+            // and only the alpha has to stay out of it.
+            total += pixels[index] + pixels[index + 1] + pixels[index + 2];
+        }
+
+        return (int)(total / (pixels.Length / 4 * 3));
     }
 
     /// <summary>
@@ -291,6 +342,9 @@ public partial class ScreenshotSelectionWindow : Window
             case Key.O:
                 selection.Outline(!selection.Outlining);
                 break;
+            case Key.H:
+                selection.Highlight(!selection.Highlighting);
+                break;
             case Key.P:
                 // P for pointing, not A for arrow: A takes the whole capture and had it first (AC-358), and a
                 // key that moved to make room for a later tool would break the one thing the panel promises —
@@ -370,6 +424,9 @@ public partial class ScreenshotSelectionWindow : Window
 
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
+
+    private void _OnHighlightTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Highlight(!selection.Highlighting));
 
     private void _OnArrowTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Point(!selection.Pointing));
@@ -532,14 +589,14 @@ public partial class ScreenshotSelectionWindow : Window
     /// is a rectangle and an arrow is a path, and no amount of restyling turns one into the other — where an undo
     /// leaves a different kind of mark at an index, the shape has to be replaced rather than repainted.
     /// </summary>
-    private Shape _ShapeAt(int index, Mark mark)
+    private Control _ShapeAt(int index, Mark mark)
     {
-        if (index < _shapes.Count && _shapes[index] is Path == mark is ArrowMark)
+        if (index < _shapes.Count && _Suits(_shapes[index], mark))
         {
             return _shapes[index];
         }
 
-        Shape shape = mark is ArrowMark ? new Path() : new Rectangle();
+        var shape = _StandInFor(mark);
         if (index < _shapes.Count)
         {
             Shade.Children[Shade.Children.IndexOf(_shapes[index])] = shape;
@@ -554,6 +611,23 @@ public partial class ScreenshotSelectionWindow : Window
         return shape;
     }
 
+    /// <summary>What a mark of that kind has to be drawn with. A frame is a rectangle, an arrow is a path, and a wash is an image because that is the only thing in Avalonia that carries a blend mode.</summary>
+    private static Control _StandInFor(Mark mark) => mark switch
+    {
+        ArrowMark => new Path(),
+        HighlightMark => new Image { Stretch = Stretch.Fill },
+        _ => new Rectangle(),
+    };
+
+    /// <summary>Whether a kept control is still the right thing for the mark now at its position.</summary>
+    private static bool _Suits(Control shape, Mark mark) => (shape, mark) switch
+    {
+        (Path, ArrowMark) => true,
+        (Image, HighlightMark) => true,
+        (Rectangle, RedactionMark or OutlineMark) => true,
+        _ => false,
+    };
+
     /// <summary>
     /// Makes one shape look like the mark it is standing in for, and puts it where that mark is. Restated on every
     /// draw rather than set when the shape is made, because the shapes are kept and reused as marks come and go —
@@ -564,33 +638,44 @@ public partial class ScreenshotSelectionWindow : Window
     /// is in the image's pixels; drawn as window units it comes out heavier than what will be burnt in by exactly
     /// the display's scale, and the preview stops being a preview.
     /// </remarks>
-    private void _Show(Shape shape, Mark mark, ScreenshotSelectionViewModel selection)
+    private void _Show(Control shape, Mark mark, ScreenshotSelectionViewModel selection)
     {
-        switch (mark)
+        switch (mark, shape)
         {
-            case RedactionMark redaction:
-                shape.Fill = Marquee.Stroke;
-                shape.Stroke = null;
-                shape.Opacity = 0.85;
-                _Place(shape, selection.ToSurface(redaction.Area));
+            case (RedactionMark redaction, Rectangle box):
+                box.Fill = Marquee.Stroke;
+                box.Stroke = null;
+                box.Opacity = 0.85;
+                _Place(box, selection.ToSurface(redaction.Area));
                 break;
-            case OutlineMark outline:
-                shape.Fill = null;
-                shape.Stroke = new SolidColorBrush(Color.FromUInt32(outline.Colour));
-                shape.StrokeThickness = selection.ToSurfaceLength(outline.Thickness);
-                shape.Opacity = 1;
-                _Place(shape, selection.ToSurface(outline.Area));
+            case (OutlineMark outline, Rectangle frame):
+                frame.Fill = null;
+                frame.Stroke = new SolidColorBrush(Color.FromUInt32(outline.Colour));
+                frame.StrokeThickness = selection.ToSurfaceLength(outline.Thickness);
+                frame.Opacity = 1;
+                _Place(frame, selection.ToSurface(outline.Area));
                 break;
-            case ArrowMark arrow:
-                shape.Fill = new SolidColorBrush(Color.FromUInt32(arrow.Colour));
-                shape.Stroke = new SolidColorBrush(Color.FromUInt32(arrow.Halo));
-                shape.StrokeThickness = selection.ToSurfaceLength(arrow.HaloThickness);
-                shape.StrokeJoin = PenLineJoin.Miter;
-                shape.Opacity = 1;
-                _Trace((Path)shape, arrow, selection);
+            case (ArrowMark arrow, Path drawn):
+                drawn.Fill = new SolidColorBrush(Color.FromUInt32(arrow.Colour));
+                drawn.Stroke = new SolidColorBrush(Color.FromUInt32(arrow.Halo));
+                drawn.StrokeThickness = selection.ToSurfaceLength(arrow.HaloThickness);
+                drawn.StrokeJoin = PenLineJoin.Miter;
+                drawn.Opacity = 1;
+                _Trace(drawn, arrow, selection);
+                break;
+            case (HighlightMark highlight, Image wash):
+                // A one-pixel picture of the colour, stretched over the band. An image is what carries a blend
+                // mode here, and the blend is the tool: painted on as a translucent rectangle instead, the wash
+                // would drag the text and the page under it towards each other and cost most of their contrast.
+                wash.Source = _OnePixelOf(highlight.Wash);
+                wash.BlendMode = highlight.Blend == HighlightBlend.Darken
+                    ? BitmapBlendingMode.Multiply
+                    : BitmapBlendingMode.Screen;
+                _Place(wash, selection.ToSurface(highlight.Area));
                 break;
             default:
-                throw new NotSupportedException($"There is no way to show a {mark.GetType().Name} on the surface.");
+                throw new NotSupportedException(
+                    $"There is no way to show a {mark.GetType().Name} with a {shape.GetType().Name}.");
         }
     }
 
@@ -639,10 +724,10 @@ public partial class ScreenshotSelectionWindow : Window
         path.Height = double.NaN;
     }
 
-    private static void _Place(Shape shape, (double X, double Y, double Width, double Height) area) =>
+    private static void _Place(Control shape, (double X, double Y, double Width, double Height) area) =>
         _Place(shape, area.X, area.Y, area.Width, area.Height);
 
-    private static void _Place(Shape shape, double x, double y, double width, double height)
+    private static void _Place(Control shape, double x, double y, double width, double height)
     {
         Canvas.SetLeft(shape, x);
         Canvas.SetTop(shape, y);
@@ -650,8 +735,25 @@ public partial class ScreenshotSelectionWindow : Window
         shape.Height = Math.Max(0, height);
     }
 
+    /// <summary>
+    /// One pixel of a colour, to be stretched over a band. A real bitmap rather than a drawing of a filled
+    /// rectangle: the blend mode belongs to the image, and a drawing is composited before it ever gets there.
+    /// </summary>
+    private static WriteableBitmap _OnePixelOf(uint colour)
+    {
+        var bitmap = new WriteableBitmap(
+            new PixelSize(1, 1), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+        using var buffer = bitmap.Lock();
+
+        // Blue, green, red, alpha in memory order — which little-endian reads back as the 0xAARRGGBB the mark
+        // carries, so the value goes in as it stands.
+        Marshal.WriteInt32(buffer.Address, unchecked((int)colour));
+
+        return bitmap;
+    }
+
     /// <summary>Leaves a kept shape drawing nothing — its size taken away, and, where it holds one, its geometry too.</summary>
-    private static void _Empty(Shape shape)
+    private static void _Empty(Control shape)
     {
         if (shape is Path path)
         {

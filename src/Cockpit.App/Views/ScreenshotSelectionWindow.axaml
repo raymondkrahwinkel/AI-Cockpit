@@ -166,6 +166,16 @@
               </StackPanel>
             </Button>
 
+            <!-- Next to Hide on purpose: the two do opposite things to the same drag, and the row is where an
+                 operator picks between "make sure they read this" and "make sure they never see it". -->
+            <Button Name="HighlightTool" Classes="tool" Classes.active="{Binding Highlighting}" Click="_OnHighlightTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="Marker" Width="15" Height="15" />
+                <TextBlock Text="Highlight" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="H" /></Border>
+              </StackPanel>
+            </Button>
+
             <Button Name="RedactTool" Classes="tool" Classes.active="{Binding Redacting}" Click="_OnRedactTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="EyeOff" Width="15" Height="15" />

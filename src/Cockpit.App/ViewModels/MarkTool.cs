@@ -15,4 +15,7 @@ public enum MarkTool
 
     /// <summary>Drag from where the arrow starts to the one thing it points at.</summary>
     Arrow,
+
+    /// <summary>Drag a band over something to wash it in colour without hiding what it says.</summary>
+    Highlight,
 }

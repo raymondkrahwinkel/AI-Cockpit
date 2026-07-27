@@ -46,6 +46,13 @@ internal static class ScreenshotSelectionScene
     public const string Arrow = "screenshot-selection-arrow";
 
     /// <summary>
+    /// Washes over both halves of the stand-in desktop (AC-361) — one band across the light document, another
+    /// across the dark terminal. The two are the tool's whole problem: ink over paper and ink over a terminal have
+    /// to move the pixels in opposite directions, and a scene with only one of them would show a tool that works.
+    /// </summary>
+    public const string Highlight = "screenshot-selection-highlight";
+
+    /// <summary>
     /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
     /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
     /// whether the control panel found the screen the operator is actually on (AC-358).
@@ -62,7 +69,7 @@ internal static class ScreenshotSelectionScene
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
     public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or TwoDisplays;
+        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -127,6 +134,18 @@ internal static class ScreenshotSelectionScene
                 surface.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
                 _Drag(surface, new Point(width * 0.80, height * 0.20), new Point(width * 0.28, height * 0.60));
                 _Drag(surface, new Point(width * 0.60, height * 0.80), new Point(width * 0.88, height * 0.44));
+                break;
+
+            case Highlight:
+                // A band over a line of the light document and another over a line of the dark terminal. Both, and
+                // over text rather than over empty panel, because what has to be looked at is whether the words
+                // under the wash survived it.
+                _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
+                surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
+                // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
+                // panel, so a band begun under it is a band that never gets drawn at all.
+                _Drag(surface, new Point(width * 0.56, height * 0.305), new Point(width * 0.90, height * 0.35));
+                _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
 
             case Redaction:

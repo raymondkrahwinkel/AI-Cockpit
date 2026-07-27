@@ -39,6 +39,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
     private readonly uint _markColour;
+    private readonly Func<CaptureRect, int>? _brightnessUnder;
     private CapturePoint? _anchor;
 
     /// <param name="markColour">
@@ -46,18 +47,31 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// theme, which is the view's to read, and a default here would be a second copy of a colour that is supposed
     /// to have exactly one home — the mistake AC-334 spent a ticket undoing.
     /// </param>
+    /// <param name="brightnessUnder">
+    /// How light the capture is inside a rectangle, 0 to 255. A wash has to know, because ink over paper and ink
+    /// over a terminal have to move the pixels in opposite directions (AC-361), and only the picture can say which
+    /// of the two this is. Handed in because the decoded picture is the view's — this class holds the arithmetic,
+    /// not the pixels.
+    /// <para>
+    /// Left out, a wash darkens, which is what a marker pen does and what is right for the documents these are
+    /// mostly dragged over. It is a fallback rather than a preference: a surface that cannot look at its own
+    /// picture cannot tell a terminal from a page, and over a terminal this one is close to invisible.
+    /// </para>
+    /// </param>
     public ScreenshotSelectionViewModel(
         ScreenCapture capture,
         int imageWidth,
         int imageHeight,
         uint markColour,
         CaptureRect? lastRegion = null,
-        IDesktopWindows? windows = null)
+        IDesktopWindows? windows = null,
+        Func<CaptureRect, int>? brightnessUnder = null)
     {
         _capture = capture;
         ImageWidth = imageWidth;
         ImageHeight = imageHeight;
         _markColour = markColour;
+        _brightnessUnder = brightnessUnder;
 
         // Enumerated once, here, rather than per pointer move: the capture is already frozen, so a window that
         // moves afterwards has moved on a desktop this picture no longer shows. Reading it again would highlight
@@ -118,6 +132,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Whether the surface is drawing arrows at the one thing the model should look at.</summary>
     public bool Pointing => MarkingWith == MarkTool.Arrow;
 
+    /// <summary>Whether the surface is washing bands of colour over what the model should read rather than skim.</summary>
+    public bool Highlighting => MarkingWith == MarkTool.Highlight;
+
     /// <summary>
     /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
     /// no other tool chosen since. Both halves are needed. Without the selection it would survive a drag that
@@ -162,6 +179,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// <summary>Turns arrow-drawing on. Same condition as the others: an arrow pointing at something outside what is being sent points at nothing.</summary>
     public void Point(bool pointing) => MarkWith(MarkTool.Arrow, pointing);
 
+    /// <summary>Turns the wash on, on the same condition as the rest — there is nothing to emphasise until something is being sent.</summary>
+    public void Highlight(bool highlighting) => MarkWith(MarkTool.Highlight, highlighting);
+
     /// <summary>
     /// Takes a mark tool up or puts it down. Every tool that marks needs something to mark on — a frame around
     /// the whole desktop and a box over it both have nowhere to end up, since what is sent is the region.
@@ -205,6 +225,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Redacting));
         OnPropertyChanged(nameof(Outlining));
         OnPropertyChanged(nameof(Pointing));
+        OnPropertyChanged(nameof(Highlighting));
         OnPropertyChanged(nameof(DraggingRegion));
         OnPropertyChanged(nameof(Hint));
     }
@@ -318,8 +339,21 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             ? new OutlineMark(frame, _markColour, OutlineThickness)
             : null,
         MarkTool.Arrow => from == to ? null : new ArrowMark(from, to, _markColour, ArrowThickness),
+        MarkTool.Highlight => _Between(from, to) is { Width: > 0, Height: > 0 } band
+            ? new HighlightMark(band, _markColour, _BlendFor(band))
+            : null,
         _ => throw new NotSupportedException($"There is no mark for {tool}."),
     };
+
+    /// <summary>
+    /// Which way a wash over that band has to move the pixels: down into them where they are light, up out of them
+    /// where they are dark. Decided once, when the band is placed, rather than every time it is drawn — the same
+    /// wash is drawn on the surface and into the delivered picture, and two decisions could disagree.
+    /// </summary>
+    private HighlightBlend _BlendFor(CaptureRect band) =>
+        _brightnessUnder?.Invoke(band) is { } brightness && brightness < 128
+            ? HighlightBlend.Lighten
+            : HighlightBlend.Darken;
 
     private static CaptureRect _Between(CapturePoint anchor, CapturePoint point) =>
         new(
@@ -393,6 +427,10 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         // about this tool that cannot be guessed from looking at it before you have used it once.
         { Pointing: true } =>
             "Drag from where the arrow starts to what it should point at · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
+        // Says what it does not do, because that is the whole difference from the tool beside it: a band that
+        // covered what it marked would be the box that hides, drawn in a lighter colour.
+        { Highlighting: true } =>
+            "Drag a band over what should be read rather than skimmed — it stays legible · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
         { PickingWindow: true } =>
             "Click the window you want · W goes back to dragging a region · Esc cancels",
         // Said as a refusal rather than left silent: pressing a mark tool with nothing marked out used to do
