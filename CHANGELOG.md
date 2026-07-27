@@ -386,6 +386,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: every dialog now says its name once, at the top, in a bar of its own. The name is at heading size with —
+  where the dialog has one — a line under it saying what the dialog is for, so opening one tells you what you are
+  looking at before you read a single field. Several dialogs used to print their name a second time inside their
+  content, at a different size, directly under the bar that already said it; two others, the project editor and
+  "Resume later", showed the operating system's title bar while every other window showed the cockpit's own. The
+  main window keeps its single compact line, now with the accent dot in front of it.
+
 - changed: the cockpit is blue. The accent that runs through buttons, links, focus rings and the active session's
   border moved from the old orange to a blue, and the surfaces behind it went a shade deeper, so a panel now reads as
   sitting on the window rather than beside it. A session that is busy is marked in cyan instead of blue, because blue

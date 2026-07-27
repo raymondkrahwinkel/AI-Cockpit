@@ -18,12 +18,14 @@ public partial class CloneFromGitUrlDialog : Window
     public CloneFromGitUrlDialog()
     {
         InitializeComponent();
+        // The title is this dialog's own, not the view model's, so the chrome goes on here rather than waiting for
+        // a data context that only ever changes what the dialog does — not what its title bar says.
+        CockpitWindowChrome.Apply(this, "Clone from a Git URL");
 
         DataContextChanged += (_, _) =>
         {
             if (DataContext is CloneFromGitUrlDialogViewModel viewModel)
             {
-                CockpitWindowChrome.Apply(this, "Clone from a Git URL");
                 viewModel.CloseRequested += path => Close(path);
             }
         };

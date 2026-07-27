@@ -18,7 +18,7 @@ public partial class ProjectsDialog : Window
     public ProjectsDialog()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this);
+        CockpitWindowChrome.Apply(this, subtitle: "What your sessions work on: a folder, the profile that starts by default, and the servers they get.");
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

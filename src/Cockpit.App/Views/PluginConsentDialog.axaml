@@ -13,8 +13,6 @@
 
     <StackPanel Margin="20" Spacing="12">
 
-        <TextBlock Text="Enable this plugin?" FontSize="16" FontWeight="SemiBold"/>
-
         <StackPanel Spacing="2">
             <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
             <StackPanel Orientation="Horizontal" Spacing="8">

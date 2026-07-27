@@ -22,8 +22,8 @@
 
         <!-- Footer: restart banner (once an install/update needs it) on the left, Close on the right —
              NeedsRestart/RestartNowCommand are the same manager properties the Options tab uses. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <Button Grid.Column="0" Content="Restart AI-Cockpit now" Classes="Accent" HorizontalAlignment="Left"
                         Command="{Binding Manager.RestartNowCommand}"

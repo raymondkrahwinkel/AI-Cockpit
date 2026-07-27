@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
@@ -28,6 +29,11 @@ public partial class ProjectDialog : Window
         {
             return;
         }
+
+        // The chrome waits for the view model, because whether this window says "New project" or "Edit project"
+        // is the view model's answer — the same reason the confirmation dialog applies it here.
+        Title = viewModel.DialogTitle;
+        CockpitWindowChrome.Apply(this, viewModel.DialogTitle, "Anyone can make one — it does not take a developer.");
 
         viewModel.CloseRequested += project => Close(project);
         // Started here rather than awaited in the factory (AC-317): both sources are a network call or a shelled-out

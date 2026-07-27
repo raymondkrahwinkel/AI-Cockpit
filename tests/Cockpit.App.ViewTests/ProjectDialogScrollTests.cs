@@ -36,7 +36,9 @@ public class ProjectDialogScrollTests
         var scroll = window.GetVisualDescendants().OfType<ScrollViewer>()
             .OrderByDescending(viewer => viewer.Bounds.Height).First();
         var footer = window.GetVisualDescendants().OfType<Button>()
-            .First(button => (string?)button.Content == "Cancel");
+            // Matched rather than cast: the window's own title bar (AC-335) brings caption buttons whose content
+            // is an icon, and a cast would throw on the first one it walked past.
+            .First(button => button.Content is "Cancel");
         var lastRow = window.GetVisualDescendants().OfType<CheckBox>().Last();
 
         scroll.Offset = new Vector(0, scroll.Extent.Height);

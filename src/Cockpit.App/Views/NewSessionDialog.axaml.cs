@@ -16,7 +16,6 @@ public partial class NewSessionDialog : Window
     public NewSessionDialog()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this);
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -24,6 +23,11 @@ public partial class NewSessionDialog : Window
     {
         if (DataContext is NewSessionDialogViewModel viewModel)
         {
+            // The title bar waits for the view model: this window is "New session" or "Continue session"
+            // depending on it, and the XAML binding that decides which has not run while the constructor has.
+            // Applied there, the bar read Avalonia's default "Window" — which the old 13px line hid better
+            // than a heading does.
+            CockpitWindowChrome.Apply(this, viewModel.HeaderText);
             viewModel.CloseRequested += result => Close(result);
         }
     }
