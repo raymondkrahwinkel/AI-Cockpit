@@ -68,6 +68,13 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService
     private IReadOnlySet<string> _armed = new HashSet<string>();
 
     /// <summary>
+    /// The keys the operator has switched on, whether or not arming them worked. Kept apart from
+    /// <see cref="_armed"/> precisely so the two can disagree: that disagreement is a hotkey the operator asked
+    /// for and did not get, which is the one thing this class used to be unable to say out loud (AC-332).
+    /// </summary>
+    private IReadOnlySet<string> _asked = new HashSet<string>();
+
+    /// <summary>
     /// The line a settings screen shows about one hotkey. Three truths behind it, and a fourth that has to come
     /// first: the operator never switched it on, in which case there is nothing to report — telling them their
     /// desktop has not bound a key they never asked for sends them into their shortcut settings looking for
@@ -76,10 +83,17 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService
     /// </summary>
     /// <param name="unboundMessage">Shown when the key is armed but no desktop has bound it yet — name the shortcut the operator should look for.</param>
     /// <param name="unsupportedMessage">Shown on a platform with no global hotkey at all, where the honest thing is to point at what does work.</param>
-    public string DescribeTrigger(string hotkeyId, string unboundMessage, string unsupportedMessage) =>
-        !IsArmed(hotkeyId)
-            ? string.Empty
-            : TriggerDescriptionFor(hotkeyId) ?? (OperatingSystem.IsMacOS() ? unsupportedMessage : unboundMessage);
+    /// <param name="failedMessage">Shown when the operator switched the key on and arming it did not work — the case that used to look exactly like never having switched it on.</param>
+    /// <remarks>
+    /// The failed case was silence until AC-332. A key the operator had switched on and the desktop had refused
+    /// read the same as one they never enabled: an empty line, no error, and a shortcut that simply did nothing
+    /// when pressed. That is the failure this whole reporting path exists to prevent, and it had it too.
+    /// </remarks>
+    public string DescribeTrigger(
+        string hotkeyId, string unboundMessage, string unsupportedMessage, string failedMessage) =>
+        IsArmed(hotkeyId)
+            ? TriggerDescriptionFor(hotkeyId) ?? (OperatingSystem.IsMacOS() ? unsupportedMessage : unboundMessage)
+            : _asked.Contains(hotkeyId) ? failedMessage : string.Empty;
 
     /// <summary>
     /// Arms exactly the keys the operator has switched on. Also the re-arm path: the OS service replaces its
@@ -102,6 +116,10 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService
         try
         {
             var bindings = await _LoadBindingsAsync(cancellationToken).ConfigureAwait(false);
+
+            // Noted before the attempt, so that a refusal further down still leaves a record of what was asked
+            // for. Without it a key the desktop turned away is indistinguishable from one nobody wanted.
+            _asked = bindings.Select(binding => binding.Id).ToHashSet();
 
             if (GlobalHotkeyConflictCheck.Describe(bindings) is { } clash)
             {

@@ -31,6 +31,43 @@ public class GlobalHotkeyCoordinatorTests
         coordinator.IsArmed(GlobalHotkeys.Screenshot).Should().BeFalse();
     }
 
+    /// <summary>
+    /// A key the operator switched on and the desktop refused says so (AC-332). It used to read exactly like a
+    /// key nobody had asked for — an empty line, no error — and the shortcut simply did nothing when pressed,
+    /// which is the silence this whole reporting path exists to prevent.
+    /// </summary>
+    [Fact]
+    public async Task AKeyThatWasAskedForAndCouldNotBeArmed_SaysSoRatherThanNothing()
+    {
+        var service = new FakeGlobalHotkeyService { StartFailure = new InvalidOperationException("the desktop said no") };
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            service, new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true, PushToTalkKeyName = "F9" });
+
+        await coordinator.ApplyAsync();
+
+        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("nothing was registered");
+        _Describe(coordinator, GlobalHotkeys.PushToTalk).Should().Be("could not be armed");
+    }
+
+    /// <summary>
+    /// And a key nobody asked for still says nothing, even when arming something else failed. Telling an operator
+    /// their desktop refused a shortcut they never switched on sends them into their settings looking for nothing.
+    /// </summary>
+    [Fact]
+    public async Task AKeyNobodyAskedFor_StillSaysNothing()
+    {
+        var service = new FakeGlobalHotkeyService { StartFailure = new InvalidOperationException("the desktop said no") };
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            service, new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true, PushToTalkKeyName = "F9" });
+
+        await coordinator.ApplyAsync();
+
+        _Describe(coordinator, GlobalHotkeys.Screenshot).Should().BeEmpty("the screenshot key was never switched on");
+    }
+
+    private static string _Describe(GlobalHotkeyCoordinator coordinator, string hotkeyId) =>
+        coordinator.DescribeTrigger(hotkeyId, "unbound", "unsupported", "could not be armed");
+
     /// <summary>Voice switched on but the desktop-wide hold switched off is not a binding: the per-view local key covers it.</summary>
     [Fact]
     public async Task VoiceOnButGlobalPushToTalkOff_RegistersNoPushToTalkKey()

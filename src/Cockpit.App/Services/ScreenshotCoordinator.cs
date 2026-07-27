@@ -93,7 +93,8 @@ public sealed class ScreenshotCoordinator : ISingletonService
         _cockpit.ScreenshotHotkeyTrigger = _hotkeys.DescribeTrigger(
             GlobalHotkeys.Screenshot,
             unboundMessage: "Your desktop has not bound it yet. Look for “Take a screenshot” in its own shortcut settings.",
-            unsupportedMessage: "Not available on macOS — use the button in the composer.");
+            unsupportedMessage: "Not available on macOS — use the button in the composer.",
+            failedMessage: "It is switched on but could not be registered — see the log. The button in the composer still works.");
 
     /// <summary>Whether this platform can capture at all — what the composer's button reads to disable itself with a reason rather than offering something that cannot work.</summary>
     public bool IsSupported => _capture.IsSupported;
