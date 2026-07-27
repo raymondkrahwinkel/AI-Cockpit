@@ -77,6 +77,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
                 case StrokeMark stroke:
                     _Stroke(image, stroke);
                     break;
+                case TextMark note:
+                    _Text(image, note);
+                    break;
                 default:
                     throw new NotSupportedException($"There is no way to burn in a {mark.GetType().Name}.");
             }
@@ -113,6 +116,42 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         canvas.DrawRect(
             new SKRect(area.X + inset, area.Y + inset, area.Right - inset, area.Bottom - inset),
             paint);
+    }
+
+    /// <summary>
+    /// Draws the typed note: a plate in the contrasting shade with the letters on it.
+    /// </summary>
+    /// <remarks>
+    /// The plate is sized from what the font actually produced rather than guessed from the number of characters —
+    /// a label whose plate is a little too narrow has letters hanging off the end of it, which reads as a bug in
+    /// the screenshot rather than as a note.
+    /// <para>
+    /// How wide the letters come out is the one thing about this mark the surface and the imaging library can
+    /// disagree on: they measure with different font stacks, so a plate can differ by a few pixels between the
+    /// preview and the picture. What it says and where it starts are the same in both.
+    /// </para>
+    /// </remarks>
+    private static void _Text(SKBitmap image, TextMark note)
+    {
+        using var canvas = new SKCanvas(image);
+        using var font = new SKFont(SKTypeface.Default, note.Size);
+        using var letters = new SKPaint { Color = new SKColor(note.Colour), IsAntialias = true };
+        using var plate = new SKPaint { Color = new SKColor(note.Plate), Style = SKPaintStyle.Fill, IsAntialias = true };
+
+        var padding = (float)note.Padding;
+        var width = font.MeasureText(note.Text);
+        var metrics = font.Metrics;
+        var height = metrics.Descent - metrics.Ascent;
+
+        canvas.DrawRoundRect(
+            new SKRect(note.At.X, note.At.Y, note.At.X + width + (padding * 2), note.At.Y + height + (padding * 2)),
+            padding / 2,
+            padding / 2,
+            plate);
+
+        // Drawn from the baseline, which is where the font puts letters, and the baseline is one ascent below the
+        // top of the plate's inside — the corner is where the operator clicked, not where the letters sit.
+        canvas.DrawText(note.Text, note.At.X + padding, note.At.Y + padding - metrics.Ascent, font, letters);
     }
 
     /// <summary>

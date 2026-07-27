@@ -254,7 +254,10 @@ public partial class ScreenshotSelectionWindow : Window
         // A second click inside what is already marked out takes it, the way a double-click accepts a choice
         // everywhere else. Only inside: outside it is the start of a new region, which is what the first click
         // of the pair already began.
-        if (e.ClickCount == 2 && selection.Selection is { } marked
+        // Not while a mark tool is in hand. Two quick marks in the same spot are two marks — reading the second as
+        // "take it" would hand over a shot the operator was still working on, and with a note it would fire on the
+        // ordinary act of clicking the same place twice.
+        if (e.ClickCount == 2 && selection.MarkingWith is null && selection.Selection is { } marked
             && marked.Contains(selection.ToImagePixel(e.GetPosition(Surface).X, e.GetPosition(Surface).Y)))
         {
             selection.Confirm();
@@ -320,6 +323,15 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
+        // Every key below is a shortcut, and while a note is open every key is a letter instead. Answered here,
+        // before any of them, and answered for *all* of them rather than for the ones that look dangerous: an
+        // operator typing "Windows" would otherwise pick a window, blank the region and take the shot.
+        if (selection.Typing)
+        {
+            _WhileTyping(selection, e);
+            return;
+        }
+
         var step = e.KeyModifiers.HasFlag(KeyModifiers.Control) ? 10 : 1;
         var resize = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
@@ -341,6 +353,9 @@ public partial class ScreenshotSelectionWindow : Window
                 break;
             case Key.O:
                 selection.Outline(!selection.Outlining);
+                break;
+            case Key.T:
+                selection.Label(!selection.Labelling);
                 break;
             case Key.D:
                 selection.Draw(!selection.Drawing);
@@ -394,6 +409,51 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
+    /// The three keys that mean something while a note is open. Everything else is marked handled and dropped
+    /// here — the characters themselves arrive as text input, not as keys, so nothing is lost by it.
+    /// </summary>
+    /// <remarks>
+    /// Escape closes the note rather than the surface, and a second Escape then cancels as it always did: the
+    /// operator who wants out presses it twice, and the one who wants their note keeps it by pressing it once.
+    /// Enter does the same as Escape rather than confirming the capture, for the same reason — a note is finished
+    /// before a shot is taken, and the alternative is a label that is typed and then thrown away by the key that
+    /// ends it.
+    /// </remarks>
+    private void _WhileTyping(ScreenshotSelectionViewModel selection, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+            case Key.Enter:
+                selection.FinishTyping();
+                break;
+            case Key.Back:
+                selection.Backspace();
+                break;
+        }
+
+        e.Handled = true;
+        _Draw();
+    }
+
+    /// <summary>
+    /// What the operator typed, while a note is open. Taken from text input rather than from keys, so that what
+    /// lands in the note is what their keyboard layout actually produces.
+    /// </summary>
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        base.OnTextInput(e);
+        if (_selection is not { Typing: true } selection || e.Text is not { Length: > 0 } typed)
+        {
+            return;
+        }
+
+        selection.Type(typed);
+        e.Handled = true;
+        _Draw();
+    }
+
+    /// <summary>
     /// Gives up when the surface loses the desktop's attention. One left behind is worse than none: it covers
     /// every screen, takes every key, and says nothing about what it is.
     /// </summary>
@@ -427,6 +487,9 @@ public partial class ScreenshotSelectionWindow : Window
 
     private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Outline(!selection.Outlining));
+
+    private void _OnLabelTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Label(!selection.Labelling));
 
     private void _OnDrawTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Draw(!selection.Drawing));
@@ -625,6 +688,9 @@ public partial class ScreenshotSelectionWindow : Window
         // Two paths over each other: a line cannot be drawn and ringed at once the way a filled shape can, because
         // the ring would be painted over the line rather than around it. The wider one goes underneath.
         StrokeMark => new Panel { Children = { new Path(), new Path() } },
+        // A plate with letters on it, which is what the mark is: the letters need one known background, and the
+        // plate is the only part of the picture underneath that can be relied on.
+        TextMark => new Border { Child = new TextBlock() },
         _ => new Rectangle(),
     };
 
@@ -633,6 +699,8 @@ public partial class ScreenshotSelectionWindow : Window
     {
         (Path, ArrowMark) => true,
         (Image, HighlightMark) => true,
+        // Asked before the panel, since a Border is a Panel to nobody but happens to be checked after it here.
+        (Border, TextMark) => true,
         (Panel, StrokeMark) => true,
         (Rectangle, RedactionMark or OutlineMark) => true,
         _ => false,
@@ -682,6 +750,22 @@ public partial class ScreenshotSelectionWindow : Window
                     ? BitmapBlendingMode.Multiply
                     : BitmapBlendingMode.Screen;
                 _Place(wash, selection.ToSurface(highlight.Area));
+                break;
+            case (TextMark note, Border plate):
+                plate.Background = new SolidColorBrush(Color.FromUInt32(note.Plate));
+                plate.CornerRadius = new CornerRadius(selection.ToSurfaceLength(note.Padding / 2));
+                plate.Padding = new Thickness(selection.ToSurfaceLength(note.Padding));
+                ((TextBlock)plate.Child!).Text = note.Text;
+                ((TextBlock)plate.Child!).FontSize = selection.ToSurfaceLength(note.Size);
+                ((TextBlock)plate.Child!).Foreground = new SolidColorBrush(Color.FromUInt32(note.Colour));
+
+                // Sized by what is in it rather than to a rectangle: how wide a label is, is how wide its letters
+                // came out, and that is not known until the font has drawn them.
+                var (left, top, _, _) = selection.ToSurface(new CaptureRect(note.At.X, note.At.Y, 0, 0));
+                Canvas.SetLeft(plate, left);
+                Canvas.SetTop(plate, top);
+                plate.Width = double.NaN;
+                plate.Height = double.NaN;
                 break;
             case (StrokeMark stroke, Panel drawn):
                 _Trace(drawn, stroke, selection);

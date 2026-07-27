@@ -59,6 +59,13 @@ internal static class ScreenshotSelectionScene
     public const string Stroke = "screenshot-selection-stroke";
 
     /// <summary>
+    /// Notes typed onto the capture (AC-363), one on each half of the stand-in desktop. Typed through the window's
+    /// own text input, so what the scene shows is what the keys actually do — including that they stopped being
+    /// shortcuts while the note was open.
+    /// </summary>
+    public const string Text = "screenshot-selection-text";
+
+    /// <summary>
     /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
     /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
     /// whether the control panel found the screen the operator is actually on (AC-358).
@@ -75,7 +82,8 @@ internal static class ScreenshotSelectionScene
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
     public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or Stroke or TwoDisplays;
+        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or Stroke or Text
+            or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -142,6 +150,15 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.60, height * 0.80), new Point(width * 0.88, height * 0.44));
                 break;
 
+            case Text:
+                // One note on the light half and one on the dark, with a word in each that is also a shortcut —
+                // "Window" begins with the key that picks a window, and typing it must not.
+                _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
+                surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
+                _Note(surface, new Point(width * 0.58, height * 0.32), "Window is empty here");
+                _Note(surface, new Point(width * 0.58, height * 0.70), "expected 12, got 7");
+                break;
+
             case Stroke:
                 // A ring round a paragraph of the light document, and a line struck through the dark terminal. The
                 // ring is what shows whether the curve survived: a circle made of straight segments is a polygon,
@@ -175,6 +192,18 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.58, height * 0.62), new Point(width * 0.80, height * 0.67));
                 break;
         }
+    }
+
+    /// <summary>
+    /// A note clicked open at a spot and typed into, through the window's own text input — which is the route an
+    /// operator's keyboard takes, and the one that would run the shortcuts instead if the surface let it.
+    /// </summary>
+    private static void _Note(ScreenshotSelectionWindow surface, Point at, string text)
+    {
+        surface.MouseDown(at, MouseButton.Left);
+        surface.MouseUp(at, MouseButton.Left);
+        surface.KeyTextInput(text);
+        surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
     }
 
     /// <summary>

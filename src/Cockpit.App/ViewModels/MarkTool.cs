@@ -21,4 +21,7 @@ public enum MarkTool
 
     /// <summary>Draw freehand — round a thing, through a thing, along a path the other tools cannot describe.</summary>
     Stroke,
+
+    /// <summary>Click a spot and type a note onto the capture.</summary>
+    Text,
 }
