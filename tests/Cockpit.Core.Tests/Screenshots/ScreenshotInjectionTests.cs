@@ -1,7 +1,6 @@
 using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
@@ -21,7 +20,7 @@ namespace Cockpit.Core.Tests.Screenshots;
 /// The branch that <em>does</em> attach lives in <c>ScreenshotAttachmentViewTests</c>: queuing an attachment
 /// decodes a preview bitmap, which needs an Avalonia platform, which is a different test project.
 /// </remarks>
-public class ScreenshotInjectionTests
+public class ScreenshotInjectionTests : IDisposable
 {
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
 
@@ -44,43 +43,44 @@ public class ScreenshotInjectionTests
     }
 
     /// <summary>
-    /// A pty carries bytes and no byte sequence means "here is an image" — but the TUI reads the system clipboard
-    /// itself when it sees a paste (AC-226). So the image goes on the clipboard and the terminal is asked to
-    /// perform its own paste: exactly what an operator does by hand, which is how this route was found.
+    /// A pty carries bytes and no byte sequence means "here is an image" — but the agent running in the terminal
+    /// reads a path perfectly well (AC-341). So the capture is written where it can be read and the path is pasted
+    /// into the prompt: no clipboard, and nothing the operator had copied is destroyed to make room for it.
     /// </summary>
     [Fact]
-    public async Task ATerminalSession_PutsItOnTheClipboard_AndAsksTheTerminalToPaste()
+    public async Task ATerminalSession_PastesThePathOfTheFileItWroteTheCaptureTo()
     {
-        var clipboard = new FakeScreenshotClipboard();
-        var session = _CreateTtySession(clipboard);
-        var pastes = 0;
-        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
+        var session = _CreateTtySession();
+        var pasted = new List<string>();
+        session.PasteTextAsync = text => { pasted.Add(text); return Task.CompletedTask; };
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().BeNull();
-        clipboard.Written.Should().ContainSingle().Which.Should().Equal(Png);
-        pastes.Should().Be(1, "the terminal's own paste is what makes the TUI read the clipboard");
+        var path = pasted.Should().ContainSingle().Which;
+        File.Exists(path).Should().BeTrue("the agent reads the file the path points at, so it has to be there when the path arrives");
+        (await File.ReadAllBytesAsync(path)).Should().Equal(Png, "what the agent reads has to be the capture the operator confirmed");
     }
 
     /// <summary>
-    /// A clipboard that would not take the image must not be followed by the paste key: the TUI would go looking,
-    /// find nothing, and answer with its own "no image in clipboard" — an error about the wrong thing, and one the
+    /// A capture that could not be written down must not be followed by a paste: the agent would go looking for a
+    /// file that is not there and answer about a missing path — an error about the wrong thing, and one the
     /// operator cannot act on.
     /// </summary>
     [Fact]
-    public async Task ATerminalSession_WhoseClipboardRefuses_SendsNoPasteKey_AndSaysWhy()
+    public async Task ATerminalSession_ThatCannotWriteTheCapture_PastesNothing_AndSaysWhy()
     {
-        var clipboard = new FakeScreenshotClipboard { AcceptsWrites = false };
-        var session = _CreateTtySession(clipboard);
-        var pastes = 0;
-        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
+        // A file where the directory has to go: creating it fails, which is what a full or read-only temp
+        // directory does to this path as well.
+        await File.WriteAllTextAsync(_spillDirectory, "not a directory");
+        var session = _CreateTtySession();
+        var pasted = new List<string>();
+        session.PasteTextAsync = text => { pasted.Add(text); return Task.CompletedTask; };
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
-        reason.Should().Contain("clipboard");
-        pastes.Should().Be(0, "asking the TUI to paste an image that is not there is worse than saying so");
+        pasted.Should().BeEmpty("pasting a path to a file that was never written is worse than saying so");
     }
 
     /// <summary>
@@ -91,30 +91,28 @@ public class ScreenshotInjectionTests
     [Fact]
     public async Task AfterTheSessionIsClosed_ACaptureIsRefused_RatherThanReportedAsPasted()
     {
-        var clipboard = new FakeScreenshotClipboard();
-        var session = _CreateTtySession(clipboard);
-        var pastes = 0;
-        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
+        var session = _CreateTtySession();
+        var pasted = new List<string>();
+        session.PasteTextAsync = text => { pasted.Add(text); return Task.CompletedTask; };
 
         await session.DisposeAsync();
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull("the session is gone, and silence is what this whole path exists to prevent");
-        pastes.Should().Be(0);
+        pasted.Should().BeEmpty();
     }
 
     /// <summary>
     /// The paste is awaited, not merely started. The caller releases its one-capture-at-a-time guard on this task,
-    /// so returning before the paste has happened lets a second capture overwrite the clipboard the first one is
-    /// still waiting to read.
+    /// so returning before the paste has happened would let two captures race into the same prompt.
     /// </summary>
     [Fact]
     public async Task TheInjection_WaitsForThePasteToActuallyHappen()
     {
-        var session = _CreateTtySession(new FakeScreenshotClipboard());
+        var session = _CreateTtySession();
         var pasteStarted = new TaskCompletionSource();
         var releasePaste = new TaskCompletionSource();
-        session.PasteAsync = async () =>
+        session.PasteTextAsync = async _ =>
         {
             pasteStarted.SetResult();
             await releasePaste.Task;
@@ -128,15 +126,19 @@ public class ScreenshotInjectionTests
         (await injection).Should().BeNull();
     }
 
-    /// <summary>Design-time and test graphs have no clipboard wired; that is a reason to report, not something to crash on.</summary>
+    /// <summary>
+    /// A session with no view on it has nothing to paste into — a design-time graph, or a panel whose container
+    /// left the tree. It says so, and writes no file it would only leave lying about.
+    /// </summary>
     [Fact]
-    public async Task ATerminalSessionWithNoClipboardWired_SaysSo()
+    public async Task ATerminalSessionThatIsNotOnScreen_SaysSo_AndWritesNothing()
     {
-        var session = _CreateTtySession(clipboard: null);
+        var session = _CreateTtySession();
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
+        Directory.Exists(_spillDirectory).Should().BeFalse("a capture with nowhere to go is not worth spilling");
     }
 
     /// <summary>
@@ -164,10 +166,28 @@ public class ScreenshotInjectionTests
             voiceSettingsStore);
     }
 
-    private static TtyViewModel _CreateTtySession(IScreenshotClipboard? clipboard)
+    private static TtyViewModel _CreateTtySession()
     {
         var resolver = Substitute.For<ITtySessionProviderResolver>();
         resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver, screenshotClipboard: clipboard);
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), resolver);
+    }
+
+    /// <summary>A spill directory of this test's own, so a run leaves nothing in the operator's temp directory and two tests cannot see each other's files.</summary>
+    private readonly string _spillDirectory = Path.Combine(Path.GetTempPath(), $"cockpit-screenshot-tests-{Guid.NewGuid():N}");
+
+    public ScreenshotInjectionTests() => TtyViewModel.SpillDirectory = _spillDirectory;
+
+    public void Dispose()
+    {
+        TtyViewModel.SpillDirectory = TtyViewModel.DefaultSpillDirectory;
+        if (Directory.Exists(_spillDirectory))
+        {
+            Directory.Delete(_spillDirectory, recursive: true);
+        }
+        else if (File.Exists(_spillDirectory))
+        {
+            File.Delete(_spillDirectory);
+        }
     }
 }

@@ -1077,12 +1077,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// Takes a captured screenshot into this session kind's input surface — only called once
     /// <see cref="ScreenshotRefusalReason"/> has said it can. Abstract for the reason
     /// <see cref="OnVoiceTextReady"/> is: a chat session has an input box to hold an attachment, a terminal has a
-    /// pty and reaches its TUI through the clipboard.
+    /// pty and hands its TUI a path to read.
     /// </summary>
     /// <remarks>
-    /// Asynchronous because the terminal route genuinely is: it writes the image to the system clipboard, and
-    /// that is a round trip through the windowing layer. The chat session completes synchronously and simply
-    /// returns a finished task.
+    /// Asynchronous because the terminal route genuinely is: it writes the image to a file first. The chat
+    /// session keeps the bytes in hand and simply returns a finished task.
     /// </remarks>
     protected abstract Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng);
 

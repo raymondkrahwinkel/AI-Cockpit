@@ -149,10 +149,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   and you can attach several or remove one before sending. macOS has no desktop-wide key at all, so the button
   is the way there; the settings say that too instead of offering a key that will not fire.
 - added: screenshots work in a terminal session too. A terminal carries text and nothing else, but the agent
-  running in it reads your clipboard itself when it sees a paste — so the capture goes on the clipboard and the
-  terminal is asked to perform its own paste, which is exactly what you would do by hand. Note that it does replace
-  whatever you had copied; there is no private way to hand a terminal an image. A session whose provider cannot see
-  images at all still says so on the button and in a notice, rather than taking the screenshot and losing it.
+  running in it reads a file perfectly well — so the capture is written to one and its path is typed into the
+  prompt, ready for you to add the sentence that goes with it. Your clipboard is left alone: whatever you had
+  copied is still there afterwards. A session whose provider cannot see images at all still says so on the button
+  and in a notice, rather than taking the screenshot and losing it.
 - added: a warning when two desktop-wide keys want the same key. Push-to-talk and the screenshot key are
   registered together, so one of them would otherwise simply stop working the moment you gave them the same
   key — with nothing anywhere connecting the two. Options names both features and the key while you are
