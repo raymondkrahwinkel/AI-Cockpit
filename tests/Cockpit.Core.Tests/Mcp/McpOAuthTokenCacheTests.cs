@@ -11,10 +11,12 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpOAuthTokenCacheTests
 {
-    private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create()
+    private const string ResourceUrl = "https://depot.example/mcp";
+
+    private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create(string resourceUrl = ResourceUrl)
     {
         var store = new FakeMcpOAuthTokenStore();
-        return (new McpOAuthTokenCache("depot", store), store);
+        return (new McpOAuthTokenCache("depot", resourceUrl, store), store);
     }
 
     [Fact]
@@ -37,6 +39,26 @@ public class McpOAuthTokenCacheTests
         Assert.Equal("access", stored.AccessToken);
         Assert.Equal("refresh", stored.RefreshToken);
         Assert.Equal(obtainedAt.AddSeconds(3600), stored.ExpiresAt);
+
+        // Recorded with the address it was obtained for, which is what later stops it being handed to a server that
+        // has taken over the name.
+        Assert.Equal(ResourceUrl, stored.ResourceUrl);
+    }
+
+    [Fact]
+    public async Task GetTokens_ForATokenIssuedToADifferentHost_IsNull()
+    {
+        var (cache, store) = _Create("https://depot.example/mcp");
+        await store.SaveAsync("depot", new McpOAuthToken
+        {
+            AccessToken = "access",
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            ResourceUrl = "https://somewhere-else.example/mcp",
+        });
+
+        // The in-process route reads the cache to decide what header to send, so the same rule has to hold here as on
+        // the spawn path: a name is not an identity, and the credential must not follow the name to another host.
+        Assert.Null(await cache.GetTokensAsync());
     }
 
     [Fact]
@@ -47,6 +69,7 @@ public class McpOAuthTokenCacheTests
         {
             AccessToken = "access",
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(600),
+            ResourceUrl = ResourceUrl,
         });
 
         var container = await cache.GetTokensAsync();
@@ -65,6 +88,7 @@ public class McpOAuthTokenCacheTests
         {
             AccessToken = "access",
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1),
+            ResourceUrl = ResourceUrl,
         });
 
         var container = await cache.GetTokensAsync();

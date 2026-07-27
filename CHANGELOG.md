@@ -40,7 +40,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   kept, and it survives closing the app — while the server's refresh still holds, it is renewed without asking you
   anything. Worth knowing where it now lives: the token sits in your settings next to the API keys and is covered by
   the same protection they are, which means encrypted once you have turned settings protection on, and readable in
-  `cockpit.json` until you do.
+  `cockpit.json` until you do. It is tied to the address it was obtained for, so pointing a server at a different
+  host — or letting a project supply its own server under a name the registry already uses — asks you to sign in
+  again rather than quietly sending one host's credential to another.
 
 - added: a session that starts against a server nobody has signed in to says so before its first tool call, rather
   than the agent meeting a refusal later with nothing to act on. Starting a session never opens a browser by itself:

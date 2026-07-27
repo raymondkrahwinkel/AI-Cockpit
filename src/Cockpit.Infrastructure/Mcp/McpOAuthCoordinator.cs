@@ -29,7 +29,19 @@ internal sealed class McpOAuthCoordinator(
             return McpOAuthAccess.NotRequired;
         }
 
+        // A token is stored under the server's name, and a name is not an identity — a project's own entry replaces a
+        // registry server by name and may carry a different address, and a rename does the same. So a token that was
+        // not issued for this address is treated as absent, refresh token and all: renewing with the other host's
+        // grant would be the same mistake one step later.
         var stored = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        if (stored is not null && !stored.IsForResource(server.Url))
+        {
+            logger.LogWarning(
+                "The stored credential for MCP server {Server} was obtained for a different address and will not be used; sign in again for the address it now points at.",
+                server.Name);
+            return McpOAuthAccess.AuthorizationRequired;
+        }
+
         if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin))
         {
             return McpOAuthAccess.Authorized(stored.AccessToken);
@@ -48,7 +60,7 @@ internal sealed class McpOAuthCoordinator(
         await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
 
         var renewed = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
-        return renewed is not null && renewed.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
+        return renewed is not null && renewed.IsForResource(server.Url) && renewed.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
             ? McpOAuthAccess.Authorized(renewed.AccessToken)
             : McpOAuthAccess.AuthorizationRequired;
     }
@@ -58,6 +70,10 @@ internal sealed class McpOAuthCoordinator(
         try
         {
             return await tokenStore.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -89,6 +105,12 @@ internal sealed class McpOAuthCoordinator(
             });
 
             await using var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller put a bound on how long it would wait. Swallowing that would leave it unable to tell a
+            // server that refused from one that simply took too long, which are different things to report.
+            throw;
         }
         catch (Exception exception)
         {

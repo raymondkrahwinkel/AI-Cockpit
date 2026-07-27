@@ -14,7 +14,7 @@ namespace Cockpit.Infrastructure.Mcp;
 /// every route and survive a restart.
 /// </para>
 /// </summary>
-internal sealed class McpOAuthTokenCache(string serverName, IMcpOAuthTokenStore store) : ITokenCache
+internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl, IMcpOAuthTokenStore store) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
@@ -23,15 +23,22 @@ internal sealed class McpOAuthTokenCache(string serverName, IMcpOAuthTokenStore 
             return;
         }
 
+        // RFC 6749 §6: a refresh response may leave the refresh token out, which means "keep the one you have". Taking
+        // the response at face value would throw it away on the first renewal against any server that does not rotate,
+        // and every later expiry would then ask the operator to sign in again for no reason.
+        var existing = await store.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
+        var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? existing?.RefreshToken : token.RefreshToken;
+
         await store.SaveAsync(
             serverName,
             new McpOAuthToken
             {
                 AccessToken = token.AccessToken,
                 Scheme = string.IsNullOrWhiteSpace(token.TokenType) ? "Bearer" : token.TokenType,
-                RefreshToken = token.RefreshToken,
+                RefreshToken = refreshToken,
                 ExpiresAt = _ExpiresAt(token),
                 Scope = token.Scope,
+                ResourceUrl = resourceUrl,
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -39,7 +46,11 @@ internal sealed class McpOAuthTokenCache(string serverName, IMcpOAuthTokenStore 
     public async ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken = default)
     {
         var stored = await store.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
-        if (stored is null)
+
+        // A token found by name is not automatically this server's: the name can now belong to a different address
+        // (a project's own entry replaces a registry server by name, and a rename does the same). Handing it over
+        // would send one host's credential to another, so a mismatch reads as having no token at all.
+        if (stored is null || !stored.IsForResource(resourceUrl))
         {
             return null;
         }

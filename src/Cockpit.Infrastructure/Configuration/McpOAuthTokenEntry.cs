@@ -27,6 +27,9 @@ internal sealed class McpOAuthTokenEntry
 
     public string? Scope { get; set; }
 
+    /// <summary>The endpoint the token was obtained for, so a server that later answers to the same name under a different address does not inherit it.</summary>
+    public string? ResourceUrl { get; set; }
+
     public static McpOAuthTokenEntry FromDomain(string serverName, McpOAuthToken token) => new()
     {
         ServerName = serverName,
@@ -35,6 +38,7 @@ internal sealed class McpOAuthTokenEntry
         RefreshToken = token.RefreshToken,
         ExpiresAt = token.ExpiresAt,
         Scope = token.Scope,
+        ResourceUrl = token.ResourceUrl,
     };
 
     public McpOAuthToken ToDomain() => new()
@@ -44,5 +48,6 @@ internal sealed class McpOAuthTokenEntry
         RefreshToken = RefreshToken,
         ExpiresAt = ExpiresAt,
         Scope = Scope,
+        ResourceUrl = ResourceUrl,
     };
 }

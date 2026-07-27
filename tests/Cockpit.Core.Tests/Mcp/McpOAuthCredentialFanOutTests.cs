@@ -68,7 +68,7 @@ public class McpOAuthCredentialFanOutTests
     }
 
     [Fact]
-    public async Task SdkSession_ForAnOAuthServerNobodySignedInTo_CarriesNoCredential()
+    public async Task SdkSession_ForAnOAuthServerNobodySignedInTo_LeavesItOutOfTheSession()
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(
@@ -80,11 +80,11 @@ public class McpOAuthCredentialFanOutTests
 
         await adapter.StartAsync();
 
-        // The server is still handed over — it is the operator's choice to have selected it — but without a
-        // credential invented for it. What must not happen is a stale or empty string passing for one.
+        // Not handed over bare. An address the agent cannot authenticate to is not a server it can use, and passing
+        // it along only moves the refusal into the agent's own client — the "401 from the depths" this is meant to
+        // end. The operator gets a warning in its place.
         Assert.NotNull(inner.LastMcpServers);
-        var server = Assert.Single(inner.LastMcpServers);
-        Assert.Null(server.BearerToken);
+        Assert.Empty(inner.LastMcpServers);
     }
 
     [Fact]
@@ -124,47 +124,76 @@ public class McpOAuthCredentialFanOutTests
     [Fact]
     public void TtyLaunch_ForAnAuthorizedOAuthServer_CarriesTheTokenToTheAgent()
     {
-        var inner = Substitute.For<IPluginTtyProvider>();
-        inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
-            "claude", [], new Dictionary<string, string?>(), "/wd", []));
-        var adapter = new PluginTtySessionProviderAdapter(
-            "claude-provider.claude",
-            inner,
-            """{"Command":"claude"}""",
-            _CatalogOf(OAuthServer),
-            _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken)));
+        var (adapter, inner) = _TtyAdapter(_CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken)));
 
-        adapter.BuildLaunch(new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>()));
+        adapter.BuildLaunch(_TtyContext());
 
-        var context = inner.ReceivedCalls()
-            .Select(call => call.GetArguments()[0])
-            .OfType<PluginTtyLaunchContext>()
-            .Single();
-        Assert.NotNull(context.McpServers);
-        var server = Assert.Single(context.McpServers);
-        Assert.Equal(AccessToken, server.BearerToken);
+        var servers = _LaunchContextOf(inner).McpServers;
+        Assert.NotNull(servers);
+        Assert.Equal(AccessToken, Assert.Single(servers).BearerToken);
     }
 
     [Fact]
-    public void TtyLaunch_ForAnOAuthServerNobodySignedInTo_CarriesNoCredential()
+    public void TtyLaunch_ForAnOAuthServerNobodySignedInTo_LeavesItOutOfTheLaunch()
+    {
+        var (adapter, inner) = _TtyAdapter(_CoordinatorAnswering(McpOAuthAccess.AuthorizationRequired));
+
+        adapter.BuildLaunch(_TtyContext());
+
+        Assert.Empty(_LaunchContextOf(inner).McpServers ?? []);
+    }
+
+    [Fact]
+    public void TtyLaunch_BoundsHowLongItWaitsForARenewal()
+    {
+        var coordinator = _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken));
+        var (adapter, _) = _TtyAdapter(coordinator);
+
+        adapter.BuildLaunch(_TtyContext());
+
+        // This path is synchronous out to the launcher and is reached from the UI thread, so an unbounded wait is a
+        // frozen application. A cancellable token is the evidence that a budget was put on it; CancellationToken.None
+        // would mean the launch is willing to wait forever.
+        coordinator.Received().AcquireAsync(
+            Arg.Any<McpServerConfig>(),
+            false,
+            Arg.Is<CancellationToken>(token => token.CanBeCanceled));
+    }
+
+    [Fact]
+    public void TtyLaunch_WhenTheRenewalOutlastsTheBudget_LeavesTheServerOut()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns<Task<McpOAuthAccess>>(_ => throw new OperationCanceledException());
+        var (adapter, inner) = _TtyAdapter(coordinator);
+
+        adapter.BuildLaunch(_TtyContext());
+
+        // A renewal that runs past the budget is a server without a credential, not a launch that fails.
+        Assert.Empty(_LaunchContextOf(inner).McpServers ?? []);
+    }
+
+    private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _TtyAdapter(IMcpOAuthCoordinator coordinator)
     {
         var inner = Substitute.For<IPluginTtyProvider>();
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
             "claude", [], new Dictionary<string, string?>(), "/wd", []));
-        var adapter = new PluginTtySessionProviderAdapter(
+
+        return (new PluginTtySessionProviderAdapter(
             "claude-provider.claude",
             inner,
             """{"Command":"claude"}""",
             _CatalogOf(OAuthServer),
-            _CoordinatorAnswering(McpOAuthAccess.AuthorizationRequired));
+            coordinator), inner);
+    }
 
-        adapter.BuildLaunch(new TtyLaunchContext(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>()));
+    private static TtyLaunchContext _TtyContext() =>
+        new(null, new Dictionary<string, string>(), "/wd", null, new Dictionary<string, string>());
 
-        var context = inner.ReceivedCalls()
+    private static PluginTtyLaunchContext _LaunchContextOf(IPluginTtyProvider inner) =>
+        inner.ReceivedCalls()
             .Select(call => call.GetArguments()[0])
             .OfType<PluginTtyLaunchContext>()
             .Single();
-        Assert.NotNull(context.McpServers);
-        Assert.Null(Assert.Single(context.McpServers).BearerToken);
-    }
 }

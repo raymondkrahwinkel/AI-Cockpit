@@ -29,6 +29,7 @@ public class McpOAuthTokenStoreTests : IDisposable
         Scheme = "Bearer",
         ExpiresAt = new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero),
         Scope = "mcp:read",
+        ResourceUrl = "https://depot.example/mcp",
     };
 
     [Fact]
@@ -50,6 +51,7 @@ public class McpOAuthTokenStoreTests : IDisposable
         Assert.Equal("refresh", loaded.RefreshToken);
         Assert.Equal("Bearer", loaded.Scheme);
         Assert.Equal("mcp:read", loaded.Scope);
+        Assert.Equal("https://depot.example/mcp", loaded.ResourceUrl);
         Assert.Equal(new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero), loaded.ExpiresAt);
     }
 

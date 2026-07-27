@@ -306,8 +306,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             var servers = new List<PluginMcpServer>();
             foreach (var server in eligible)
             {
-                var credential = await _AcquireCredentialAsync(server, cancellationToken).ConfigureAwait(false);
-                if (_ToPluginMcpServer(server, credential) is { } mapped)
+                var access = await _AcquireCredentialAsync(server, cancellationToken).ConfigureAwait(false);
+                if (access.State == McpAuthState.AuthorizationRequired)
+                {
+                    // Left out rather than handed over bare: a server the agent cannot authenticate to is not a
+                    // server it can use, and passing the address along only moves the refusal one hop further out —
+                    // into the agent's own client, where nothing can be said about it. The warning above is what the
+                    // operator gets instead.
+                    continue;
+                }
+
+                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -351,22 +360,22 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
     /// point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
     /// </summary>
-    private async Task<string?> _AcquireCredentialAsync(McpServerConfig server, CancellationToken cancellationToken)
+    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, CancellationToken cancellationToken)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
-            return null;
+            return McpOAuthAccess.NotRequired;
         }
 
         var access = await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
         if (access.State == McpAuthState.AuthorizationRequired)
         {
             logger?.LogWarning(
-                "MCP server {Name} needs an authorization the cockpit does not hold; the session starts without its tools. Sign in to it from the MCP servers dialog.",
+                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
                 server.Name);
         }
 
-        return access.AccessToken;
+        return access;
     }
 
     // HTTP → url with the credential this server needs (a static API key, or the token from the cockpit's own OAuth

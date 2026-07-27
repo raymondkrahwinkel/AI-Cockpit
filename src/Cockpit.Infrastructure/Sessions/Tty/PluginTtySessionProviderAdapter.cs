@@ -81,11 +81,23 @@ internal sealed class PluginTtySessionProviderAdapter(
         {
             var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
-            var servers = selected
-                .Where(McpConfigFile.IsAgentEligible)
-                .Select(server => _ToPluginMcpServer(server, _AcquireCredential(server)))
-                .OfType<PluginMcpServer>()
-                .ToList();
+            var servers = new List<PluginMcpServer>();
+            foreach (var server in selected.Where(McpConfigFile.IsAgentEligible))
+            {
+                var access = _AcquireCredential(server);
+                if (access.State == McpAuthState.AuthorizationRequired)
+                {
+                    // Same rule as the SDK route: a server the agent cannot authenticate to is left out rather than
+                    // handed over bare, so the refusal is something the operator is told here instead of something
+                    // the agent meets later with nothing to act on.
+                    continue;
+                }
+
+                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
+                {
+                    servers.Add(mapped);
+                }
+            }
             var canDelegate = selected.Any(server =>
                 server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
             return (servers, canDelegate);
@@ -97,31 +109,53 @@ internal sealed class PluginTtySessionProviderAdapter(
     }
 
     /// <summary>
+    /// How long a launch will wait for a stale token to be renewed. This path is synchronous all the way out to
+    /// <c>ITtyLauncher.Launch</c>, which is reached from the UI thread, so the wait is the window in which the app
+    /// stops repainting. A renewal is one token-endpoint round trip and either answers well within this or is not
+    /// going to; letting it run unbounded would trade a session's missing tools for a frozen application.
+    /// </summary>
+    private static readonly TimeSpan RenewalBudget = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// The credential this launch presents to <paramref name="server"/> (AC-353). Asked for non-interactively, so a
-    /// launch never makes a browser window appear on its own; a token that cannot be renewed leaves the server
-    /// unauthorized and says so, rather than the CLI meeting a 401 later with no way to act on it.
+    /// launch never makes a browser window appear on its own; a server whose authorization cannot be renewed is left
+    /// out of the launch and said so, rather than the CLI meeting a 401 later with no way to act on it.
     /// <para>
-    /// Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous all
-    /// the way out to <c>ITtyLauncher.Launch</c>. Only reached for an OAuth server, and only doing I/O when a stored
-    /// token has actually gone stale, so the ordinary launch neither blocks nor touches the network.
+    /// Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous. That
+    /// read is local and quick; this one can go to the network when a stored token has expired, which is ordinary
+    /// rather than rare — hence the budget above, and never an unbounded wait.
     /// </para>
     /// </summary>
-    private string? _AcquireCredential(McpServerConfig server)
+    private McpOAuthAccess _AcquireCredential(McpServerConfig server)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
-            return null;
+            return McpOAuthAccess.NotRequired;
         }
 
-        var access = oauthCoordinator.AcquireAsync(server, interactive: false).GetAwaiter().GetResult();
+        using var budget = new CancellationTokenSource(RenewalBudget);
+
+        McpOAuthAccess access;
+        try
+        {
+            access = oauthCoordinator.AcquireAsync(server, interactive: false, budget.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.LogWarning(
+                "Renewing the authorization for MCP server {Name} took longer than the launch waits for, so this session starts without it.",
+                server.Name);
+            return McpOAuthAccess.AuthorizationRequired;
+        }
+
         if (access.State == McpAuthState.AuthorizationRequired)
         {
             logger?.LogWarning(
-                "MCP server {Name} needs an authorization the cockpit does not hold; the session starts without its tools. Sign in to it from the MCP servers dialog.",
+                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
                 server.Name);
         }
 
-        return access.AccessToken;
+        return access;
     }
 
     // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the credential this server needs (a static API

@@ -17,4 +17,12 @@ public readonly record struct McpOAuthAccess(McpAuthState State, string? AccessT
 
     /// <summary>A usable token is held.</summary>
     public static McpOAuthAccess Authorized(string accessToken) => new(McpAuthState.Authorized, accessToken);
+
+    /// <summary>
+    /// Overrides the generated <c>ToString()</c>, which would print the token in full anywhere this lands in a log
+    /// line or an exception message (Iron Law #8).
+    /// </summary>
+    public override string ToString() =>
+        $"{nameof(McpOAuthAccess)} {{ {nameof(State)} = {State}, "
+        + $"{nameof(AccessToken)} = {(string.IsNullOrEmpty(AccessToken) ? "null" : "***")} }}";
 }
