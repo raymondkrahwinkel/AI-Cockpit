@@ -32,6 +32,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can pick the colour and the line weight a mark is drawn in. Under the marking tools there is a row of
+  five inks — the accent, red, yellow, green and white — and three line weights. They apply to the next mark you
+  place, not to what is already on the capture. The weight changes frames, arrows and freehand lines; a note's
+  letters keep their size, because a label is there to be read and "thin" there is not a style but an unreadable
+  one.
+
+- added: the tools sit on two panels you can drag where you want them — what you are taking with, and what you are
+  marking with. A panel you move stays where you put it instead of following your pointer to the screen it is on,
+  which is what they do until you touch them.
+
 - added: you can type a note onto a screenshot. Press T on the selection surface, click where the note should go
   and type — "expected 12 here", a name for the thing an arrow points at. Enter or Escape finishes the note and a
   further Escape cancels the capture, so the key that ends your typing is not the one that throws it away. While a
@@ -468,6 +478,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   link button, and the description — with the actions in one fixed row that no longer rearranges itself
   depending on what happens to be installed or running. The prompt that will be handed to a session sits under a
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
+
+### Changed
+
+- changed: arrows and freehand lines no longer carry a contrasting outline. It was there because a screenshot has
+  no single background and nothing could ask you what your mark would cross; now that you pick the colour
+  yourself, it was a white line around a red one you did not ask for.
 
 ### Fixed
 
