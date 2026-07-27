@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Authentication;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -18,19 +19,31 @@ namespace Cockpit.Infrastructure.Mcp;
 /// </summary>
 internal interface IMcpOAuthAuthorizer
 {
-    ClientOAuthOptions CreateOptions(McpServerConfig server);
+    /// <summary>
+    /// The OAuth options for <paramref name="server"/>. When <paramref name="interactive"/> is
+    /// <see langword="false"/> the authorization step refuses instead of opening a browser, so a caller that is not
+    /// the operator — starting a session, renewing a stale token — can get as far as the refresh grant and no
+    /// further (AC-353).
+    /// </summary>
+    ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true);
 }
 
-internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger) : IMcpOAuthAuthorizer, ISingletonService
+internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMcpOAuthTokenStore tokenStore)
+    : IMcpOAuthAuthorizer, ISingletonService
 {
-    public ClientOAuthOptions CreateOptions(McpServerConfig server)
+    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true)
     {
         var options = new ClientOAuthOptions
         {
             // A fresh loopback port per server avoids collisions; the redirect is registered via DCR so a
             // dynamic port is fine. The delegate derives its listener prefix from this same RedirectUri.
             RedirectUri = new Uri($"http://127.0.0.1:{_FreeLoopbackPort()}/callback"),
-            AuthorizationRedirectDelegate = _HandleAuthorizationAsync,
+            AuthorizationRedirectDelegate = interactive ? _HandleAuthorizationAsync : _RefuseAuthorizationAsync,
+
+            // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
+            // would work and then be thrown away with the connection. Storing it is what lets one login serve the
+            // spawned agents too, and survive a restart.
+            TokenCache = new McpOAuthTokenCache(server.Name, tokenStore),
         };
 
         // A configured client id takes precedence; otherwise let the server register us dynamically (RFC 7591).
@@ -44,6 +57,17 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger) : I
         }
 
         return options;
+    }
+
+    /// <summary>
+    /// The non-interactive authorization step: there is nobody to log in, so it declines. Returning no code makes
+    /// the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
+    /// point being that starting a session must never make a browser window appear on its own.
+    /// </summary>
+    private Task<string?> _RefuseAuthorizationAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("An MCP server needs an interactive sign-in, which was not requested here; leaving it unauthorized.");
+        return Task.FromResult<string?>(null);
     }
 
     // Opens the system browser at the authorization URL and waits on a loopback listener for the redirect,

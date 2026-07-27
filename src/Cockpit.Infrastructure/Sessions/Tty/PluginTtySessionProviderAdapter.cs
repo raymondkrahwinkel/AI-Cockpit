@@ -6,6 +6,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
@@ -25,7 +26,9 @@ internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
     string configJson,
-    IMcpServerCatalog? mcpServerCatalog = null) : ITtySessionProvider
+    IMcpServerCatalog? mcpServerCatalog = null,
+    IMcpOAuthCoordinator? oauthCoordinator = null,
+    ILogger<PluginTtySessionProviderAdapter>? logger = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
@@ -80,7 +83,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
             var servers = selected
                 .Where(McpConfigFile.IsAgentEligible)
-                .Select(_ToPluginMcpServer)
+                .Select(server => _ToPluginMcpServer(server, _AcquireCredential(server)))
                 .OfType<PluginMcpServer>()
                 .ToList();
             var canDelegate = selected.Any(server =>
@@ -93,16 +96,45 @@ internal sealed class PluginTtySessionProviderAdapter(
         }
     }
 
-    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the user API-key server's own bearer, plus a
-    // CockpitHosted flag for a cockpit loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here —
-    // AC-40); stdio → command/args. A server missing its transport target is dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    /// <summary>
+    /// The credential this launch presents to <paramref name="server"/> (AC-353). Asked for non-interactively, so a
+    /// launch never makes a browser window appear on its own; a token that cannot be renewed leaves the server
+    /// unauthorized and says so, rather than the CLI meeting a 401 later with no way to act on it.
+    /// <para>
+    /// Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous all
+    /// the way out to <c>ITtyLauncher.Launch</c>. Only reached for an OAuth server, and only doing I/O when a stored
+    /// token has actually gone stale, so the ordinary launch neither blocks nor touches the network.
+    /// </para>
+    /// </summary>
+    private string? _AcquireCredential(McpServerConfig server)
+    {
+        if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
+        {
+            return null;
+        }
+
+        var access = oauthCoordinator.AcquireAsync(server, interactive: false).GetAwaiter().GetResult();
+        if (access.State == McpAuthState.AuthorizationRequired)
+        {
+            logger?.LogWarning(
+                "MCP server {Name} needs an authorization the cockpit does not hold; the session starts without its tools. Sign in to it from the MCP servers dialog.",
+                server.Name);
+        }
+
+        return access.AccessToken;
+    }
+
+    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the credential this server needs (a static API
+    // key, or the token from the cockpit's own OAuth sign-in — AC-353), plus a CockpitHosted flag for a cockpit
+    // loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here — AC-40); stdio → command/args. A
+    // server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken) => server.Transport switch
     {
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,
             Url = server.Url,
-            BearerToken = CockpitMcpBearer.UserApiKey(server),
+            BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
             CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer

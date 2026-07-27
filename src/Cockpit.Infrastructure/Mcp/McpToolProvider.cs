@@ -253,7 +253,10 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             AdditionalHeaders = (server.CockpitHosted && sessionToken is not null ? sessionToken : CockpitMcpBearer.For(server, authKey)) is { } bearer
                 ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearer}" }
                 : new Dictionary<string, string>(),
-            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server) : null,
+            // Interactive: this transport is built for a session the operator started, which is a moment they may be
+            // asked to sign in. The pre-flight tool count never reaches here — EnumerateServerToolsAsync returns
+            // early for an OAuth server precisely so counting tokens cannot open a browser (AC-134).
+            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: true) : null,
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };

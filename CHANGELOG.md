@@ -32,6 +32,21 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: an MCP server that asks you to sign in through your browser now reaches every kind of session, not only the
+  ones the cockpit drives itself. Until now such a server was handed to Claude, Codex or Kimi as a bare address with
+  no credential on it: in a terminal session you could at least tell the agent to sign in again on its own account,
+  and a scripted session had no way at all. The cockpit now keeps the token from that sign-in and hands it to
+  whichever agent the session runs, the same way it has always handed over an API key. One sign-in, one place it is
+  kept, and it survives closing the app — while the server's refresh still holds, it is renewed without asking you
+  anything. Worth knowing where it now lives: the token sits in your settings next to the API keys and is covered by
+  the same protection they are, which means encrypted once you have turned settings protection on, and readable in
+  `cockpit.json` until you do.
+
+- added: a session that starts against a server nobody has signed in to says so before its first tool call, rather
+  than the agent meeting a refusal later with nothing to act on. Starting a session never opens a browser by itself:
+  if a token cannot be renewed quietly, the session starts without that server and tells you, and asking for the
+  sign-in stays your move.
+
 - added: you can pick the colour and the line weight a mark is drawn in. Under the marking tools there is a row of
   five inks — the accent, red, yellow, green and white — and three line weights. They apply to the next mark you
   place, not to what is already on the capture. The weight changes frames, arrows and freehand lines; a note's
