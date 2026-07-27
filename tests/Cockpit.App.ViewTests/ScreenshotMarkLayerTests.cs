@@ -441,7 +441,7 @@ public class ScreenshotMarkLayerTests
             selection.ChooseWeight(weight);
             selection.MarkWith(MarkTool.Text, true);
             selection.BeginDrag(200, 200);
-            selection.Type("expected 12");
+            selection.SetTyped("expected 12");
             selection.FinishTyping();
 
             sizes.Add(selection.Marks.OfType<TextMark>().Single().Size);

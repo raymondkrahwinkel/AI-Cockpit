@@ -9,7 +9,8 @@
         Topmost="True"
         Background="Black"
         CanResize="False"
-        Cursor="Cross">
+        Cursor="Cross"
+        Focusable="True">
 
   <Window.Styles>
     <!-- The panel's own controls. Styled here rather than in Theme.axaml because nothing else in the app is a
@@ -104,6 +105,21 @@
        between window units and image pixels true. -->
   <Panel Name="Surface">
     <Image Name="Capture" Stretch="Fill" />
+
+    <!-- Where a typed note's characters actually land (AC-363). Invisible and one pixel across, but a real text
+         box: Avalonia sends text input to the focused element, and every control on this surface is deliberately
+         unfocusable so that clicking a tool never costs you the keyboard. That left nothing to type into — the
+         note opened, showed its plate and swallowed the lot. Focusing the window itself is not enough; text input
+         wants a text input client, and this is one. It also brings the keyboard's own layout, dead keys and
+         corrections with it, which reading characters off key codes would not. -->
+    <TextBox Name="TypingTarget"
+             Width="1" Height="1"
+             Opacity="0"
+             IsTabStop="False"
+             BorderThickness="0"
+             Background="Transparent"
+             HorizontalAlignment="Left"
+             VerticalAlignment="Top" />
 
     <!-- Everything outside the selection is dimmed by four rectangles rather than a cut-out, which Avalonia has
          no primitive for. Their bounds are set in code from the same conversion the pointer goes through.
