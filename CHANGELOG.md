@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can highlight part of a screenshot without hiding it. Press H on the selection surface and drag a band
+  over what should be read rather than skimmed. It works like a marker pen — the colour goes into the page and the
+  text on it stays where it was, rather than being painted over at half strength, which costs most of what makes
+  text readable. Over a dark terminal it works the other way up, lifting the band out of the background instead of
+  pressing it in, because ink over paper and ink over a terminal are not the same operation. The surface reads what
+  is under the band when you draw it and decides which of the two that is.
+
 - added: you can point at one thing on a screenshot. Press P on the selection surface and drag from where the arrow
   should start to the thing it should point at — the head lands where you let go and turns to face that way, so an
   arrow can come in from an empty corner instead of lying across what it indicates. It is drawn with a ring around

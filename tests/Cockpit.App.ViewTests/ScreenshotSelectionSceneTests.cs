@@ -127,6 +127,38 @@ public class ScreenshotSelectionSceneTests
                 60, "the body of the arrow is the only coloured thing on a page drawn in greys");
         });
 
+    /// <summary>
+    /// One wash of each direction (AC-361). The scene drags a band over the light document and another over the
+    /// dark terminal, and the surface has to have read the picture under each to tell them apart — a scene with
+    /// one band would show a tool that works and prove nothing about the half it does not.
+    /// </summary>
+    [Fact]
+    public void TheHighlightScene_LeavesOneWashOfEachDirection() => _Staged(ScreenshotSelectionScene.Highlight, surface =>
+    {
+        var washes = _Model(surface).Marks.Should().HaveCount(2).And.AllBeOfType<HighlightMark>().Which.ToList();
+
+        washes.Select(wash => wash.Blend).Should().BeEquivalentTo(
+            [HighlightBlend.Darken, HighlightBlend.Lighten],
+            "the document is light and the terminal is dark, and the surface looked");
+    });
+
+    /// <summary>
+    /// The band shows and what is under it still reads (AC-361) — measured on the rendered frame over the light
+    /// half, which is where a wash is most easily got wrong: too strong and it is the box that hides, drawn in a
+    /// friendlier colour.
+    /// </summary>
+    [Fact]
+    public void TheWashShowsOverThePage_WithoutSwallowingTheTextUnderIt() =>
+        _Staged(ScreenshotSelectionScene.Highlight, surface =>
+        {
+            var band = _SampleInside(surface, 0.60, 0.307, 0.88, 0.345, step: 1);
+
+            band.Lightest.Should().BeLessThan(
+                240, "the page under the band took the colour, so the band can be seen at all");
+            (band.Lightest - band.Darkest).Should().BeGreaterThan(
+                60, "and the line of text under it is still far darker than the band it lies on");
+        });
+
     /// <summary>The scenes that were already there still build, including the fallback an unknown name lands on.</summary>
     [Theory]
     [InlineData(null, typeof(MainWindow))]

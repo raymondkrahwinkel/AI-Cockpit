@@ -71,6 +71,9 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
                 case ArrowMark arrow:
                     _Arrow(image, arrow);
                     break;
+                case HighlightMark highlight:
+                    _Highlight(image, highlight);
+                    break;
                 default:
                     throw new NotSupportedException($"There is no way to burn in a {mark.GetType().Name}.");
             }
@@ -107,6 +110,30 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         canvas.DrawRect(
             new SKRect(area.X + inset, area.Y + inset, area.Right - inset, area.Bottom - inset),
             paint);
+    }
+
+    /// <summary>
+    /// Washes the band in its colour, multiplied into the pixels or lifted out of them depending on which way the
+    /// mark says — the one operation here that is meant to leave what is underneath readable.
+    /// </summary>
+    /// <remarks>
+    /// Blended rather than composited. Painting the colour on at a fraction of its strength drags the text and the
+    /// page it sits on towards each other, and a page that started at over 20:1 of contrast ends up near 3:1;
+    /// multiplying scales both ends instead of pulling them together, and keeps most of the ratio. Two bands over
+    /// each other therefore deepen, the way two passes of a marker do.
+    /// </remarks>
+    private static void _Highlight(SKBitmap image, HighlightMark highlight)
+    {
+        using var canvas = new SKCanvas(image);
+        using var paint = new SKPaint
+        {
+            Color = new SKColor(highlight.Wash),
+            Style = SKPaintStyle.Fill,
+            BlendMode = highlight.Blend == HighlightBlend.Darken ? SKBlendMode.Multiply : SKBlendMode.Screen,
+        };
+
+        var area = highlight.Area;
+        canvas.DrawRect(new SKRect(area.X, area.Y, area.Right, area.Bottom), paint);
     }
 
     /// <summary>
