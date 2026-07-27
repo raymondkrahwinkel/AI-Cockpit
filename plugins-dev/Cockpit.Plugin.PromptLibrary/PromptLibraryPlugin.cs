@@ -1,5 +1,7 @@
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
@@ -34,6 +36,20 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
             _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), 540, 380);
 
         host.AddShortcut(new PluginShortcut("prompt-library.quick-insert", "Insert prompt", "Ctrl+Shift+P", QuickInsert));
+
+        // The same one-click insert as the palette, but sitting on the dashboard (AC-53): no gesture to remember,
+        // and no consent gate, because the operator injects their own prompt — the dangerous class is an agent
+        // asking for an injection, which this is not.
+        host.AddWidget(new WidgetRegistration(
+            "widgets.prompt-quick-launcher",
+            "Prompt Launcher",
+            context => new PromptQuickLauncherWidget(settings, host.Actions, context))
+        {
+            IconKind = MaterialIconKind.LightningBolt,
+            Description = "Your saved prompts, one click to drop one into the active session.",
+            DefaultColumnSpan = 4,
+            DefaultRowSpan = 6,
+        });
     }
 
     public void Dispose()
