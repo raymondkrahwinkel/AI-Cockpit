@@ -107,14 +107,43 @@ public class MarkdownParserTests
     [Fact]
     public void ALineOfWhitespaceAfterAPipe_DoesNotSendTheTableSeparatorPatternQuadratic()
     {
-        var payload = "|\n" + new string(' ', 65_000) + "x";
+        // Growth, not duration. A budget in milliseconds measures how busy the machine is: this failed once inside a
+        // parallel run and passed three times on its own straight after, which said nothing about the parser.
+        // Quadrupling the input costs roughly four times as much while the pattern stays linear and roughly sixteen
+        // once it backtracks — and a loaded machine slows both measurements together, so the ratio survives what the
+        // stopwatch could not. Measured here: 3.0-3.3 idle, 2.3-3.4 with a full build and test run alongside.
+        const int Narrow = 16_000;
+        const int Wide = 64_000;
 
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        MarkdownParser.Parse(payload);
-        elapsed.Stop();
+        _FastestParseTicks(Narrow);
 
-        elapsed.ElapsedMilliseconds.Should().BeLessThan(250,
-            "an issue body is third-party text and parsing runs synchronously on the UI thread");
+        var narrow = _FastestParseTicks(Narrow);
+        var wide = _FastestParseTicks(Wide);
+        var growth = (double)wide / narrow;
+
+        growth.Should().BeLessThan(
+            8,
+            "an issue body is third-party text parsed synchronously on the UI thread, and {0}x the input took {1:F1}x the work",
+            Wide / Narrow,
+            growth);
+    }
+
+    // The quickest of several runs. Noise only ever adds time, so the fastest attempt is the one least disturbed by
+    // whatever else the machine was doing — which is what makes the comparison above hold up under load.
+    private static long _FastestParseTicks(int width)
+    {
+        var payload = "|\n" + new string(' ', width) + "x";
+        var best = long.MaxValue;
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            MarkdownParser.Parse(payload);
+            elapsed.Stop();
+            best = Math.Min(best, elapsed.ElapsedTicks);
+        }
+
+        return best;
     }
 
     [Fact]
