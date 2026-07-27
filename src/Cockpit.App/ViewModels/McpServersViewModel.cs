@@ -110,7 +110,13 @@ public partial class McpServersViewModel : ViewModelBase
     private string _UnusedServerName()
     {
         const string baseName = "new server";
-        var taken = Servers.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Trimmed, because that is what a save writes and what the duplicate check compares — otherwise a row typed
+        // as "new server " is invisible here and the operator is refused a save over a clash they cannot see.
+        var taken = Servers
+            .Select(server => server.Name.Trim())
+            .Concat(_internalProviders.SelectMany(_NamesOf))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var candidate = baseName;
         for (var suffix = 2; taken.Contains(candidate); suffix++)
@@ -158,6 +164,17 @@ public partial class McpServersViewModel : ViewModelBase
         if (Servers.GroupBy(server => server.Name.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } duplicate)
         {
             StatusMessage = $"Two servers are called \"{duplicate.Key}\". Names identify a server to the agents, so each one needs its own.";
+            return;
+        }
+
+        // The cockpit's own loopback servers and a plugin's endpoints are not in this list — they are filtered out of
+        // it — but they share the same namespace, and the catalog's merge lets them win. An operator's server that
+        // takes one of those names is dropped from the fan-out, hidden from this dialog on the next open, and gone
+        // from the store on the save after that: configured, saved, ticked, and silently not there.
+        var reserved = _internalProviders.SelectMany(_NamesOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (Servers.FirstOrDefault(server => reserved.Contains(server.Name.Trim())) is { } clash)
+        {
+            StatusMessage = $"\"{clash.Name.Trim()}\" is a name the cockpit already uses for one of its own servers. Pick another, or it will quietly lose to that one.";
             return;
         }
 

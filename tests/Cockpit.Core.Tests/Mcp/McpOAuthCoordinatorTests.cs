@@ -247,6 +247,26 @@ public class McpOAuthCoordinatorTests
     }
 
     [Fact]
+    public async Task Acquire_AskedInteractively_KeepsAFreshTokenEvenWhenTheAnswerIsNotAuthorized()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        await store.SaveAsync("depot", _TokenFor("old-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        // Stand in for a flow that succeeds and issues a short-lived token: the answer is still "not authorized",
+        // because handing over a credential with under two minutes on it writes a session that breaks a minute in.
+        store.OnRemoved = () => store.SaveAsync("depot", _TokenFor("fresh-token", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(60))).GetAwaiter().GetResult();
+
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        // Restoring on "not authorized" rather than on "nothing was written" threw away the credential the operator
+        // had just been to the browser for and put the stale one back.
+        Assert.Equal("fresh-token", (await store.GetAsync("depot"))?.AccessToken);
+    }
+
+    [Fact]
     public async Task SignOut_ForgetsTheToken_SoTheNextUseAsksAgain()
     {
         var (coordinator, store) = _Create();

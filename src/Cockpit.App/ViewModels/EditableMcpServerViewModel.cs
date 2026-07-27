@@ -13,8 +13,8 @@ namespace Cockpit.App.ViewModels;
 /// <para>
 /// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They act on
 /// <see cref="_AuthTarget"/>: the URL and auth as currently typed, so fixing a wrong authority and then signing in
-/// authorizes against what is on screen — but under the name the store knows, because that is the key a token is
-/// filed by and everything else looks it up with.
+/// authorizes against what is on screen — under the name the token is filed by, which is the stored one for a saved
+/// row, and for a new one the typed name until a sign-in pins it.
 /// </para>
 /// </summary>
 public partial class EditableMcpServerViewModel : ViewModelBase
@@ -28,7 +28,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// not in the store yet has no such name, and pinning it to the placeholder it was created with would file the
     /// token under a name the operator is about to replace: for those, the typed name is the one that will be saved.
     /// </summary>
-    private readonly string? _storedUnderName;
+    private string? _storedUnderName;
 
     [ObservableProperty]
     private string _name;
@@ -148,6 +148,12 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthState = null;
         AuthMessage = string.Empty;
     }
+
+    // Deliberately no OnNameChanged clearing the badge, unlike OnUrlChanged. It looks like the same case and is not:
+    // the row keeps pointing at the token through _storedUnderName, so "signed in" is still true and Sign out still
+    // withdraws the right one — and clearing the badge would disable Sign out (it needs Authorized), leaving a token
+    // the operator can no longer withdraw. What a rename really breaks is the save: the registry gets the new name
+    // while the token keeps the old, and nothing moves it. That is a storage question, not a badge question.
 
     partial void OnAuthChanged(McpServerAuth value)
     {
@@ -277,8 +283,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     /// <summary>
     /// The operator's own "log me in" act (AC-355) — the one call site anywhere that asks interactively, and so the
-    /// only one allowed to open a browser. Runs against <see cref="_AuthTarget"/>: the URL/authority as typed, filed
-    /// under the name the store knows.
+    /// only one allowed to open a browser. Runs against <see cref="_AuthTarget"/> — the URL/authority as typed — and
+    /// on success pins the name the token was filed under, so later edits to the name box cannot make the row look
+    /// somewhere else for it.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()
@@ -292,9 +299,19 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(), interactive: true).ConfigureAwait(true);
+            var target = _AuthTarget();
+            var access = await _oauthCoordinator.AcquireAsync(target, interactive: true).ConfigureAwait(true);
             AuthState = access.State;
-            if (access.State != McpAuthState.Authorized)
+            if (access.State == McpAuthState.Authorized)
+            {
+                // From here the token exists under this name, so the row stops following what is typed. Without this
+                // a row that had never been saved kept tracking the box: rename it after signing in and the next
+                // withdrawal went looking under a name nothing was filed under, reported the access as gone, and
+                // left the bearer in place. That defect has now moved twice; pinning it at the moment it becomes
+                // true is what stops it moving again.
+                _storedUnderName = target.Name;
+            }
+            else
             {
                 // AcquireAsync only ever answers with a state, never the failure detail (and never a token to
                 // leak, Iron Law #8) — so this stays a fixed, short line rather than any exception text.

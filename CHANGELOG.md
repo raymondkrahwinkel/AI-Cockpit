@@ -39,6 +39,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   status is drawn for every server in the list and opening a dialog should not become an event on somebody else's
   server.
 
+- changed: two MCP servers can no longer be saved under one name, and adding a server picks one that is free. A name
+  is not a label here — it is how a server is identified to the agents and how its sign-in is filed — so a repeat
+  used to mean one of them quietly did not exist: configured, ticked, and absent. A name already used by one of the
+  cockpit's own servers is refused for the same reason.
+
 - added: when you start a session with a server ticked that nobody has signed in to, the New-session dialog says so
   before the session begins rather than leaving you to find out at the first tool call. It says it and no more —
   starting anyway stays your call. The tool count beside such a server stays blank on purpose, since counting a

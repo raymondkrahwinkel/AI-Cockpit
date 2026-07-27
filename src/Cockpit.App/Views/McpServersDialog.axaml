@@ -135,10 +135,9 @@
                     </StackPanel>
 
                     <!-- Sign-in status (AC-355): authorizes against the URL/authority as currently typed, so fixing a
-                         wrong authority and then signing in uses what is on screen rather than the last save — but
-                         files the token under the name the store knows, which is the key everything else looks it up
-                         by. Both actions are async and can take a while (a browser round-trip) — IsAuthBusy disables
-                         the row rather than freezing the dialog. -->
+                         wrong authority and then signing in uses what is on screen rather than the last save. Both
+                         actions are async and can take a while (a browser round-trip) — IsAuthBusy disables the row
+                         rather than freezing the dialog. -->
                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
                         <TextBlock Text="Sign-in" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">

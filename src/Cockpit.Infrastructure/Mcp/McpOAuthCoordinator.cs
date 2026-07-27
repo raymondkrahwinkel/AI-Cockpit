@@ -43,7 +43,12 @@ internal sealed class McpOAuthCoordinator(
             await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
 
             var signedIn = await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
-            if (signedIn.State != McpAuthState.Authorized && previous is not null)
+
+            // Put the old one back only when the flow left nothing behind — not merely when the answer was "not
+            // authorized". A sign-in that succeeds and issues a short-lived token gets that verdict too (the answer
+            // keeps a margin), and restoring over it would throw away the credential the operator just went to the
+            // browser for and hand back the stale one.
+            if (previous is not null && await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false) is null)
             {
                 await tokenStore.SaveAsync(server.Name, previous, cancellationToken).ConfigureAwait(false);
             }

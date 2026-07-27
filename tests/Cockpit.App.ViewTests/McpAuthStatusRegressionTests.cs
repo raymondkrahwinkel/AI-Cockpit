@@ -193,6 +193,75 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
+    public async Task SignOut_AfterRenamingARowThatSignedInWhileUnsaved_WithdrawsUnderTheNameItWasFiledBy()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
+
+        var editable = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
+        editable.Name = "depot";
+        editable.Transport = McpTransport.Http;
+        editable.Url = "https://depot.example/mcp";
+        editable.Auth = McpServerAuth.OAuth;
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        editable.Name = "vault";
+        await editable.SignOutCommand.ExecuteAsync(null);
+
+        // Once a sign-in has filed the token, the row must stop following the name box. Letting it keep tracking sent
+        // the withdrawal to a name nothing was filed under: the operator was told their access was gone while the
+        // bearer stayed in cockpit.json. Same defect as the two rounds before, one case further along.
+        await coordinator.Received().SignOutAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RenamingAServer_KeepsItsTokenWithdrawable()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
+        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+        await editable.RefreshAuthStateAsync();
+
+        editable.Name = "vault";
+
+        // Clearing the badge on a rename looks like the URL case and is not: the row still points at the token, and
+        // the withdraw button is gated on the badge — hiding it would strand a credential the operator can no longer
+        // reach. What a rename actually breaks is the save, which is a storage question and its own ticket.
+        Assert.True(editable.ShowAuthStatus);
+        Assert.True(editable.SignOutCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Save_RefusesAServerNamedAfterOneTheCockpitRuns()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "mine", Transport = McpTransport.Http, Url = "https://mine.example/mcp" },
+        });
+
+        var internalProvider = Substitute.For<ICockpitInternalMcpProvider>();
+        internalProvider.GetServers().Returns([new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" }]);
+
+        var viewModel = new McpServersViewModel(store, [internalProvider]);
+        await viewModel.LoadAsync();
+        viewModel.Servers.Single().Name = "cockpit-session";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        // The cockpit's own servers are filtered out of this list but share the namespace, and the catalog's merge
+        // lets them win — so a name taken from one meant the operator's server was configured, saved, ticked, and
+        // silently not there.
+        Assert.Contains("cockpit-session", viewModel.StatusMessage);
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SignInFailure_ShowsAFixedLine_AndNeverTheToken()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
