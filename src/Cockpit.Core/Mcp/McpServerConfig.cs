@@ -70,4 +70,17 @@ public sealed record McpServerConfig
     /// </para>
     /// </summary>
     public bool AlwaysMounted { get; init; }
+
+    /// <summary>
+    /// Overrides the record's generated <c>ToString()</c>, which would otherwise print <see cref="ApiKey"/> in the
+    /// clear anywhere this lands in a log line or an exception message (Iron Law #8) — the same guard
+    /// <see cref="Cockpit.Plugins.Abstractions.Sessions.PluginMcpServer"/> carries for the credential it holds.
+    /// </summary>
+    public override string ToString() =>
+        $"{nameof(McpServerConfig)} {{ {nameof(Name)} = {Name}, {nameof(Transport)} = {Transport}, {nameof(Scope)} = {Scope}, "
+        + $"{nameof(Command)} = {Command}, {nameof(Url)} = {Url}, {nameof(Auth)} = {Auth}, "
+        + $"{nameof(ApiKey)} = {(string.IsNullOrEmpty(ApiKey) ? "null" : "***")}, "
+        + $"{nameof(OAuthAuthority)} = {OAuthAuthority}, {nameof(OAuthClientId)} = {OAuthClientId}, "
+        + $"{nameof(Enabled)} = {Enabled}, {nameof(CockpitHosted)} = {CockpitHosted}, "
+        + $"{nameof(Internal)} = {Internal}, {nameof(AlwaysMounted)} = {AlwaysMounted} }}";
 }

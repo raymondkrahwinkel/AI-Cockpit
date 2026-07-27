@@ -34,6 +34,15 @@ public class McpOAuthCredentialFanOutTests
         Auth = McpServerAuth.OAuth,
     };
 
+    private static McpServerConfig ApiKeyServer => new()
+    {
+        Name = "youtrack",
+        Transport = McpTransport.Http,
+        Url = "http://127.0.0.1:9000/mcp",
+        Auth = McpServerAuth.ApiKey,
+        ApiKey = "yt-pat-value",
+    };
+
     private static IMcpServerCatalog _CatalogOf(params McpServerConfig[] servers)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
@@ -103,16 +112,8 @@ public class McpOAuthCredentialFanOutTests
     public async Task SdkSession_ForAnApiKeyServer_IsUnchanged_AndIsNeverAskedForAnOAuthToken()
     {
         var inner = new FakePluginSessionDriver();
-        var apiKeyServer = new McpServerConfig
-        {
-            Name = "youtrack",
-            Transport = McpTransport.Http,
-            Url = "http://127.0.0.1:9000/mcp",
-            Auth = McpServerAuth.ApiKey,
-            ApiKey = "yt-pat-value",
-        };
         var coordinator = _CoordinatorAnswering(McpOAuthAccess.NotRequired);
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, AuthKey, _CatalogOf(apiKeyServer), oauthCoordinator: coordinator);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, AuthKey, _CatalogOf(ApiKeyServer), oauthCoordinator: coordinator);
 
         await adapter.StartAsync();
 
@@ -161,20 +162,26 @@ public class McpOAuthCredentialFanOutTests
     }
 
     [Fact]
-    public void TtyLaunch_WhenTheRenewalOutlastsTheBudget_LeavesTheServerOut()
+    public void TtyLaunch_WhenTheRenewalOutlastsTheBudget_LeavesOutOnlyThatServer()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns<Task<McpOAuthAccess>>(_ => throw new OperationCanceledException());
-        var (adapter, inner) = _TtyAdapter(coordinator);
+        var (adapter, inner) = _TtyAdapter(coordinator, OAuthServer, ApiKeyServer);
 
         adapter.BuildLaunch(_TtyContext());
 
-        // A renewal that runs past the budget is a server without a credential, not a launch that fails.
-        Assert.Empty(_LaunchContextOf(inner).McpServers ?? []);
+        // The second server is what makes this test mean anything. Without the catch, the cancellation reaches
+        // _ResolveRegistry's blanket handler and the launch loses the *whole* registry — which, with only the OAuth
+        // server in the fixture, looks exactly like the intended "skip this one" and leaves the guard unproven.
+        var servers = _LaunchContextOf(inner).McpServers;
+        Assert.NotNull(servers);
+        Assert.Equal("youtrack", Assert.Single(servers).Name);
     }
 
-    private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _TtyAdapter(IMcpOAuthCoordinator coordinator)
+    private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _TtyAdapter(
+        IMcpOAuthCoordinator coordinator,
+        params McpServerConfig[] servers)
     {
         var inner = Substitute.For<IPluginTtyProvider>();
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
@@ -184,7 +191,7 @@ public class McpOAuthCredentialFanOutTests
             "claude-provider.claude",
             inner,
             """{"Command":"claude"}""",
-            _CatalogOf(OAuthServer),
+            _CatalogOf(servers.Length == 0 ? [OAuthServer] : servers),
             coordinator), inner);
     }
 

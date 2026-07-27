@@ -82,9 +82,15 @@ internal sealed class PluginTtySessionProviderAdapter(
             var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
             var servers = new List<PluginMcpServer>();
+
+            // One budget for the whole launch, not one per server: this is the window in which the application stops
+            // repainting, and four stale servers against an unreachable host would otherwise add up to four times the
+            // wait the budget promises.
+            using var budget = new CancellationTokenSource(RenewalBudget);
+
             foreach (var server in selected.Where(McpConfigFile.IsAgentEligible))
             {
-                var access = _AcquireCredential(server);
+                var access = _AcquireCredential(server, budget.Token);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
                     // Same rule as the SDK route: a server the agent cannot authenticate to is left out rather than
@@ -109,8 +115,8 @@ internal sealed class PluginTtySessionProviderAdapter(
     }
 
     /// <summary>
-    /// How long a launch will wait for a stale token to be renewed. This path is synchronous all the way out to
-    /// <c>ITtyLauncher.Launch</c>, which is reached from the UI thread, so the wait is the window in which the app
+    /// How long a launch will wait, in total, for stale tokens to be renewed. This path is synchronous all the way out
+    /// to <c>ITtyLauncher.Launch</c>, which is reached from the UI thread, so the wait is the window in which the app
     /// stops repainting. A renewal is one token-endpoint round trip and either answers well within this or is not
     /// going to; letting it run unbounded would trade a session's missing tools for a frozen application.
     /// </summary>
@@ -126,19 +132,23 @@ internal sealed class PluginTtySessionProviderAdapter(
     /// rather than rare — hence the budget above, and never an unbounded wait.
     /// </para>
     /// </summary>
-    private McpOAuthAccess _AcquireCredential(McpServerConfig server)
+    private McpOAuthAccess _AcquireCredential(McpServerConfig server, CancellationToken budget)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
             return McpOAuthAccess.NotRequired;
         }
 
-        using var budget = new CancellationTokenSource(RenewalBudget);
-
         McpOAuthAccess access;
         try
         {
-            access = oauthCoordinator.AcquireAsync(server, interactive: false, budget.Token).GetAwaiter().GetResult();
+            // Run on the pool rather than awaiting inline: a continuation that captured this thread's context could
+            // not resume while GetResult() is holding it, and a budget cannot lift a deadlock — the operation would
+            // finish and the continuation would still be waiting for the thread that is waiting for it. Cockpit's own
+            // chain configures away from the context throughout, but the MCP client's does not answer to us.
+            access = Task.Run(() => oauthCoordinator.AcquireAsync(server, interactive: false, budget), budget)
+                .GetAwaiter()
+                .GetResult();
         }
         catch (OperationCanceledException)
         {

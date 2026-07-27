@@ -37,9 +37,13 @@ internal sealed class McpOAuthCoordinator(
         if (stored is not null && !stored.IsForResource(server.Url))
         {
             logger.LogWarning(
-                "The stored credential for MCP server {Server} was obtained for a different address and will not be used; sign in again for the address it now points at.",
+                "The stored credential for MCP server {Server} does not belong to the address it now points at, so it will not be used; signing in again will replace it.",
                 server.Name);
-            return McpOAuthAccess.AuthorizationRequired;
+
+            // Discarded rather than returned on: treated as absent is what the rule above says, and absent is a state
+            // an interactive sign-in can still recover from. Returning here instead would leave a name that changed
+            // hands permanently unauthorizable, since the stale record is never removed either.
+            stored = null;
         }
 
         if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin))
