@@ -60,8 +60,13 @@ public class ProjectLogoStoreTests : IDisposable
 
         var stored = await Store().SaveAsync("p1", source);
 
+        Assert.NotNull(stored);
         Path.GetExtension(stored).Should().Be(".png");
-        using var decoded = SKBitmap.Decode(stored);
+        // Decoded from bytes, not from the path: the path overload has SkiaSharp open the file itself, and that handle
+        // goes at finalization rather than when the bitmap is disposed. Under the load of the full solution run the
+        // teardown's delete then hits an open handle and fails the class from Dispose (AC-340) — a failure that names
+        // whichever test ran last and says nothing about this one.
+        using var decoded = SKBitmap.Decode(File.ReadAllBytes(stored));
         decoded.Should().NotBeNull("a stored logo that no decoder accepts is the same as no logo");
         decoded!.Width.Should().BeGreaterThan(1);
         decoded.GetPixel(decoded.Width / 2, decoded.Height / 2).Alpha.Should().BeGreaterThan(0, "the drawing must actually be on it");
@@ -76,8 +81,11 @@ public class ProjectLogoStoreTests : IDisposable
 
         var stored = await Store().SaveAsync("p1", source);
 
+        Assert.NotNull(stored);
         Path.GetExtension(stored).Should().Be(".png");
-        SKBitmap.Decode(stored).Should().NotBeNull();
+        // Bytes rather than the path, for the reason spelled out in AnSvg_IsStoredAsThePngItDrawsTo (AC-340).
+        using var decoded = SKBitmap.Decode(File.ReadAllBytes(stored));
+        decoded.Should().NotBeNull();
     }
 
     [Fact]
