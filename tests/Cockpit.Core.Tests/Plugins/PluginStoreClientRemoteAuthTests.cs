@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -13,19 +11,21 @@ namespace Cockpit.Core.Tests.Plugins;
 /// bearer header to the store's own origin, a public store sends none, and the token is never attached to an
 /// absolute icon or zip URL on a foreign host — a credential belongs only on a request to the store's own host.
 /// </summary>
-public class PluginStoreClientRemoteAuthTests : IDisposable
+public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 {
-    private readonly HttpListener _store = new();
-    private readonly HttpListener _foreign = new();
-    private readonly string _prefix;
-    private readonly string _foreignPrefix;
     private readonly ConcurrentDictionary<string, string?> _authByPath = new();
     private readonly PluginStoreClient _client = new();
+    private LoopbackHttpServer? _store;
+    private LoopbackHttpServer? _foreign;
+    private string _prefix = string.Empty;
+    private string _foreignPrefix = string.Empty;
 
-    public PluginStoreClientRemoteAuthTests()
+    public async Task InitializeAsync()
     {
-        _prefix = _StartListener(_store);
-        _foreignPrefix = _StartListener(_foreign);
+        _store = await LoopbackHttpServer.StartAsync(_RecordAndAnswerAsync);
+        _foreign = await LoopbackHttpServer.StartAsync(_RecordAndAnswerAsync);
+        _prefix = _store.BaseUrl;
+        _foreignPrefix = _foreign.BaseUrl;
     }
 
     [Fact]
@@ -93,59 +93,26 @@ public class PluginStoreClientRemoteAuthTests : IDisposable
         result.Error.Should().Contain("unsafe");
     }
 
-    private string _StartListener(HttpListener listener)
+    private async Task _RecordAndAnswerAsync(HttpContext context)
     {
-        var prefix = $"http://127.0.0.1:{_FreePort()}/";
-        listener.Prefixes.Add(prefix);
-        listener.Start();
-        _ = _ServeAsync(listener);
+        // Absent and present-but-empty are recorded apart: "sent no header" is the assertion the token tests make,
+        // and an empty header would still be a header the client chose to attach.
+        _authByPath[context.Request.Path.ToString()] =
+            context.Request.Headers.TryGetValue("Authorization", out var authorization) ? authorization.ToString() : null;
 
-        return prefix;
+        await context.Response.WriteAsync("""{ "name": "s", "plugins": [] }""");
     }
 
-    private async Task _ServeAsync(HttpListener listener)
+    public async Task DisposeAsync()
     {
-        while (listener.IsListening)
+        if (_store is not null)
         {
-            HttpListenerContext context;
-            try
-            {
-                context = await listener.GetContextAsync();
-            }
-            catch (Exception)
-            {
-                return; // listener stopped
-            }
-
-            _authByPath[context.Request.Url!.AbsolutePath] = context.Request.Headers["Authorization"];
-
-            var body = Encoding.UTF8.GetBytes("""{ "name": "s", "plugins": [] }""");
-            context.Response.StatusCode = 200;
-            await context.Response.OutputStream.WriteAsync(body);
-            context.Response.Close();
+            await _store.DisposeAsync();
         }
-    }
 
-    private static int _FreePort()
-    {
-        var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-
-        return port;
-    }
-
-    public void Dispose()
-    {
-        foreach (var listener in new[] { _store, _foreign })
+        if (_foreign is not null)
         {
-            if (listener.IsListening)
-            {
-                listener.Stop();
-            }
-
-            listener.Close();
+            await _foreign.DisposeAsync();
         }
     }
 }
