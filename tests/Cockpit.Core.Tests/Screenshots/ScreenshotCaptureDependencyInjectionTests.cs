@@ -15,10 +15,8 @@ namespace Cockpit.Core.Tests.Screenshots;
 /// a Snip overlay, a privacy-gated helper) is out of unit-test reach; this is the purely testable part.
 /// </summary>
 /// <remarks>
-/// It also proves the Windows implementation can actually be built, which is not a given: it is the only one
-/// with a dependency of its own (<see cref="IScreenshotClipboard"/>, registered over in the app assembly
-/// because Avalonia's clipboard hangs off a window). A missing registration there would surface as a resolve
-/// failure the first time an operator pressed the key, not at startup.
+/// It also proves each implementation can actually be built with what the container has, which a resolve
+/// failure would otherwise only reveal the first time an operator pressed the key rather than at startup.
 /// </remarks>
 public class ScreenshotCaptureDependencyInjectionTests
 {

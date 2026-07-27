@@ -230,7 +230,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
-            _viewModel.PasteAsync = null;
+            _viewModel.PasteTextAsync = null;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
@@ -239,7 +239,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
             _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
-            _viewModel.PasteAsync = _OnPasteRequestedAsync;
+            _viewModel.PasteTextAsync = _OnPasteTextAsync;
             _viewModel.PropertyChanged += _OnViewModelPropertyChanged;
             // The profile may already have been configured (dialog confirmed) before this view existed;
             // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
@@ -356,63 +356,36 @@ public partial class TtyView : UserControl
     }
 
     /// <summary>
-    /// Performs the terminal's own paste for an injected screenshot (AC-226) by raising the paste keystroke on the
-    /// control, exactly as the keyboard does.
+    /// Pastes text into the terminal on the session's behalf (AC-341) — the path of a screenshot the operator
+    /// just took, handed to the control the same way any other paste is.
     /// </summary>
     /// <remarks>
-    /// Synthesised rather than written to the pty because the control does not forward this key: measured on
-    /// 2026-07-25, pressing Ctrl+V here never puts <c>0x16</c> on the wire, so writing that byte reached nothing.
-    /// Raising the event drives whatever the control already does, without this code having to know what that is.
-    /// The control is focused first — a key event on an unfocused terminal is one it has no reason to act on.
+    /// <c>Paste</c> rather than a synthesised Ctrl+V, which is what this did while the image travelled by
+    /// clipboard: the key made the control go and read the clipboard, and the control's own paste is what this
+    /// wanted from it in the first place. Nothing has to negotiate an image format now, because nothing but text
+    /// crosses this line.
+    /// <para>
+    /// The terminal is focused first, not because the paste needs it — it writes to the pty directly — but because
+    /// the operator's next move is to type the sentence that goes with the screenshot.
+    /// </para>
     /// </remarks>
-    /// <remarks>
-    /// Returns a task that completes once the paste has actually happened, not once it has been scheduled. The
-    /// caller releases its one-capture-at-a-time guard on that task, and a second capture arriving inside the
-    /// delay would overwrite the clipboard the first one is still waiting to paste from.
-    /// </remarks>
-    private Task _OnPasteRequestedAsync()
+    private Task _OnPasteTextAsync(string text)
     {
         var pasted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(
-            () =>
-            {
-                try
-                {
-                    _PasteIntoTerminal();
-                }
-                finally
-                {
-                    pasted.TrySetResult();
-                }
-            },
-            PasteAfterPickerDelay));
-
-        return pasted.Task;
-    }
-
-    /// <summary>
-    /// How long to let the OS picker finish closing before the paste. Not about the clipboard — the capture has
-    /// already read the image from it, so it is demonstrably there — but about focus: the snip overlay is still
-    /// tearing down when the capture returns, and a key event on a control that does not have focus yet is one
-    /// nothing acts on. Same reasoning, and the same order of magnitude, as the delay the voice auto-submit uses
-    /// to keep its carriage return out of the transcript's own pty read (AC-64).
-    /// </summary>
-    private static readonly TimeSpan PasteAfterPickerDelay = TimeSpan.FromMilliseconds(200);
-
-    private void _PasteIntoTerminal()
-    {
-        Terminal.Focus();
-        Terminal.RaiseEvent(new KeyEventArgs
+        Dispatcher.UIThread.Post(() =>
         {
-            RoutedEvent = InputElement.KeyDownEvent,
-            Source = Terminal,
-            Key = Key.V,
-            KeyModifiers = KeyModifiers.Control,
+            try
+            {
+                Terminal.Focus();
+                Terminal.Paste(text);
+            }
+            finally
+            {
+                pasted.TrySetResult();
+            }
         });
 
-        _logger?.LogInformation(
-            "TTY-DIAG [paste] raised Ctrl+V on the terminal control for an injected screenshot (focused={Focused}).",
-            Terminal.IsFocused);
+        return pasted.Task;
     }
 
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
