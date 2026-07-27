@@ -528,6 +528,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a warning that a newer one wrote over is no longer lost. The bar holds one sentence for every kind of usage
+  it reports, so a context window filling up would take the place of a week that is nearly spent — and because each
+  figure only speaks when it crosses its threshold, the week had already had its turn and said nothing more. Clear
+  the context and the bar went quiet on both. It now keeps what each of them has to say for as long as each is still
+  over its line, and falls back to the most recent one still standing rather than to nothing. Dismissing takes the
+  whole bar down, including what it was covering — a bar that reappears by itself after you click it away reads as
+  the click not having worked — and a figure that drops back and climbs again is news once more.
+
 - fixed: a control you cannot use now looks like one. A disabled button or dropdown kept its label at full strength,
   so the only sign it was unavailable was that clicking did nothing — the theme was setting the faded colour on the
   control while the text was being coloured by a rule of its own that won. The same rule had quietly been undoing

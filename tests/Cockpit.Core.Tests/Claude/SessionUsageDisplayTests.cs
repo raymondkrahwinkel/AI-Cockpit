@@ -136,7 +136,7 @@ public class SessionUsageDisplayTests
         session.UsageWarning.Should().Contain("back");
     }
 
-    // The seven below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The eight below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
 
@@ -217,21 +217,22 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
-    public void DismissingTheBar_DoesNotHandItToWhateverItWasCoveringUp()
+    public void DismissingTheBar_SilencesWhatItWasCoveringUpAsWell()
     {
-        // Dismiss is a decision about the bar, not about the sentence in it. Handing it straight to the warning
-        // underneath would read as the click not having worked, and there is no way to tell the two apart.
+        // Dismiss is a decision about the bar, not about the sentence that happened to be in it. Silencing only
+        // the words on screen would leave the covered warning free to appear later, on the back of some third
+        // signal clearing — a bar that comes back on its own after a click reads as the click not having worked.
         var session = Build();
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
-
         session.DismissUsageWarningCommand.Execute(null);
-
         Assert.False(session.HasUsageWarning);
 
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+        // A third signal speaks and then goes quiet again: the bar has somewhere to fall back to, and must not.
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 4, null)]);
 
-        Assert.False(session.HasUsageWarning, "the week was silenced along with the bar it was under");
+        Assert.False(session.HasUsageWarning, "the week went quiet along with the bar it was standing under");
     }
 
     [Fact]
@@ -246,6 +247,26 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 96, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 96% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void ASignalThatCameBackAfterBeingSilenced_CanHoldTheBarAgain()
+    {
+        // Being away lifts the silence for the fallback too, not only for speaking. Kept, a spent silence would
+        // skip that signal for the rest of the session — it would say its piece on the crossing and then never
+        // be the one the bar falls back to, which is the swallowing this whole change is about.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 96, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 4, null)]);
 
         Assert.True(session.HasUsageWarning);
         Assert.Contains("Week is 96% used", session.UsageWarning);
