@@ -250,9 +250,9 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             // key; OAuth is negotiated by the SDK via the authorizer. AC-89: a cockpit-hosted endpoint gets this
             // session's per-session token when it has one (so its requests are attributed to this pane), else the
             // shared app key.
-            AdditionalHeaders = (server.CockpitHosted && sessionToken is not null ? sessionToken : CockpitMcpBearer.For(server, authKey)) is { } bearer
-                ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearer}" }
-                : new Dictionary<string, string>(),
+            // The operator's own headers first (AC-354), then the auth-derived Authorization on top: a server that has
+            // both configured sends the credential its auth setting names rather than one typed by hand and left behind.
+            AdditionalHeaders = _Headers(server, sessionToken),
             // Interactive: this transport is built for a session the operator started, which is a moment they may be
             // asked to sign in. The pre-flight tool count never reaches here — EnumerateServerToolsAsync returns
             // early for an OAuth server precisely so counting tokens cannot open a browser (AC-134).
@@ -260,6 +260,25 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
+
+    // The same operator-headers-versus-managed-credential rule the spawn paths use (McpAgentHeaders), with the one
+    // difference that belongs to this route: in-process the cockpit sets the Authorization itself, where a spawned
+    // agent's config has its provider write it. Sharing the rule rather than restating it is the point — this is the
+    // second caller, and a rule stated twice is the one that drifts.
+    private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken)
+    {
+        var bearer = server.CockpitHosted && sessionToken is not null
+            ? sessionToken
+            : CockpitMcpBearer.For(server, authKey);
+
+        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer), StringComparer.OrdinalIgnoreCase);
+        if (bearer is not null)
+        {
+            headers["Authorization"] = $"Bearer {bearer}";
+        }
+
+        return headers;
+    }
 
     private sealed class McpToolSession(IReadOnlyList<McpClient> clients, IReadOnlyList<AIFunction> tools, IReadOnlyList<string> names, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
         : IMcpToolSession

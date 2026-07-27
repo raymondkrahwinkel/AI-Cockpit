@@ -32,6 +32,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: an MCP server that wants a header of its own now works. Some do not take `Authorization: Bearer` at all —
+  they want `X-Api-Key`, or a scheme other than Bearer — and until now there was no way to configure that, not even
+  by pasting the value in by hand. An HTTP server in the MCP servers dialog has a small list of custom headers you
+  can fill in, and they reach every session route: your own tool loop, and a Claude, Codex or Kimi session alike.
+  The value is masked as you type and stored under the same protection as an API key, because a header like that is
+  a credential in all but name — which is the whole reason the field exists.
+
+  A token in a query parameter stays unsupported. The specification is explicit that a credential must not travel
+  there, and a URL ends up in logs and proxies in a way a header does not.
+
+  On the Codex route the value travels through the environment rather than the command line, the same way its bearer
+  token already did: a process argument is readable by every other account on the machine.
+
 - added: an MCP server that asks you to sign in through your browser now reaches every kind of session, not only the
   ones the cockpit drives itself. Until now such a server was handed to Claude, Codex or Kimi as a bare address with
   no credential on it: in a terminal session you could at least tell the agent to sign in again on its own account,

@@ -93,6 +93,20 @@ internal static class KimiMcpConfig
             ? environmentVariables.GetValueOrDefault(WellKnownSessionEnvironment.CockpitMcpKey)
             : server.BearerToken;
 
-        return string.IsNullOrEmpty(token) ? [] : [new { name = "Authorization", value = $"Bearer {token}" }];
+        // The operator's own headers (AC-354) for a server that wants X-Api-Key or another scheme, then the bearer
+        // the auth setting produced. The host has already removed Authorization from that set when a credential
+        // covers it, so the two cannot both be sent.
+        var headers = new List<object>();
+        foreach (var (name, value) in server.Headers)
+        {
+            headers.Add(new { name, value });
+        }
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            headers.Add(new { name = "Authorization", value = $"Bearer {token}" });
+        }
+
+        return [.. headers];
     }
 }

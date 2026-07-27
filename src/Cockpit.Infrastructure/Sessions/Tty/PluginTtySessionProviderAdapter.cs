@@ -179,6 +179,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             Name = server.Name,
             Url = server.Url,
             BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
+            Headers = McpAgentHeaders.For(server, CockpitMcpBearer.UserCredential(server, oauthAccessToken)),
             CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer

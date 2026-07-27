@@ -94,16 +94,30 @@ internal static class ClaudeMcpConfig
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
             var entry = new JsonObject { ["type"] = "http", ["url"] = server.Url };
+
+            // The operator's own headers first (AC-354), so a server wanting X-Api-Key rather than a bearer works
+            // here too; the host has already taken Authorization out of that set when a credential covers it.
+            var headers = new JsonObject();
+            foreach (var (name, value) in server.Headers)
+            {
+                headers[name] = value;
+            }
+
             if (server.CockpitHosted)
             {
                 // Reference the env var Claude Code expands at spawn (AC-40): ${COCKPIT_MCP_KEY}. The key never
                 // lands in this file, so the config can stay a plain (world-readable) write.
                 var envReference = "${" + WellKnownSessionEnvironment.CockpitMcpKey + "}";
-                entry["headers"] = new JsonObject { ["Authorization"] = $"Bearer {envReference}" };
+                headers["Authorization"] = $"Bearer {envReference}";
             }
             else if (!string.IsNullOrWhiteSpace(server.BearerToken))
             {
-                entry["headers"] = new JsonObject { ["Authorization"] = $"Bearer {server.BearerToken}" };
+                headers["Authorization"] = $"Bearer {server.BearerToken}";
+            }
+
+            if (headers.Count > 0)
+            {
+                entry["headers"] = headers;
             }
 
             return entry;

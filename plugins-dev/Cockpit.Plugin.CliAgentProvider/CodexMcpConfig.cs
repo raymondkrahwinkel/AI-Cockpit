@@ -20,6 +20,9 @@ internal static class CodexMcpConfig
     /// <summary>Prefix for the per-server env var a bearer token is passed through, indexed so two servers never collide.</summary>
     private const string TokenEnvVarPrefix = "COCKPIT_MCP_TOKEN_";
 
+    /// <summary>Prefix for the env var one custom header's value is passed through, indexed per server and per header.</summary>
+    private const string HeaderEnvVarPrefix = "COCKPIT_MCP_HEADER_";
+
     public static CodexMcpLaunch Build(IReadOnlyList<PluginMcpServer>? servers)
     {
         if (servers is null || servers.Count == 0)
@@ -64,6 +67,25 @@ internal static class CodexMcpConfig
                 var tokenEnvVar = $"{TokenEnvVarPrefix}{index}";
                 environmentVariables[tokenEnvVar] = server.BearerToken;
                 fields.Add($"bearer_token_env_var = {_TomlString(tokenEnvVar)}");
+            }
+
+            // Custom headers (AC-354) go through Codex's env_http_headers — header name mapped to the *name* of an
+            // environment variable — rather than http_headers, which would take the value literally and so put it in
+            // a -c argument. That is the same rule the bearer token above follows, and for the same reason: a process
+            // argument is readable by every local account, and a custom header is where the credential goes for a
+            // server that does not take a bearer.
+            if (server.Headers.Count > 0)
+            {
+                var mappings = new List<string>();
+                var headerIndex = 0;
+                foreach (var (name, value) in server.Headers)
+                {
+                    var headerEnvVar = $"{HeaderEnvVarPrefix}{index}_{headerIndex++}";
+                    environmentVariables[headerEnvVar] = value;
+                    mappings.Add($"{_TomlString(name)} = {_TomlString(headerEnvVar)}");
+                }
+
+                fields.Add($"env_http_headers = {{ {string.Join(", ", mappings)} }}");
             }
 
             return $"{{ {string.Join(", ", fields)} }}";
