@@ -162,9 +162,10 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
-        // A press on the control panel is a press on a tool, not the start of a region. Without this the panel
-        // would be the one part of the surface where pressing a button also began a drag underneath it.
-        if (e.Source is Visual source && Controls.IsVisualAncestorOf(source))
+        // A press anywhere on the control panel belongs to the panel, not to the picture. Self included: the
+        // padding and the gaps between the rows have no child control to catch them, so a press there resolves to
+        // the panel itself — and that is a good part of what an operator sees as the panel.
+        if (e.Source is Visual source && source.GetSelfAndVisualAncestors().Contains(Controls))
         {
             return;
         }
@@ -363,13 +364,14 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
-    /// Puts the control panel on the display the pointer is on, and out from under what is marked out. The window
-    /// spans every screen at once, so its own middle is a spot nobody is looking at — and a panel over the region
-    /// being dragged sits on top of the one thing the surface is for.
+    /// Puts the control panel on the display the pointer is on, and out from under what is marked out where there
+    /// is room for that. The window spans every screen at once, so its own middle is a spot nobody is looking at —
+    /// and a panel over the region being dragged sits on top of the one thing the surface is for.
     /// </summary>
     /// <remarks>
     /// Moved rather than faded: a panel you can see through is still a panel you cannot drag underneath, and the
-    /// press would land on a tool instead of on the picture.
+    /// press would land on a tool instead of on the picture. A selection covering the whole screen leaves nowhere
+    /// to move it to, and then it stays where it is — there is no third edge.
     /// </remarks>
     private void _PlaceControls()
     {
@@ -386,10 +388,15 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
-        var display = selection.DisplayAt(_pointer.X, _pointer.Y) is { } bounds
-            ? _ToRect(selection.ToSurface(bounds))
-            : new Rect(0, 0, Surface.Bounds.Width, Surface.Bounds.Height);
+        // Left where it was when the pointer is on no display at all — the gap a staggered arrangement leaves.
+        // Centring on the whole window would put the panel in that gap, which is the one place with no screen
+        // behind it.
+        if (selection.DisplayAt(_pointer.X, _pointer.Y) is not { } bounds)
+        {
+            return;
+        }
 
+        var display = _ToRect(selection.ToSurface(bounds));
         var left = display.X + ((display.Width - size.Width) / 2);
         var top = display.Y + ControlsMargin;
 
@@ -399,8 +406,10 @@ public partial class ScreenshotSelectionWindow : Window
             top = display.Bottom - size.Height - ControlsMargin;
         }
 
-        Canvas.SetLeft(Controls, left);
-        Canvas.SetTop(Controls, top);
+        // Clamped last, against the window rather than the display: a screen narrower or shorter than the panel
+        // would otherwise push it off the edge, and a panel half outside the window is a tool you cannot press.
+        Canvas.SetLeft(Controls, Math.Clamp(left, 0, Math.Max(0, Surface.Bounds.Width - size.Width)));
+        Canvas.SetTop(Controls, Math.Clamp(top, 0, Math.Max(0, Surface.Bounds.Height - size.Height)));
     }
 
     private static Rect _ToRect((double X, double Y, double Width, double Height) area) =>

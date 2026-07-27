@@ -128,16 +128,27 @@ internal static class ScreenshotSelectionScene
         // The bytes are never decoded: the surface is handed the bitmap directly, and this only has to say where
         // the pixels came from. A capture off a real desktop carries the encoded image for what happens after.
         Image = [],
-        Displays = split
-            ?
-            [
-                _Display(desktop with { Width = desktop.Width / 2 }, new CaptureRect(0, 0, image.Width / 2, image.Height)),
-                _Display(
-                    new CaptureRect(desktop.Width / 2, 0, desktop.Width - (desktop.Width / 2), desktop.Height),
-                    new CaptureRect(image.Width / 2, 0, image.Width - (image.Width / 2), image.Height)),
-            ]
-            : [_Display(desktop, new CaptureRect(0, 0, image.Width, image.Height))],
+        Displays = split ? _SideBySide(desktop, image) : [_Display(desktop, new CaptureRect(0, 0, image.Width, image.Height))],
     };
+
+    /// <summary>
+    /// Two screens meeting in the middle. The right-hand one takes what is left rather than half again, so an odd
+    /// width leaves neither a gap nor an overlap between them — a column belonging to no display is a column the
+    /// surface refuses to drag on.
+    /// </summary>
+    private static IReadOnlyList<CapturedDisplay> _SideBySide(CaptureRect desktop, PixelSize image)
+    {
+        var desktopSplit = desktop.Width / 2;
+        var imageSplit = image.Width / 2;
+
+        return
+        [
+            _Display(desktop with { Width = desktopSplit }, new CaptureRect(0, 0, imageSplit, image.Height)),
+            _Display(
+                new CaptureRect(desktopSplit, 0, desktop.Width - desktopSplit, desktop.Height),
+                new CaptureRect(imageSplit, 0, image.Width - imageSplit, image.Height)),
+        ];
+    }
 
     private static CapturedDisplay _Display(CaptureRect desktop, CaptureRect image) => new()
     {

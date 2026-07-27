@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
-        xmlns:materialIcons="using:Material.Icons.Avalonia"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         x:Class="Cockpit.App.Views.ScreenshotSelectionWindow"
         x:DataType="vm:ScreenshotSelectionViewModel"
         WindowDecorations="None"
@@ -90,7 +90,7 @@
     <!-- The control panel (AC-358), on a Canvas of its own so it can be put where the pointer's display is and
          moved out from under whatever is being dragged. The Canvas has no background, so only the panel itself
          takes the pointer — the rest of the surface still starts a drag. -->
-    <Canvas Name="Chrome">
+    <Canvas>
       <Border Name="Controls"
               Background="{StaticResource CockpitPanelBgBrush}"
               BorderBrush="{StaticResource CockpitHairlineBrush}"
