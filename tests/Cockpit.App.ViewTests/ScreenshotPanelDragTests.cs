@@ -85,6 +85,11 @@ public class ScreenshotPanelDragTests
     /// A press on a tool is that tool's. Pressing a button and shifting a pixel while doing it has to choose the
     /// tool rather than pick the panel up — which is most presses on a panel, by area and by intent.
     /// </summary>
+    /// <remarks>
+    /// Nothing in this app makes that true: a button handles its own press, so it never reaches the window that
+    /// would start the drag. This first had a guard against it, which a mutation showed to be unreachable — the
+    /// guard came out and the test stayed, because what it holds is the behaviour and not the guard.
+    /// </remarks>
     [Fact]
     public void APressOnATool_ChoosesIt_RatherThanPickingThePanelUp() => _OnTheSurface(surface =>
     {

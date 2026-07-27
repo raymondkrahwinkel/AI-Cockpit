@@ -246,14 +246,12 @@ public partial class ScreenshotSelectionWindow : Window
         // itself — and that is a good part of what an operator sees as the panel.
         if (_PanelUnder(e.Source) is { } panel)
         {
-            // Anywhere but a tool starts moving it. A press on a tool is that tool's — pressing a button and
-            // shifting a pixel while doing so must choose the tool, not pick the panel up.
-            if (e.Source is Visual pressed && !pressed.GetSelfAndVisualAncestors().OfType<Button>().Any())
-            {
-                _panelDrag = (panel, e.GetPosition(panel));
-                e.Pointer.Capture(this);
-            }
-
+            // And picks it up. A press on a tool never arrives here at all — a button handles its own press, so
+            // it does not reach the window — which is what leaves pressing a tool as pressing a tool rather than
+            // as the start of a drag. Everything that does arrive is padding, a gap between rows, a label or the
+            // panel itself, and all of those are things an operator would call "the panel".
+            _panelDrag = (panel, e.GetPosition(panel));
+            e.Pointer.Capture(this);
             return;
         }
 
