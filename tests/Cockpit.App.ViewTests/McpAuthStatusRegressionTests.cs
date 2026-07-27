@@ -40,39 +40,13 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public async Task SignIn_ForARowNeverSaved_UsesTheTypedName_NotThePlaceholderItWasCreatedWith()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(McpOAuthAccess.Authorized("token"));
-
-        // What "Add server" produces: a placeholder name the operator is about to replace, and nothing in the store.
-        var editable = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
-        editable.Name = "depot";
-        editable.Transport = McpTransport.Http;
-        editable.Url = "https://depot.example/mcp";
-        editable.Auth = McpServerAuth.OAuth;
-
-        await editable.SignInCommand.ExecuteAsync(null);
-
-        // Pinning to the placeholder files the token under a name that is about to be replaced: saving writes
-        // "depot", the fan-out looks up "depot", and the bearer sits under "new server" behind a "signed in" badge.
-        await coordinator.Received().AcquireAsync(
-            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
-            true,
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task SignIn_AfterRenamingAndEditingTheUrl_AuthorizesAgainstWhatIsTypedButUnderTheStoredName()
+    public async Task SignIn_AfterEditingTheUrl_AuthorizesAgainstWhatIsTypedUnderTheStoredName()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(McpOAuthAccess.Authorized("token"));
         var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
 
-        editable.Name = "depot-renamed";
         editable.Url = "https://depot.example/mcp/v2";
         await editable.SignInCommand.ExecuteAsync(null);
 
@@ -193,47 +167,72 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public async Task SignOut_AfterRenamingARowThatSignedInWhileUnsaved_WithdrawsUnderTheNameItWasFiledBy()
+    public void ARowThatWasNeverSaved_OffersNoSignIn()
     {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(McpOAuthAccess.Authorized("token"));
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
-
         var editable = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
+            new McpServerConfig { Name = "new server", Command = "npx" },
+            Substitute.For<IMcpOAuthCoordinator>(),
+            isPersisted: false);
         editable.Name = "depot";
         editable.Transport = McpTransport.Http;
         editable.Url = "https://depot.example/mcp";
         editable.Auth = McpServerAuth.OAuth;
-        await editable.SignInCommand.ExecuteAsync(null);
 
-        editable.Name = "vault";
-        await editable.SignOutCommand.ExecuteAsync(null);
-
-        // Once a sign-in has filed the token, the row must stop following the name box. Letting it keep tracking sent
-        // the withdrawal to a name nothing was filed under: the operator was told their access was gone while the
-        // bearer stayed in cockpit.json. Same defect as the two rounds before, one case further along.
-        await coordinator.Received().SignOutAsync(
-            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
-            Arg.Any<CancellationToken>());
+        // A sign-in is filed under a server's name, and this row has no name in the store yet — whatever it is called
+        // right now is what the operator is still typing. Four rounds of review each found the same defect one case
+        // further along because the row guessed which name its token was under; not acting until there is a name to
+        // file under removes the guess instead of refining it.
+        Assert.False(editable.IsSignInAvailable);
+        Assert.False(editable.SignInCommand.CanExecute(null));
+        Assert.False(editable.SignOutCommand.CanExecute(null));
+        Assert.NotEmpty(editable.SignInUnavailableReason);
     }
 
     [Fact]
-    public async Task RenamingAServer_KeepsItsTokenWithdrawable()
+    public async Task RenamingAServer_WithdrawsTheOfferUntilTheNameIsPutBack()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
         var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
         await editable.RefreshAuthStateAsync();
+        Assert.True(editable.SignInCommand.CanExecute(null));
 
         editable.Name = "vault";
 
-        // Clearing the badge on a rename looks like the URL case and is not: the row still points at the token, and
-        // the withdraw button is gated on the badge — hiding it would strand a credential the operator can no longer
-        // reach. What a rename actually breaks is the save, which is a storage question and its own ticket.
-        Assert.True(editable.ShowAuthStatus);
+        // While the typed name and the stored one disagree, neither action has a name it could honestly act on. Said
+        // rather than left as a dead button — and reversible, because putting the name back is all it takes.
+        Assert.False(editable.IsSignInAvailable);
+        Assert.False(editable.SignOutCommand.CanExecute(null));
+        Assert.NotEmpty(editable.SignInUnavailableReason);
+
+        editable.Name = "depot";
+
+        Assert.True(editable.IsSignInAvailable);
         Assert.True(editable.SignOutCommand.CanExecute(null));
+        Assert.Empty(editable.SignInUnavailableReason);
+    }
+
+    [Fact]
+    public async Task Load_SaysWhichSavedServersAreHiddenBecauseTheCockpitRunsOneByThatName()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "mine", Transport = McpTransport.Http, Url = "https://mine.example/mcp" },
+            new() { Name = "plugin-server", Transport = McpTransport.Http, Url = "https://ours.example/mcp" },
+        });
+
+        var provider = Substitute.For<ICockpitInternalMcpProvider>();
+        provider.GetServers().Returns([new McpServerConfig { Name = "plugin-server", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" }]);
+
+        var viewModel = new McpServersViewModel(store, [provider]);
+        await viewModel.LoadAsync();
+
+        // The row is filtered out of the dialog and the next save writes only what the dialog holds — so an entry the
+        // operator configured, under a name a plugin has since taken, is deleted. Tidying up a leftover an older
+        // build wrote is the intent; doing either without a word is not.
+        Assert.Single(viewModel.Servers);
+        Assert.Contains("plugin-server", viewModel.StatusMessage);
     }
 
     [Fact]

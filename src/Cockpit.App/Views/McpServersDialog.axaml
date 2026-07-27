@@ -134,10 +134,12 @@
                         <TextBox Text="{Binding OAuthClientId}"/>
                     </StackPanel>
 
-                    <!-- Sign-in status (AC-355): authorizes against the URL/authority as currently typed, so fixing a
-                         wrong authority and then signing in uses what is on screen rather than the last save. Both
-                         actions are async and can take a while (a browser round-trip) — IsAuthBusy disables the row
-                         rather than freezing the dialog. -->
+                    <!-- Sign-in status (AC-355): both actions are offered only while this row still stands for the
+                         server the store knows by that name (IsSignInAvailable) — a sign-in is filed under that name,
+                         and a row that has not been saved, or whose name has been retyped, has no such name to file
+                         under. The reason is shown rather than left as a dead button. Both actions are async and can
+                         take a while (a browser round-trip) — IsAuthBusy disables them rather than freezing the
+                         dialog. -->
                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
                         <TextBlock Text="Sign-in" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
@@ -152,6 +154,9 @@
                         </Grid>
                         <TextBlock Text="Working…" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding IsAuthBusy}"/>
+                        <TextBlock Text="{Binding SignInUnavailableReason}" FontSize="10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding SignInUnavailableReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Text="{Binding AuthMessage}" FontSize="10" TextWrapping="Wrap"
                                    Foreground="{StaticResource CockpitStatusWaitingBrush}"
                                    IsVisible="{Binding AuthMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

@@ -28,7 +28,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// not in the store yet has no such name, and pinning it to the placeholder it was created with would file the
     /// token under a name the operator is about to replace: for those, the typed name is the one that will be saved.
     /// </summary>
-    private string? _storedUnderName;
+    private readonly string? _storedUnderName;
 
     [ObservableProperty]
     private string _name;
@@ -149,11 +149,17 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
     }
 
-    // Deliberately no OnNameChanged clearing the badge, unlike OnUrlChanged. It looks like the same case and is not:
-    // the row keeps pointing at the token through _storedUnderName, so "signed in" is still true and Sign out still
-    // withdraws the right one — and clearing the badge would disable Sign out (it needs Authorized), leaving a token
-    // the operator can no longer withdraw. What a rename really breaks is the save: the registry gets the new name
-    // while the token keeps the old, and nothing moves it. That is a storage question, not a badge question.
+    // Renaming needs no badge-clearing of its own: while the typed name differs from the stored one the buttons are
+    // simply not offered (IsSignInAvailable), which says the same thing without leaving a token unreachable — the
+    // trap in clearing the badge is that Sign out is gated on it. What a rename still breaks is the save, where the
+    // registry gets the new name and the token keeps the old; that is storage, not display, and it is AC-403.
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsSignInAvailable));
+        OnPropertyChanged(nameof(SignInUnavailableReason));
+        SignInCommand.NotifyCanExecuteChanged();
+        SignOutCommand.NotifyCanExecuteChanged();
+    }
 
     partial void OnAuthChanged(McpServerAuth value)
     {
@@ -172,6 +178,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
             AuthState = null;
             AuthMessage = string.Empty;
         }
+
+        OnPropertyChanged(nameof(IsSignInAvailable));
+        OnPropertyChanged(nameof(SignInUnavailableReason));
 
         SignInCommand.NotifyCanExecuteChanged();
         SignOutCommand.NotifyCanExecuteChanged();
@@ -224,6 +233,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// been saved, the typed one, since that is what saving is about to write.
     /// </summary>
     private McpServerConfig _AuthTarget() => ToConfig() with { Name = _storedUnderName ?? Name.Trim() };
+
+    // Only ever called while IsSignInAvailable, so the name above is the stored one. The fallback stands for the
+    // design-time row, which has no coordinator to call anyway.
 
     /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
     public McpServerConfig ToConfig() => new()
@@ -279,7 +291,27 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         }
     }
 
-    private bool CanSignIn => IsOAuthAuth && !IsAuthBusy;
+    /// <summary>
+    /// Whether this row still stands for the server the store knows by that name — the condition both sign-in and
+    /// sign-out are gated on, and the reason the key can no longer drift.
+    /// <para>
+    /// A token is filed under a server's name, which the operator may retype at will. Four rounds of review on this
+    /// ticket each found the same defect one case further along, because the row was guessing which name its token
+    /// was under: the placeholder of a new row, the name at construction, the name at the moment a sign-in happened.
+    /// Refusing to act while the row and the store disagree removes the guess instead of improving it — the name is
+    /// then always the stored one, because that is the only state in which either button is offered.
+    /// </para>
+    /// </summary>
+    public bool IsSignInAvailable =>
+        _storedUnderName is not null && string.Equals(Name.Trim(), _storedUnderName, StringComparison.Ordinal);
+
+    /// <summary>Why the buttons are unavailable, or empty when they are not — a disabled control with no reason is a puzzle.</summary>
+    public string SignInUnavailableReason =>
+        !IsOAuthAuth || IsSignInAvailable ? string.Empty
+        : _storedUnderName is null ? "Save this server first — signing in files the token under its name."
+        : "Save the new name first — the sign-in is filed under the name this server is stored as.";
+
+    private bool CanSignIn => IsOAuthAuth && !IsAuthBusy && IsSignInAvailable;
 
     /// <summary>
     /// The operator's own "log me in" act (AC-355) — the one call site anywhere that asks interactively, and so the
@@ -299,19 +331,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var target = _AuthTarget();
-            var access = await _oauthCoordinator.AcquireAsync(target, interactive: true).ConfigureAwait(true);
+            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(), interactive: true).ConfigureAwait(true);
             AuthState = access.State;
-            if (access.State == McpAuthState.Authorized)
-            {
-                // From here the token exists under this name, so the row stops following what is typed. Without this
-                // a row that had never been saved kept tracking the box: rename it after signing in and the next
-                // withdrawal went looking under a name nothing was filed under, reported the access as gone, and
-                // left the bearer in place. That defect has now moved twice; pinning it at the moment it becomes
-                // true is what stops it moving again.
-                _storedUnderName = target.Name;
-            }
-            else
+            if (access.State != McpAuthState.Authorized)
             {
                 // AcquireAsync only ever answers with a state, never the failure detail (and never a token to
                 // leak, Iron Law #8) — so this stays a fixed, short line rather than any exception text.
@@ -328,7 +350,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         }
     }
 
-    private bool CanSignOut => IsOAuthAuth && !IsAuthBusy && AuthState == McpAuthState.Authorized;
+    private bool CanSignOut => IsOAuthAuth && !IsAuthBusy && IsSignInAvailable && AuthState == McpAuthState.Authorized;
 
     /// <summary>Withdraws whatever access is held for this server (AC-355) — only offered while there is something to withdraw.</summary>
     [RelayCommand(CanExecute = nameof(CanSignOut))]

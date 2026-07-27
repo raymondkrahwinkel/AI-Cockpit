@@ -65,13 +65,22 @@ public partial class McpServersViewModel : ViewModelBase
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var servers = await _store.LoadAsync();
+        var hidden = servers.Where(server => internalNames.Contains(server.Name.Trim())).ToList();
+
         Servers.Clear();
-        foreach (var server in servers.Where(server => !internalNames.Contains(server.Name)))
+        foreach (var server in servers.Where(server => !internalNames.Contains(server.Name.Trim())))
         {
             Servers.Add(new EditableMcpServerViewModel(server, _oauthCoordinator));
         }
 
         SelectedServer = Servers.FirstOrDefault();
+
+        // Saying it out loud, because the next Save writes only what is on screen and these are not. For a leftover
+        // an older build wrote that is the intended tidy-up; for a server the operator configured under a name a
+        // plugin has since taken, it is their entry being deleted — and until now both happened without a word.
+        StatusMessage = hidden.Count == 0
+            ? string.Empty
+            : $"Hidden here because the cockpit already runs a server by that name: {string.Join(", ", hidden.Select(server => server.Name.Trim()))}. Saving removes them — rename yours first if you meant to keep it.";
 
         // Reads storage only (AC-355) — cheap enough to run for every row up front, so the list shows each OAuth
         // server's standing without the operator having to select one first.
