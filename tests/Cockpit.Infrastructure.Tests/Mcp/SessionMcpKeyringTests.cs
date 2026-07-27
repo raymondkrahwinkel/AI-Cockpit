@@ -39,8 +39,28 @@ public class SessionMcpKeyringTests
         var keyring = new SessionMcpKeyring();
         var token = keyring.TokenFor("pane-a");
 
-        keyring.Revoke("pane-a");
+        keyring.Revoke("pane-a", token);
 
         keyring.PaneFor(token).Should().BeNull();
+    }
+
+    /// <summary>
+    /// The restart race: a pane that restarts mints its replacement token before the old driver is disposed, so the
+    /// revoke that follows arrives after the new token is already live. Revoking by pane alone would drop it and leave
+    /// the running session holding a bearer this keyring no longer recognises.
+    /// </summary>
+    [Fact]
+    public void Revoke_WithASupersededToken_LeavesTheLiveOneAlone()
+    {
+        var keyring = new SessionMcpKeyring();
+        var old = keyring.TokenFor("pane-a");
+        var live = keyring.TokenFor("pane-a");
+
+        keyring.Revoke("pane-a", old);
+
+        // Only the live token is asserted here: the superseded one stopped resolving at the second mint, not at this
+        // revoke, and TokenFor_MintingAgainForAPane_ReplacesTheOldToken… is what pins that. Asserting it again would
+        // read as coverage this test does not provide.
+        keyring.PaneFor(live).Should().Be("pane-a", "the restarted session is still using this one");
     }
 }

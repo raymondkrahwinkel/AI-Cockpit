@@ -12,8 +12,16 @@ namespace Cockpit.Infrastructure.Mcp;
 /// approvals).
 /// <para>
 /// A token is a capability like the app key: it grants access to the loopback endpoints and additionally names the
-/// session. It is minted at spawn, kept only in memory, and revoked when the session ends. Minting for a pane that
-/// already has one replaces it, so a restarted pane never carries a stale identity.
+/// session. It is minted at spawn and kept only in memory. Minting for a pane that already has one replaces it, so a
+/// restarted pane never carries a stale identity.
+/// </para>
+/// <para>
+/// Revocation is by the minter: a driver that minted a token drops it when its session ends
+/// (<c>PluginSessionDriverAdapter.DisposeAsync</c>), which covers plugin-backed, embedded and delegated sessions.
+/// <b>Not yet covered:</b> a TTY session's token (<c>TtyLauncher</c> mints, and the pty's end is handled in the app
+/// layer, which cannot reach this class) and the local-model tool loop's (<c>McpToolProvider</c> mints per connect).
+/// Those survive until the pane is reused or the app restarts — the same window the shared app key has anyway, so it
+/// is a hygiene gap rather than a hole, but it is a gap and this says so rather than claiming otherwise (AC-89).
 /// </para>
 /// </summary>
 internal sealed class SessionMcpKeyring : ISingletonService
@@ -39,12 +47,24 @@ internal sealed class SessionMcpKeyring : ISingletonService
     public string? PaneFor(string token) =>
         _tokenToPane.TryGetValue(token, out var paneId) ? paneId : null;
 
-    /// <summary>Drops a session's token when it ends, so a dead pane's identity cannot be presented again.</summary>
-    public void Revoke(string paneId)
+    /// <summary>
+    /// Drops a session's token when it ends, so a dead pane's identity cannot be presented again. Takes the token the
+    /// caller minted, not just the pane, because a revoke arriving late cannot tell by pane alone whether the token it
+    /// means is still the live one — and dropping by pane would then take a running session's bearer with it.
+    /// </summary>
+    /// <remarks>
+    /// No current path mints twice for one pane with both drivers alive (a pane id is fixed per session view model and
+    /// a second start is refused while one is running), so this is a guard against a shape the code could grow rather
+    /// than a fix for one it has. It is worth the parameter anyway: the failure it prevents — a live session holding a
+    /// bearer the keyring has forgotten — is silent, and the cost of preventing it is one comparison.
+    /// </remarks>
+    public void Revoke(string paneId, string token)
     {
-        if (_paneToToken.TryRemove(paneId, out var token))
+        if (_paneToToken.TryGetValue(paneId, out var current) && string.Equals(current, token, StringComparison.Ordinal))
         {
-            _tokenToPane.TryRemove(token, out _);
+            _paneToToken.TryRemove(paneId, out _);
         }
+
+        _tokenToPane.TryRemove(token, out _);
     }
 }
