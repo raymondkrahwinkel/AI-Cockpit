@@ -380,18 +380,45 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     public async Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)
     {
-        // Unlock first — git refuses to remove a locked worktree without a second --force. It may already be
-        // unlocked (a prune elsewhere, a manual git), which git reports as a non-zero we deliberately ignore: the
-        // removal is the step that has to succeed, and it says so itself if it cannot.
-        await GitCli.RunAsync(record.RepositoryRoot, ["worktree", "unlock", record.Path], cancellationToken).ConfigureAwait(false);
+        var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
 
-        string[] arguments = force
-            ? ["worktree", "remove", "--force", record.Path]
-            : ["worktree", "remove", record.Path];
-        await GitCli.RunCheckedAsync(record.RepositoryRoot, arguments, cancellationToken).ConfigureAwait(false);
+        // A refusal about a folder that is still on disk stands: it may hold work, and git said in its own words why
+        // it would not go. With the folder already gone there is nothing left for git to remove — a manual delete
+        // plus a prune, or a repository that moved away — and the registry entry is the only thing that outlived the
+        // worktree. Dropping that entry IS the removal then. Failing instead would leave the panel a row whose
+        // Remove button can never succeed (AC-342), and git's own admin entry, if one lingers, is what the reconcile
+        // sweep's prune is for.
+        if (refusal is not null && Directory.Exists(record.Path))
+        {
+            throw new InvalidOperationException(refusal);
+        }
 
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
         _TryRemoveEmptyParentDirectory(record.Path);
+    }
+
+    // Asks git to remove the worktree and reports what it refused with, or null when it went through. Unlocked
+    // first because git declines a locked worktree without a second --force; that unlock may itself fail (already
+    // unlocked after a prune elsewhere, or a manual git) and is deliberately ignored — the removal is the step that
+    // has to land, and it speaks for itself. git being unrunnable here at all (the repository folder is gone) is a
+    // refusal like any other: the caller decides what it means, knowing whether the worktree is still on disk.
+    private static async Task<string?> _AskGitToRemoveAsync(WorktreeRecord record, bool force, CancellationToken cancellationToken)
+    {
+        string[] arguments = force
+            ? ["worktree", "remove", "--force", record.Path]
+            : ["worktree", "remove", record.Path];
+
+        try
+        {
+            await GitCli.RunAsync(record.RepositoryRoot, ["worktree", "unlock", record.Path], cancellationToken).ConfigureAwait(false);
+            var removal = await GitCli.RunAsync(record.RepositoryRoot, arguments, cancellationToken).ConfigureAwait(false);
+
+            return removal.ExitCode == 0 ? null : GitCli.DescribeFailure(removal);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return exception.Message;
+        }
     }
 
     // The per-repository grouping folder (<worktreesRoot>/<repo-hash>/) is left behind empty once its last worktree
@@ -482,6 +509,16 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken)
     {
+        // A worktree whose folder is gone has no working copy left to keep, and nothing about it can be measured
+        // either: the clean check below runs git inside that folder and fails, which counts as "not clean" and marks
+        // the record retained — so teardown left exactly the entry the panel then could not remove (AC-342). Drop it
+        // here instead. The branch is kept, as on every other removal, so commits that live only there stay reachable.
+        if (!Directory.Exists(record.Path))
+        {
+            await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         bool clean;
         try
         {

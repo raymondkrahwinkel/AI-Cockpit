@@ -424,6 +424,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a worktree whose folder you deleted by hand can be removed from Managed worktrees again. git no longer knows
+  such a tree, so it refused the removal and the row came straight back — with nothing on screen to say why. The row
+  is now cleared away (the branch is kept, as always), "Clean up finished" sweeps one up too, and a removal git does
+  refuse — a tree still on disk holding work — says what git said instead of looking like a button that does nothing.
+  Closing a session whose folder went the same way no longer parks the entry in the panel either: with nothing left
+  on disk to keep, it is let go at teardown rather than held for review that has nothing to review.
 - fixed: a session a flow started could never be relabelled by a ticket you linked to it afterwards. Its name is put
   together from the profile and the clock — "Claude — 14:22" — which nobody chose, but it was treated as a name you
   had picked, so the link left it alone. It now stays open to being labelled, the same as a session that was never

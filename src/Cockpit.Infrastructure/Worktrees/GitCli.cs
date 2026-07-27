@@ -118,18 +118,27 @@ internal static class GitCli
         var result = await RunAsync(workingDirectory, arguments, cancellationToken, environment).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            // git says why in words a person can act on ("a branch named 'x' already exists"); that is what the
-            // caller sees, not "git exited with 128" — but with the checkout progress ("Updating files: 42% …",
-            // written to stderr and carriage-returned over itself) stripped out first, so a failed worktree add
-            // surfaces the actual error instead of a hundred percent-lines.
-            // git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"),
-            // so redact any URL userinfo before this reaches the caller's dialog/log — the same binding rule the
-            // display of the arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
-            var said = RedactUrlCredentials(StripProgress(result.StandardError));
-            throw new InvalidOperationException(said.Length > 0 ? said : $"git exited with {result.ExitCode}.");
+            throw new InvalidOperationException(DescribeFailure(result));
         }
 
         return result.StandardOutput.Trim();
+    }
+
+    /// <summary>
+    /// What git refused with, in the words it used. git says why in terms a person can act on ("a branch named 'x'
+    /// already exists"); that is what a caller surfaces, not "git exited with 128" — but with the checkout progress
+    /// ("Updating files: 42% …", written to stderr and carriage-returned over itself) stripped out first, so a failed
+    /// worktree add shows the actual error instead of a hundred percent-lines.
+    /// <para>
+    /// git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"), so any
+    /// URL userinfo is redacted before this reaches a dialog or a log — the same binding rule the display of the
+    /// arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
+    /// </para>
+    /// </summary>
+    internal static string DescribeFailure(GitResult result)
+    {
+        var said = RedactUrlCredentials(StripProgress(result.StandardError));
+        return said.Length > 0 ? said : $"git exited with {result.ExitCode}.";
     }
 
     /// <summary>
