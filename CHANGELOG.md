@@ -32,6 +32,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: the selection surface tells you what it can do, instead of expecting you to know. A small panel sits on it
+  with the three tools on it — dragging a region, taking a whole window, painting over what should not be sent —
+  each showing its key, with the one you are in lit up, and each of them clickable: the mouse is already in your
+  hand, because you are dragging with it. R is the way back to dragging a region from either of the others. The
+  panel puts itself on the screen your pointer is on rather than in the middle of a desktop that spans three of
+  them, and it moves to the other edge when what you have marked out runs underneath it, so it is never standing
+  on the thing you are trying to take.
+
 - added: you can paint over what should not leave your machine. Press B on the selection surface and drag a box over
   anything you would rather the model did not see — a token in a terminal, a mail address, a password manager open
   behind the window — and Ctrl+Z takes the last one back. The blocks are applied to the picture itself, not drawn on

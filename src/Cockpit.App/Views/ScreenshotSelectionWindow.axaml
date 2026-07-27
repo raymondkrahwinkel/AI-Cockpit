@@ -1,6 +1,7 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:materialIcons="using:Material.Icons.Avalonia"
         x:Class="Cockpit.App.Views.ScreenshotSelectionWindow"
         x:DataType="vm:ScreenshotSelectionViewModel"
         WindowDecorations="None"
@@ -9,6 +10,55 @@
         Background="Black"
         CanResize="False"
         Cursor="Cross">
+
+  <Window.Styles>
+    <!-- The panel's own controls. Styled here rather than in Theme.axaml because nothing else in the app is a
+         chip-sized tool button over a frozen screenshot, and a token nobody else reads is a token in the wrong
+         place. The colours themselves all come from the theme. -->
+    <Style Selector="Button.tool">
+      <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}" />
+      <!-- The surface handles every key itself, and a focused button would take them. Clicking a tool must not
+           cost you the keyboard — the two are meant to be interchangeable, not exclusive. -->
+      <Setter Property="Focusable" Value="False" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}" />
+      <Setter Property="TextElement.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}" />
+    </Style>
+    <!-- The chosen tool, said in the accent rather than only by a shade of grey: which mode you are in is the
+         one thing this panel exists to answer. -->
+    <Style Selector="Button.tool.active">
+      <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.tool.active /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}" />
+      <Setter Property="TextElement.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.tool:disabled /template/ ContentPresenter">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+    <Style Selector="Border.key">
+      <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="MinWidth" Value="18" />
+    </Style>
+    <Style Selector="Border.key > TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}" />
+    </Style>
+  </Window.Styles>
 
   <!-- The captured image is the background, not a transparent layer over the live screen: what feels like
        dragging on your desktop is dragging on a frozen picture of it. Stretch="Fill" is deliberate — the window
@@ -37,17 +87,60 @@
       </Border>
     </Canvas>
 
-    <Border VerticalAlignment="Top"
-            HorizontalAlignment="Center"
-            Margin="0,24,0,0"
-            Background="{StaticResource CockpitSecondaryBgBrush}"
-            BorderBrush="{StaticResource CockpitHairlineBrush}"
-            BorderThickness="1"
-            CornerRadius="4"
-            Padding="12,6">
-      <TextBlock Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                 FontSize="12"
-                 Text="{Binding Hint}" />
-    </Border>
+    <!-- The control panel (AC-358), on a Canvas of its own so it can be put where the pointer's display is and
+         moved out from under whatever is being dragged. The Canvas has no background, so only the panel itself
+         takes the pointer — the rest of the surface still starts a drag. -->
+    <Canvas Name="Chrome">
+      <Border Name="Controls"
+              Background="{StaticResource CockpitPanelBgBrush}"
+              BorderBrush="{StaticResource CockpitHairlineBrush}"
+              BorderThickness="1"
+              CornerRadius="12"
+              Padding="12,10">
+        <StackPanel Spacing="9">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Name="RegionTool" Classes="tool" Classes.active="{Binding DraggingRegion}" Click="_OnRegionTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="SelectDrag" Width="15" Height="15" />
+                <TextBlock Text="Region" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="R" /></Border>
+              </StackPanel>
+            </Button>
+
+            <!-- Disabled where the desktop will not say where its windows are (Wayland). ShowOnDisabled, because
+                 Avalonia hides a tooltip on a disabled control by default — and the reason it is off is exactly
+                 what an operator hovering it wants to know. -->
+            <Button Name="WindowTool" Classes="tool" Classes.active="{Binding PickingWindow}"
+                    IsEnabled="{Binding CanPickWindow}"
+                    ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="{Binding WindowToolTip}"
+                    Click="_OnWindowTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="WindowMaximize" Width="15" Height="15" />
+                <TextBlock Text="Window" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="W" /></Border>
+              </StackPanel>
+            </Button>
+
+            <Button Name="RedactTool" Classes="tool" Classes.active="{Binding Redacting}" Click="_OnRedactTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="EyeOff" Width="15" Height="15" />
+                <TextBlock Text="Hide" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="B" /></Border>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <Rectangle Height="1" Fill="{StaticResource CockpitHairlineBrush}" />
+
+          <TextBlock Name="HintText"
+                     Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                     FontSize="12"
+                     MaxWidth="430"
+                     TextWrapping="Wrap"
+                     Text="{Binding Hint}" />
+        </StackPanel>
+      </Border>
+    </Canvas>
   </Panel>
 </Window>

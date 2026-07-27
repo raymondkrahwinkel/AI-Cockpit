@@ -1,7 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -24,9 +27,15 @@ public partial class ScreenshotSelectionWindow : Window
     private ScreenshotSelectionViewModel? _selection;
     private Bitmap? _bitmap;
 
+    /// <summary>How far the control panel sits from the edge of the display it is on.</summary>
+    private const double ControlsMargin = 24;
+
     /// <summary>The rectangles standing in for the redaction boxes, one per box, added to the canvas as they are drawn.</summary>
     private readonly List<Rectangle> _boxes = [];
     private bool _wasActivated;
+
+    /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
+    private Point _pointer;
 
     public ScreenshotSelectionWindow()
     {
@@ -153,6 +162,13 @@ public partial class ScreenshotSelectionWindow : Window
             return;
         }
 
+        // A press on the control panel is a press on a tool, not the start of a region. Without this the panel
+        // would be the one part of the surface where pressing a button also began a drag underneath it.
+        if (e.Source is Visual source && Controls.IsVisualAncestorOf(source))
+        {
+            return;
+        }
+
         // In window mode the press is the confirmation, not the start of a drag. Falling through to BeginDrag
         // would put a zero-size rectangle where the highlighted window was, and EndDrag would then clear it —
         // so the click that is meant to take the window is exactly what threw it away.
@@ -195,6 +211,13 @@ public partial class ScreenshotSelectionWindow : Window
         {
             return;
         }
+
+        _pointer = e.GetPosition(Surface);
+
+        // Placed on every move, not only on the ones that redraw the selection. The panel follows the display the
+        // pointer is on, and moving between screens without a button down is exactly how an operator gets there —
+        // so leaving it to the drag and window-mode branches below left it on whichever screen the surface opened.
+        _PlaceControls();
 
         // Window mode first: the button may well be down — an operator holding it while moving is still
         // pointing at windows, and treating that as a drag would replace the highlight with a rectangle of
@@ -248,6 +271,11 @@ public partial class ScreenshotSelectionWindow : Window
                 // Boxes are a mode too: the same drag either marks out what to take or what to hide, and the
                 // operator says which before moving the pointer.
                 selection.Redact(!selection.Redacting);
+                break;
+            case Key.R:
+                // The way back to the ordinary drag. W and B toggle, so it was always reachable by pressing the
+                // one you were in again — but only if you knew which that was, which is what this epic is about.
+                _ChooseRegion(selection);
                 break;
             case Key.Z when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 selection.UndoRedaction();
@@ -303,6 +331,81 @@ public partial class ScreenshotSelectionWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// The tools, chosen with the mouse (AC-358). Each makes exactly the call its key makes and is followed by
+    /// the same redraw — a button that did something subtly different from the key beside it would be worse than
+    /// no button at all.
+    /// </summary>
+    private void _OnRegionTool(object? sender, RoutedEventArgs e) => _Tool(_ChooseRegion);
+
+    private void _OnWindowTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.PickWindows(!selection.PickingWindow));
+
+    private void _OnRedactTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Redact(!selection.Redacting));
+
+    private void _Tool(Action<ScreenshotSelectionViewModel> choose)
+    {
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        choose(selection);
+        _Draw();
+    }
+
+    /// <summary>Back to the ordinary drag, whichever of the other two was on.</summary>
+    private static void _ChooseRegion(ScreenshotSelectionViewModel selection)
+    {
+        selection.PickWindows(false);
+        selection.Redact(false);
+    }
+
+    /// <summary>
+    /// Puts the control panel on the display the pointer is on, and out from under what is marked out. The window
+    /// spans every screen at once, so its own middle is a spot nobody is looking at — and a panel over the region
+    /// being dragged sits on top of the one thing the surface is for.
+    /// </summary>
+    /// <remarks>
+    /// Moved rather than faded: a panel you can see through is still a panel you cannot drag underneath, and the
+    /// press would land on a tool instead of on the picture.
+    /// </remarks>
+    private void _PlaceControls()
+    {
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        // Bounds until it has been arranged once, DesiredSize before that — the first placement happens as the
+        // window opens, and a panel measured at nothing would be pinned to the corner it started in.
+        var size = Controls.Bounds.Width > 0 ? Controls.Bounds.Size : Controls.DesiredSize;
+        if (size.Width <= 0)
+        {
+            return;
+        }
+
+        var display = selection.DisplayAt(_pointer.X, _pointer.Y) is { } bounds
+            ? _ToRect(selection.ToSurface(bounds))
+            : new Rect(0, 0, Surface.Bounds.Width, Surface.Bounds.Height);
+
+        var left = display.X + ((display.Width - size.Width) / 2);
+        var top = display.Y + ControlsMargin;
+
+        if (selection.Selection is { } region
+            && _ToRect(selection.ToSurface(region)).Intersects(new Rect(left, top, size.Width, size.Height)))
+        {
+            top = display.Bottom - size.Height - ControlsMargin;
+        }
+
+        Canvas.SetLeft(Controls, left);
+        Canvas.SetTop(Controls, top);
+    }
+
+    private static Rect _ToRect((double X, double Y, double Width, double Height) area) =>
+        new(area.X, area.Y, area.Width, area.Height);
+
     private void _Measure()
     {
         if (_selection is not { } selection)
@@ -321,6 +424,8 @@ public partial class ScreenshotSelectionWindow : Window
         {
             return;
         }
+
+        _PlaceControls();
 
         var width = Surface.Bounds.Width;
         var height = Surface.Bounds.Height;

@@ -81,7 +81,23 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Whether the surface is drawing boxes to hide rather than choosing what to take.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
     private bool _redacting;
+
+    /// <summary>
+    /// Whether the pointer is doing the ordinary thing — dragging out a region. The resting state said as a
+    /// property of its own, so the control panel can mark it the same way it marks the other two rather than
+    /// leaving the one you are actually in as the only unlit button (AC-358).
+    /// </summary>
+    public bool DraggingRegion => !PickingWindow && !Redacting;
+
+    /// <summary>
+    /// What the window tool says when you hover it — including, where this desktop will not allow it, why it is
+    /// greyed out. A disabled control that says nothing is the failure AC-220 was rejected for, one layer down.
+    /// </summary>
+    public string WindowToolTip => CanPickWindow
+        ? "Take a whole window: click the one you want"
+        : "Picking a window is not something this desktop will allow — it will not say where other applications' windows are";
 
     /// <summary>
     /// Turns redaction on, which needs something to redact — there is nothing to hide until a region has been
@@ -237,6 +253,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Whether the surface is highlighting whole windows rather than waiting for a drag.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
     private bool _pickingWindow;
 
     /// <summary>Turns window picking on, if this desktop can do it. Off again puts the surface back to dragging a region.</summary>
@@ -396,6 +413,18 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     {
         Result = null;
         IsClosed = true;
+    }
+
+    /// <summary>
+    /// The display a point on the window falls on, as its rectangle in the image's pixels — or nothing where the
+    /// point is in the gap a staggered arrangement leaves. The control panel is put on it rather than on the
+    /// window, because the window spans every screen at once and its middle is a place nobody is looking (AC-358).
+    /// </summary>
+    public CaptureRect? DisplayAt(double surfaceX, double surfaceY)
+    {
+        var point = ToImagePixel(surfaceX, surfaceY);
+
+        return _capture.Displays.FirstOrDefault(display => display.ImageBounds.Contains(point))?.ImageBounds;
     }
 
     /// <summary>Where a point on the window falls in the image, through the one ratio everything here goes by.</summary>

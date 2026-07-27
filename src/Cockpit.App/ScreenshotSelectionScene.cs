@@ -32,6 +32,13 @@ internal static class ScreenshotSelectionScene
     public const string Redaction = "screenshot-selection-redaction";
 
     /// <summary>
+    /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
+    /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
+    /// whether the control panel found the screen the operator is actually on (AC-358).
+    /// </summary>
+    public const string TwoDisplays = "screenshot-selection-two-displays";
+
+    /// <summary>
     /// How much bigger the stand-in capture is than the surface drawing it. Two, rather than one, so the ratio
     /// between window units and image pixels is not 1: a capture the same size as its window makes every
     /// conversion look right whether or not it is, and a surface that only worked at 1 is how AC-329 came to
@@ -40,18 +47,18 @@ internal static class ScreenshotSelectionScene
     private const int CaptureScale = 2;
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
-    public static bool Covers(string? scene) => scene is Idle or Region or WindowPick or Redaction;
+    public static bool Covers(string? scene) => scene is Idle or Region or WindowPick or Redaction or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
     /// window — what tells them apart happens afterwards, in <see cref="Stage"/>, once it is on screen.
     /// </summary>
-    public static ScreenshotSelectionWindow Build(int width, int height)
+    public static ScreenshotSelectionWindow Build(string? scene, int width, int height)
     {
         var desktop = new CaptureRect(0, 0, width, height);
         var image = StandInDesktop.Draw(width * CaptureScale, height * CaptureScale);
         var window = ScreenshotSelectionWindow.Build(
-            _Capture(desktop, image.PixelSize), image, lastRegion: null, new StandInWindows(desktop));
+            _Capture(desktop, image.PixelSize, scene == TwoDisplays), image, lastRegion: null, new StandInWindows(desktop));
 
         // The real surface takes its size from the screens it covers, and a headless run has none.
         window.Width = width;
@@ -81,10 +88,18 @@ internal static class ScreenshotSelectionScene
                 surface.MouseMove(new Point(width * 0.24, height * 0.40));
                 break;
 
+            case TwoDisplays:
+                // Only the pointer: where the panel lands is the whole point, and a region would move it for a
+                // different reason and muddle the two.
+                surface.MouseMove(new Point(width * 0.78, height * 0.55));
+                break;
+
             case Redaction:
                 // A region first: redaction is refused until there is something to hide part of, so a scene that
-                // skipped this would render the refusal rather than the mode.
-                _Drag(surface, new Point(width * 0.14, height * 0.18), new Point(width * 0.86, height * 0.82));
+                // skipped this would render the refusal rather than the mode. Taken from high enough up to run
+                // under where the control panel rests, so this is also the scene that shows it getting out of
+                // the way — the one behaviour of the panel that only appears when something is in its place.
+                _Drag(surface, new Point(width * 0.14, height * 0.06), new Point(width * 0.86, height * 0.86));
                 surface.KeyPressQwerty(PhysicalKey.B, RawInputModifiers.None);
                 _Drag(surface, new Point(width * 0.20, height * 0.30), new Point(width * 0.44, height * 0.35));
                 _Drag(surface, new Point(width * 0.58, height * 0.62), new Point(width * 0.80, height * 0.67));
@@ -103,25 +118,32 @@ internal static class ScreenshotSelectionScene
     }
 
     /// <summary>
-    /// One display holding the whole stand-in image. Deliberately one: what a scene proves is how the surface
-    /// looks, and a second display changes only which points refuse a drag — arithmetic
-    /// <see cref="ViewModels.ScreenshotSelectionViewModel"/>'s own tests already hold, on layouts far nastier
-    /// than anything worth drawing here.
+    /// The displays the stand-in image is made of: one holding all of it, or two side by side splitting it down
+    /// the middle. One is enough for everything that is only about how the surface looks; two is what the control
+    /// panel needs, since its whole job is to be on the screen the operator is on rather than in the middle of a
+    /// window that spans them all.
     /// </summary>
-    private static ScreenCapture _Capture(CaptureRect desktop, PixelSize image) => new()
+    private static ScreenCapture _Capture(CaptureRect desktop, PixelSize image, bool split) => new()
     {
         // The bytes are never decoded: the surface is handed the bitmap directly, and this only has to say where
         // the pixels came from. A capture off a real desktop carries the encoded image for what happens after.
         Image = [],
-        Displays =
-        [
-            new CapturedDisplay
-            {
-                DesktopBounds = desktop,
-                Scale = CaptureScale,
-                ImageBounds = new CaptureRect(0, 0, image.Width, image.Height),
-            },
-        ],
+        Displays = split
+            ?
+            [
+                _Display(desktop with { Width = desktop.Width / 2 }, new CaptureRect(0, 0, image.Width / 2, image.Height)),
+                _Display(
+                    new CaptureRect(desktop.Width / 2, 0, desktop.Width - (desktop.Width / 2), desktop.Height),
+                    new CaptureRect(image.Width / 2, 0, image.Width - (image.Width / 2), image.Height)),
+            ]
+            : [_Display(desktop, new CaptureRect(0, 0, image.Width, image.Height))],
+    };
+
+    private static CapturedDisplay _Display(CaptureRect desktop, CaptureRect image) => new()
+    {
+        DesktopBounds = desktop,
+        Scale = CaptureScale,
+        ImageBounds = image,
     };
 
     /// <summary>
