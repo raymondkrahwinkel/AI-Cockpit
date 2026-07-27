@@ -98,7 +98,7 @@ public class ScreenshotAttachmentViewTests
 
     /// <summary>
     /// Runs the injection and hands back its answer. The seam is asynchronous because the terminal route writes
-    /// to the clipboard; a chat session queues an attachment and is done, so this asserts that rather than
+    /// the capture to a file; a chat session queues an attachment and is done, so this asserts that rather than
     /// blocking on a dispatcher these tests are already running on — which would deadlock if it ever changed.
     /// </summary>
     private static string? _Inject(SessionViewModel session, byte[] png)

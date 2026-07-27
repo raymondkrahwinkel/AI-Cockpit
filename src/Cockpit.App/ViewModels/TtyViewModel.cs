@@ -286,9 +286,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </remarks>
     protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
-        if (PasteTextAsync is not { } paste)
+        if (PasteTextAsync is null)
         {
-            return "This terminal session is not on screen, so there is nothing to paste into.";
+            return NoOneToPasteInto;
         }
 
         string path;
@@ -303,12 +303,24 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return "The screenshot could not be written to a temporary file, so it was not handed over.";
         }
 
+        // Read again rather than reuse what the check above saw. Writing the file is a real await, and the
+        // operator can close the session while it runs — <see cref="DisposeCoreAsync"/> clears this exactly so
+        // that a capture landing afterwards does not report success into a terminal that is gone. Holding the
+        // delegate across the await would defeat that; the check above only saves the file write.
+        if (PasteTextAsync is not { } paste)
+        {
+            _TryDelete(path);
+            return NoOneToPasteInto;
+        }
+
         // Awaited, not fired and forgotten: reporting success before the paste has happened lets the caller
         // release its one-capture-at-a-time guard too early, and the two captures would then race into the same
         // prompt.
         await paste(path);
         return null;
     }
+
+    private const string NoOneToPasteInto = "This terminal session is not on screen, so there is nothing to paste into.";
 
     /// <summary>
     /// Where this session's captures are spilled so the agent can read them: under the OS temp directory, in a
@@ -318,17 +330,69 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     internal string SpillDirectory { get; set; } = Path.Combine(Path.GetTempPath(), "cockpit-screenshots");
 
     /// <summary>
-    /// Writes the capture where the agent can pick it up and returns the path. The file outlives the paste on
-    /// purpose: the agent reads it when it gets round to the prompt, which is after the operator has typed their
-    /// sentence, so deleting it here would race them.
+    /// How long a spilled capture is kept. It has to outlive the paste by a wide margin — the agent reads the
+    /// file when it gets round to the prompt, which is after the operator has typed the sentence that goes with
+    /// it — so this is about not keeping them forever, not about reclaiming space promptly.
+    /// </summary>
+    private static readonly TimeSpan SpillRetention = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// Writes the capture where the agent can pick it up and returns the path, clearing out captures old enough
+    /// that nothing can still be waiting on them. Screenshots are exactly the thing this surface gives the
+    /// operator a redaction tool for, so leaving every one of them lying about indefinitely is not neutral.
     /// </summary>
     private async Task<string> _SpillAsync(byte[] screenshotPng)
     {
-        Directory.CreateDirectory(SpillDirectory);
+        _CreateSpillDirectory();
+        _PruneSpentSpills();
+
         var path = Path.Combine(SpillDirectory, $"screenshot-{Guid.NewGuid():N}.png");
         await File.WriteAllBytesAsync(path, screenshotPng);
 
         return path;
+    }
+
+    private void _CreateSpillDirectory()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(SpillDirectory);
+            return;
+        }
+
+        // Owner-only, because the temp directory is shared on Unix and a capture holds whatever was on the
+        // operator's screen. Only applied when the directory is created; an existing one keeps its mode.
+        Directory.CreateDirectory(SpillDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private void _PruneSpentSpills()
+    {
+        var spentBefore = DateTime.UtcNow - SpillRetention;
+        try
+        {
+            foreach (var spent in new DirectoryInfo(SpillDirectory).EnumerateFiles("screenshot-*.png").Where(file => file.LastWriteTimeUtc < spentBefore))
+            {
+                spent.Delete();
+            }
+        }
+        catch (Exception)
+        {
+            // Housekeeping is not the job here: a file another process still holds open, or a directory that
+            // turned read-only, must not cost the operator the screenshot they just took.
+        }
+    }
+
+    private static void _TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception)
+        {
+            // Same reasoning as the prune: the capture is already not being handed over, and failing to tidy up
+            // after it is not something to report on top of that.
+        }
     }
 
     /// <summary>

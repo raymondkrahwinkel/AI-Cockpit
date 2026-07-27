@@ -127,6 +127,29 @@ public class ScreenshotInjectionTests : IDisposable
     }
 
     /// <summary>
+    /// Captures old enough that nothing can still be waiting on them are cleared out when the next one is
+    /// written. A screenshot is precisely what this surface hands the operator a redaction tool for, so keeping
+    /// every one of them in a shared temp directory forever is a decision, not an absence of one.
+    /// </summary>
+    [Fact]
+    public async Task WritingACapture_ClearsOutOnesNothingCanStillBeWaitingOn()
+    {
+        Directory.CreateDirectory(_spillDirectory);
+        var spent = Path.Combine(_spillDirectory, "screenshot-spent.png");
+        var recent = Path.Combine(_spillDirectory, "screenshot-recent.png");
+        await File.WriteAllBytesAsync(spent, Png);
+        await File.WriteAllBytesAsync(recent, Png);
+        File.SetLastWriteTimeUtc(spent, DateTime.UtcNow.AddDays(-2));
+        var session = _CreateTtySession();
+        session.PasteTextAsync = _ => Task.CompletedTask;
+
+        await session.InjectScreenshotAsync(Png);
+
+        File.Exists(spent).Should().BeFalse("two days is long past any prompt the operator was still typing");
+        File.Exists(recent).Should().BeTrue("an agent may not have got round to reading this one yet");
+    }
+
+    /// <summary>
     /// A session with no view on it has nothing to paste into — a design-time graph, or a panel whose container
     /// left the tree. It says so, and writes no file it would only leave lying about.
     /// </summary>
