@@ -45,10 +45,23 @@ public sealed record PluginMcpServer
     public bool CockpitHosted { get; init; }
 
     /// <summary>
+    /// Extra headers the operator configured for this server, for one that wants <c>X-Api-Key</c> or another scheme
+    /// rather than <c>Authorization: Bearer</c> (AC-354). Treat every value as a credential: it is where a token goes
+    /// when the server does not take a bearer, so it must never be written where another local account can read it —
+    /// the same care <see cref="BearerToken"/> already gets on each provider's own config route.
+    /// <para>
+    /// <see cref="BearerToken"/> wins over an <c>Authorization</c> entry here, so a server that has both configured
+    /// sends the credential the auth setting named rather than a stale one typed by hand.
+    /// </para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Headers { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
     /// Overrides the record's auto-generated <c>ToString()</c>, which would otherwise print <see cref="BearerToken"/>
     /// in the clear — anywhere this lands in a log line or exception message (mirrors <c>CliAgentConfig.ToString()</c>).
     /// </summary>
     public override string ToString() =>
         $"{nameof(PluginMcpServer)} {{ Name = {Name}, Url = {Url}, Command = {Command}, " +
-        $"BearerToken = {(string.IsNullOrEmpty(BearerToken) ? "null" : "***")} }}";
+        $"BearerToken = {(string.IsNullOrEmpty(BearerToken) ? "null" : "***")}, " +
+        $"Headers = [{string.Join(", ", Headers.Keys)}] }}";
 }

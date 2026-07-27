@@ -25,6 +25,8 @@ internal sealed class McpServerEntry
 
     public string? OAuthClientId { get; set; }
 
+    public List<McpHeaderEntry> Headers { get; set; } = [];
+
     public bool Enabled { get; set; } = true;
 
     public static McpServerEntry FromDomain(McpServerConfig server) => new()
@@ -39,6 +41,7 @@ internal sealed class McpServerEntry
         ApiKey = server.ApiKey,
         OAuthAuthority = server.OAuthAuthority,
         OAuthClientId = server.OAuthClientId,
+        Headers = [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
         Enabled = server.Enabled,
     };
 
@@ -54,6 +57,9 @@ internal sealed class McpServerEntry
         ApiKey = ApiKey,
         OAuthAuthority = OAuthAuthority,
         OAuthClientId = OAuthClientId,
+        // A hand-edited config can leave a row half-written; an incomplete header is dropped rather than sent as a
+        // blank field name, which some servers answer with a protocol error rather than a useful message.
+        Headers = [.. (Headers ?? []).Select(entry => entry.ToDomain()).Where(header => header.IsComplete)],
         Enabled = Enabled,
     };
 }

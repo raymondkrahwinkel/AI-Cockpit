@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.App.ViewModels;
@@ -44,6 +46,14 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _enabled;
+
+    /// <summary>
+    /// Custom headers sent to an HTTP server alongside whatever <see cref="Auth"/> arranges (AC-354) — for a
+    /// server that expects <c>X-Api-Key</c> or another scheme <see cref="McpServerAuth.ApiKey"/> cannot express.
+    /// Shown whenever the transport is HTTP, independent of the auth choice: a header can sit next to None,
+    /// ApiKey or OAuth just as well.
+    /// </summary>
+    public ObservableCollection<McpHeaderRowViewModel> Headers { get; } = [];
 
     public IReadOnlyList<McpTransport> Transports { get; } = Enum.GetValues<McpTransport>();
 
@@ -91,6 +101,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _oAuthClientId = server.OAuthClientId ?? string.Empty;
         _enabled = server.Enabled;
         _selectedScope = McpServerScopeOption.For(server.Scope);
+
+        foreach (var header in server.Headers)
+        {
+            Headers.Add(new McpHeaderRowViewModel(header.Name, header.Value));
+        }
     }
 
     /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
@@ -108,6 +123,15 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         ApiKey = IsApiKeyAuth && !string.IsNullOrWhiteSpace(ApiKey) ? ApiKey.Trim() : null,
         OAuthAuthority = IsOAuthAuth && !string.IsNullOrWhiteSpace(OAuthAuthority) ? OAuthAuthority.Trim() : null,
         OAuthClientId = IsOAuthAuth && !string.IsNullOrWhiteSpace(OAuthClientId) ? OAuthClientId.Trim() : null,
+        Headers = IsHttp
+            ? [.. Headers.Select(row => new McpHeader(row.Name.Trim(), row.Value.Trim())).Where(header => header.IsComplete)]
+            : [],
         Enabled = Enabled,
     };
+
+    [RelayCommand]
+    private void AddHeader() => Headers.Add(new McpHeaderRowViewModel());
+
+    [RelayCommand]
+    private void RemoveHeader(McpHeaderRowViewModel row) => Headers.Remove(row);
 }

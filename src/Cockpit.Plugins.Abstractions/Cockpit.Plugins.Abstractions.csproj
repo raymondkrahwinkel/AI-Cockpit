@@ -191,7 +191,7 @@
          this assembly, so an older host loads an older SDK where the new member is absent and the call fails before
          any default body runs. A plugin calling it raises its manifest's minHostVersion. Additions only — a minor;
          major and abstractionsVersion stay 1. -->
-    <Version>1.29.0</Version>
+    <Version>1.30.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

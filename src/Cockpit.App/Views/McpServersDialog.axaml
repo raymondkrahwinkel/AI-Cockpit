@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -126,6 +127,35 @@
                         <TextBlock Text="OAuth client id (optional — dynamic registration if empty)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding OAuthClientId}"/>
+                    </StackPanel>
+
+                    <!-- Custom headers (AC-354): independent of the auth choice above, since Auth only covers the
+                         Authorization: Bearer shape — a server that expects X-Api-Key or another scheme needs a
+                         free header instead. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
+                        <TextBlock Text="Custom headers" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="For a server that expects X-Api-Key or another scheme instead of Authorization: Bearer."
+                                   FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding Headers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:McpHeaderRowViewModel">
+                                    <Grid ColumnDefinitions="4*,5*,Auto" ColumnSpacing="6" Margin="0,0,0,6">
+                                        <TextBox Grid.Column="0" Text="{Binding Name}" PlaceholderText="X-Api-Key"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="value"
+                                                 PasswordChar="•"/>
+                                        <Button Grid.Column="2" Classes="Subtle" VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:EditableMcpServerViewModel)DataContext).RemoveHeaderCommand}"
+                                                CommandParameter="{Binding}">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="+ Add header" Classes="Subtle" HorizontalAlignment="Left"
+                                Foreground="{StaticResource CockpitAccentBrush}"
+                                Command="{Binding AddHeaderCommand}"/>
                     </StackPanel>
 
                 </StackPanel>
