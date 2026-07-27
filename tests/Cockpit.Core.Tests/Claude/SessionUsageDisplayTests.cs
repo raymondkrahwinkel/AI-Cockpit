@@ -136,7 +136,7 @@ public class SessionUsageDisplayTests
         session.UsageWarning.Should().Contain("back");
     }
 
-    // The three below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The seven below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
 
@@ -181,6 +181,74 @@ public class SessionUsageDisplayTests
 
         Assert.True(session.HasUsageWarning);
         Assert.Contains("Context window is 51% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void AWarningACrossingCoveredUp_ComesBackWhenTheCoverGoesQuiet()
+    {
+        // One string carries every signal, so a later crossing writes over an earlier one. The earlier figure has
+        // spent its crossing by then, so when the cover cleared it used to leave an empty bar and never speak
+        // again — the week stayed at 95% with nothing on screen saying so.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        Assert.Contains("Context window is 60% used", session.UsageWarning);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 95% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void TheBarGoesBackToTheMostRecentCrossing_NotTheOldestOneStillStanding()
+    {
+        // Which of several standing warnings gets the bar is the same rule that put it there to begin with: the
+        // newest crossing. Anything else would mean a bar clearing quietly promotes an older figure over a newer
+        // one, and the host has no ranking of its own to justify that — a provider's signals are its business.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 93, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.Contains("Session (5 hours) is 93% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public void DismissingTheBar_DoesNotHandItToWhateverItWasCoveringUp()
+    {
+        // Dismiss is a decision about the bar, not about the sentence in it. Handing it straight to the warning
+        // underneath would read as the click not having worked, and there is no way to tell the two apart.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+
+        session.DismissUsageWarningCommand.Execute(null);
+
+        Assert.False(session.HasUsageWarning);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+
+        Assert.False(session.HasUsageWarning, "the week was silenced along with the bar it was under");
+    }
+
+    [Fact]
+    public void ASilencedSignalThatGoesAwayAndComesBack_IsNewsAgain()
+    {
+        // Silence lasts until the figure has actually been away. Otherwise dismissing once would mute that signal
+        // for the life of the session, and the next genuine crossing — the one you would want — says nothing.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 95, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 60, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 96, null)]);
+
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 96% used", session.UsageWarning);
     }
 
     [Fact]
