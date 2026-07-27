@@ -6,97 +6,163 @@ using Cockpit.Infrastructure.Screenshots;
 namespace Cockpit.Infrastructure.Tests.Screenshots;
 
 /// <summary>
-/// The Windows capture's clipboard-watching loop (AC-220). <c>ms-screenclip:</c> reports neither completion
-/// nor cancellation and puts the snip on the clipboard, so "did anything happen?" is answered by watching for
-/// an image that was not there before — which is the part with logic in it, and the part worth testing without
-/// a Snip overlay or two minutes of real time.
+/// The Windows capture against a faked screen (AC-327). What GDI does needs a desktop and is verified by hand;
+/// what is made of what it returns — which monitor's pixels sit where in the image — is arithmetic, and it is
+/// the arithmetic every crop the selection UI makes runs through.
 /// </summary>
 public class WindowsScreenshotCaptureTests
 {
-    private static readonly byte[] Snip = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
-    private static readonly byte[] AlreadyCopied = [0x89, 0x50, 0x4E, 0x47, 9, 9];
-
+    /// <summary>The ordinary machine: one monitor, and the image is it.</summary>
     [Fact]
-    public async Task AnImageAppearingOnTheClipboard_IsTheCapture()
+    public async Task OneMonitor_IsTheWholeImage()
     {
-        var launches = 0;
-        var capture = _Create(new ScriptedClipboard(null, null, Snip), () => launches++);
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 1920, 1080),
+            Displays = [_Display(0, 0, 1920, 1080)],
+        });
 
-        var screen = await capture.CaptureAsync();
+        var result = await capture.CaptureAsync();
 
-        Assert.NotNull(screen);
-        screen.Image.Should().Equal(Snip);
-        screen.Displays.Should().BeEmpty("a snip of the operator's choosing has no display layout to report (AC-333)");
-        launches.Should().Be(1, "the overlay is opened once, then watched for");
+        result.Should().NotBeNull();
+        result!.Displays.Should().ContainSingle();
+        result.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
     }
 
     /// <summary>
-    /// Whatever the operator had copied before is not their screenshot. Without this the capture would return
-    /// it instantly — a stale image attached to the session, and the picker still open.
+    /// Two monitors at different scales — the arrangement the whole epic is careful about. On Windows a
+    /// per-monitor-aware process is given both the metrics and the rectangles in real pixels, so a display's
+    /// width on the desktop is its width in the image and nothing is multiplied by anything.
     /// </summary>
     [Fact]
-    public async Task AnImageThatWasAlreadyOnTheClipboard_IsNotMistakenForTheCapture()
+    public async Task TwoMonitorsAtDifferentScales_MapToTheirOwnPixels()
     {
-        var clipboard = new ScriptedClipboard(AlreadyCopied, AlreadyCopied, Snip);
-        var capture = _Create(clipboard);
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 4800, 1620),
+            Displays = [_Display(0, 0, 2880, 1620, scale: 1.5), _Display(2880, 0, 1920, 1080)],
+        });
 
-        var screen = await capture.CaptureAsync();
+        var result = await capture.CaptureAsync();
 
-        Assert.NotNull(screen);
-        screen.Image.Should().Equal(Snip);
+        result!.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
+        result.Displays[1].ImageBounds.Should().Be(new CaptureRect(2880, 0, 1920, 1080));
+        result.Displays[0].Scale.Should().Be(1.5);
+        result.ToImagePixel(new CapturePoint(2880, 0)).Should().Be(new CapturePoint(2880, 0));
     }
 
-    /// <summary>A cancelled snip leaves the clipboard as it was, so the wait runs out — and running out is "nothing captured", not an error.</summary>
+    /// <summary>
+    /// A monitor placed to the left of the primary sits at a negative x, and the virtual screen starts there.
+    /// The image starts at its own corner regardless, so every display shifts by that corner — red if the blit's
+    /// origin is treated as (0,0), which puts the secondary monitor's pixels outside the image entirely.
+    /// </summary>
     [Fact]
-    public async Task AClipboardThatNeverChanges_EndsAsNothingCaptured()
+    public async Task AMonitorLeftOfThePrimary_ShiftsByTheVirtualScreensCorner()
     {
-        var clipboard = new ScriptedClipboard(AlreadyCopied, AlreadyCopied, AlreadyCopied, AlreadyCopied);
-        var capture = _Create(clipboard);
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(-1920, 0, 3840, 1080),
+            Displays = [_Display(-1920, 0, 1920, 1080), _Display(0, 0, 1920, 1080)],
+        });
 
-        var screen = await capture.CaptureAsync();
+        var result = await capture.CaptureAsync();
 
-        screen.Should().BeNull();
+        result!.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
+        result.Displays[1].ImageBounds.Should().Be(new CaptureRect(1920, 0, 1920, 1080));
+        result.ToImagePixel(new CapturePoint(-1920, 0)).Should().Be(new CapturePoint(0, 0));
     }
 
+    /// <summary>
+    /// The blit is asked for the virtual screen, not for a display — an L-shaped arrangement leaves area no
+    /// monitor covers, and the capture has to span it or the second monitor's rows are missing.
+    /// </summary>
     [Fact]
-    public async Task AnEmptyClipboardThroughout_EndsAsNothingCaptured()
+    public async Task TheBlitIsAskedForTheWholeVirtualScreen()
     {
-        var clipboard = new ScriptedClipboard(null, null, null, null);
-        var capture = _Create(clipboard);
+        var screen = new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 3840, 1440),
+            Displays = [_Display(0, 360, 1920, 1080), _Display(1920, 0, 1920, 1440)],
+        };
 
-        var screen = await capture.CaptureAsync();
+        await _Capture(screen).CaptureAsync();
 
-        screen.Should().BeNull();
+        screen.Requested.Should().Be(new CaptureRect(0, 0, 3840, 1440));
     }
 
-    /// <summary>Giving up on the wait must not leave the operator's own capture behind — cancelling propagates rather than returning a quiet null.</summary>
+    /// <summary>A virtual screen with no area is a desktop nobody can capture, and blitting zero by zero would hand back an empty image as though it had worked.</summary>
     [Fact]
-    public async Task Cancelling_StopsTheWait()
+    public async Task AVirtualScreenWithNoArea_IsRefused()
     {
-        var clipboard = new ScriptedClipboard(null, null, null, null);
-        var capture = new WindowsScreenshotCapture(clipboard, NullLogger<WindowsScreenshotCapture>.Instance);
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 0, 0),
+            Displays = [],
+        });
+
+        var act = async () => await capture.CaptureAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no area*");
+    }
+
+    /// <summary>
+    /// Cancelling is immediate. The old route waited two minutes on a clipboard that might never change; this
+    /// one has nothing to wait for, so the only honest moment to give up is before the screen is read at all.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_StopsBeforeTheScreenIsRead()
+    {
+        var screen = new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 1920, 1080),
+            Displays = [_Display(0, 0, 1920, 1080)],
+        };
         using var cancellation = new CancellationTokenSource();
-        capture.UseTestHarness(
-            launchOverlay: cancellation.Cancel,
-            wait: (_, token) => Task.FromCanceled(token),
-            pollInterval: TimeSpan.FromMilliseconds(1),
-            timeout: TimeSpan.FromMilliseconds(10));
+        await cancellation.CancelAsync();
 
-        var act = async () => await capture.CaptureAsync(cancellation.Token);
+        var act = async () => await _Capture(screen).CaptureAsync(cancellation.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
+        screen.Requested.Should().BeNull("nothing should have been blitted");
     }
 
-    /// <summary>Wires the capture to a clipboard script, a launch that does nothing real, and a wait that does not wait.</summary>
-    private static WindowsScreenshotCapture _Create(IScreenshotClipboard clipboard, Action? launchOverlay = null)
+    /// <summary>
+    /// A display unplugged between reading the layout and reading the pixels. GDI does not complain — the blit
+    /// clips to whatever is there now — so the image comes back the size that was asked for while describing a
+    /// desktop that no longer exists. Cropping by that layout takes the wrong region and looks entirely normal.
+    /// </summary>
+    [Fact]
+    public async Task ADisplayChangingMidCapture_IsRefused()
     {
-        var capture = new WindowsScreenshotCapture(clipboard, NullLogger<WindowsScreenshotCapture>.Instance);
-        capture.UseTestHarness(
-            launchOverlay ?? (() => { }),
-            wait: (_, _) => Task.CompletedTask,
-            pollInterval: TimeSpan.FromMilliseconds(1),
-            timeout: TimeSpan.FromMilliseconds(3));
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 3840, 1080),
+            Displays = [_Display(0, 0, 1920, 1080), _Display(1920, 0, 1920, 1080)],
+            VirtualBoundsAfterCapture = new CaptureRect(0, 0, 1920, 1080),
+        });
 
-        return capture;
+        var act = async () => await capture.CaptureAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*changed while*");
     }
+
+    /// <summary>A process that is not per-monitor aware still captures — one screen is self-consistent at any scale — so this is a warning, not a refusal.</summary>
+    [Fact]
+    public async Task AProcessThatIsNotPerMonitorAware_StillCaptures()
+    {
+        var capture = _Capture(new StubWindowsScreen
+        {
+            VirtualBounds = new CaptureRect(0, 0, 1920, 1080),
+            Displays = [_Display(0, 0, 1920, 1080)],
+            IsPerMonitorDpiAware = false,
+        });
+
+        (await capture.CaptureAsync()).Should().NotBeNull();
+    }
+
+    private static WindowsScreenshotCapture _Capture(IWindowsScreenReader screen) =>
+        new(screen, NullLogger<WindowsScreenshotCapture>.Instance);
+
+    private static DesktopDisplay _Display(int x, int y, int width, int height, double scale = 1.0) =>
+        new() { Bounds = new CaptureRect(x, y, width, height), Scale = scale };
 }
