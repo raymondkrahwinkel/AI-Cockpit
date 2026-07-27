@@ -27,7 +27,12 @@ public interface IWorkspaceAgentGateway
 {
     /// <summary>
     /// The workspace <paramref name="paneId"/> belongs to, and every AI-session pane in it — or null when
-    /// <paramref name="paneId"/> names no live session (it closed, or never existed).
+    /// <paramref name="paneId"/> names no live session (it closed, or never existed), when that pane is not
+    /// itself an agent session (a plain terminal pane also carries a pane id and an MCP key, but has no CLI on
+    /// the other end to read a tool result — it must not be able to enroll itself or pollute a workspace's
+    /// roster), or when the pane resolves to no workspace at all (no explicit one, and no Sessions workspace
+    /// exists to fall back to) — reporting an invented empty workspace there would describe a desk that does not
+    /// exist.
     /// </summary>
     WorkspaceAgentSnapshot? GetWorkspaceSnapshot(string paneId);
 }

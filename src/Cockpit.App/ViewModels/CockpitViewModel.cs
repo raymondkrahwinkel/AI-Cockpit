@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
@@ -89,6 +90,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionProfileStore? _sessionProfileStore;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly ITerminalAccessRegistry? _terminals;
+    private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
 
@@ -2353,7 +2355,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
         ProjectQuickStart? projectQuickStart = null,
         IScreenshotSettingsStore? screenshotSettingsStore = null,
-        ISessionResourceResolver? sessionResourceResolver = null)
+        ISessionResourceResolver? sessionResourceResolver = null,
+        IWorkspaceAgentCoordinator? agentCoordinator = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2457,6 +2460,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
         _sessionResourceResolver = sessionResourceResolver;
+        _agentCoordinator = agentCoordinator;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -5020,6 +5024,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public SessionPanelViewModel? FindSession(string paneId) =>
         _AllSessions().FirstOrDefault(session => session.PaneId == paneId);
 
+    /// <summary>
+    /// Every session the host holds, grid and embedded together (AC-391): an embedded agent (an Autopilot step, a
+    /// plugin-run) is a full session with its own MCP token even though the grid deliberately never lists it, so a
+    /// caller enumerating "every agent" — the workspace-presence roster, say — must not miss it the way iterating
+    /// <see cref="Sessions"/> alone would. Same collections as <see cref="FindSession"/>; read them on the UI
+    /// thread, like its callers do.
+    /// </summary>
+    public IEnumerable<SessionPanelViewModel> AllSessions() => _AllSessions();
+
     // Every session the host holds — the grid's, plus the embedded ones the grid deliberately does not list. The seam
     // both the pane-id lookup and the consent open/close routing search, so an embedded pane is never half-reached.
     private IEnumerable<SessionPanelViewModel> _AllSessions() =>
@@ -5220,6 +5233,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // "agent connected" bar disappear (SessionEnded raises CouplingChanged). It is the driver-side teardown the
         // pane's own PaneClosed cannot do — the mirror of the worktree release below, and it runs for every session.
         _terminals?.SessionEnded(session.PaneId);
+
+        // AC-391: a closed pane must stop being remembered as a workspace-presence roster entry, or the roster only
+        // ever grows for the life of the app and a reused pane id (unlikely, but not impossible) would inherit a
+        // stale enrollment. Same "runs for every session" scope as the terminal-coupling release above.
+        _agentCoordinator?.Forget(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
@@ -5782,8 +5800,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await session.DisposeAsync();
 
-        // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings and the session's worktree.
+        // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings, forget the agent-presence
+        // enrollment, and release the session's worktree.
         _terminals?.SessionEnded(session.PaneId);
+        _agentCoordinator?.Forget(session.PaneId);
         if (_worktreeManager is not null && session.WorktreeBranch is not null)
         {
             try
