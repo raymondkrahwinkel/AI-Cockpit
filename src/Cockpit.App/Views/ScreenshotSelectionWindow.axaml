@@ -135,6 +135,16 @@
               </StackPanel>
             </Button>
 
+            <!-- The mark tools, after the three that answer what is being taken. A frame and a hidden box both go
+                 on the picture rather than deciding what it is, and they share a drag, a list and one Ctrl+Z. -->
+            <Button Name="OutlineTool" Classes="tool" Classes.active="{Binding Outlining}" Click="_OnOutlineTool">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="RectangleOutline" Width="15" Height="15" />
+                <TextBlock Text="Outline" FontSize="12" VerticalAlignment="Center" />
+                <Border Classes="key"><TextBlock Text="O" /></Border>
+              </StackPanel>
+            </Button>
+
             <Button Name="RedactTool" Classes="tool" Classes.active="{Binding Redacting}" Click="_OnRedactTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="EyeOff" Width="15" Height="15" />

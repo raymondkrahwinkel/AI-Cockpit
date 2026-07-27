@@ -206,15 +206,15 @@ public sealed class ScreenshotCoordinator : ISingletonService
             return null;
         }
 
-        // Cropped first, then redacted: the boxes are in the crop's coordinates, and doing it the other way
-        // round would obscure part of a picture that is about to be thrown away and leave the kept part bare.
-        // Off the UI thread: redaction walks every pixel of every box, and "everything" on a multi-monitor
+        // Cropped first, then marked: the marks are in the crop's coordinates, and doing it the other way round
+        // would obscure part of a picture that is about to be thrown away and leave the kept part bare.
+        // Off the UI thread: a redaction walks every pixel of every box, and "everything" on a multi-monitor
         // desktop is millions of them. Doing that on the thread that draws would freeze the cockpit at the one
         // moment the operator is waiting to see their screenshot land.
-        var redacted = await Task.Run(() =>
+        var marked = await Task.Run(() =>
         {
             var cropped = _editor.Crop(capture.Image, chosen.Region);
-            return _editor.Redact(cropped, chosen.Redactions);
+            return _editor.Burn(cropped, chosen.Marks);
         }).ConfigureAwait(true);
 
         // Saved after the crop rather than before: a region that turned out not to fit was never restored, and
@@ -223,6 +223,6 @@ public sealed class ScreenshotCoordinator : ISingletonService
         // over today's screen would be a promise nobody checked.
         await _settings.SaveAsync(settings with { LastRegion = chosen.Region }).ConfigureAwait(true);
 
-        return redacted;
+        return marked;
     }
 }

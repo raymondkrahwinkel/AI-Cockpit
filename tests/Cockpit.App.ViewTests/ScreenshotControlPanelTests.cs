@@ -33,7 +33,7 @@ public class ScreenshotControlPanelTests
         var selection = _Model(surface);
 
         _Press(surface, surface.RedactTool);
-        selection.RedactionNeedsARegion.Should().BeTrue("Hide was pressed with nothing marked out, which is the same refusal B gives");
+        selection.MarkingNeedsARegion.Should().BeTrue("Hide was pressed with nothing marked out, which is the same refusal B gives");
 
         surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
         _Press(surface, surface.RedactTool);

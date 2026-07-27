@@ -21,21 +21,36 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 {
+    /// <summary>
+    /// How thick a frame is drawn, in the captured image's pixels. Fixed rather than scaled to the mark: a thin
+    /// line on a large screenshot is what the operator drew it to avoid, and a frame that got heavier the smaller
+    /// it was would swallow what it is pointing at.
+    /// </summary>
+    private const int OutlineThickness = 4;
+
     private readonly ScreenCapture _capture;
-    private readonly List<CaptureRect> _redactions = [];
+    private readonly List<Mark> _marks = [];
     private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
+    private readonly uint _outlineColour;
     private CapturePoint? _anchor;
 
+    /// <param name="outlineColour">
+    /// What a frame is drawn in, as 0xAARRGGBB. Handed in without a default on purpose: the accent lives in the
+    /// theme, which is the view's to read, and a default here would be a second copy of a colour that is supposed
+    /// to have exactly one home — the mistake AC-334 spent a ticket undoing.
+    /// </param>
     public ScreenshotSelectionViewModel(
         ScreenCapture capture,
         int imageWidth,
         int imageHeight,
+        uint outlineColour,
         CaptureRect? lastRegion = null,
         IDesktopWindows? windows = null)
     {
         _capture = capture;
         ImageWidth = imageWidth;
         ImageHeight = imageHeight;
+        _outlineColour = outlineColour;
 
         // Enumerated once, here, rather than per pointer move: the capture is already frozen, so a window that
         // moves afterwards has moved on a desktop this picture no longer shows. Reading it again would highlight
@@ -75,16 +90,23 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public ScreenshotSelection? Result { get; private set; }
 
     /// <summary>
-    /// The boxes to obscure, in the captured image's pixels (AC-331). Held here rather than drawn on top,
-    /// because they are applied to the pixels that get sent — an overlay that could travel separately from the
-    /// image is a redaction that one day will not.
+    /// What has been placed on the capture, in its own pixels, in the order it was placed (AC-359). Held here
+    /// rather than drawn on top, because these are applied to the pixels that get sent — an overlay that could
+    /// travel separately from the image is a redaction that one day will not.
     /// </summary>
-    public IReadOnlyList<CaptureRect> Redactions => _redactions;
+    public IReadOnlyList<Mark> Marks => _marks;
+
+    /// <summary>
+    /// Which mark tool is in hand, or nothing while the surface is choosing what to take instead. One value
+    /// rather than a flag per tool: they share a drag, so two of them being on at once has no meaning.
+    /// </summary>
+    public MarkTool? MarkingWith { get; private set; }
 
     /// <summary>Whether the surface is drawing boxes to hide rather than choosing what to take.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DraggingRegion))]
-    private bool _redacting;
+    public bool Redacting => MarkingWith == MarkTool.Redaction;
+
+    /// <summary>Whether the surface is drawing frames around what the model should look at.</summary>
+    public bool Outlining => MarkingWith == MarkTool.Outline;
 
     /// <summary>
     /// Whether the surface is standing on what taking everything left behind: the whole capture marked out, and
@@ -104,7 +126,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// question the row is there for. It is safe to subtract because choosing this tool clears it — the operator
     /// who presses Region while everything is marked has said which tool is in hand, and gets told so.
     /// </remarks>
-    public bool DraggingRegion => !PickingWindow && !Redacting && !TakingEverything;
+    public bool DraggingRegion => !PickingWindow && MarkingWith is null && !TakingEverything;
 
     // Set by taking everything, cleared by choosing any other tool. What the selection is cannot answer this on
     // its own: the whole capture is a perfectly ordinary region to be standing in with the region tool.
@@ -122,27 +144,55 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     /// Turns redaction on, which needs something to redact — there is nothing to hide until a region has been
     /// marked out, and boxes drawn over the whole desktop would have nowhere to end up.
     /// </summary>
-    public void Redact(bool redacting)
+    public void Redact(bool redacting) => MarkWith(MarkTool.Redaction, redacting);
+
+    /// <summary>Turns frame-drawing on, which needs a region for the same reason redaction does.</summary>
+    public void Outline(bool outlining) => MarkWith(MarkTool.Outline, outlining);
+
+    /// <summary>
+    /// Takes a mark tool up or puts it down. Every tool that marks needs something to mark on — a frame around
+    /// the whole desktop and a box over it both have nowhere to end up, since what is sent is the region.
+    /// </summary>
+    public void MarkWith(MarkTool tool, bool marking)
     {
-        Redacting = redacting && Selection is { Width: > 0, Height: > 0 };
-        RedactionNeedsARegion = redacting && !Redacting;
-        if (Redacting)
+        var canMark = marking && Selection is { Width: > 0, Height: > 0 };
+
+        MarkingWith = canMark ? tool : MarkingWith == tool ? null : MarkingWith;
+        MarkingNeedsARegion = marking && !canMark;
+        if (canMark)
         {
             PickWindows(false);
             _StopTakingEverything();
         }
 
-        OnPropertyChanged(nameof(Hint));
+        _SaidTheModeChanged();
     }
 
-    /// <summary>Takes back the last box. Only the last: an operator who wants the one before it presses it again.</summary>
-    public void UndoRedaction()
+    /// <summary>
+    /// Takes back the last mark, whatever it was (AC-359) — one stack for the lot, because two undo histories on
+    /// one surface is two things to keep straight while the picture is the only thing worth looking at.
+    /// </summary>
+    /// <remarks>
+    /// Only the last, and there is no redo. A mark is one drag, so putting it back costs the gesture that made
+    /// it; a redo stack, meanwhile, has to be dropped the moment a new mark is placed, and getting that wrong
+    /// brings back a redaction the operator took away. That failure is a leak, not an inconvenience.
+    /// </remarks>
+    public void Undo()
     {
-        if (_redactions.Count > 0)
+        if (_marks.Count > 0)
         {
-            _redactions.RemoveAt(_redactions.Count - 1);
-            OnPropertyChanged(nameof(Redactions));
+            _marks.RemoveAt(_marks.Count - 1);
+            OnPropertyChanged(nameof(Marks));
         }
+    }
+
+    private void _SaidTheModeChanged()
+    {
+        OnPropertyChanged(nameof(MarkingWith));
+        OnPropertyChanged(nameof(Redacting));
+        OnPropertyChanged(nameof(Outlining));
+        OnPropertyChanged(nameof(DraggingRegion));
+        OnPropertyChanged(nameof(Hint));
     }
 
     /// <summary>Whether the surface is finished with — confirmed or cancelled, which the window watches to close itself.</summary>
@@ -156,10 +206,10 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public bool BeginDrag(double surfaceX, double surfaceY)
     {
         var point = ToImagePixel(surfaceX, surfaceY);
-        if (Redacting)
+        if (MarkingWith is not null)
         {
-            // Anchored without the display check the region drag makes: a box only ever covers part of a region
-            // that was already chosen on a display, so there is nothing here that could be nobody's pixels.
+            // Anchored without the display check the region drag makes: a mark only ever goes on a region that
+            // was already chosen on a display, so there is nothing here that could be nobody's pixels.
             _anchor = point;
             return true;
         }
@@ -187,9 +237,9 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
 
         var point = _Clamp(ToImagePixel(surfaceX, surfaceY));
-        if (Redacting)
+        if (MarkingWith is not null)
         {
-            PendingRedaction = _Between(anchor, point);
+            PendingMark = _Between(anchor, point);
             return;
         }
 
@@ -204,15 +254,15 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public void EndDrag()
     {
         _anchor = null;
-        if (Redacting)
+        if (MarkingWith is { } tool)
         {
-            if (PendingRedaction is { Width: > 0, Height: > 0 } box)
+            if (PendingMark is { Width: > 0, Height: > 0 } area)
             {
-                _redactions.Add(box);
-                OnPropertyChanged(nameof(Redactions));
+                _marks.Add(_MarkOf(tool, area));
+                OnPropertyChanged(nameof(Marks));
             }
 
-            PendingRedaction = null;
+            PendingMark = null;
             return;
         }
 
@@ -222,9 +272,24 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
     }
 
-    /// <summary>The box being dragged out right now, so the surface can draw it before it is let go of.</summary>
+    /// <summary>The area being dragged out right now, so the surface can draw the mark before it is let go of.</summary>
     [ObservableProperty]
-    private CaptureRect? _pendingRedaction;
+    [NotifyPropertyChangedFor(nameof(PendingMarkPreview))]
+    private CaptureRect? _pendingMark;
+
+    /// <summary>
+    /// That same area as the mark it is about to become, or nothing when no drag is under way. Built here rather
+    /// than in the surface so the preview cannot end up being a different kind of thing from what gets placed.
+    /// </summary>
+    public Mark? PendingMarkPreview =>
+        MarkingWith is { } tool && PendingMark is { } area ? _MarkOf(tool, area) : null;
+
+    private Mark _MarkOf(MarkTool tool, CaptureRect area) => tool switch
+    {
+        MarkTool.Redaction => new RedactionMark(area),
+        MarkTool.Outline => new OutlineMark(area, _outlineColour, OutlineThickness),
+        _ => throw new NotSupportedException($"There is no mark for {tool}."),
+    };
 
     private static CaptureRect _Between(CapturePoint anchor, CapturePoint point) =>
         new(
@@ -266,13 +331,15 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public string Hint => this switch
     {
         { Redacting: true } =>
-            "Drag over anything that should not be sent · Ctrl+Z takes back the last box · B stops hiding · Enter confirms · Esc cancels",
+            "Drag over anything that should not be sent · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
+        { Outlining: true } =>
+            "Drag a frame around what the model should look at · Ctrl+Z takes back the last mark · Enter confirms · Esc cancels",
         { PickingWindow: true } =>
             "Click the window you want · W goes back to dragging a region · Esc cancels",
-        // Said as a refusal rather than left silent: pressing B with nothing marked out used to do nothing at
-        // all, which reads exactly like a key that is not wired up.
-        { RedactionNeedsARegion: true } =>
-            "Mark out a region first — B then hides part of what you are sending · Esc cancels",
+        // Said as a refusal rather than left silent: pressing a mark tool with nothing marked out used to do
+        // nothing at all, which reads exactly like a key that is not wired up.
+        { MarkingNeedsARegion: true } =>
+            "Mark out a region first — the marking tools go on what you are sending · Esc cancels",
         // What the tools do is on the tools, keys and all, so this says only what has no button: the drag itself,
         // the arrows, and the two keys that end it.
         _ =>
@@ -281,8 +348,8 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             + "Enter confirms · Esc cancels",
     };
 
-    /// <summary>Whether B was asked for while there was nothing to hide part of — which is why nothing happened.</summary>
-    public bool RedactionNeedsARegion { get; private set; }
+    /// <summary>Whether a mark tool was asked for while there was nothing to mark on — which is why nothing happened.</summary>
+    public bool MarkingNeedsARegion { get; private set; }
 
     /// <summary>The window the pointer is over, once <see cref="PickingWindow"/> is on. Null over the desktop, or where windows cannot be asked about.</summary>
     [ObservableProperty]
@@ -361,7 +428,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         CaptureRect? bounds = null;
         foreach (var display in _capture.Displays)
         {
-            if (_Overlap(desktop, display.DesktopBounds) is not { } shared)
+            if (desktop.Overlap(display.DesktopBounds) is not { } shared)
             {
                 continue;
             }
@@ -377,16 +444,6 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         }
 
         return bounds;
-    }
-
-    private static CaptureRect? _Overlap(CaptureRect first, CaptureRect second)
-    {
-        var left = Math.Max(first.X, second.X);
-        var top = Math.Max(first.Y, second.Y);
-        var right = Math.Min(first.Right, second.Right);
-        var bottom = Math.Min(first.Bottom, second.Bottom);
-
-        return right > left && bottom > top ? new CaptureRect(left, top, right - left, bottom - top) : null;
     }
 
     private static CaptureRect _Union(CaptureRect first, CaptureRect second)
@@ -439,17 +496,15 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             return;
         }
 
-        // Moved into the crop's own space here rather than when they were drawn: the operator draws on the
-        // whole capture, and what is sent is the crop — so a box has to be told where it sits in the picture
-        // that actually leaves the machine, which is not known until the region is settled.
+        // Moved into the crop's own space here rather than when they were drawn: the operator draws on the whole
+        // capture, and what is sent is the crop — so a mark has to be told where it sits in the picture that
+        // actually leaves the machine, which is not known until the region is settled. Each kind does its own
+        // clipping, because they do not survive the edge the same way: a box loses the part that is outside, a
+        // frame keeps its shape and simply has that side fall off the picture.
         Result = new ScreenshotSelection
         {
             Region = region,
-            Redactions = _redactions
-                .Select(box => _Overlap(box, region))
-                .OfType<CaptureRect>()
-                .Select(box => box with { X = box.X - region.X, Y = box.Y - region.Y })
-                .ToList(),
+            Marks = _marks.Select(mark => mark.ClipTo(region)).OfType<Mark>().ToList(),
         };
         IsClosed = true;
     }

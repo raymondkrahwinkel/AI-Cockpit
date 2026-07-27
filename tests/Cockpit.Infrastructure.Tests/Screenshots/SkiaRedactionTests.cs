@@ -22,7 +22,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(128, 128);
 
-        var redacted = new SkiaScreenshotImageEditor().Redact(png, [new CaptureRect(32, 32, 64, 64)]);
+        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(32, 32, 64, 64))]);
 
         using var image = SKBitmap.Decode(redacted);
         for (var y = 32; y < 96; y++)
@@ -42,7 +42,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(128, 128);
 
-        var redacted = new SkiaScreenshotImageEditor().Redact(png, [new CaptureRect(32, 32, 64, 64)]);
+        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(32, 32, 64, 64))]);
 
         using var original = SKBitmap.Decode(png);
         using var image = SKBitmap.Decode(redacted);
@@ -56,9 +56,9 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(128, 128);
 
-        var redacted = new SkiaScreenshotImageEditor().Redact(
+        var redacted = new SkiaScreenshotImageEditor().Burn(
             png,
-            [new CaptureRect(0, 0, 32, 32), new CaptureRect(96, 96, 32, 32)]);
+            [new RedactionMark(new CaptureRect(0, 0, 32, 32)), new RedactionMark(new CaptureRect(96, 96, 32, 32))]);
 
         using var image = SKBitmap.Decode(redacted);
         image.GetPixel(5, 5).Should().NotBe(SKColors.Black).And.NotBe(SKColors.White);
@@ -75,7 +75,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(128, 128);
 
-        var redacted = new SkiaScreenshotImageEditor().Redact(png, [new CaptureRect(0, 0, 64, 64)]);
+        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(0, 0, 64, 64))]);
 
         using var image = SKBitmap.Decode(redacted);
         image.GetPixel(0, 0).Should().Be(image.GetPixel(1, 0));
@@ -88,7 +88,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(32, 32);
 
-        new SkiaScreenshotImageEditor().Redact(png, []).Should().BeSameAs(png);
+        new SkiaScreenshotImageEditor().Burn(png, []).Should().BeSameAs(png);
     }
 
     /// <summary>A box running off the edge is clamped rather than throwing: the surface can be dragged past the image, and losing the whole redaction over it is the dangerous way to fail.</summary>
@@ -97,7 +97,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(64, 64);
 
-        var redacted = new SkiaScreenshotImageEditor().Redact(png, [new CaptureRect(32, 32, 100, 100)]);
+        var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(32, 32, 100, 100))]);
 
         using var image = SKBitmap.Decode(redacted);
         image.GetPixel(50, 50).Should().NotBe(SKColors.Black).And.NotBe(SKColors.White);
