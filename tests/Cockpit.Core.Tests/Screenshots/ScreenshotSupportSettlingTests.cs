@@ -74,5 +74,7 @@ public class ScreenshotSupportSettlingTests
             capture,
             cockpit,
             Substitute.For<IToastService>(),
+            new FakeScreenshotSettingsStore(),
+            new FakeScreenshotImageEditor(),
             NullLogger<ScreenshotCoordinator>.Instance);
 }

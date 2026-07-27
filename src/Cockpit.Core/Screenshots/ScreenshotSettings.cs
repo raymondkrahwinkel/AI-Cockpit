@@ -1,3 +1,5 @@
+using Cockpit.Core.Abstractions.Screenshots;
+
 namespace Cockpit.Core.Screenshots;
 
 /// <summary>
@@ -19,4 +21,11 @@ public sealed record ScreenshotSettings
     /// <c>IGlobalHotkeyService.TriggerDescriptionFor</c>).
     /// </summary>
     public string HotkeyKeyName { get; init; } = "F8";
+
+    /// <summary>
+    /// The region marked out last time, in the captured image's own pixels, so the same panel does not have to
+    /// be dragged out again every capture (AC-329). Null until one has been taken, and dropped rather than
+    /// clamped when the desktop has since changed shape and it no longer fits.
+    /// </summary>
+    public CaptureRect? LastRegion { get; init; }
 }

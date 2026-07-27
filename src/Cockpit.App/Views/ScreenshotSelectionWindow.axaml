@@ -1,0 +1,53 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        x:Class="Cockpit.App.Views.ScreenshotSelectionWindow"
+        x:DataType="vm:ScreenshotSelectionViewModel"
+        WindowDecorations="None"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="Black"
+        CanResize="False"
+        Cursor="Cross">
+
+  <!-- The captured image is the background, not a transparent layer over the live screen: what feels like
+       dragging on your desktop is dragging on a frozen picture of it. Stretch="Fill" is deliberate — the window
+       covers exactly the desktop the capture came off, so filling it is what makes the view model's one ratio
+       between window units and image pixels true. -->
+  <Panel Name="Surface">
+    <Image Name="Capture" Stretch="Fill" />
+
+    <!-- Everything outside the selection is dimmed by four rectangles rather than a cut-out, which Avalonia has
+         no primitive for. Their bounds are set in code from the same conversion the pointer goes through.
+         The dim is the one value with no token behind it: nothing else in the app darkens a whole screen, and
+         the theme has no shade for it — the same reason VoiceOverlayWindow hardcodes its own translucent pill. -->
+    <Canvas Name="Shade" IsHitTestVisible="False">
+      <Rectangle Name="ShadeTop" Fill="#99000000" />
+      <Rectangle Name="ShadeBottom" Fill="#99000000" />
+      <Rectangle Name="ShadeLeft" Fill="#99000000" />
+      <Rectangle Name="ShadeRight" Fill="#99000000" />
+      <Rectangle Name="Marquee" Stroke="{StaticResource CockpitAccentBrush}" StrokeThickness="1" />
+      <Border Name="Readout"
+              Background="{StaticResource CockpitSecondaryBgBrush}"
+              BorderBrush="{StaticResource CockpitHairlineBrush}"
+              BorderThickness="1"
+              CornerRadius="3"
+              Padding="6,3">
+        <TextBlock Name="ReadoutText" Foreground="{StaticResource CockpitTextPrimaryBrush}" FontSize="12" />
+      </Border>
+    </Canvas>
+
+    <Border VerticalAlignment="Top"
+            HorizontalAlignment="Center"
+            Margin="0,24,0,0"
+            Background="{StaticResource CockpitSecondaryBgBrush}"
+            BorderBrush="{StaticResource CockpitHairlineBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            Padding="12,6">
+      <TextBlock Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                 FontSize="12"
+                 Text="Drag a region · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A selects everything · Enter confirms · Esc cancels" />
+    </Border>
+  </Panel>
+</Window>

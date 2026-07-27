@@ -15,24 +15,11 @@ public sealed record ScreenCapture
     public required byte[] Image { get; init; }
 
     /// <summary>
-    /// The displays that make up <see cref="Image"/>, in no particular order. Empty when the capture cannot say
-    /// where its pixels came from, which makes every mapping below answer <see langword="null"/> rather than
-    /// guess — see <see cref="WithoutLayout"/>.
+    /// The displays that make up <see cref="Image"/>, in no particular order. Every platform capture reports
+    /// them since AC-326/327/328; a capture that could not say where its pixels came from refuses rather than
+    /// handing back an image nothing can be selected from.
     /// </summary>
     public required IReadOnlyList<CapturedDisplay> Displays { get; init; }
-
-    /// <summary>
-    /// A capture whose place on the desktop is unknown: an image, and nothing that can be selected from.
-    /// </summary>
-    /// <remarks>
-    /// This is what the three platform implementations hand back until AC-326, AC-327 and AC-328 replace them —
-    /// each still runs the desktop's own picker, so what comes back is whatever region the operator dragged, and
-    /// no honest display layout can be put on it. Attaching to a session only needs the bytes, so that path keeps
-    /// working across the gap; the selection UI arrives after the three of them, by which point nothing produces
-    /// a layout-less capture any more and this goes with them.
-    /// </remarks>
-    public static ScreenCapture WithoutLayout(byte[] image) =>
-        new() { Image = image, Displays = [] };
 
     /// <summary>The display a point on the desktop falls on, or <see langword="null"/> when it falls on none of them.</summary>
     public CapturedDisplay? DisplayAt(CapturePoint desktopPoint) =>

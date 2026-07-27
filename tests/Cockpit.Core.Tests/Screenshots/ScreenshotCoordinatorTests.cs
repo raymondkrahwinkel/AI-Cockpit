@@ -20,9 +20,21 @@ public class ScreenshotCoordinatorTests
 {
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
 
-    // What the picker-backed implementations still hand back until AC-326/327/328 replace them: the bytes, and
-    // no layout to go with them. All this coordinator wants is the image, which is why it survives that gap.
-    private static readonly ScreenCapture Capture = ScreenCapture.WithoutLayout(Png);
+    // A capture of one ordinary screen. These tests run without a window, so the selection surface never opens
+    // and the coordinator passes the whole image on — which is the path a headless graph takes for real.
+    private static readonly ScreenCapture Capture = new()
+    {
+        Image = Png,
+        Displays =
+        [
+            new CapturedDisplay
+            {
+                DesktopBounds = new CaptureRect(0, 0, 1920, 1080),
+                Scale = 1,
+                ImageBounds = new CaptureRect(0, 0, 1920, 1080),
+            },
+        ],
+    };
 
     [Fact]
     public async Task ACapturedScreenshot_LandsOnTheSelectedSession()
@@ -137,6 +149,8 @@ public class ScreenshotCoordinatorTests
             capture,
             cockpit,
             toasts,
+            new FakeScreenshotSettingsStore(),
+            new FakeScreenshotImageEditor(),
             NullLogger<ScreenshotCoordinator>.Instance);
     }
 }

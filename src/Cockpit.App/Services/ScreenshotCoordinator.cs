@@ -1,6 +1,9 @@
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -29,23 +32,41 @@ public sealed class ScreenshotCoordinator : ISingletonService
     private readonly IScreenshotCapture _capture;
     private readonly CockpitViewModel _cockpit;
     private readonly IToastService _toasts;
+    private readonly IScreenshotSettingsStore _settings;
+    private readonly IScreenshotImageEditor _editor;
     private readonly ILogger<ScreenshotCoordinator> _logger;
 
     /// <summary>Guards against a second capture while the picker is already open — the hotkey is easy to press twice.</summary>
     private bool _isCapturing;
+
+    /// <summary>
+    /// What puts the selection surface in front of the operator, or null where there is no window to put one
+    /// over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
+    /// altogether. Swappable so the crop-and-remember path can be tested without a desktop.
+    /// </summary>
+    private Func<ScreenCapture, CaptureRect?, Task<CaptureRect?>>? _showSelection;
 
     public ScreenshotCoordinator(
         GlobalHotkeyCoordinator hotkeys,
         IScreenshotCapture capture,
         CockpitViewModel cockpit,
         IToastService toasts,
+        IScreenshotSettingsStore settings,
+        IScreenshotImageEditor editor,
         ILogger<ScreenshotCoordinator> logger)
     {
         _hotkeys = hotkeys;
         _capture = capture;
         _cockpit = cockpit;
         _toasts = toasts;
+        _settings = settings;
+        _editor = editor;
         _logger = logger;
+
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+        {
+            _showSelection = (capture, lastRegion) => ScreenshotSelectionWindow.PickAsync(capture, lastRegion, window);
+        }
 
         hotkeys.Pressed += (_, id) =>
         {
@@ -59,6 +80,10 @@ public sealed class ScreenshotCoordinator : ISingletonService
 
         hotkeys.TriggerDescriptionsChanged += (_, _) => Dispatcher.UIThread.Post(HandleTriggerDescriptionsChanged);
     }
+
+    /// <summary>Test seam: stands in for the selection surface, which needs a desktop to be put over.</summary>
+    internal void UseSelection(Func<ScreenCapture, CaptureRect?, Task<CaptureRect?>> showSelection) =>
+        _showSelection = showSelection;
 
     /// <summary>Test seam, like push-to-talk's: puts what the desktop bound where the operator can see it. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
     internal void HandleTriggerDescriptionsChanged() =>
@@ -125,8 +150,12 @@ public sealed class ScreenshotCoordinator : ISingletonService
                 return;
             }
 
-            // The layout the capture came with is the selection UI's (AC-329); a session takes the image.
-            var png = capture.Image;
+            if (await _PickAsync(capture).ConfigureAwait(true) is not { } png)
+            {
+                _logger.LogInformation("The selection was dismissed, so nothing was taken.");
+                return;
+            }
+
             if (await session.InjectScreenshotAsync(png).ConfigureAwait(true) is { } reason)
             {
                 _logger.LogInformation("Screen capture of {Bytes} bytes was not taken: {Reason}", png.Length, reason);
@@ -150,5 +179,35 @@ public sealed class ScreenshotCoordinator : ISingletonService
         {
             _isCapturing = false;
         }
+    }
+
+    /// <summary>
+    /// Puts the selection surface over the frozen capture and returns the region the operator marked out, cropped
+    /// (AC-329) — or nothing, when they dismissed it.
+    /// </summary>
+    /// <remarks>
+    /// The whole capture is used as-is where there is no window to put a surface over: a headless or design-time
+    /// graph has nothing to show it on, and failing there would take screenshots away from a test harness that
+    /// only ever wanted the bytes.
+    /// </remarks>
+    private async Task<byte[]?> _PickAsync(ScreenCapture capture)
+    {
+        if (_showSelection is not { } show)
+        {
+            return capture.Image;
+        }
+
+        var settings = await _settings.LoadAsync().ConfigureAwait(true);
+        if (await show(capture, settings.LastRegion).ConfigureAwait(true) is not { } region)
+        {
+            return null;
+        }
+
+        // Saved after the crop rather than before: a region that turned out not to fit was never restored, and
+        // remembering one the operator never actually got is worse than remembering nothing.
+        var cropped = _editor.Crop(capture.Image, region);
+        await _settings.SaveAsync(settings with { LastRegion = region }).ConfigureAwait(true);
+
+        return cropped;
     }
 }

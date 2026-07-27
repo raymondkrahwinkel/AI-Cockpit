@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: the screenshot tool now has a selection surface of its own, the same on every platform. Pressing the key
+  freezes the screen and puts it in front of you: drag out the region you want, nudge its edges with the arrow keys
+  when it needs to be exact (hold Shift to resize instead of move, Ctrl for larger steps), press A for everything,
+  Enter to take it and Escape to change your mind. The region you took last time is waiting for you the next time,
+  because the same panel tends to get grabbed over and over. Where your screens do not line up into a rectangle,
+  the area between them is not offered — those pixels were never on any screen.
+
 - added: a session can now name itself. An agent that picks up a ticket can propose the ticket as its session's name
   at the same moment it sets its status line, so the row in the sidebar reads "AC-312" instead of "default - 3" without
   you touching it. It is a proposal, not a claim: a session you named yourself keeps the name you gave it, and the
