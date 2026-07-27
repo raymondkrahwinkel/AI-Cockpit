@@ -37,13 +37,13 @@ public partial class ScreenshotSelectionWindow : Window
     /// Puts the surface over the desktop the capture came off and waits for the operator, handing back the
     /// region they marked out in the image's own pixels — or nothing, if they changed their mind.
     /// </summary>
-    public static async Task<CaptureRect?> PickAsync(ScreenCapture capture, CaptureRect? lastRegion, Window owner)
+    public static async Task<CaptureRect?> PickAsync(ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner)
     {
         using var stream = new MemoryStream(capture.Image);
         var bitmap = new Bitmap(stream);
 
         var window = new ScreenshotSelectionWindow();
-        var selection = new ScreenshotSelectionViewModel(capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, lastRegion);
+        var selection = new ScreenshotSelectionViewModel(capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, lastRegion, windows);
         window._selection = selection;
         window._bitmap = bitmap;
         window.DataContext = selection;
@@ -133,7 +133,26 @@ public partial class ScreenshotSelectionWindow : Window
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (_selection is { } selection && selection.BeginDrag(e.GetPosition(Surface).X, e.GetPosition(Surface).Y))
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        // In window mode the press is the confirmation, not the start of a drag. Falling through to BeginDrag
+        // would put a zero-size rectangle where the highlighted window was, and EndDrag would then clear it —
+        // so the click that is meant to take the window is exactly what threw it away.
+        if (selection.PickingWindow)
+        {
+            selection.Confirm();
+            if (selection.IsClosed)
+            {
+                Close();
+            }
+
+            return;
+        }
+
+        if (selection.BeginDrag(e.GetPosition(Surface).X, e.GetPosition(Surface).Y))
         {
             _Draw();
         }
@@ -142,7 +161,20 @@ public partial class ScreenshotSelectionWindow : Window
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (_selection is { } selection && e.GetCurrentPoint(Surface).Properties.IsLeftButtonPressed)
+        if (_selection is not { } selection)
+        {
+            return;
+        }
+
+        // Window mode first: the button may well be down — an operator holding it while moving is still
+        // pointing at windows, and treating that as a drag would replace the highlight with a rectangle of
+        // their own by accident.
+        if (selection.PickingWindow)
+        {
+            selection.HoverAt(e.GetPosition(Surface).X, e.GetPosition(Surface).Y);
+            _Draw();
+        }
+        else if (e.GetCurrentPoint(Surface).Properties.IsLeftButtonPressed)
         {
             selection.DragTo(e.GetPosition(Surface).X, e.GetPosition(Surface).Y);
             _Draw();
@@ -152,8 +184,11 @@ public partial class ScreenshotSelectionWindow : Window
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        _selection?.EndDrag();
-        _Draw();
+        if (_selection is { PickingWindow: false })
+        {
+            _selection.EndDrag();
+            _Draw();
+        }
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -176,7 +211,13 @@ public partial class ScreenshotSelectionWindow : Window
                 selection.Confirm();
                 break;
             case Key.A:
+                selection.PickWindows(false);
                 selection.SelectEverything();
+                break;
+            case Key.W:
+                // Window picking is a mode rather than a click target: the pointer is already the selection's,
+                // so the operator says which of the two it means before moving it.
+                selection.PickWindows(!selection.PickingWindow);
                 break;
             case Key.Left:
                 selection.Nudge(-1, 0, resize, step);

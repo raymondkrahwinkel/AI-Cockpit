@@ -134,19 +134,35 @@ public static class DependencyInjection
             // Windows-only, and a scan that bound it everywhere would drag GDI into the graph on Linux.
             services.AddSingleton<IWindowsScreenReader, Win32ScreenReader>();
             services.AddSingleton<IScreenshotCapture, WindowsScreenshotCapture>();
+            services.AddSingleton<IDesktopWindows, Win32DesktopWindows>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             services.AddSingleton<IMacScreenReader, MacScreenReader>();
             services.AddSingleton<IScreenshotCapture, MacScreenshotCapture>();
+            services.AddSingleton<IDesktopWindows, MacDesktopWindows>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             services.AddSingleton<IScreenshotCapture, PortalScreenshotCapture>();
+
+            // Window picking splits on the session type where capture does not (AC-330). X11 publishes window
+            // geometry and stacking; Wayland deliberately does not, and this app is an XWayland client there —
+            // which sees only other XWayland windows, so the property that works on X11 would list a fraction of
+            // the operator's windows and quietly omit the rest.
+            if (_IsWaylandSession())
+            {
+                services.AddSingleton<IDesktopWindows, UnsupportedDesktopWindows>();
+            }
+            else
+            {
+                services.AddSingleton<IDesktopWindows, X11DesktopWindows>();
+            }
         }
         else
         {
             services.AddSingleton<IScreenshotCapture, UnsupportedScreenshotCapture>();
+            services.AddSingleton<IDesktopWindows, UnsupportedDesktopWindows>();
         }
     }
 

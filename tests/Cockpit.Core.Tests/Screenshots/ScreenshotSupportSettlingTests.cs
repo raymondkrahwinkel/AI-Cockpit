@@ -76,5 +76,6 @@ public class ScreenshotSupportSettlingTests
             Substitute.For<IToastService>(),
             new FakeScreenshotSettingsStore(),
             new FakeScreenshotImageEditor(),
+            StubDesktopWindows.None,
             NullLogger<ScreenshotCoordinator>.Instance);
 }

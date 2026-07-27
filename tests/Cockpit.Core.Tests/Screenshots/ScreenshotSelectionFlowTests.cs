@@ -107,6 +107,7 @@ public class ScreenshotSelectionFlowTests
             Substitute.For<IToastService>(),
             settings,
             editor,
+            StubDesktopWindows.None,
             NullLogger<ScreenshotCoordinator>.Instance);
         coordinator.UseSelection((_, lastRegion) => Task.FromResult(pick(lastRegion)));
 

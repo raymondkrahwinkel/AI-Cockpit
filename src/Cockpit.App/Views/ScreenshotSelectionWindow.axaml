@@ -47,7 +47,7 @@
             Padding="12,6">
       <TextBlock Foreground="{StaticResource CockpitTextSecondaryBrush}"
                  FontSize="12"
-                 Text="Drag a region · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A selects everything · Enter confirms · Esc cancels" />
+                 Text="{Binding Hint}" />
     </Border>
   </Panel>
 </Window>

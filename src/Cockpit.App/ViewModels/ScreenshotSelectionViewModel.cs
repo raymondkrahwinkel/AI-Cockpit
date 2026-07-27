@@ -22,13 +22,24 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 {
     private readonly ScreenCapture _capture;
+    private readonly IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)>? _windows;
     private CapturePoint? _anchor;
 
-    public ScreenshotSelectionViewModel(ScreenCapture capture, int imageWidth, int imageHeight, CaptureRect? lastRegion = null)
+    public ScreenshotSelectionViewModel(
+        ScreenCapture capture,
+        int imageWidth,
+        int imageHeight,
+        CaptureRect? lastRegion = null,
+        IDesktopWindows? windows = null)
     {
         _capture = capture;
         ImageWidth = imageWidth;
         ImageHeight = imageHeight;
+
+        // Enumerated once, here, rather than per pointer move: the capture is already frozen, so a window that
+        // moves afterwards has moved on a desktop this picture no longer shows. Reading it again would highlight
+        // a rectangle that is not where its pixels are.
+        _windows = windows is { IsSupported: true } ? _InImageSpace(windows.Enumerate()) : null;
 
         // Restored rather than started empty: the same panel gets grabbed over and over, and re-dragging it every
         // time is the difference between a tool and a chore. A region from a desktop that has since changed shape
@@ -113,6 +124,123 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
 
     /// <summary>Everything, in one press — the whole capture, gaps and all, since that is what was on the screens.</summary>
     public void SelectEverything() => Selection = new CaptureRect(0, 0, ImageWidth, ImageHeight);
+
+    /// <summary>
+    /// Whether picking a window is available at all (AC-330). False on a desktop that will not say where its
+    /// windows are — Wayland, deliberately — and the surface shows that rather than offering a mode that
+    /// silently does nothing, which is the failure AC-220 was rejected for.
+    /// </summary>
+    public bool CanPickWindow => _windows is not null;
+
+    /// <summary>
+    /// What the surface tells the operator it can do. Window picking is named only where it exists, and its
+    /// absence is said out loud rather than left as a key that does nothing — the failure AC-220 was rejected
+    /// for was a mode that looked available and was not.
+    /// </summary>
+    public string Hint =>
+        "Drag a region · Arrow keys nudge, Shift resizes, Ctrl for larger steps · A takes everything · "
+        + (CanPickWindow
+            ? "W picks a window · "
+            : "Picking a window is not something this desktop will allow · ")
+        + "Enter confirms · Esc cancels";
+
+    /// <summary>The window the pointer is over, once <see cref="PickingWindow"/> is on. Null over the desktop, or where windows cannot be asked about.</summary>
+    [ObservableProperty]
+    private DesktopWindow? _hoveredWindow;
+
+    /// <summary>Whether the surface is highlighting whole windows rather than waiting for a drag.</summary>
+    [ObservableProperty]
+    private bool _pickingWindow;
+
+    /// <summary>Turns window picking on, if this desktop can do it. Off again puts the surface back to dragging a region.</summary>
+    public void PickWindows(bool picking)
+    {
+        PickingWindow = picking && CanPickWindow;
+        if (!PickingWindow)
+        {
+            HoveredWindow = null;
+        }
+    }
+
+    /// <summary>
+    /// Highlights the front-most window under the pointer, and marks it out. Since the capture already holds
+    /// every pixel on the desktop, taking a window is a crop to its rectangle — there is no second capture, and
+    /// nothing is asked of the window itself.
+    /// </summary>
+    public void HoverAt(double surfaceX, double surfaceY)
+    {
+        if (_windows is not { } windows || !PickingWindow)
+        {
+            return;
+        }
+
+        var point = ToImagePixel(surfaceX, surfaceY);
+
+        // First match wins because the list is front to back, which is what makes an overlapped window pick the
+        // one on top rather than the one enumerated first.
+        var found = windows.FirstOrDefault(candidate => candidate.ImageBounds.Contains(point));
+        HoveredWindow = found.Window;
+        Selection = found.Window is null ? null : found.ImageBounds;
+    }
+
+    /// <summary>
+    /// Each window's rectangle in the image's own pixels, worked out once against the capture that was taken.
+    /// A window off the edge of every display — minimised, or on a screen that is not in this capture — has no
+    /// pixels here and is dropped rather than mapped to a corner.
+    /// </summary>
+    private IReadOnlyList<(DesktopWindow Window, CaptureRect ImageBounds)> _InImageSpace(IReadOnlyList<DesktopWindow> windows) =>
+        windows
+            .Select(window => (Window: window, Image: _ToImageBounds(window.Bounds)))
+            .Where(mapped => mapped.Image is not null)
+            .Select(mapped => (mapped.Window, mapped.Image!.Value))
+            .ToList();
+
+    /// <summary>
+    /// A window's rectangle in the image, built from the part of it each display actually holds. Mapping its two
+    /// corners straight through would drop any window that hangs over the edge of the captured desktop — half
+    /// off the side of a screen, or across the gap a staggered arrangement leaves — even though the rest of it is
+    /// plainly visible and croppable.
+    /// </summary>
+    private CaptureRect? _ToImageBounds(CaptureRect desktop)
+    {
+        CaptureRect? bounds = null;
+        foreach (var display in _capture.Displays)
+        {
+            if (_Overlap(desktop, display.DesktopBounds) is not { } shared)
+            {
+                continue;
+            }
+
+            // The far corner is asked for one position inside the overlap and then put back, because the
+            // rectangle is half-open: the position at Right belongs to whatever is beside the window, and on a
+            // scaled display asking for it lands on the next display or on nothing at all.
+            var topLeft = display.ToImagePixel(new CapturePoint(shared.X, shared.Y));
+            var bottomRight = display.ToImagePixel(new CapturePoint(shared.Right - 1, shared.Bottom - 1));
+            var piece = new CaptureRect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X + 1, bottomRight.Y - topLeft.Y + 1);
+
+            bounds = bounds is { } covered ? _Union(covered, piece) : piece;
+        }
+
+        return bounds;
+    }
+
+    private static CaptureRect? _Overlap(CaptureRect first, CaptureRect second)
+    {
+        var left = Math.Max(first.X, second.X);
+        var top = Math.Max(first.Y, second.Y);
+        var right = Math.Min(first.Right, second.Right);
+        var bottom = Math.Min(first.Bottom, second.Bottom);
+
+        return right > left && bottom > top ? new CaptureRect(left, top, right - left, bottom - top) : null;
+    }
+
+    private static CaptureRect _Union(CaptureRect first, CaptureRect second)
+    {
+        var left = Math.Min(first.X, second.X);
+        var top = Math.Min(first.Y, second.Y);
+
+        return new CaptureRect(left, top, Math.Max(first.Right, second.Right) - left, Math.Max(first.Bottom, second.Bottom) - top);
+    }
 
     /// <summary>
     /// Moves the selection by whole image pixels, or resizes its far corner when <paramref name="resize"/> is
