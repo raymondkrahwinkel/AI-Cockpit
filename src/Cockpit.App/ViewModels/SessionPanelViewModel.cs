@@ -414,8 +414,57 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <summary>
     /// Where the prompts waiting on a future moment are kept (AC-231/AC-234). Handed in by the cockpit, which owns
     /// the one scheduler; null in the graphs that schedule nothing, and the offer then never appears.
+    /// <para>
+    /// Setting it subscribes to the scheduler, which is what makes <see cref="PendingResumeLabel"/> follow reality
+    /// instead of being written once and never corrected (AC-368) — including where the session is built after the
+    /// scheduler has already loaded, so no event is coming for it.
+    /// </para>
     /// </summary>
-    public ScheduledResumeCoordinator? Resumes { get; set; }
+    public ScheduledResumeCoordinator? Resumes
+    {
+        get => _resumes;
+        set
+        {
+            if (ReferenceEquals(_resumes, value))
+            {
+                return;
+            }
+
+            if (_resumes is not null)
+            {
+                _resumes.PendingChanged -= _OnPendingResumesChanged;
+            }
+
+            _resumes = value;
+
+            if (_resumes is not null)
+            {
+                _resumes.PendingChanged += _OnPendingResumesChanged;
+            }
+
+            _SyncPendingResumeLabel();
+            OnPropertyChanged(nameof(CanOfferResume));
+            OnPropertyChanged(nameof(CanChangeResumeMoment));
+        }
+    }
+
+    private ScheduledResumeCoordinator? _resumes;
+
+    // Straight through, on whichever thread raised it. The coordinator raises on its caller's thread and every
+    // caller in the app is the UI thread — see the note on ScheduledResumeCoordinator, which is why that file
+    // carries no ConfigureAwait(false).
+    private void _OnPendingResumesChanged(object? sender, EventArgs e) => _SyncPendingResumeLabel();
+
+    /// <summary>
+    /// Reads the pending line off the scheduler — the one place that decides what it says, so a resume that fired,
+    /// lapsed or was cancelled cannot leave its banner behind, and a session handed a scheduler that already knows
+    /// about it shows the banner without waiting for an event. Note what that is not: a resume does not survive
+    /// closing the cockpit, because a pane id is a fresh guid each run and no session is reopened (AC-290).
+    /// </summary>
+    private void _SyncPendingResumeLabel() =>
+        PendingResumeLabel = _resumes?.PendingFor(PaneId) is { } waiting
+            ? $"Resuming {waiting.DueAt.ToLocalTime():ddd HH:mm}"
+            : string.Empty;
 
     /// <summary>When the allowance behind the current warning rolls over — the moment a resume would be timed to. Null when nothing schedulable is warned about.</summary>
     [ObservableProperty]
@@ -438,7 +487,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(CanChangeResumeMoment));
     }
 
-    /// <summary>The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.</summary>
+    /// <summary>
+    /// The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.
+    /// Derived from the scheduler and never set from outside: written by hand it went stale the moment anything
+    /// happened to the resume it described (AC-368).
+    /// </summary>
     [ObservableProperty]
     private string _pendingResumeLabel = string.Empty;
 
@@ -462,9 +515,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
+
+        // The pending line follows from the scheduler saying so, not from this command assuming it worked.
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, moment, prompt, ResumeReason));
 
-        PendingResumeLabel = $"Resuming {moment.ToLocalTime():ddd HH:mm}";
         UsageWarning = string.Empty;
     }
 
@@ -498,7 +552,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, chosen.Moment, chosen.Prompt, ResumeReason));
 
-        PendingResumeLabel = $"Resuming {chosen.Moment.ToLocalTime():ddd HH:mm}";
         UsageWarning = string.Empty;
     }
 
@@ -510,8 +563,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             await scheduler.CancelAsync(PaneId);
         }
-
-        PendingResumeLabel = string.Empty;
     }
 
     // One hover line per reading: what it is in words, how far along, and when it comes back. Rounded away from
@@ -1177,6 +1228,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _voicePlaybackQueue?.StopAll();
         }
+
+        // The scheduler is one singleton for the whole run: a panel that stays subscribed after it closes keeps
+        // itself alive for as long as the cockpit is open, one leaked panel per closed session.
+        Resumes = null;
 
         await DisposeCoreAsync();
     }

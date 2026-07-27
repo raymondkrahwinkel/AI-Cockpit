@@ -14,12 +14,19 @@ public sealed class CapturingLogger<T> : ILogger<T>
 {
     public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
 
+    /// <summary>What each entry actually said, for the cases where "something was logged" is not the claim — "the
+    /// resume that could not be delivered names its session" is.</summary>
+    public List<string> Messages { get; } = [];
+
     public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
     public bool IsEnabled(LogLevel logLevel) => true;
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        => Entries.Add((logLevel, exception));
+    {
+        Entries.Add((logLevel, exception));
+        Messages.Add(formatter(state, exception));
+    }
 
     private sealed class NullScope : IDisposable
     {

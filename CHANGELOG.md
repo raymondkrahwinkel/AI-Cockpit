@@ -480,6 +480,18 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a resume you scheduled is actually sent when its moment arrives. The clock behind the feature was started on
+  a thread that has no clock, so it never once ticked: the banner said "Resuming Mon 13:12", the moment came and went,
+  and nothing was sent — for every scheduled resume since the feature shipped, not just some of them. Nothing said so
+  either, which is why it could sit there unnoticed; a resume that is scheduled, sent, missed or cannot be delivered
+  now writes a line you can go back and read.
+
+- fixed: the "Resuming …" line on a session tells you what is actually waiting. It used to be written the moment you
+  scheduled something and then never touched again, so it stayed up after the resume had fired and after it had been
+  cancelled. It now follows the schedule itself, and appears on its own for a session that is handed a resume already
+  waiting on it. Worth knowing what it still cannot do: a resume does not survive closing the cockpit, because the
+  session it was aimed at is not reopened — one left over from a previous run reports that it could not be delivered.
+
 - fixed: "Pick another moment", offered when a session has spent its allowance, opens on your own clock instead of on
   UTC. It was filling the pickers with the reset moment as the provider reported it, so anyone east of Greenwich saw a
   time hours too early — and taking the suggestion as it stood scheduled the resume before the allowance had actually
