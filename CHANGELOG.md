@@ -32,6 +32,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
+  having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
+  in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
+  one place it is kept. Reading the status never goes near the network: it answers from what is stored, because a
+  status is drawn for every server in the list and opening a dialog should not become an event on somebody else's
+  server.
+
+- added: when you start a session with a server ticked that nobody has signed in to, the New-session dialog says so
+  before the session begins rather than leaving you to find out at the first tool call. It says it and no more —
+  starting anyway stays your call. The tool count beside such a server stays blank on purpose, since counting a
+  server's tools would mean connecting to it and that must not open a browser; the hover text now says that is the
+  reason, where it used to offer "offline, needs a sign-in, or its plugin isn't loaded" and leave you guessing.
+
 - added: an MCP server that wants a header of its own now works. Some do not take `Authorization: Bearer` at all —
   they want `X-Api-Key`, or a scheme other than Bearer — and until now there was no way to configure that, not even
   by pasting the value in by hand. An HTTP server in the MCP servers dialog has a small list of custom headers you
