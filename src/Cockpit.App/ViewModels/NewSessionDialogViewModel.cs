@@ -618,8 +618,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // What the operator ticked, kept across the rebuild for the servers that survive it. Without this their own
         // edits are gone — every fresh row starts ticked — while _mcpSelectionTouched keeps the profile's saved
         // selection from being re-applied, so switching project after one manual untick turned everything back on.
+        // First row wins on a repeated name, rather than throwing: two servers may share one (nothing between "Add
+        // server" and the store forbids it), and losing a tick is a smaller failure than a dialog that cannot open.
         var ticked = _mcpSelectionTouched
-            ? McpServers.ToDictionary(server => server.Name, server => server.IsEnabledForSession, StringComparer.OrdinalIgnoreCase)
+            ? McpServers
+                .GroupBy(server => server.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().IsEnabledForSession, StringComparer.OrdinalIgnoreCase)
             : null;
 
         foreach (var existing in McpServers)
@@ -675,13 +679,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        var byName = McpServers.ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
-        foreach (var server in offered)
+        // Paired by position, not by name. The rows were just built from this same list in this same order, and two
+        // servers are allowed to share a name — "Add server" twice leaves two called "new server", and nothing on the
+        // way to the store objects. Keying on the name turned that into an exception on the way into the dialog,
+        // which meant the dialog did not open at all.
+        for (var index = 0; index < offered.Count && index < McpServers.Count; index++)
         {
-            if (!byName.TryGetValue(server.Name, out var item))
-            {
-                continue;
-            }
+            var server = offered[index];
+            var item = McpServers[index];
 
             McpAuthState state;
             try

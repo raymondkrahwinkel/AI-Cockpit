@@ -29,6 +29,16 @@ internal sealed class McpOAuthCoordinator(
             return McpOAuthAccess.NotRequired;
         }
 
+        // Asking interactively is the operator saying "sign me in", which has to mean a sign-in actually happens.
+        // Answering from a stored token would make "Sign in again" a button that does nothing — and the case it
+        // exists for is precisely the one where the stored token looks fine here but the server has stopped
+        // honouring it. Clearing first is what makes the flow run rather than the cache answer.
+        if (interactive)
+        {
+            await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
+            return await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
+        }
+
         // A token is stored under the server's name, and a name is not an identity — a project's own entry replaces a
         // registry server by name and may carry a different address, and a rename does the same. So a token that was
         // not issued for this address is treated as absent, refresh token and all: renewing with the other host's
@@ -53,19 +63,27 @@ internal sealed class McpOAuthCoordinator(
 
         // Nothing to renew from and nobody to ask: say so rather than spend a round trip on a handshake that cannot
         // succeed. This is the ordinary "never signed in" case, and it has to be cheap — it runs on every start.
-        if (!interactive && string.IsNullOrWhiteSpace(stored?.RefreshToken))
+        if (string.IsNullOrWhiteSpace(stored?.RefreshToken))
         {
             return McpOAuthAccess.AuthorizationRequired;
         }
 
-        // The SDK owns the refresh grant and the full authorization flow; both run inside a connect, writing any new
-        // token through the cache the authorizer installs. So the way to renew is to connect once and then read what
-        // the cache holds — rather than a second, hand-rolled OAuth implementation drifting alongside the SDK's.
+        return await _ConnectAndReadAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Connects once and reports what that left in the store. The SDK owns both the refresh grant and the full
+    /// authorization flow, and both run inside a connect, writing any new token through the cache the authorizer
+    /// installs — so connecting and then reading is how either is driven, rather than a second, hand-rolled OAuth
+    /// implementation drifting alongside the SDK's.
+    /// </summary>
+    private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
+    {
         await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
 
-        var renewed = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
-        return renewed is not null && renewed.IsForResource(server.Url) && renewed.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
-            ? McpOAuthAccess.Authorized(renewed.AccessToken)
+        var token = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        return token is not null && token.IsForResource(server.Url) && token.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
+            ? McpOAuthAccess.Authorized(token.AccessToken)
             : McpOAuthAccess.AuthorizationRequired;
     }
 
@@ -82,11 +100,12 @@ internal sealed class McpOAuthCoordinator(
             return McpAuthState.AuthorizationRequired;
         }
 
-        // No margin here, unlike the one Acquire keeps. That margin exists because a token is written into a config
-        // a session then reads for an hour; a status is answering "are you signed in", and an expired token with a
-        // refresh still counts — the next use renews it without the operator noticing, so saying "sign in again"
-        // would be asking for something that is not needed.
-        return stored.IsUsableAt(DateTimeOffset.UtcNow, TimeSpan.Zero) || !string.IsNullOrWhiteSpace(stored.RefreshToken)
+        // A token that can still be renewed counts as signed in whatever its clock says: the next use renews it
+        // without the operator noticing, so asking them to sign in again would be asking for nothing. Without a
+        // refresh token the same margin applies as on the credential path — a token with a minute left is one a
+        // session start will already refuse, and a status that says "signed in" about it is wrong about exactly the
+        // case this exists to make visible.
+        return !string.IsNullOrWhiteSpace(stored.RefreshToken) || stored.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
             ? McpAuthState.Authorized
             : McpAuthState.AuthorizationRequired;
     }

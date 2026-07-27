@@ -21,6 +21,15 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 {
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
+    /// <summary>
+    /// The name this server is stored under, as opposed to the one currently typed. A token is keyed by server name,
+    /// so signing in or out has to use the name the store knows: doing it against a renamed-but-unsaved row withdrew
+    /// nothing while telling the operator their access was gone, and signed in under a name the registry does not
+    /// contain. The typed URL and auth are still what gets authorized against — those are what the operator is
+    /// fixing when they edit before signing in; the name is only the key.
+    /// </summary>
+    private readonly string _storedUnderName;
+
     [ObservableProperty]
     private string _name;
 
@@ -128,6 +137,18 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _ResetAuthStatusIfNoLongerOAuth();
     }
 
+    /// <summary>
+    /// A held token is bound to the host it was obtained for, so retyping the URL can make "signed in" false without
+    /// anything else changing. The badge goes back to unknown rather than keeping a label whose reason has gone —
+    /// the same failure as a warning that outlives what it warned about. Not re-read here on purpose: that would put
+    /// a storage read on every keystroke.
+    /// </summary>
+    partial void OnUrlChanged(string value)
+    {
+        AuthState = null;
+        AuthMessage = string.Empty;
+    }
+
     partial void OnAuthChanged(McpServerAuth value)
     {
         OnPropertyChanged(nameof(IsApiKeyAuth));
@@ -167,6 +188,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     public EditableMcpServerViewModel(McpServerConfig server, IMcpOAuthCoordinator? oauthCoordinator = null)
     {
         _oauthCoordinator = oauthCoordinator;
+        _storedUnderName = server.Name;
         _name = server.Name;
         _transport = server.Transport;
         _command = server.Command ?? string.Empty;
@@ -186,6 +208,14 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     }
 
     /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
+    /// <summary>
+    /// What a sign-in, sign-out or status read is about: the edits as they stand, under the name the store knows.
+    /// The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing in
+    /// should get what they just typed — while the name stays the persisted one, because that is the key the token
+    /// is filed under and everything else looks it up by.
+    /// </summary>
+    private McpServerConfig _AuthTarget() => ToConfig() with { Name = _storedUnderName };
+
     public McpServerConfig ToConfig() => new()
     {
         Name = Name.Trim(),
@@ -226,7 +256,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
         try
         {
-            AuthState = await _oauthCoordinator.GetStateAsync(ToConfig(), cancellationToken).ConfigureAwait(true);
+            AuthState = await _oauthCoordinator.GetStateAsync(_AuthTarget(), cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -257,7 +287,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var access = await _oauthCoordinator.AcquireAsync(ToConfig(), interactive: true).ConfigureAwait(true);
+            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(), interactive: true).ConfigureAwait(true);
             AuthState = access.State;
             if (access.State != McpAuthState.Authorized)
             {
@@ -291,7 +321,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var config = ToConfig();
+            var config = _AuthTarget();
             await _oauthCoordinator.SignOutAsync(config).ConfigureAwait(true);
             AuthState = await _oauthCoordinator.GetStateAsync(config).ConfigureAwait(true);
         }

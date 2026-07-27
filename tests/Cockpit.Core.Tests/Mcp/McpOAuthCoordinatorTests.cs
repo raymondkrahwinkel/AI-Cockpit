@@ -203,6 +203,35 @@ public class McpOAuthCoordinatorTests
     }
 
     [Fact]
+    public async Task GetState_WithATokenAboutToExpireAndNoWayToRenew_SaysASignInIsNeeded()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20)));
+
+        // The status has to agree with what a session start will actually do. Acquire refuses this token — it keeps a
+        // margin, because it writes into a config a session reads for an hour — so a badge saying "signed in" would
+        // be wrong about precisely the case this feature exists to make visible.
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
+    }
+
+    [Fact]
+    public async Task Acquire_AskedInteractively_DoesNotAnswerFromTheStoredToken()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        // "Sign in again" has to sign in again. Answering from the stored token would make the button do nothing —
+        // and the reason someone presses it is usually that the stored token looks fine here while the server has
+        // stopped honouring it. The server is unreachable in this test, so the flow cannot succeed and the answer is
+        // that authorization is needed; what matters is that the stored token was not handed back instead.
+        var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
+        Assert.Null(access.AccessToken);
+        Assert.Null(await store.GetAsync("depot"));
+    }
+
+    [Fact]
     public async Task SignOut_ForgetsTheToken_SoTheNextUseAsksAgain()
     {
         var (coordinator, store) = _Create();
