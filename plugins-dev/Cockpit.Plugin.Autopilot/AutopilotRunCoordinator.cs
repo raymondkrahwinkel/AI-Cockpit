@@ -574,6 +574,10 @@ internal sealed class AutopilotRunCoordinator(
                 var signal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var request = new EmbeddedSessionRequest
                 {
+                    // Every session this run starts is recorded under the run (AC-251), so the fresh session a step
+                    // gets — the reason a run's spend is spread over many of them — adds back up to one figure.
+                    RunId = environment.RunId,
+                    RunLabel = environment.RunLabel,
                     ProfileId = step.ProfileLabel,
                     Model = step.Model,
                     McpServers = _StepMcpServers(step),

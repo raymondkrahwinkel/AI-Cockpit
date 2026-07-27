@@ -10,8 +10,10 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Usage;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.ViewModels;
 
@@ -241,6 +243,37 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Running token/cost total for the session (#8), folded from each completed turn's result usage.</summary>
     private readonly SessionUsageMeter _usage = new();
 
+    /// <summary>
+    /// When this session's runtime went up, so a persisted snapshot can say how long it had been working (AC-251).
+    /// Taken at the launch rather than at construction: an isolated session is built, then waits on a
+    /// <c>git worktree add</c> before it starts, and counting that setup as working time would inflate the very
+    /// baseline the token-reduction work measures against. Seeded at construction so a session that never launches
+    /// still has a sane value.
+    /// </summary>
+    private DateTimeOffset _startedAt = DateTimeOffset.Now;
+
+    /// <summary>
+    /// The most recent write to the usage trail, awaited on teardown (AC-251). The write is not awaited per turn —
+    /// a turn settling must not wait on a file — but a session that closes right after its last turn would otherwise
+    /// race the process out and lose that turn from the record, which is the one case this ticket is named for.
+    /// </summary>
+    private Task? _pendingUsageWrite;
+
+    /// <summary>
+    /// Where the running totals are kept so they outlive the session (AC-251). Null in the design-time graph and in
+    /// tests that build a session without one, which simply keeps the meter in memory as it always was.
+    /// </summary>
+    private readonly IUsageHistory? _usageHistory;
+
+    /// <summary>Whether the operator drives this session or a plugin embedded it (AC-251). Set by the host when it embeds.</summary>
+    internal UsageRunKind RunKind { get; set; } = UsageRunKind.Interactive;
+
+    /// <summary>The run this session was embedded for, from <see cref="EmbeddedSessionRequest.RunId"/>; null for a session belonging to no run.</summary>
+    internal string? RunId { get; set; }
+
+    /// <summary>The run's human name, from <see cref="EmbeddedSessionRequest.RunLabel"/>.</summary>
+    internal string? RunLabel { get; set; }
+
     // HasUsage, UsageSummary and UsageTooltip now live on the shared SessionPanelViewModel base (AC-37), rendered by
     // the one SessionHeaderBar; _usage still folds each turn's usage into them here.
 
@@ -455,9 +488,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        IUsageHistory? usageHistory = null)
     {
         _sessionManager = sessionManager;
+        _usageHistory = usageHistory;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
@@ -574,6 +609,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var runtime = _sessionManager.Create(profile);
             runtime.EventAppended += _OnSessionEvent;
             _runtime = runtime;
+
+            // The session's working life starts here, not when the panel was constructed — whatever the launch
+            // waited on (resolving a worktree, a profile) is setup, not work (AC-251).
+            _startedAt = DateTimeOffset.Now;
 
             // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
@@ -1474,12 +1513,44 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Fold this turn's reported usage/cost into the running session meter (#8) and refresh the bound
     // meter text. A turn whose result carried no usage (e.g. an error) contributes nothing but is still
     // counted, so the meter simply stays as it was when there is nothing new to add.
-    private void _AccumulateUsage(TurnCompleted turn)
+    internal void _AccumulateUsage(TurnCompleted turn)
     {
         _usage.Add(turn.Usage, turn.TotalCostUsd);
         HasUsage = _usage.HasData;
         UsageSummary = _usage.Summary;
         UsageTooltip = _usage.Tooltip;
+        _RecordUsageSnapshot();
+    }
+
+    // Write the running totals to the usage trail after every turn (AC-251), so they outlive the session and the
+    // app — recording only at the end would lose exactly the run that crashed, which is the case worth measuring.
+    // Not awaited here — a turn settling must not wait on a file, and the trail swallows its own failures by
+    // contract — but kept so teardown can wait for it; without that the last turn races the process out.
+    // A turn that reported nothing (an error result) leaves no record rather than a row of zeroes.
+    private void _RecordUsageSnapshot()
+    {
+        if (_usageHistory is null || !_usage.HasData)
+        {
+            return;
+        }
+
+        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
+        {
+            PaneId = PaneId,
+            StartedAt = _startedAt,
+            RecordedAt = DateTimeOffset.Now,
+            RunKind = RunKind,
+            RunId = RunId,
+            RunLabel = RunLabel,
+            ProfileLabel = ActiveProfileLabel,
+            Model = SelectedModel.Value,
+            InputTokens = _usage.InputTokens,
+            OutputTokens = _usage.OutputTokens,
+            CacheReadInputTokens = _usage.CacheReadInputTokens,
+            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
+            TotalCostUsd = _usage.TotalCostUsd,
+            Turns = _usage.Turns,
+        });
     }
 
     /// <inheritdoc/>
@@ -1515,6 +1586,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
+        // Before anything else: let the last turn's usage write land. It was left unawaited so the turn could
+        // settle without waiting on a file, and a session closing right behind it would otherwise take the
+        // process down before the record reached disk (AC-251). The trail swallows its own failures, so this
+        // waits on a task that does not fault.
+        if (_pendingUsageWrite is { } pendingUsageWrite)
+        {
+            await pendingUsageWrite;
+        }
+
         if (_runtime is null)
         {
             return;

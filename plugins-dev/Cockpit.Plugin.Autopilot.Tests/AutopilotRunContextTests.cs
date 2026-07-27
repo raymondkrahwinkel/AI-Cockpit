@@ -119,12 +119,25 @@ public class AutopilotRunContextTests
     [Fact]
     public void ValidatorCeoRequest_AsksToBeConfined_ToTheDirectoryItValidates()
     {
-        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", _SourcePlan());
+        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", _SourcePlan(), "run-1");
 
         request.ConfineFileToolsToWorkingDirectory.Should().BeTrue();
         request.WorkingDirectory.Should().Be("/runs/worktree");
         // The validator never cuts its own worktree — it reads the one the run already has.
         request.IsolateInWorktree.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ValidatorCeoRequest_CarriesTheRun_SoTheCeosOwnSpendIsCountedAgainstIt()
+    {
+        // AC-251: the validating CEO is one of the three things a run spends on, and the one whose context grows
+        // as the run goes. Leaving it off the run would under-report exactly the cost the reduction work targets.
+        var plan = _SourcePlan();
+
+        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", plan, "run-1");
+
+        Assert.Equal("run-1", request.RunId);
+        Assert.Equal(plan.Label, request.RunLabel);
     }
 
     [Fact]
@@ -139,7 +152,7 @@ public class AutopilotRunContextTests
         var settings = new AutopilotSettings(storage);
         settings.SetAutonomyMode("bypassPermissions");
 
-        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan());
+        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan(), "run-1");
 
         request.PermissionMode.Should().NotBeNullOrWhiteSpace();
         // Coerced away from bypass by AutopilotSettings (AC-209), so even a stored bypass cannot reach the driver here.
