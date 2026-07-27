@@ -471,6 +471,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a global shortcut you switched on that your desktop refused to register now says so in the settings
+  screen. It used to read exactly like a shortcut you had never switched on — an empty line, no error — and the
+  only sign anything was wrong was the key doing nothing when you pressed it.
+
 - fixed: double-clicking while a marking tool is in hand no longer takes the shot. Two quick marks in the same spot
   are two marks; reading the second as "take it" handed over a screenshot you were still working on.
 
