@@ -310,6 +310,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: taking a screenshot on macOS no longer opens the system crosshair. It reads every display straight away
+  instead, so what comes back is the whole desktop rather than a region you had to drag first — the selection
+  becomes the cockpit's own. Screen Recording permission is still asked for once by macOS; until you grant it,
+  nothing is captured, and the cockpit now says that is what may have happened rather than assuming you cancelled.
 - changed: taking a screenshot on Windows no longer opens the Snip overlay and no longer touches your clipboard.
   The cockpit used to launch Windows' own snipping tool and then watch the clipboard for a picture that had not been
   there before, because the overlay reports nothing back. That guesswork is gone, and with it the two-minute wait, the

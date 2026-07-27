@@ -22,7 +22,7 @@ namespace Cockpit.Infrastructure.Screenshots;
 /// <para>
 /// The portal says nothing about what went into the image it writes, so the layout the contract asks for comes
 /// from the desktop separately (<see cref="IDesktopDisplays"/>) and has to be reconciled with the image
-/// afterwards — <see cref="PortalCaptureLayout"/> does that and refuses when the two disagree.
+/// afterwards — <see cref="ComposedCaptureLayout"/> does that and refuses when the two disagree.
 /// </para>
 /// <para>
 /// The connection is opened per capture rather than held: a screenshot is an occasional, operator-initiated
@@ -151,7 +151,7 @@ internal sealed class PortalScreenshotCapture : IScreenshotCapture
             throw new InvalidOperationException("The screenshot portal returned something that is not a readable PNG.");
         }
 
-        return PortalCaptureLayout.TryCompose(displays, width, height)
+        return ComposedCaptureLayout.TryCompose(displays, width, height)
             ?? throw new InvalidOperationException(
                 $"The capture is {width}×{height} pixels, which is not what the desktop's {displays.Count} display(s) add up to — refusing rather than cropping the wrong region.");
     }

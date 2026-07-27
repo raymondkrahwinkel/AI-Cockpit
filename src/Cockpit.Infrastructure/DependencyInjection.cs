@@ -137,6 +137,7 @@ public static class DependencyInjection
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
+            services.AddSingleton<IMacScreenReader, MacScreenReader>();
             services.AddSingleton<IScreenshotCapture, MacScreenshotCapture>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
