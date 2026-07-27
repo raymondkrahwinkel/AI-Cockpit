@@ -70,6 +70,12 @@ public partial class ThemeHexColorGuardTests
         // this exemption reaches only code that draws a picture: the scene wiring beside it stays guarded, and
         // that is the file the rest of AC-356 will be editing.
         "Cockpit.App/StandInDesktop.cs",
+
+        // The inks an operator marks a capture in (AC-375). Same argument one step further along: these do not
+        // draw the cockpit either, they draw on a picture that leaves it. A token would make a red arrow already
+        // sent to an agent mean whatever the next repaint decides red is. The accent is deliberately not in that
+        // file — it is read from the theme at runtime and stays the one colour this app owns.
+        "Cockpit.App/MarkInk.cs",
     };
 
     [Fact]
