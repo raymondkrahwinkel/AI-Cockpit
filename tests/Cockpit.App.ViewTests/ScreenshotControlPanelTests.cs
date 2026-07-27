@@ -277,6 +277,30 @@ public class ScreenshotControlPanelTests
     });
 
     /// <summary>
+    /// The panel fits on the display it is put on, rather than merely being aimed at one. Sitting on the screen
+    /// the operator is looking at is the whole reason it moves at all (AC-358) — and a row wider than that screen
+    /// cannot, however carefully it is placed: the clamp then keeps it on the window instead and it spills onto
+    /// the neighbouring monitor.
+    /// </summary>
+    /// <remarks>
+    /// Added when the sixth tool made this untrue. It went unnoticed here and failed on CI, whose fonts run a
+    /// little wider than this machine's — so the row fitted by a margin that was never a property of the design,
+    /// only of the letters it happened to be drawn with. The tools are on two rows since, the second of them
+    /// bounded, which is what makes this something the panel guarantees rather than something it gets away with.
+    /// </remarks>
+    [Fact]
+    public void ThePanelFitsOnTheDisplayItIsPutOn() => _Staged(ScreenshotSelectionScene.TwoDisplays, surface =>
+    {
+        var left = Canvas.GetLeft(surface.Controls);
+
+        surface.Controls.Bounds.Width.Should().BeLessThanOrEqualTo(
+            SurfaceWidth / 2.0, "the scene's screens are half the surface each");
+        left.Should().BeGreaterThanOrEqualTo(SurfaceWidth / 2.0, "the pointer is on the right-hand one");
+        (left + surface.Controls.Bounds.Width).Should().BeLessThanOrEqualTo(
+            SurfaceWidth, "and the whole of it is on that screen, not spilling past its far edge");
+    });
+
+    /// <summary>
     /// A region under the panel leaves it exactly where it was. It used to step aside (AC-358), and that is what
     /// this test used to say — but nothing remembered where it had been, so every reason to move away became a
     /// reason to move back the moment it lapsed, and the row rocked between the two edges under the operator's

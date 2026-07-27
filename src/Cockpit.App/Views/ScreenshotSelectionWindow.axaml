@@ -98,6 +98,12 @@
               CornerRadius="12"
               Padding="12,10">
         <StackPanel Spacing="9">
+          <!-- Two rows, split where the tools already differed in kind: what is being taken, then what is being
+               put on it. One row held all of them until AC-360, and at six tools it outgrew half of a 1440-unit
+               surface on a machine whose fonts run a little wider than this one's — at which point the panel can
+               no longer sit on the display the pointer is on, which is the one thing AC-358 built it to do. Split
+               by meaning rather than by width, because a row that wraps wherever it happens to run out puts half
+               a group on each line, and the grouping is what the row is for. -->
           <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Name="RegionTool" Classes="tool" Classes.active="{Binding DraggingRegion}" Click="_OnRegionTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -135,8 +141,13 @@
               </StackPanel>
             </Button>
 
-            <!-- The mark tools, after the three that answer what is being taken. A frame and a hidden box both go
-                 on the picture rather than deciding what it is, and they share a drag, a list and one Ctrl+Z. -->
+          </StackPanel>
+
+          <!-- The mark tools, on a row of their own under the three that answer what is being taken. They all go
+               on the picture rather than deciding what it is, and they share a drag, a list and one Ctrl+Z. This
+               row is the one this epic keeps adding to, so it wraps within a fixed width rather than growing the
+               panel sideways without limit. -->
+          <WrapPanel MaxWidth="430" ItemSpacing="6" LineSpacing="6">
             <Button Name="OutlineTool" Classes="tool" Classes.active="{Binding Outlining}" Click="_OnOutlineTool">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                 <materialIcons:MaterialIcon Kind="RectangleOutline" Width="15" Height="15" />
@@ -162,9 +173,9 @@
                 <Border Classes="key"><TextBlock Text="B" /></Border>
               </StackPanel>
             </Button>
-          </StackPanel>
+          </WrapPanel>
 
-          <Rectangle Height="1" Fill="{StaticResource CockpitHairlineBrush}" />
+          <Rectangle Height="1" Fill="{StaticResource CockpitHairlineBrush}" MaxWidth="430" />
 
           <TextBlock Name="HintText"
                      Foreground="{StaticResource CockpitTextSecondaryBrush}"
