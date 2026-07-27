@@ -13,11 +13,13 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     /// <summary>Cap on the readable branch fragment in a folder name, so a long branch cannot push a Windows worktree path past its limit.</summary>
     private const int SlugLength = 32;
 
-    private static readonly StringComparison PathComparison =
-        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    private static readonly StringComparison PathComparison = GitPaths.PlatformComparison;
 
     private readonly IWorktreeRegistry _registry;
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
+
+    /// <inheritdoc />
+    public event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
     public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings)
     {
@@ -86,6 +88,28 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             ?? throw new InvalidOperationException(
                 $"'{directory}' is not inside a git repository with a commit, so it cannot be isolated in a worktree.");
 
+        // Fork from the latest the source branch can safely be brought to, not from whatever the operator's checkout
+        // last pulled (AC-349). Best-effort: everything this cannot do — offline, a dirty tree, a diverged branch —
+        // ends as the fork-from-local-HEAD this always did, with a sentence saying so.
+        var sourceRefresh = await WorktreeSourceUpdater.BringUpToDateAsync(repository, cancellationToken).ConfigureAwait(false);
+        if (sourceRefresh.UpdatedHeadCommit is { } movedHead)
+        {
+            repository = repository with { HeadCommit = movedHead };
+        }
+
+        // Announced here rather than through the returned record, because from this line on the operator's checkout
+        // may already have moved and everything below can still fail: a cancelled start, a branch name that is
+        // taken, a git that will not run. Any of those throws, and a record nobody receives cannot tell anyone their
+        // branch is not where they left it. A listener that throws must not take the creation down with it.
+        try
+        {
+            SourceRefreshed?.Invoke(sourceRefresh);
+        }
+        catch (Exception)
+        {
+            // Telling someone is best-effort; making the worktree is not.
+        }
+
         var worktreesRoot = await _resolveRoot(cancellationToken).ConfigureAwait(false);
         var worktreePath = _ResolveWorktreePath(worktreesRoot, repository.Root, sessionId, branch);
 
@@ -124,7 +148,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         };
         await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
 
-        return record;
+        // Carried on the returned record, not persisted: the caller that started this session is the one that tells
+        // the operator where it forked from, and after that the answer is history.
+        return record with { SourceRefresh = sourceRefresh };
     }
 
     public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, CancellationToken cancellationToken = default) =>

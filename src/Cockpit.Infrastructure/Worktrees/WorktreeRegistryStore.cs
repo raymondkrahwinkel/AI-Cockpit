@@ -54,5 +54,5 @@ internal sealed class WorktreeRegistryStore : IWorktreeRegistry, ISingletonServi
         string.Equals(
             System.IO.Path.GetFullPath(left),
             System.IO.Path.GetFullPath(right),
-            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            GitPaths.PlatformComparison);
 }

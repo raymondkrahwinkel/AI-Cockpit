@@ -16,13 +16,14 @@ internal static class GitCli
     // a git waiting on a credential prompt or a wedged index lock would otherwise stall session start forever. The
     // kill is by tree because git shells out (a credential helper, a submodule clone), and killing only the parent
     // leaves those running.
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
 
     public static async Task<GitResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken,
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null,
+        TimeSpan? timeout = null)
     {
         var startInfo = new ProcessStartInfo("git")
         {
@@ -78,28 +79,31 @@ internal static class GitCli
                 $"Could not run 'git' — is it installed and on PATH? ({exception.Message})", exception);
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(Timeout);
+        // A caller on the session-start path can ask for a shorter guard than the default: waiting two minutes on a
+        // fetch that is never going to answer would itself be the delay the fallback exists to avoid (AC-349).
+        var guard = timeout ?? DefaultTimeout;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(guard);
 
         // Both streams are drained concurrently. A git that fills the stderr pipe while nothing reads it blocks on
         // the write and never exits, so reading stdout to the end before touching stderr can deadlock on a chatty
         // command. Starting both reads first and waiting on exit after gates correctly on end-of-stream.
-        var readStandardOutput = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var readStandardError = process.StandardError.ReadToEndAsync(timeout.Token);
+        var readStandardOutput = process.StandardOutput.ReadToEndAsync(deadline.Token);
+        var readStandardError = process.StandardError.ReadToEndAsync(deadline.Token);
 
         try
         {
-            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
             var standardOutput = await readStandardOutput.ConfigureAwait(false);
             var standardError = await readStandardError.ConfigureAwait(false);
 
             return new GitResult(process.ExitCode, standardOutput, standardError);
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             _Kill(process);
             throw new InvalidOperationException(
-                $"git {_RedactArguments(arguments)} did not finish within {Timeout.TotalSeconds:F0}s and was stopped.");
+                $"git {_RedactArguments(arguments)} did not finish within {guard.TotalSeconds:F0}s and was stopped.");
         }
         catch (OperationCanceledException)
         {

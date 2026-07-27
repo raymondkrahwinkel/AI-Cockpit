@@ -35,10 +35,10 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_create")]
-    [Description("Create a git worktree to isolate a task on its own branch, forked from the current HEAD of the git repository at `directory`. Returns the new worktree's path and branch — run the task's commands with that path. Pass your session id (the COCKPIT_PANE_ID environment variable) as `session` so the worktree is tied to this session and cleaned up when it closes.")]
+    [Description("Create a git worktree to isolate a task on its own branch. The source branch is fetched and fast-forwarded first where that is safe, so the worktree starts on the latest state of the repository at `directory` rather than on whatever was last pulled. Returns the new worktree's path and branch — run the task's commands with that path — plus `sourceNotice` when the fork base is not the latest (offline, uncommitted changes, or a diverged branch). Pass your session id (the COCKPIT_PANE_ID environment variable) as `session` so the worktree is tied to this session and cleaned up when it closes.")]
     public async Task<string> CreateAsync(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
-        [Description("A folder inside the git repository to isolate; the worktree is forked from that repository's current HEAD.")] string directory,
+        [Description("A folder inside the git repository to isolate; the worktree is forked from that repository's source branch, brought up to date first where possible.")] string directory,
         [Description("Optional branch name; a collision-free one is generated when omitted.")] string? branch = null)
     {
         try
@@ -51,7 +51,15 @@ internal sealed class WorktreeTools
                 ? await _worktreeManager.CreateForSessionAsync(owner, null, directory)
                 : await _worktreeManager.CreateAsync(owner, branch, directory);
 
-            return _Serialize(new { ok = true, path = record.Path, branch = record.Branch });
+            // The notice rides along only when there is one (AC-349): an agent that reads "forked from your local
+            // main, 30 commits behind" can say so instead of quietly building on a base nobody meant it to have.
+            return _Serialize(new
+            {
+                ok = true,
+                path = record.Path,
+                branch = record.Branch,
+                sourceNotice = record.SourceRefresh?.Notice,
+            });
         }
         catch (Exception exception)
         {
