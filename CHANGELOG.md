@@ -41,6 +41,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   costs more than one that sits over a picture which is frozen anyway. The one thing it does take from you is that a
   drag cannot be started on the strip it occupies — through it and past it is fine.
 
+- added: you can draw a frame around the part of a screenshot the agent should be looking at. Press O on the
+  selection surface and drag one out; Ctrl+Z takes it back. It is drawn into the picture itself when you confirm,
+  not laid over it — what reaches the model is one image, and a mark that is not in it is a mark it cannot see.
+
+- changed: hiding something and framing something are now the same kind of thing, on one list with one Ctrl+Z.
+  Before, a redaction box had its own undo that only worked while you were in redaction mode; now the last mark
+  comes back whichever tool made it, and you no longer have to remember which one you were in to know what Ctrl+Z
+  will take. Boxes still do exactly what they did — applied to the pixels, no copy underneath, nothing that can
+  travel separately from the image. There is no redo: a mark is one drag, and a redo that mistakenly brought back
+  a box you removed would be a leak rather than an inconvenience.
+
 - added: you can paint over what should not leave your machine. Press B on the selection surface and drag a box over
   anything you would rather the model did not see — a token in a terminal, a mail address, a password manager open
   behind the window — and Ctrl+Z takes the last one back. The blocks are applied to the picture itself, not drawn on

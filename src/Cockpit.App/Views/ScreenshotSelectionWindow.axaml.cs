@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Cockpit.App.Theming;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -78,7 +80,8 @@ public partial class ScreenshotSelectionWindow : Window
     {
         var window = new ScreenshotSelectionWindow
         {
-            _selection = new ScreenshotSelectionViewModel(capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, lastRegion, windows),
+            _selection = new ScreenshotSelectionViewModel(
+                capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, _AccentColour(), lastRegion, windows),
             _bitmap = bitmap,
         };
 
@@ -87,6 +90,16 @@ public partial class ScreenshotSelectionWindow : Window
 
         return window;
     }
+
+    /// <summary>
+    /// The accent, as a number the imaging library can take. Read here because the theme is the view's to know:
+    /// a frame is burnt into the picture by Infrastructure, which has no business holding a copy of a colour
+    /// whose one home is <c>Theme.axaml</c>.
+    /// </summary>
+    private static uint _AccentColour() =>
+        ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") is ISolidColorBrush solid
+            ? solid.Color.ToUInt32()
+            : throw new InvalidOperationException("The accent is not a solid colour, so a frame has nothing to be drawn in.");
 
     /// <summary>
     /// Puts the window over every screen. The rectangle comes from Avalonia's own screen list rather than from
@@ -272,13 +285,16 @@ public partial class ScreenshotSelectionWindow : Window
                 // operator says which before moving the pointer.
                 selection.Redact(!selection.Redacting);
                 break;
+            case Key.O:
+                selection.Outline(!selection.Outlining);
+                break;
             case Key.R:
                 // The way back to the ordinary drag. W and B toggle, so it was always reachable by pressing the
                 // one you were in again — but only if you knew which that was, which is what this epic is about.
                 selection.ChooseRegion();
                 break;
             case Key.Z when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                selection.UndoRedaction();
+                selection.Undo();
                 break;
             case Key.W:
                 // Window picking is a mode rather than a click target: the pointer is already the selection's,
@@ -342,6 +358,9 @@ public partial class ScreenshotSelectionWindow : Window
         _Tool(selection => selection.PickWindows(!selection.PickingWindow));
 
     private void _OnEverythingTool(object? sender, RoutedEventArgs e) => _Tool(_ChooseEverything);
+
+    private void _OnOutlineTool(object? sender, RoutedEventArgs e) =>
+        _Tool(selection => selection.Outline(!selection.Outlining));
 
     private void _OnRedactTool(object? sender, RoutedEventArgs e) =>
         _Tool(selection => selection.Redact(!selection.Redacting));
@@ -459,7 +478,7 @@ public partial class ScreenshotSelectionWindow : Window
 
         // The size is reported in the image's pixels, which is what the session receives — the window's units
         // would be a different number on a scaled display and would read as a lie next to the attachment.
-        _DrawRedactions(selection);
+        _DrawMarks(selection);
         ReadoutText.Text = $"{region.Width} × {region.Height}";
         Readout.IsVisible = true;
         Canvas.SetLeft(Readout, x);
@@ -467,19 +486,23 @@ public partial class ScreenshotSelectionWindow : Window
     }
 
     /// <summary>
-    /// Shows which areas will be obscured, before the operator commits to sending it. Solid rather than an
-    /// outline: what they are checking is that nothing readable is left, and a border around legible text would
-    /// say the opposite of what the box is going to do.
+    /// Shows what has been marked, before the operator commits to sending it — including the one still being
+    /// dragged. A redaction is drawn solid rather than as a border: what they are checking is that nothing
+    /// readable is left, and a frame around legible text would say the opposite of what the box is going to do.
     /// </summary>
-    private void _DrawRedactions(ScreenshotSelectionViewModel selection)
+    /// <remarks>
+    /// Drawn from the same list, in the same order, that gets burnt in — so what is on screen is a preview of the
+    /// picture rather than a second opinion about it.
+    /// </remarks>
+    private void _DrawMarks(ScreenshotSelectionViewModel selection)
     {
-        var drawn = selection.PendingRedaction is { } pending
-            ? selection.Redactions.Append(pending).ToList()
-            : selection.Redactions;
+        var drawn = selection.PendingMarkPreview is { } pending
+            ? selection.Marks.Append(pending).ToList()
+            : selection.Marks;
 
         while (_boxes.Count < drawn.Count)
         {
-            var box = new Rectangle { Fill = Marquee.Stroke, Opacity = 0.85 };
+            var box = new Rectangle();
             _boxes.Add(box);
             Shade.Children.Insert(Shade.Children.IndexOf(Marquee), box);
         }
@@ -488,7 +511,8 @@ public partial class ScreenshotSelectionWindow : Window
         {
             if (index < drawn.Count)
             {
-                var (x, y, width, height) = selection.ToSurface(drawn[index]);
+                var (x, y, width, height) = selection.ToSurface(_AreaOf(drawn[index]));
+                _Style(_boxes[index], drawn[index]);
                 _Place(_boxes[index], x, y, width, height);
             }
             else
@@ -497,6 +521,36 @@ public partial class ScreenshotSelectionWindow : Window
                 // zero-sized rectangles costs nothing next to rebuilding the canvas on every pointer move.
                 _Place(_boxes[index], 0, 0, 0, 0);
             }
+        }
+    }
+
+    private static CaptureRect _AreaOf(Mark mark) => mark switch
+    {
+        RedactionMark redaction => redaction.Area,
+        OutlineMark outline => outline.Area,
+        _ => throw new NotSupportedException($"There is no way to show a {mark.GetType().Name} on the surface."),
+    };
+
+    /// <summary>
+    /// Makes one rectangle look like the mark it is standing in for. Restated on every draw rather than set when
+    /// the shape is made, because the shapes are kept and reused as marks come and go — one that was a redaction
+    /// a moment ago has to stop looking like one.
+    /// </summary>
+    private void _Style(Rectangle shape, Mark mark)
+    {
+        switch (mark)
+        {
+            case RedactionMark:
+                shape.Fill = Marquee.Stroke;
+                shape.Stroke = null;
+                shape.Opacity = 0.85;
+                break;
+            case OutlineMark outline:
+                shape.Fill = null;
+                shape.Stroke = new SolidColorBrush(Color.FromUInt32(outline.Colour));
+                shape.StrokeThickness = outline.Thickness;
+                shape.Opacity = 1;
+                break;
         }
     }
 

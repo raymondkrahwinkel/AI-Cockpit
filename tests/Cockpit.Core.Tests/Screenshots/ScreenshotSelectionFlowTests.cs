@@ -80,17 +80,17 @@ public class ScreenshotSelectionFlowTests
     [Fact]
     public async Task WhatWasHidden_IsRedactedOutOfWhatIsSent()
     {
-        var box = new CaptureRect(10, 10, 50, 50);
+        var box = new RedactionMark(new CaptureRect(10, 10, 50, 50));
         var (coordinator, session, editor, _) = _Flow(_ => new ScreenshotSelection
         {
             Region = new CaptureRect(100, 100, 400, 300),
-            Redactions = [box],
+            Marks = [box],
         });
 
         await coordinator.CaptureIntoAsync(session);
 
         editor.Cropped.Should().Be(new CaptureRect(100, 100, 400, 300));
-        editor.Redacted.Should().Equal(box);
+        editor.Burnt.Should().Equal(box);
         session.InjectedScreenshots.Should().ContainSingle();
     }
 

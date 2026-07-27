@@ -12,6 +12,9 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class ScreenshotSelectionTests
 {
+    /// <summary>Nothing here draws a frame, so the colour only has to be a value the surface can carry.</summary>
+    private const uint Accent = 0xFF3B82F6;
+
     /// <summary>A 2880×1620 capture of a 1920×1080 desktop — a 150% panel, which is what this is being built on.</summary>
     private static readonly CapturedDisplay Panel = new()
     {
@@ -213,13 +216,13 @@ public class ScreenshotSelectionTests
     [Fact]
     public void BeforeTheWindowHasASize_TheRatioIsOne()
     {
-        var selection = new ScreenshotSelectionViewModel(_Capture(Panel), 2880, 1620);
+        var selection = new ScreenshotSelectionViewModel(_Capture(Panel), 2880, 1620, Accent);
 
         selection.ToImagePixel(100, 100).Should().Be(new CapturePoint(100, 100));
     }
 
     private static ScreenshotSelectionViewModel _Surface(CaptureRect? lastRegion = null) =>
-        new(_Capture(Panel), 2880, 1620, lastRegion) { SurfaceWidth = 1920, SurfaceHeight = 1080 };
+        new(_Capture(Panel), 2880, 1620, Accent, lastRegion) { SurfaceWidth = 1920, SurfaceHeight = 1080 };
 
     /// <summary>Two displays of different heights side by side: the shorter one leaves the capture with area nothing painted.</summary>
     private static ScreenshotSelectionViewModel _Staggered()
@@ -237,7 +240,7 @@ public class ScreenshotSelectionTests
             ImageBounds = new CaptureRect(1920, 360, 1920, 1080),
         };
 
-        return new ScreenshotSelectionViewModel(_Capture(tall, shortOne), 3840, 1440)
+        return new ScreenshotSelectionViewModel(_Capture(tall, shortOne), 3840, 1440, Accent)
         {
             SurfaceWidth = 3840,
             SurfaceHeight = 1440,

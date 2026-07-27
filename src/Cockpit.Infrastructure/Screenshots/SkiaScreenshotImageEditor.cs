@@ -47,23 +47,63 @@ internal sealed class SkiaScreenshotImageEditor : IScreenshotImageEditor, ISingl
         return encoded.ToArray();
     }
 
-    public byte[] Redact(byte[] png, IReadOnlyList<CaptureRect> regions)
+    public byte[] Burn(byte[] png, IReadOnlyList<Mark> marks)
     {
-        if (regions.Count == 0)
+        if (marks.Count == 0)
         {
             return png;
         }
 
         using var image = CaptureBitmap.Decode(png, "The capture");
-        foreach (var region in regions)
+
+        // In the order they were placed, because that is what the operator watched happen: a frame drawn over a
+        // pixelated box and one drawn under it are different pictures, and the surface showed them the first.
+        foreach (var mark in marks)
         {
-            _Pixelate(image, region);
+            switch (mark)
+            {
+                case RedactionMark redaction:
+                    _Pixelate(image, redaction.Area);
+                    break;
+                case OutlineMark outline:
+                    _Outline(image, outline);
+                    break;
+                default:
+                    throw new NotSupportedException($"There is no way to burn in a {mark.GetType().Name}.");
+            }
         }
 
         using var encoded = SKImage.FromBitmap(image).Encode(SKEncodedImageFormat.Png, 100)
-            ?? throw new InvalidOperationException("The redacted capture could not be encoded as a PNG.");
+            ?? throw new InvalidOperationException("The marked capture could not be encoded as a PNG.");
 
         return encoded.ToArray();
+    }
+
+    /// <summary>
+    /// Draws the frame straight onto the bitmap, letting the canvas clip whatever falls outside it — a mark that
+    /// ran off the edge of the crop keeps the sides that are in the picture and grows no new ones.
+    /// </summary>
+    /// <remarks>
+    /// Inset by half the stroke, because Skia centres a stroke on the path: a frame on the exact rectangle would
+    /// put half its width outside the area it is framing, and on a mark drawn to the image's edge that half is
+    /// clipped away and the frame reads thinner on that side than the others.
+    /// </remarks>
+    private static void _Outline(SKBitmap image, OutlineMark outline)
+    {
+        using var canvas = new SKCanvas(image);
+        using var paint = new SKPaint
+        {
+            Color = new SKColor(outline.Colour),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = outline.Thickness,
+            IsAntialias = true,
+        };
+
+        var inset = outline.Thickness / 2f;
+        var area = outline.Area;
+        canvas.DrawRect(
+            new SKRect(area.X + inset, area.Y + inset, area.Right - inset, area.Bottom - inset),
+            paint);
     }
 
     /// <summary>

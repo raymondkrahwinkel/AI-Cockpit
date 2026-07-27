@@ -20,4 +20,18 @@ public readonly record struct CaptureRect(int X, int Y, int Width, int Height)
     /// </summary>
     public bool Contains(CapturePoint point) =>
         point.X >= X && point.X < Right && point.Y >= Y && point.Y < Bottom;
+
+    /// <summary>
+    /// The part of this rectangle that also lies in the other one, or nothing where they do not meet. Half-open
+    /// like <see cref="Contains"/>, so two rectangles that merely touch along an edge share no area.
+    /// </summary>
+    public CaptureRect? Overlap(CaptureRect other)
+    {
+        var left = Math.Max(X, other.X);
+        var top = Math.Max(Y, other.Y);
+        var right = Math.Min(Right, other.Right);
+        var bottom = Math.Min(Bottom, other.Bottom);
+
+        return right > left && bottom > top ? new CaptureRect(left, top, right - left, bottom - top) : null;
+    }
 }

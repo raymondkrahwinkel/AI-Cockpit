@@ -11,6 +11,9 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class ScreenshotWindowPickingTests
 {
+    /// <summary>Nothing here draws a frame, so the colour only has to be a value the surface can carry.</summary>
+    private const uint Accent = 0xFF3B82F6;
+
     /// <summary>A 150% panel: the desktop is 1920×1080, the capture 2880×1620. Window bounds arrive in the first space and have to be used in the second.</summary>
     private static readonly CapturedDisplay Panel = new()
     {
@@ -76,7 +79,7 @@ public class ScreenshotWindowPickingTests
     [Fact]
     public void OnADesktopThatWillNotSay_TheModeIsUnavailable()
     {
-        var selection = new ScreenshotSelectionViewModel(_Capture(), 2880, 1620, null, StubWindows.None)
+        var selection = new ScreenshotSelectionViewModel(_Capture(), 2880, 1620, Accent, null, StubWindows.None)
         {
             SurfaceWidth = 1920,
             SurfaceHeight = 1080,
@@ -146,7 +149,7 @@ public class ScreenshotWindowPickingTests
     }
 
     private static ScreenshotSelectionViewModel _Surface(params DesktopWindow[] windows) =>
-        new(_Capture(), 2880, 1620, null, new StubWindows { Windows = windows })
+        new(_Capture(), 2880, 1620, Accent, null, new StubWindows { Windows = windows })
         {
             SurfaceWidth = 1920,
             SurfaceHeight = 1080,

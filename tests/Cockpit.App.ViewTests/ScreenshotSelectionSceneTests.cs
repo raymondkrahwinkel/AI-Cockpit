@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.App.ViewTests;
 
@@ -71,8 +72,9 @@ public class ScreenshotSelectionSceneTests
         var selection = _Model(surface);
 
         selection.Redacting.Should().BeTrue("the scene marks out a region first, which is what B needs");
-        selection.RedactionNeedsARegion.Should().BeFalse();
-        selection.Redactions.Should().HaveCount(2, "two boxes are dragged over the region");
+        selection.MarkingNeedsARegion.Should().BeFalse();
+        selection.Marks.Should().HaveCount(2, "two boxes are dragged over the region")
+            .And.AllBeOfType<RedactionMark>();
     });
 
     /// <summary>

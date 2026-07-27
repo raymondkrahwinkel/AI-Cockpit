@@ -32,6 +32,13 @@ internal static class ScreenshotSelectionScene
     public const string Redaction = "screenshot-selection-redaction";
 
     /// <summary>
+    /// The mark layer with both its tools on one region (AC-359): a frame around something to look at, and a box
+    /// over something not to send. One scene rather than two, because what is worth looking at is that they sit
+    /// on the same picture and are drawn in the order they were placed.
+    /// </summary>
+    public const string Marks = "screenshot-selection-marks";
+
+    /// <summary>
     /// Two screens side by side, with the pointer left on the right-hand one. The surface is a single window
     /// spanning every display, so its own middle is a place nobody is looking — this is the scene that shows
     /// whether the control panel found the screen the operator is actually on (AC-358).
@@ -47,7 +54,8 @@ internal static class ScreenshotSelectionScene
     private const int CaptureScale = 2;
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
-    public static bool Covers(string? scene) => scene is Idle or Region or WindowPick or Redaction or TwoDisplays;
+    public static bool Covers(string? scene) =>
+        scene is Idle or Region or WindowPick or Redaction or Marks or TwoDisplays;
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -92,6 +100,16 @@ internal static class ScreenshotSelectionScene
                 // Only the pointer: where the panel lands is the whole point, and a region would move it for a
                 // different reason and muddle the two.
                 surface.MouseMove(new Point(width * 0.78, height * 0.55));
+                break;
+
+            case Marks:
+                // The region first, then a frame, then a box — in that order, because the order is the thing:
+                // this is one list and one undo, and the picture has to show them sitting on the same surface.
+                _Drag(surface, new Point(width * 0.14, height * 0.20), new Point(width * 0.86, height * 0.88));
+                surface.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.None);
+                _Drag(surface, new Point(width * 0.18, height * 0.28), new Point(width * 0.47, height * 0.52));
+                surface.KeyPressQwerty(PhysicalKey.B, RawInputModifiers.None);
+                _Drag(surface, new Point(width * 0.55, height * 0.62), new Point(width * 0.81, height * 0.68));
                 break;
 
             case Redaction:

@@ -9,6 +9,11 @@ namespace Cockpit.App.ViewTests;
 /// tested there; this is where they are drawn, undone, and moved into the coordinates of the picture that
 /// actually gets sent.
 /// </summary>
+/// <remarks>
+/// Since AC-359 a box is one mark among others on a shared list and a shared undo. Every promise below is the one
+/// AC-331 made and is asserted through the new shape rather than relaxed to fit it — folding redaction into the
+/// mark layer was allowed to change the bookkeeping and nothing else.
+/// </remarks>
 public class ScreenshotRedactionTests
 {
     private static readonly CapturedDisplay Panel = new()
@@ -17,6 +22,9 @@ public class ScreenshotRedactionTests
         Scale = 1,
         ImageBounds = new CaptureRect(0, 0, 1920, 1080),
     };
+
+    /// <summary>Any colour will do here — nothing in this file draws a frame, and the value only has to be carried.</summary>
+    private const uint Accent = 0xFF3B82F6;
 
     /// <summary>
     /// A box is drawn on the whole capture but applied to the crop, so it has to be moved into the crop's own
@@ -33,7 +41,7 @@ public class ScreenshotRedactionTests
         selection.Confirm();
 
         selection.Result!.Region.Should().Be(new CaptureRect(100, 100, 400, 300));
-        selection.Result.Redactions.Should().Equal(new CaptureRect(50, 80, 60, 40));
+        selection.Result.Marks.Should().Equal(new RedactionMark(new CaptureRect(50, 80, 60, 40)));
     }
 
     /// <summary>A box outside the region hides nothing in the picture that is sent, so it does not travel with it.</summary>
@@ -46,7 +54,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Redactions.Should().BeEmpty();
+        selection.Result!.Marks.Should().BeEmpty();
     }
 
     /// <summary>A box hanging over the edge of the region is kept for the part that is inside it.</summary>
@@ -59,7 +67,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Redactions.Should().Equal(new CaptureRect(350, 50, 50, 100));
+        selection.Result!.Marks.Should().Equal(new RedactionMark(new CaptureRect(350, 50, 50, 100)));
     }
 
     /// <summary>
@@ -78,7 +86,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Redactions.Should().Equal(new CaptureRect(50, 80, 60, 40));
+        selection.Result!.Marks.Should().Equal(new RedactionMark(new CaptureRect(50, 80, 60, 40)));
     }
 
     [Fact]
@@ -89,9 +97,9 @@ public class ScreenshotRedactionTests
         _DrawBox(selection, 10, 10, 40, 40);
         _DrawBox(selection, 100, 100, 40, 40);
 
-        selection.UndoRedaction();
+        selection.Undo();
 
-        selection.Redactions.Should().Equal(new CaptureRect(10, 10, 40, 40));
+        selection.Marks.Should().Equal(new RedactionMark(new CaptureRect(10, 10, 40, 40)));
     }
 
     /// <summary>
@@ -133,7 +141,7 @@ public class ScreenshotRedactionTests
         _DrawBox(selection, 150, 150, 50, 50);
 
         selection.Selection.Should().Be(new CaptureRect(100, 100, 400, 300));
-        selection.Redactions.Should().ContainSingle();
+        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<RedactionMark>();
     }
 
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
@@ -152,7 +160,7 @@ public class ScreenshotRedactionTests
     }
 
     private static ScreenshotSelectionViewModel _Surface() =>
-        new(new ScreenCapture { Image = [0x89, 0x50, 0x4E, 0x47], Displays = [Panel] }, 1920, 1080)
+        new(new ScreenCapture { Image = [0x89, 0x50, 0x4E, 0x47], Displays = [Panel] }, 1920, 1080, Accent)
         {
             SurfaceWidth = 1920,
             SurfaceHeight = 1080,
