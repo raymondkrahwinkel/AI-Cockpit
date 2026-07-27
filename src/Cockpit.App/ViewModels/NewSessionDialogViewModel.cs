@@ -44,6 +44,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
+    private readonly IMcpOAuthCoordinator? _oauthCoordinator;
     private CancellationTokenSource? _tokenEstimateCts;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
@@ -158,6 +159,38 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     /// <summary>Whether the MCP checklist is shown at all — hidden when the registry has no enabled servers.</summary>
     public bool HasMcpServers => McpServers.Count > 0;
+
+    /// <summary>
+    /// Whether a <em>selected</em> server needs a sign-in it does not have (AC-355) — the dialog says so, but it
+    /// never blocks Start over it: the operator may well know it and mean to proceed without that server's tools, or
+    /// sign in from a session that is already running. Follows the same non-blocking inline-hint pattern as
+    /// <see cref="ShowLoginHint"/> rather than a confirmation dialog of its own, so it is visible well before Start
+    /// is ever pressed — an unticked server (its tools already opted out of this session) says nothing here.
+    /// </summary>
+    public bool ShowMcpAuthorizationHint =>
+        McpServers.Any(server => server.IsEnabledForSession && server.AuthState == McpAuthState.AuthorizationRequired);
+
+    /// <summary>The AC-355 hint text, naming every ticked server that still needs a sign-in.</summary>
+    public string McpAuthorizationHintText
+    {
+        get
+        {
+            var names = McpServers
+                .Where(server => server.IsEnabledForSession && server.AuthState == McpAuthState.AuthorizationRequired)
+                .Select(server => server.Name)
+                .ToList();
+
+            if (names.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var list = string.Join(", ", names);
+            return names.Count == 1
+                ? $"{list} needs a sign-in — its tools won't be available until you sign in from the MCP servers dialog."
+                : $"{list} need a sign-in — their tools won't be available until you sign in from the MCP servers dialog.";
+        }
+    }
 
     /// <summary>All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
@@ -492,7 +525,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IPluginProviderRegistry? sessionProviderRegistry = null,
         IWorktreeManager? worktreeManager = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
-        IProjectStore? projectStore = null)
+        IProjectStore? projectStore = null,
+        IMcpOAuthCoordinator? oauthCoordinator = null)
     {
         _projectStore = projectStore;
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
@@ -505,6 +539,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _ttyProviderRegistry = ttyProviderRegistry;
         _sessionProviderRegistry = sessionProviderRegistry;
         _worktreeManager = worktreeManager;
+        _oauthCoordinator = oauthCoordinator;
     }
 
     /// <summary>
@@ -592,8 +627,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             existing.PropertyChanged -= _OnMcpServerToggled;
         }
 
+        var offered = McpServerRegistryFilter.OfferedToOperator(registry);
+
         McpServers.Clear();
-        foreach (var server in McpServerRegistryFilter.OfferedToOperator(registry))
+        foreach (var server in offered)
         {
             // Set before subscribing, so restoring a tick does not read as the operator making one.
             var item = new McpServerSelectionItemViewModel(server.Name)
@@ -608,6 +645,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasMcpTokenSummary));
         OnPropertyChanged(nameof(McpToolTokenSummary));
 
+        // AC-355: a storage-only read (no network, no browser — see IMcpOAuthCoordinator.GetStateAsync), so unlike
+        // the tool-token estimate below it is awaited here rather than backgrounded: the checklist rebuild this sits
+        // inside already gates Start (IsRebuildingMcpChecklist), and this finishes fast enough not to matter.
+        await _RefreshMcpAuthStatesAsync(offered);
+
         // Pre-flight tool-token estimate (AC-134): enumerate each server's tools in the background and roll the
         // ticked ones into a running total, so the operator sees roughly what the selection costs before starting.
         _ = _EstimateMcpTokensAsync(refresh: false);
@@ -619,6 +661,47 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         {
             _ApplyProfileMcpSelection();
         }
+    }
+
+    /// <summary>
+    /// Reads each offered server's OAuth standing (AC-355) and writes it onto the matching checklist row, by name —
+    /// a no-op without a coordinator (design-time/no service) so the checklist behaves exactly as before AC-355 when
+    /// nobody asked for status.
+    /// </summary>
+    private async Task _RefreshMcpAuthStatesAsync(IReadOnlyList<McpServerConfig> offered)
+    {
+        if (_oauthCoordinator is null)
+        {
+            return;
+        }
+
+        var byName = McpServers.ToDictionary(item => item.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var server in offered)
+        {
+            if (!byName.TryGetValue(server.Name, out var item))
+            {
+                continue;
+            }
+
+            McpAuthState state;
+            try
+            {
+                state = await _oauthCoordinator.GetStateAsync(server).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                // A status read is informational; a storage hiccup leaves the row as it was rather than becoming a
+                // false "sign-in needed".
+                continue;
+            }
+
+            // NotRequired is not worth carrying onto the row — the checklist's own "?" tooltip already covers
+            // every other reason a server can't be counted, and only AuthorizationRequired changes what it says.
+            item.AuthState = state == McpAuthState.NotRequired ? null : state;
+        }
+
+        OnPropertyChanged(nameof(ShowMcpAuthorizationHint));
+        OnPropertyChanged(nameof(McpAuthorizationHintText));
     }
 
     /// <summary>
@@ -730,6 +813,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             or nameof(McpServerSelectionItemViewModel.IsEstimatingTokens))
         {
             OnPropertyChanged(nameof(McpToolTokenSummary));
+        }
+
+        // The AC-355 hint names only the *ticked* servers that need a sign-in, so unticking one drops it from the
+        // hint (and can clear it entirely) the same way ticking one back on can bring it back.
+        if (e.PropertyName is nameof(McpServerSelectionItemViewModel.IsEnabledForSession)
+            or nameof(McpServerSelectionItemViewModel.AuthState))
+        {
+            OnPropertyChanged(nameof(ShowMcpAuthorizationHint));
+            OnPropertyChanged(nameof(McpAuthorizationHintText));
         }
     }
 

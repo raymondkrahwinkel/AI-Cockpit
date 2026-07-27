@@ -17,6 +17,12 @@ public partial class McpServersViewModel : ViewModelBase
     private readonly IMcpServerStore? _store;
     private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalProviders;
 
+    /// <summary>
+    /// Answers each row's OAuth standing (AC-355) — null in the parameterless design-time constructor, so the
+    /// previewer renders with status simply unshown rather than needing a fake coordinator of its own.
+    /// </summary>
+    private readonly IMcpOAuthCoordinator? _oauthCoordinator;
+
     public event Action? CloseRequested;
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
@@ -36,10 +42,11 @@ public partial class McpServersViewModel : ViewModelBase
         SelectedServer = sample;
     }
 
-    public McpServersViewModel(IMcpServerStore store, IEnumerable<ICockpitInternalMcpProvider> internalProviders)
+    public McpServersViewModel(IMcpServerStore store, IEnumerable<ICockpitInternalMcpProvider> internalProviders, IMcpOAuthCoordinator? oauthCoordinator = null)
     {
         _store = store;
         _internalProviders = [.. internalProviders];
+        _oauthCoordinator = oauthCoordinator;
     }
 
     public async Task LoadAsync()
@@ -61,10 +68,14 @@ public partial class McpServersViewModel : ViewModelBase
         Servers.Clear();
         foreach (var server in servers.Where(server => !internalNames.Contains(server.Name)))
         {
-            Servers.Add(new EditableMcpServerViewModel(server));
+            Servers.Add(new EditableMcpServerViewModel(server, _oauthCoordinator));
         }
 
         SelectedServer = Servers.FirstOrDefault();
+
+        // Reads storage only (AC-355) — cheap enough to run for every row up front, so the list shows each OAuth
+        // server's standing without the operator having to select one first.
+        await Task.WhenAll(Servers.Select(server => server.RefreshAuthStateAsync()));
     }
 
     // A provider that throws while listing its servers must not break the manager dialog — it just means its names
@@ -84,7 +95,7 @@ public partial class McpServersViewModel : ViewModelBase
     [RelayCommand]
     private void AddServer()
     {
-        var added = new EditableMcpServerViewModel(new McpServerConfig { Name = "new server", Command = "npx" });
+        var added = new EditableMcpServerViewModel(new McpServerConfig { Name = "new server", Command = "npx" }, _oauthCoordinator);
         Servers.Add(added);
         SelectedServer = added;
     }

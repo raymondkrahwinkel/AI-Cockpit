@@ -69,6 +69,31 @@ internal sealed class McpOAuthCoordinator(
             : McpOAuthAccess.AuthorizationRequired;
     }
 
+    public async Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default)
+    {
+        if (server.Auth != McpServerAuth.OAuth)
+        {
+            return McpAuthState.NotRequired;
+        }
+
+        var stored = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        if (stored is null || !stored.IsForResource(server.Url))
+        {
+            return McpAuthState.AuthorizationRequired;
+        }
+
+        // No margin here, unlike the one Acquire keeps. That margin exists because a token is written into a config
+        // a session then reads for an hour; a status is answering "are you signed in", and an expired token with a
+        // refresh still counts — the next use renews it without the operator noticing, so saying "sign in again"
+        // would be asking for something that is not needed.
+        return stored.IsUsableAt(DateTimeOffset.UtcNow, TimeSpan.Zero) || !string.IsNullOrWhiteSpace(stored.RefreshToken)
+            ? McpAuthState.Authorized
+            : McpAuthState.AuthorizationRequired;
+    }
+
+    public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
+        tokenStore.RemoveAsync(server.Name, cancellationToken);
+
     private async Task<McpOAuthToken?> _ReadAsync(string serverName, CancellationToken cancellationToken)
     {
         try
