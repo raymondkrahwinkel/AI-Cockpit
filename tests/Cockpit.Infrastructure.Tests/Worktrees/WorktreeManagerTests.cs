@@ -184,9 +184,67 @@ public sealed class WorktreeManagerTests : IDisposable
         var remove = async () => await _manager.RemoveAsync(record);
         await remove.Should().ThrowAsync<InvalidOperationException>();
         Directory.Exists(record.Path).Should().BeTrue();
+        // The refusal keeps the registry entry too: the worktree is still there, so forgetting it would hide a tree
+        // holding work from the panel that is meant to show it.
+        (await _manager.ListAsync()).Should().ContainSingle();
 
         await _manager.RemoveAsync(record, force: true);
         Directory.Exists(record.Path).Should().BeFalse();
+        (await _manager.ListAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RemoveAsync_WorktreeGitHasForgotten_DropsTheRegistryEntryRatherThanRefusing()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The state that could not be cleaned up from the panel (AC-342): the folder deleted by hand and git's own
+        // administration pruned, so nothing is left of the worktree but the registry entry the row is drawn from.
+        // git answers a remove of that path with "is not a working tree", which used to abort before the registry.
+        TestGitDirectory.Remove(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+        _Git(_repo, "worktree", "list").Split('\n').Should().HaveCount(1, "git only knows the main worktree now");
+
+        await _manager.RemoveAsync(record);
+
+        (await _manager.ListAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WorktreeWhoseFolderIsGone_DropsTheRecordRatherThanRetainingItForever()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "work.txt", "unmerged\n");
+        TestGitDirectory.Remove(record.Path);
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        // Nothing can be measured about a tree that is not there, so teardown used to call it "not clean" and keep
+        // the record — leaving behind exactly the row the panel could not remove. The branch survives, so the commit
+        // that only lives on it is still reachable.
+        (await _manager.ListAsync()).Should().BeEmpty();
+        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task RemoveAsync_WorktreeWhoseRepositoryIsGone_DropsTheRegistryEntry()
+    {
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+
+        // git cannot be asked anything about a repository that is no longer there — it will not even start with that
+        // working directory. With the worktree gone as well, the registry entry is all that is left to remove.
+        TestGitDirectory.Remove(record.Path);
+        TestGitDirectory.Remove(second);
+
+        await _manager.RemoveAsync(record);
+
         (await _manager.ListAsync()).Should().BeEmpty();
     }
 

@@ -60,6 +60,12 @@ public interface IWorktreeManager
     /// <summary>
     /// Removes the worktree and its registry entry. Without <paramref name="force"/> git itself refuses a worktree
     /// with uncommitted work, which is the safety net; <paramref name="force"/> is the operator's explicit override.
+    /// <para>
+    /// A worktree whose folder is already gone is removed by dropping its registry entry alone, even when git refuses
+    /// the path or cannot be run for it at all: there is nothing left on disk to lose, and the branch survives either
+    /// way. Without that, an entry git no longer knows about could never be removed (AC-342). Every other refusal
+    /// throws with what git said.
+    /// </para>
     /// </summary>
     Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
 

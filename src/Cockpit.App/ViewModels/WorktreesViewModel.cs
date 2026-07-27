@@ -44,6 +44,15 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     /// <summary>Quiet grey when there are none, the working colour when there are: knowing some are left behind is worth seeing at a glance.</summary>
     public string CountBrushKey => Count > 0 ? "CockpitStatusBusyBrush" : "CockpitTextFaintBrush";
 
+    /// <summary>
+    /// Why the last removal did not go through, in git's own words — null while nothing has failed. Shown in the
+    /// dialog because a row that stays put is otherwise indistinguishable from a button that does nothing (AC-342).
+    /// </summary>
+    [ObservableProperty]
+    private string? _removeFailure;
+
+    public bool HasRemoveFailure => RemoveFailure is not null;
+
     /// <summary>Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.</summary>
     public Func<IReadOnlySet<string>>? LiveSessionIds { get; set; }
 
@@ -55,6 +64,8 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         OnPropertyChanged(nameof(HasWorktrees));
         OnPropertyChanged(nameof(CountBrushKey));
     }
+
+    partial void OnRemoveFailureChanged(string? value) => OnPropertyChanged(nameof(HasRemoveFailure));
 
     /// <summary>The cheap refresh for the status-bar counter: how many worktrees exist, without asking git about each one's state.</summary>
     public async Task RefreshCountAsync()
@@ -118,11 +129,14 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         try
         {
             await _manager.RemoveAsync(row.Record, force: row.Status.HasUncommittedChanges);
+            RemoveFailure = null;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // A remove git declines (a lock we could not clear, a folder in use) leaves the row where it is; the
-            // refresh below shows its real current state rather than pretending it went.
+            // A remove git declines (a lock we could not clear, a folder in use) leaves the row where it is — and
+            // says so, rather than leaving the operator with a button that appears to do nothing. The refresh below
+            // still shows the row's real current state rather than pretending it went.
+            RemoveFailure = _OneLine($"Could not remove '{row.Branch}' — {exception.Message}");
         }
 
         await RefreshAsync();
@@ -140,7 +154,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         ReattachRequested?.Invoke(row.Record);
     }
 
-    /// <summary>Removes every worktree that is safe to remove — clean, no work to lose. Never touches one with unsaved changes.</summary>
+    /// <summary>Removes every worktree that is safe to remove — clean or already gone, no work to lose. Never touches one with unsaved changes.</summary>
     [RelayCommand]
     private async Task CleanUpFinishedAsync()
     {
@@ -150,18 +164,38 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
 
         // Only clean trees whose session is gone: a live session's tree is never pulled from under it, even when clean.
-        foreach (var row in Worktrees.Where(worktree => worktree.IsClean && !worktree.IsOwnerLive).ToList())
+        // A tree whose folder has disappeared counts as one of them (AC-342): there is no working copy left to lose,
+        // and removing it keeps the branch, so all that goes is the registry entry. It does not read as clean —
+        // IsClean requires the folder to be there, since nothing can be measured about a tree that is not — which is
+        // why it is named here rather than folded into that meaning.
+        List<string> refusals = [];
+        foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || !worktree.Status.Exists) && !worktree.IsOwnerLive).ToList())
         {
             try
             {
                 await _manager.RemoveAsync(row.Record, force: false);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // Skip one that will not remove; the rest still get cleaned, and the refresh shows what remains.
+                // Skip one that will not remove; the rest still get cleaned. What was skipped is collected rather
+                // than swallowed — a sweep that silently leaves rows behind reads as a sweep that did nothing.
+                refusals.Add($"'{row.Branch}' — {exception.Message}");
             }
         }
 
+        RemoveFailure = refusals.Count > 0
+            ? _OneLine($"Could not remove {refusals.Count} of them: {string.Join("; ", refusals)}")
+            : null;
+
         await RefreshAsync();
     }
+
+    // git says why across several lines; the dialog shows it on one. Beyond reading better in a single status line,
+    // a wrapping TextBlock over text that still holds newlines is the Avalonia 12.0.5 defect that took the prompt
+    // preview out with an OutOfMemoryException (AC-292) — the wrapper never advances and allocates empty lines until
+    // memory runs out. Flattening here keeps that class of text away from the wrap.
+    // The separators go in as an array on purpose: passing them as two arguments binds to Split(char, int,
+    // StringSplitOptions) — the second separator silently becoming a count — and nothing splits on newlines at all.
+    private static string _OneLine(string text) =>
+        string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 }
