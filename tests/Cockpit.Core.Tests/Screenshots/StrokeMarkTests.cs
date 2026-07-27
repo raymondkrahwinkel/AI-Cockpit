@@ -39,9 +39,11 @@ public class StrokeMarkTests
 
         var first = corner.Curve()[0];
 
-        // On a straight run from (0,0) to (100,0) every control point would sit on that line. The turn coming up
-        // pulls this one off it, which is what makes the corner a bend rather than a hinge.
-        first.SecondControl.Y.Should().NotBe(0);
+        // On a straight run from (0,0) to (100,0) every control point sits on that line. The turn coming up pulls
+        // this one well off it, which is what makes the corner a bend rather than a hinge. Measured as a distance
+        // rather than as "not zero": a curve that has been flattened to a straight line still misses zero by a
+        // rounding error, and an assertion that accepts that accepts a straight line.
+        Math.Abs(first.SecondControl.Y).Should().BeGreaterThan(5);
     }
 
     /// <summary>A press that never moved is not a gesture, so there is nothing to draw and nothing to carry.</summary>
