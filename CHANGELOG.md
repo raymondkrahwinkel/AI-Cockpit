@@ -471,6 +471,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the message about a remote that could not be reached no longer repeats what your repository has written
+  down as that remote. Git is happy to take a whole URL where a remote's name would go, and a URL can carry a token
+  in it — which would have gone straight into a notification and into the answer an agent reads. Only the host part
+  survives now, the same way git itself reports its own failures.
+
 - fixed: a global shortcut you switched on that your desktop refused to register now says so in the settings
   screen. It used to read exactly like a shortcut you had never switched on — an empty line, no error — and the
   only sign anything was wrong was the key doing nothing when you pressed it.

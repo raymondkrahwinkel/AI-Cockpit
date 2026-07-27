@@ -18,9 +18,10 @@ namespace Cockpit.Infrastructure.Worktrees;
 /// </summary>
 internal static class WorktreeSourceUpdater
 {
-    // Well short of GitCli's default hang guard: this runs on the session-start path, and the whole point is that a
-    // network that is slow or gone delays a session by seconds rather than minutes. The fallback is a fork from the
-    // local HEAD, which is exactly what happened before this existed.
+    // Well short of GitCli's default hang guard, and only on the step that leaves the machine: a network that is
+    // slow or gone should delay a session by seconds rather than minutes. The local steps around it keep GitCli's
+    // own guard, which is the right order of magnitude for reading a large repository but not for waiting on a
+    // host that is not answering. The fallback is a fork from the local HEAD, exactly as before this existed.
     private static readonly TimeSpan FetchTimeout = TimeSpan.FromSeconds(20);
 
     // The merge is local, but it runs the repository's post-merge hook, and a hook that installs packages can take
@@ -90,11 +91,16 @@ internal static class WorktreeSourceUpdater
                 ? await _CountCommitsAsync(root, $"{branchRef}..{known.Reference}", cancellationToken).ConfigureAwait(false)
                 : null;
 
+            // Redacted, because this is usually a remote's name but git accepts a URL there just as happily — and a
+            // URL can carry a token in its userinfo. This sentence goes to a toast and, through the worktree tool,
+            // into an agent's context; git redacts its own stderr, so this interpolation is the one way the raw
+            // value would get out.
             return new WorktreeSourceRefresh(
                 WorktreeSourceOutcome.FetchFailed,
                 lastKnown ?? 0,
                 upstream?.Display,
-                $"Could not reach '{remote}', so this session forked from your local '{branch}' as it is"
+                $"Could not reach '{GitCli.RedactUrlCredentials(remote)}', so this session forked from your local "
+                + $"'{branch}' as it is"
                 + (lastKnown > 0 ? $" — {_Commits(lastKnown.Value)} behind {upstream?.Display} at the last fetch." : "."));
         }
 
