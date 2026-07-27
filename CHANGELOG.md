@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can take a whole window instead of dragging its edges. On the selection surface, press W and the window
+  under your pointer lights up; click it and that is what you get, cropped out of the capture already taken — nothing
+  is asked of the window itself, and it is never brought to the front. Where two windows overlap you get the one on
+  top. On Wayland the surface says plainly that this is not something the desktop will allow, rather than offering a
+  key that does nothing: telling one application where another's windows are is exactly what Wayland was designed not
+  to do.
+
 - added: the screenshot tool now has a selection surface of its own, the same on every platform. Pressing the key
   freezes the screen and puts it in front of you: drag out the region you want, nudge its edges with the arrow keys
   when it needs to be exact (hold Shift to resize instead of move, Ctrl for larger steps), press A for everything,

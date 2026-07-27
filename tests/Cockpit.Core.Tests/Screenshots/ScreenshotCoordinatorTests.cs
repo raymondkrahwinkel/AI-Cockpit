@@ -151,6 +151,7 @@ public class ScreenshotCoordinatorTests
             toasts,
             new FakeScreenshotSettingsStore(),
             new FakeScreenshotImageEditor(),
+            StubDesktopWindows.None,
             NullLogger<ScreenshotCoordinator>.Instance);
     }
 }

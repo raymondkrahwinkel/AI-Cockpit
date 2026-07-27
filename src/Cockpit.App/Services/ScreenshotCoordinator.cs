@@ -34,6 +34,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     private readonly IToastService _toasts;
     private readonly IScreenshotSettingsStore _settings;
     private readonly IScreenshotImageEditor _editor;
+    private readonly IDesktopWindows _windows;
     private readonly ILogger<ScreenshotCoordinator> _logger;
 
     /// <summary>Guards against a second capture while the picker is already open — the hotkey is easy to press twice.</summary>
@@ -53,6 +54,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
         IToastService toasts,
         IScreenshotSettingsStore settings,
         IScreenshotImageEditor editor,
+        IDesktopWindows windows,
         ILogger<ScreenshotCoordinator> logger)
     {
         _hotkeys = hotkeys;
@@ -61,11 +63,12 @@ public sealed class ScreenshotCoordinator : ISingletonService
         _toasts = toasts;
         _settings = settings;
         _editor = editor;
+        _windows = windows;
         _logger = logger;
 
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
         {
-            _showSelection = (capture, lastRegion) => ScreenshotSelectionWindow.PickAsync(capture, lastRegion, window);
+            _showSelection = (capture, lastRegion) => ScreenshotSelectionWindow.PickAsync(capture, lastRegion, _windows, window);
         }
 
         hotkeys.Pressed += (_, id) =>
