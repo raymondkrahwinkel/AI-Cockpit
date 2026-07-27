@@ -191,6 +191,11 @@
          this assembly, so an older host loads an older SDK where the new member is absent and the call fails before
          any default body runs. A plugin calling it raises its manifest's minHostVersion. Additions only — a minor;
          major and abstractionsVersion stay 1. -->
+    <!-- 1.31.0 (AC-251): EmbeddedSessionRequest gains RunId and RunLabel, so a plugin that embeds several sessions
+         for one piece of work says which run they belong to and the host can add their token and cost totals up per
+         run. Init-only properties defaulting to null, so every existing request still compiles and behaves the same;
+         a plugin that sets them raises its manifest's minHostVersion, since an older host's copy of this record has
+         no such setter. Additions only — a minor; major and abstractionsVersion stay 1. -->
     <!-- 1.30.0 (AC-354): PluginMcpServer gains Headers, the operator's own headers for an MCP server that wants
          X-Api-Key or a scheme other than Bearer rather than Authorization: Bearer. An init-only property on a record,
          so it is binary-safe by the AC-40 rule — no positional constructor, and every published plugin zip that builds
@@ -198,7 +203,7 @@
          behaves exactly as before. The other direction still holds: a provider that *reads* it fails on an older host
          whose SDK has no such member, so the three that do (claude-provider, cli-agent-provider, kimi-provider) raise
          their manifest's minHostVersion to 0.7.0. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.30.0</Version>
+    <Version>1.31.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

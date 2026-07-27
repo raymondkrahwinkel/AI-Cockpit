@@ -116,4 +116,21 @@ public sealed record EmbeddedSessionRequest
     /// leaves it false and keeps prompting. Supersedes <see cref="PreApprovedTools"/> when true.
     /// </summary>
     public bool PreApproveAllTools { get; init; }
+
+    /// <summary>
+    /// The run this session is being embedded for (AC-251) — the plugin's own identifier for one piece of work, the
+    /// same value on every session that run embeds. The host records it against the session's token and cost totals,
+    /// so afterwards "what did that run spend" is a grouping rather than a guess: a run spends across a session per
+    /// step plus its planning and validating CEO, and nothing else in the host can tell those apart from any other
+    /// embedded session. The host does not interpret it — any value stable for the run's lifetime will do. Null (the
+    /// default) records the session as belonging to no run, which is what an ordinary embedded session is.
+    /// </summary>
+    public string? RunId { get; init; }
+
+    /// <summary>
+    /// A human name for <see cref="RunId"/> — what the run is called or working on — recorded alongside it so a
+    /// costly run can be recognised in the usage trail without resolving the id against the plugin that issued it.
+    /// Null adds nothing; it is a convenience for reading the trail, never an identifier.
+    /// </summary>
+    public string? RunLabel { get; init; }
 }

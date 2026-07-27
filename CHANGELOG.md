@@ -45,6 +45,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   On the Codex route the value travels through the environment rather than the command line, the same way its bearer
   token already did: a process argument is readable by every other account on the machine.
 
+- added: the cockpit keeps what your sessions spend. The token and cost figures beside a session's status used to live
+  only as long as the session did — close it, or close the app, and what yesterday cost was simply gone. They are now
+  written to `usage-history.jsonl` next to your settings as each turn finishes, so they survive a crash as well as an
+  ordinary close. Every line carries the tokens split by kind (input, output, cache read, cache write), the cost, the
+  turns, how long the session had been working, the model in effect and the profile it ran under. Sessions an agent
+  started on your behalf are marked as such, and when the plugin driving them names its run — Autopilot does — every
+  session that run opened carries the same name. That last part is what makes "what did that run cost" answerable at
+  all: a run takes a fresh session per step, so the figure was never on any one of them.
+
 - added: an MCP server that asks you to sign in through your browser now reaches every kind of session, not only the
   ones the cockpit drives itself. Until now such a server was handed to Claude, Codex or Kimi as a bare address with
   no credential on it: in a terminal session you could at least tell the agent to sign in again on its own account,

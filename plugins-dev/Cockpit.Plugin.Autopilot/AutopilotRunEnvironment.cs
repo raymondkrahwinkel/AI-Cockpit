@@ -14,9 +14,18 @@ namespace Cockpit.Plugin.Autopilot;
 /// <item><see cref="IsolateSteps"/> — whether each step runs isolated in a worktree. True for a git repository (the
 /// fail-closed default); false only when the host positively reported the folder is not a git repository, so an admin
 /// task in a plain folder runs there directly instead of being refused for "no git repository".</item>
+/// <item><see cref="RunId"/>/<see cref="RunLabel"/> — what the host records this run's sessions under so their token
+/// and cost totals can be added up per run afterwards (AC-251). Null in a test that does not care; a real run always
+/// carries one.</item>
 /// </list>
 /// </summary>
-internal sealed record AutopilotRunEnvironment(string RepositoryDirectory, string? RunWorktreePath, bool IsolateSteps, string? RunWorktreeBranch = null)
+internal sealed record AutopilotRunEnvironment(
+    string RepositoryDirectory,
+    string? RunWorktreePath,
+    bool IsolateSteps,
+    string? RunWorktreeBranch = null,
+    string? RunId = null,
+    string? RunLabel = null)
 {
     /// <summary>Whether this run has one shared git worktree on its own branch — the merge-ready deliverable a code run can push and open a PR from (AC-216). False for a parallel-only or non-git run.</summary>
     public bool HasRunBranch => RunWorktreePath is { Length: > 0 } && RunWorktreeBranch is { Length: > 0 };

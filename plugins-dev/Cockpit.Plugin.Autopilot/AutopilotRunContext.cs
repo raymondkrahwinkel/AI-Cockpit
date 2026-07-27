@@ -35,9 +35,13 @@ internal sealed class AutopilotRunContext
     /// without a host or a UI thread. Pointed at <paramref name="workingDirectory"/>: the run's worktree when it has
     /// one, else the folder it runs in.
     /// </summary>
-    internal static EmbeddedSessionRequest ValidatorCeoRequest(AutopilotSettings settings, string workingDirectory, AutopilotPlan plan) =>
+    internal static EmbeddedSessionRequest ValidatorCeoRequest(AutopilotSettings settings, string workingDirectory, AutopilotPlan plan, string runId) =>
         new()
         {
+            // The validating CEO spends on the run's behalf just as its steps do, so it is recorded against the same
+            // run (AC-251) — leaving it out would under-report exactly the context whose growth this run is measured on.
+            RunId = runId,
+            RunLabel = plan.Label,
             ProfileId = settings.CeoProfileLabel(),
             Model = settings.CeoModel(),
             McpServers = ValidatorCeoMcpServers,
@@ -80,6 +84,14 @@ internal sealed class AutopilotRunContext
 
     /// <summary>The plan this run drives — its goal is the run's label on the surface.</summary>
     public AutopilotPlan Plan { get; }
+
+    /// <summary>
+    /// What ties this one run's sessions together in the host's usage trail (AC-251). A run spends across a session
+    /// per step plus its validating CEO, and nothing the host can see says those belong to each other — so the run
+    /// says it, and afterwards "what did this run cost" is a sum rather than an estimate. Minted per run and never
+    /// reused; the planning round that produced the plan is not part of it, having happened before there was a run.
+    /// </summary>
+    public string RunId { get; } = Guid.NewGuid().ToString("n");
 
     /// <summary>The run's plan controller and where each step sits — what the surface renders as this run's pipeline.</summary>
     public AutopilotPlanController Controller { get; }
@@ -174,7 +186,7 @@ internal sealed class AutopilotRunContext
             await _runOnUi(() =>
             {
                 ceo = _context.EmbedSession(
-                    ValidatorCeoRequest(_settings, runWorktree?.Path ?? repositoryDirectory, plan));
+                    ValidatorCeoRequest(_settings, runWorktree?.Path ?? repositoryDirectory, plan, RunId));
             });
 
             if (ceo is null)
@@ -186,7 +198,7 @@ internal sealed class AutopilotRunContext
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
-            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch);
+            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch, RunId, plan.Label);
             await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
         }
         catch (Exception)
