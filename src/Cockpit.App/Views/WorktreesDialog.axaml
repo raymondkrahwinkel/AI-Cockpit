@@ -75,8 +75,7 @@
                                                          Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 <TextBlock Text="{Binding Branch, StringFormat='⑂ {0}'}" FontWeight="SemiBold" FontSize="12"
                                                            Foreground="{StaticResource CockpitTextPrimaryBrush}" VerticalAlignment="Center"/>
-                                                <Border CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
-                                                        Background="{StaticResource CockpitSecondaryBgBrush}">
+                                                <Border Classes="tag">
                                                     <TextBlock Text="{Binding StatusLabel}" FontSize="10"
                                                                Foreground="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Border>

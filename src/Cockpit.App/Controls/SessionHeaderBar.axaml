@@ -36,8 +36,7 @@
                  job, so this never duplicates it or goes stale after a checkout; the worktree's own branch stays in
                  the tooltip as the host-side fallback for when that plugin is off or hidden (a plain terminal pane).
                  Soft purple, apart from the grey kind chip and the status colours. -->
-            <Border Background="{StaticResource CockpitIsolatedBadgeBgBrush}" VerticalAlignment="Center"
-                    CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+            <Border Classes="tag" Background="{StaticResource CockpitIsolatedBadgeBgBrush}" Margin="8,0,0,0"
                     IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <ToolTip.Tip>
                     <TextBlock MaxWidth="320" TextWrapping="Wrap"
@@ -68,7 +67,8 @@
                  Which metrics show is a global Options preference; empty (no space taken) when none applies. -->
             <Border VerticalAlignment="Center" Margin="8,0,0,0" ClipToBounds="True"
                     Background="{StaticResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="20"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPillRadius}"
                     IsVisible="{Binding HasUsagePillRegion}">
                 <StackPanel Orientation="Horizontal">
                     <ItemsControl ItemsSource="{Binding UsagePillItems}" VerticalAlignment="Stretch">
@@ -149,11 +149,10 @@
             <!-- Kind chip (TTY / SDK / provider tag); hidden when the session reports none. Its hover content is a slot
                  (KindChipTooltip) each view fills — the SDK header its connected-tools card, the TTY header its
                  render diagnostics. -->
-            <Border Grid.Column="2" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                    CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
+            <Border Grid.Column="2" Classes="tag" Margin="7,0,0,0"
                     IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
-                <TextBlock Text="{Binding KindLabel}" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                <TextBlock Text="{Binding KindLabel}"/>
             </Border>
 
             <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status. -->

@@ -117,7 +117,7 @@
                             <StackPanel Spacing="3">
                                 <TextBlock Text="Arguments" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <TextBox PlaceholderText="One argument per line" Text="{Binding EditArguments}"
-                                         AcceptsReturn="True" TextWrapping="NoWrap" Height="88"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" Height="94"
                                          VerticalContentAlignment="Top"/>
                                 <TextBlock Text="One per line — passed through verbatim, never a shell string."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="10"/>

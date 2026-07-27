@@ -26,7 +26,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                     <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
                 </StackPanel>
             </Grid>
@@ -99,7 +99,7 @@
                     <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
                         <TextBlock Text="Arguments (one per line)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Args}" AcceptsReturn="True" TextWrapping="NoWrap"
-                                 MinHeight="70" MaxHeight="140" FontFamily="{StaticResource CockpitMonoFont}"
+                                 MinHeight="76" MaxHeight="146" FontFamily="{StaticResource CockpitMonoFont}"
                                  PlaceholderText="-y&#x0a;@modelcontextprotocol/server-filesystem&#x0a;."/>
                     </StackPanel>
 

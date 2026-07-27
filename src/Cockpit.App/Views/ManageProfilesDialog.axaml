@@ -167,7 +167,7 @@
                         <TextBlock Text="Base system prompt (optional)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
-                                 MinHeight="64" MaxHeight="140"
+                                 MinHeight="70" MaxHeight="146"
                                  PlaceholderText="Sent as the first system message of every conversation"/>
                     </StackPanel>
 
@@ -201,7 +201,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="System prompt" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="88"
+                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="94"
                                  PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
                     </StackPanel>
 
@@ -248,7 +248,7 @@
                                 <TextBlock Text="May work in these directories" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <TextBox Text="{Binding AllowedWorkingDirs}"
                                          AcceptsReturn="True"
-                                         MinHeight="60"
+                                         MinHeight="66"
                                          TextWrapping="NoWrap"
                                          PlaceholderText="/home/you/projects/webshop&#x0a;one directory per line"/>
                                 <TextBlock Text="A delegated task may only run in these directories, and in what lies under them. Empty means a task may not choose a directory at all — so delegation can never reach an arbitrary part of the disk."
@@ -273,7 +273,7 @@
                                 <TextBlock Text="Auto-runnable tools (allow-list)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <TextBox Text="{Binding AllowedTools}"
                                          AcceptsReturn="True"
-                                         MinHeight="60"
+                                         MinHeight="66"
                                          TextWrapping="NoWrap"
                                          PlaceholderText="get_current_user&#x0a;one tool name per line"/>
                                 <TextBlock Text="Tools a delegated session may run unattended regardless of the ceiling — the explicit trust anchor for tools whose MCP server gives no read-only/destructive hint (those are otherwise blocked). One tool name per line."

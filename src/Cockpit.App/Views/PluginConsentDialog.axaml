@@ -41,7 +41,7 @@
         </Border>
 
         <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
-            <Button Grid.Column="1" Content="Cancel" Click="OnCancel" Margin="0,0,8,0"/>
+            <Button Grid.Column="1" Classes="Ghost" Content="Cancel" Click="OnCancel" Margin="0,0,8,0"/>
             <Button Grid.Column="2" Content="Enable" Classes="Accent" Click="OnEnable"/>
         </Grid>
     </StackPanel>

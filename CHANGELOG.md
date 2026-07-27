@@ -403,6 +403,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: buttons, text fields and dropdowns are drawn to one shape. A field and the picker beside it are now the
+  same height with their text on the same line, so a form of labels and controls lines up instead of stepping. A
+  field also sits a shade lighter than the window rather than cut into it, which reads as something you type in.
+  Buttons answer the pointer by brightening their edge and only move their surface when you actually press them, so
+  a row of them stays still while you cross it. A dismissing button — Cancel next to a confirm — carries no chrome
+  until you hover it, which leaves one obvious answer in a dialog's footer.
+
+- changed: a setting that is on or off is now a switch you can see the state of at a glance. "Isolate in a git
+  worktree", in both the new-session dialog and the project editor, is a track the knob slides along instead of a
+  tick box. Lists of options you pick from are still checkboxes, because a list is not a set of switches.
+
 - changed: every dialog now says its name once, at the top, in a bar of its own. The name is at heading size with —
   where the dialog has one — a line under it saying what the dialog is for, so opening one tells you what you are
   looking at before you read a single field. Several dialogs used to print their name a second time inside their
@@ -503,6 +514,22 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: a control you cannot use now looks like one. A disabled button or dropdown kept its label at full strength,
+  so the only sign it was unavailable was that clicking did nothing — the theme was setting the faded colour on the
+  control while the text was being coloured by a rule of its own that won. The same rule had quietly been undoing
+  every other place a control tried to tint its own label.
+
+- fixed: a dropdown you cannot change no longer stands out more than the fields you can. "Provider (fixed after
+  creation)" in the profile editor was drawn lighter than the editable fields around it and stepped forward on the
+  form; it now recedes behind them, which is what unavailable is supposed to look like.
+
+- fixed: the grey prompt inside an empty field — "Send a message…", "No folder chosen yet…" — is the theme's own
+  faint grey again. The rule meant to colour it named a part of the text box that no longer exists, so it had been
+  doing nothing and every placeholder in the app was taking the default from the underlying toolkit.
+
+- fixed: a ticked checkbox is drawn in the cockpit's blue rather than the operating system's. The two look alike
+  today by coincidence, not by connection — the tick would have stayed behind the day the accent colour moved.
 
 - fixed: a usage warning takes itself down once the thing it warned about is gone. Clearing a session empties the
   context and the very next reading says so, but the bar went on reading "Context is 50% used" until you dismissed

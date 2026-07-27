@@ -292,7 +292,7 @@
                                  an update shows in the main window rather than only a transient toast. The button
                                  opens the store on the Updates filter while the badge is showing. -->
                             <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasUpdateBadge}"
-                                    Background="{StaticResource CockpitAccentBrush}" CornerRadius="20" Padding="7,1"
+                                    Background="{StaticResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
                                     VerticalAlignment="Center" Margin="6,0,0,0"
                                     ToolTip.Tip="Plugin updates available — click to review them">
                                 <TextBlock Text="{Binding Plugins.UpdateBadgeCount}" FontSize="10" FontWeight="SemiBold"
@@ -302,7 +302,7 @@
                                  (new, or its bytes changed) — mirrors the AC-76 update pill so the two read as the
                                  same kind of indicator; it clears once every such plugin is approved or disabled. -->
                             <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasPendingApproval}"
-                                    Background="{StaticResource CockpitStatusWaitingBrush}" CornerRadius="20" Padding="7,1"
+                                    Background="{StaticResource CockpitStatusWaitingBrush}" CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1"
                                     VerticalAlignment="Center" Margin="6,0,0,0"
                                     ToolTip.Tip="Plugins awaiting your approval — click to review them">
                                 <TextBlock Text="{Binding Plugins.PendingApprovalCount}" FontSize="10" FontWeight="SemiBold"

@@ -39,7 +39,7 @@
                             Foreground="{StaticResource CockpitAccentBrush}"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                     <!-- IsDefault: Enter starts the session (fires ConfirmCommand), but only when it's
                          enabled — CanStart gates it, so Enter never launches into a failure. -->
                     <Button Content="Start" Command="{Binding ConfirmCommand}" Classes="Accent" IsDefault="True"/>
@@ -191,7 +191,7 @@
                          Disabled with a hint when the folder is not a git repository — reactive, never a silent
                          no-op (§4). ShowOnDisabled so the disabled checkbox still explains itself. -->
                     <StackPanel Spacing="2" Margin="0,2,0,0" IsVisible="{Binding ShowWorktreeIsolation}">
-                        <CheckBox Content="Isolate in a git worktree"
+                        <CheckBox Classes="Switch" Content="Isolate in a git worktree"
                                   IsChecked="{Binding IsolateInWorktree}"
                                   IsEnabled="{Binding CanIsolateInWorktree}"
                                   ToolTip.ShowOnDisabled="True"
