@@ -66,8 +66,10 @@ public partial class ThemeHexColorGuardTests
     {
         // The stand-in desktop the selection surface is rendered over headless (AC-357). Its colours are the
         // *contents* of a screenshot — somebody else's screen — and pointing them at tokens would make the
-        // stand-in follow a repaint of the very app it exists to be independent of.
-        "Cockpit.App/ScreenshotSelectionScene.cs",
+        // stand-in follow a repaint of the very app it exists to be independent of. It is a file of its own so
+        // this exemption reaches only code that draws a picture: the scene wiring beside it stays guarded, and
+        // that is the file the rest of AC-356 will be editing.
+        "Cockpit.App/StandInDesktop.cs",
     };
 
     [Fact]

@@ -98,7 +98,7 @@ public class ScreenshotSelectionSceneTests
     [InlineData("projects", typeof(ProjectsDialog))]
     [InlineData("new-session", typeof(NewSessionDialog))]
     public void TheHarnessStillBuildsTheOtherScenes(string? scene, Type expected) => HeadlessAvalonia.Run(() =>
-        Screenshotter.Scene(scene, SurfaceWidth, SurfaceHeight).Should().BeOfType(expected));
+        Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight).Should().BeOfType(expected));
 
     /// <summary>
     /// The darkest and lightest pixel in a part of the rendered frame, as an average of the colour channels.
@@ -136,7 +136,7 @@ public class ScreenshotSelectionSceneTests
 
     private static void _Staged(string scene, Action<ScreenshotSelectionWindow> assert) => HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.Scene(scene, SurfaceWidth, SurfaceHeight)
+        var surface = Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight)
             .Should().BeOfType<ScreenshotSelectionWindow>("the harness builds the selection surface for this scene").Subject;
 
         surface.Show();

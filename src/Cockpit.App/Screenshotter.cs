@@ -24,7 +24,7 @@ internal static class Screenshotter
     {
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
 
-        var window = Scene(scene, width, height);
+        var window = BuildScene(scene, width, height);
         window.Show();
 
         // The selection surface's modes are states an operator drives it into, not windows that open in them, so
@@ -58,7 +58,7 @@ internal static class Screenshotter
     /// held to a test — a scene that stopped building was otherwise found by whoever next asked for a render,
     /// which on this surface has meant finding it after it shipped.
     /// </summary>
-    internal static Window Scene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
+    internal static Window BuildScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
     {
         Window window = scene switch
         {
