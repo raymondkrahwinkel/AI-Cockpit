@@ -27,4 +27,19 @@ internal static class CockpitMcpBearer
         server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey)
             ? server.ApiKey
             : null;
+
+    /// <summary>
+    /// The literal credential a <em>spawned</em> agent's MCP config carries for this server: the static API key as
+    /// before, or — new in AC-353 — the access token the cockpit obtained by signing in on the operator's behalf,
+    /// passed in by the caller that resolved it.
+    /// <para>
+    /// This is where the two worlds part. In-process (<see cref="For"/>) an OAuth server needs no header at all,
+    /// because the MCP SDK negotiates the authorization itself and would collide with one; a spawned CLI has no such
+    /// machinery pointed at the cockpit's token, so for it the token has to be spelled out. Everything else — a
+    /// cockpit-hosted endpoint's key never being written as a literal — is unchanged.
+    /// </para>
+    /// </summary>
+    public static string? UserCredential(McpServerConfig server, string? oauthAccessToken) =>
+        UserApiKey(server)
+        ?? (server.Auth == McpServerAuth.OAuth && !string.IsNullOrWhiteSpace(oauthAccessToken) ? oauthAccessToken : null);
 }

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -36,6 +37,8 @@ internal sealed class TtySessionProviderResolver(
                 registration.ProviderId,
                 registration.CreateProvider(services),
                 configJson,
-                services.GetService<IMcpServerCatalog>())
+                services.GetService<IMcpServerCatalog>(),
+                services.GetService<IMcpOAuthCoordinator>(),
+                services.GetService<ILogger<PluginTtySessionProviderAdapter>>())
             : null;
 }
