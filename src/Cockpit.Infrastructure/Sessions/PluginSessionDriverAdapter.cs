@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -299,11 +299,28 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         try
         {
             var registry = await mcpServerCatalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
-            var servers = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
+            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
                 .Where(McpConfigFile.IsAgentEligible)
-                .Select(_ToPluginMcpServer)
-                .OfType<PluginMcpServer>()
                 .ToList();
+
+            var servers = new List<PluginMcpServer>();
+            foreach (var server in eligible)
+            {
+                var access = await _AcquireCredentialAsync(server, cancellationToken).ConfigureAwait(false);
+                if (access.State == McpAuthState.AuthorizationRequired)
+                {
+                    // Left out rather than handed over bare: a server the agent cannot authenticate to is not a
+                    // server it can use, and passing the address along only moves the refusal one hop further out —
+                    // into the agent's own client, where nothing can be said about it. The warning above is what the
+                    // operator gets instead.
+                    continue;
+                }
+
+                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
+                {
+                    servers.Add(mapped);
+                }
+            }
 
             // Say what the session got and against which selection, so the next "why are my MCP servers missing?"
             // is a log line, not a bisect (#44). A non-empty selection that resolves to nothing is almost always a
@@ -337,16 +354,41 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
-    // HTTP → url with the user API-key server's own bearer, plus a CockpitHosted flag for a cockpit loopback endpoint
-    // (whose auth rides the COCKPIT_MCP_KEY env var, not a literal here — AC-40); stdio → command/args. A server
-    // missing its transport target is dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    /// <summary>
+    /// The credential this session presents to <paramref name="server"/>, resolved before the config is written
+    /// (AC-353). Asked for non-interactively: starting a session is not the moment to make a browser window appear,
+    /// so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
+    /// point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
+    /// </summary>
+    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, CancellationToken cancellationToken)
+    {
+        if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
+        {
+            return McpOAuthAccess.NotRequired;
+        }
+
+        var access = await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+        if (access.State == McpAuthState.AuthorizationRequired)
+        {
+            logger?.LogWarning(
+                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
+                server.Name);
+        }
+
+        return access;
+    }
+
+    // HTTP → url with the credential this server needs (a static API key, or the token from the cockpit's own OAuth
+    // sign-in — AC-353), plus a CockpitHosted flag for a cockpit loopback endpoint (whose auth rides the
+    // COCKPIT_MCP_KEY env var, not a literal here — AC-40); stdio → command/args. A server missing its transport
+    // target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken) => server.Transport switch
     {
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,
             Url = server.Url,
-            BearerToken = CockpitMcpBearer.UserApiKey(server),
+            BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
             CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer

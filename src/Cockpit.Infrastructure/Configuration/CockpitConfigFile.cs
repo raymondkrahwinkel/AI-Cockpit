@@ -127,6 +127,13 @@ internal sealed class CockpitConfigFile
     /// <summary>User-configured MCP servers (#26), shared by the local-LLM tool-loop and the Claude CLI; owned by the MCP-server store.</summary>
     public List<McpServerEntry> McpServers { get; set; } = [];
 
+    /// <summary>
+    /// Tokens obtained by signing in to the OAuth-protected servers in <see cref="McpServers"/> (AC-353); owned by
+    /// the MCP OAuth token store. Kept apart from the server entries because the operator rewrites those in full on
+    /// every edit, which would take a token with it.
+    /// </summary>
+    public List<McpOAuthTokenEntry> McpOAuthTokens { get; set; } = [];
+
     /// <summary>The operator's projects (AC-158) — what a session works on, beside <see cref="Profiles"/> which is who it works as; owned by the project store.</summary>
     public List<ProjectEntry> Projects { get; set; } = [];
 

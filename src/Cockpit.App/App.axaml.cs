@@ -5,6 +5,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -16,6 +17,7 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
+using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Sessions;
@@ -203,6 +205,12 @@ public partial class App : Application
         cockpitViewModel.OpenMic = openMicCoordinator;
         _ = openMicCoordinator.StartAsync();
 
+        // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
+        // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
+        // Before the plugins, deliberately: a session takes its copy of this when it is built, and one built while
+        // this is still null never gets a second chance to hear about a resume waiting on it.
+        cockpitViewModel.ScheduledResumes = Program.Services.GetService<ScheduledResumeCoordinator>();
+
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
         _InitializePlugins();
@@ -221,10 +229,8 @@ public partial class App : Application
         // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
         cockpitViewModel.StartPeriodicUpdateChecks();
 
-        // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
-        // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
-        cockpitViewModel.ScheduledResumes = Program.Services.GetService<ScheduledResumeCoordinator>();
-        _ = cockpitViewModel.StartScheduledResumesAsync();
+        // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
+        _ = _StartScheduledResumesAsync(cockpitViewModel);
 
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
@@ -404,6 +410,31 @@ public partial class App : Application
         tray.Clicked += (_, _) => ShowMainWindow();
 
         TrayIcon.SetIcons(this, [tray]);
+    }
+
+    /// <summary>
+    /// Starts the scheduled resumes (AC-234) and, unlike the bare fire-and-forget this replaces, watches how that
+    /// goes. A scheduler that failed to start is the one failure nobody notices by itself: nothing is on screen to
+    /// look wrong, and the first sign would be a resume that quietly never arrives, hours later (AC-368).
+    /// </summary>
+    private static async Task _StartScheduledResumesAsync(CockpitViewModel cockpit)
+    {
+        try
+        {
+            await cockpit.StartScheduledResumesAsync();
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.ScheduledResumes")
+                .LogError(exception, "Scheduled resumes could not be started; nothing that was scheduled will be sent.");
+
+            // Said out loud, on the same host the startup toasts use: silence here is what AC-368 was.
+            cockpit.ToastHost.Add(
+                "Scheduled resumes are not running — anything scheduled will not be sent.",
+                ToastSeverity.Error,
+                null,
+                null);
+        }
     }
 
     /// <summary>

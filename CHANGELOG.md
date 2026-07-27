@@ -32,6 +32,23 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: an MCP server that asks you to sign in through your browser now reaches every kind of session, not only the
+  ones the cockpit drives itself. Until now such a server was handed to Claude, Codex or Kimi as a bare address with
+  no credential on it: in a terminal session you could at least tell the agent to sign in again on its own account,
+  and a scripted session had no way at all. The cockpit now keeps the token from that sign-in and hands it to
+  whichever agent the session runs, the same way it has always handed over an API key. One sign-in, one place it is
+  kept, and it survives closing the app — while the server's refresh still holds, it is renewed without asking you
+  anything. Worth knowing where it now lives: the token sits in your settings next to the API keys and is covered by
+  the same protection they are, which means encrypted once you have turned settings protection on, and readable in
+  `cockpit.json` until you do. It is tied to the address it was obtained for, so pointing a server at a different
+  host — or letting a project supply its own server under a name the registry already uses — asks you to sign in
+  again rather than quietly sending one host's credential to another.
+
+- added: a session that starts against a server nobody has signed in to says so before its first tool call, rather
+  than the agent meeting a refusal later with nothing to act on. Starting a session never opens a browser by itself:
+  if a token cannot be renewed quietly, the session starts without that server and tells you, and asking for the
+  sign-in stays your move.
+
 - added: you can pick the colour and the line weight a mark is drawn in. Under the marking tools there is a row of
   five inks — the accent, red, yellow, green and white — and three line weights. They apply to the next mark you
   place, not to what is already on the capture. The weight changes frames, arrows and freehand lines; a note's
@@ -513,6 +530,28 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 - fixed: a ticked checkbox is drawn in the cockpit's blue rather than the operating system's. The two look alike
   today by coincidence, not by connection — the tick would have stayed behind the day the accent colour moved.
+
+- fixed: a usage warning takes itself down once the thing it warned about is gone. Clearing a session empties the
+  context and the very next reading says so, but the bar went on reading "Context is 50% used" until you dismissed
+  it by hand — a notice about a window that no longer existed, and clicking it away was the only way out. A warning
+  one signal raised is left standing when a different one goes quiet: a week that is nearly spent is exactly the
+  warning you would want kept while the context bar comes and goes. Where a later warning had covered one that
+  carries an offer to pick the session up again, the bar goes back to saying what that offer is for rather than
+  emptying and taking its buttons off screen with it. The offer itself goes when its own allowance rolls over,
+  since an allowance back at 5% has nothing to be picked up from; a resume you already scheduled stays, because
+  that is a moment you committed to rather than one on offer, and a bar you dismissed stays dismissed.
+
+- fixed: a resume you scheduled is actually sent when its moment arrives. The clock behind the feature was started on
+  a thread that has no clock, so it never once ticked: the banner said "Resuming Mon 13:12", the moment came and went,
+  and nothing was sent — for every scheduled resume since the feature shipped, not just some of them. Nothing said so
+  either, which is why it could sit there unnoticed; a resume that is scheduled, sent, missed or cannot be delivered
+  now writes a line you can go back and read.
+
+- fixed: the "Resuming …" line on a session tells you what is actually waiting. It used to be written the moment you
+  scheduled something and then never touched again, so it stayed up after the resume had fired and after it had been
+  cancelled. It now follows the schedule itself, and appears on its own for a session that is handed a resume already
+  waiting on it. Worth knowing what it still cannot do: a resume does not survive closing the cockpit, because the
+  session it was aimed at is not reopened — one left over from a previous run reports that it could not be delivered.
 
 - fixed: "Pick another moment", offered when a session has spent its allowance, opens on your own clock instead of on
   UTC. It was filling the pickers with the reset moment as the provider reported it, so anyone east of Greenwich saw a

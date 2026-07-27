@@ -4584,8 +4584,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // No pending line set from here: the session reads it off the scheduler, so it also disappears again when
+        // the resume fires, lapses or is cancelled (AC-368).
         await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
-        session.PendingResumeLabel = $"Resuming {picked.Moment.ToLocalTime():ddd HH:mm}";
     }
 
 

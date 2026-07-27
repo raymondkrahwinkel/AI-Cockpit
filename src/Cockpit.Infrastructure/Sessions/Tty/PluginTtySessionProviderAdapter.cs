@@ -6,6 +6,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
@@ -25,7 +26,9 @@ internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
     string configJson,
-    IMcpServerCatalog? mcpServerCatalog = null) : ITtySessionProvider
+    IMcpServerCatalog? mcpServerCatalog = null,
+    IMcpOAuthCoordinator? oauthCoordinator = null,
+    ILogger<PluginTtySessionProviderAdapter>? logger = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
@@ -78,11 +81,29 @@ internal sealed class PluginTtySessionProviderAdapter(
         {
             var registry = mcpServerCatalog.GetServersForProjectAsync(projectId).GetAwaiter().GetResult();
             var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
-            var servers = selected
-                .Where(McpConfigFile.IsAgentEligible)
-                .Select(_ToPluginMcpServer)
-                .OfType<PluginMcpServer>()
-                .ToList();
+            var servers = new List<PluginMcpServer>();
+
+            // One budget for the whole launch, not one per server: this is the window in which the application stops
+            // repainting, and four stale servers against an unreachable host would otherwise add up to four times the
+            // wait the budget promises.
+            using var budget = new CancellationTokenSource(RenewalBudget);
+
+            foreach (var server in selected.Where(McpConfigFile.IsAgentEligible))
+            {
+                var access = _AcquireCredential(server, budget.Token);
+                if (access.State == McpAuthState.AuthorizationRequired)
+                {
+                    // Same rule as the SDK route: a server the agent cannot authenticate to is left out rather than
+                    // handed over bare, so the refusal is something the operator is told here instead of something
+                    // the agent meets later with nothing to act on.
+                    continue;
+                }
+
+                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
+                {
+                    servers.Add(mapped);
+                }
+            }
             var canDelegate = selected.Any(server =>
                 server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
             return (servers, canDelegate);
@@ -93,16 +114,71 @@ internal sealed class PluginTtySessionProviderAdapter(
         }
     }
 
-    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the user API-key server's own bearer, plus a
-    // CockpitHosted flag for a cockpit loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here —
-    // AC-40); stdio → command/args. A server missing its transport target is dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    /// <summary>
+    /// How long a launch will wait, in total, for stale tokens to be renewed. This path is synchronous all the way out
+    /// to <c>ITtyLauncher.Launch</c>, which is reached from the UI thread, so the wait is the window in which the app
+    /// stops repainting. A renewal is one token-endpoint round trip and either answers well within this or is not
+    /// going to; letting it run unbounded would trade a session's missing tools for a frozen application.
+    /// </summary>
+    private static readonly TimeSpan RenewalBudget = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The credential this launch presents to <paramref name="server"/> (AC-353). Asked for non-interactively, so a
+    /// launch never makes a browser window appear on its own; a server whose authorization cannot be renewed is left
+    /// out of the launch and said so, rather than the CLI meeting a 401 later with no way to act on it.
+    /// <para>
+    /// Blocking, like the registry read a few lines up and for the same reason: this spawn path is synchronous. That
+    /// read is local and quick; this one can go to the network when a stored token has expired, which is ordinary
+    /// rather than rare — hence the budget above, and never an unbounded wait.
+    /// </para>
+    /// </summary>
+    private McpOAuthAccess _AcquireCredential(McpServerConfig server, CancellationToken budget)
+    {
+        if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
+        {
+            return McpOAuthAccess.NotRequired;
+        }
+
+        McpOAuthAccess access;
+        try
+        {
+            // Run on the pool rather than awaiting inline: a continuation that captured this thread's context could
+            // not resume while GetResult() is holding it, and a budget cannot lift a deadlock — the operation would
+            // finish and the continuation would still be waiting for the thread that is waiting for it. Cockpit's own
+            // chain configures away from the context throughout, but the MCP client's does not answer to us.
+            access = Task.Run(() => oauthCoordinator.AcquireAsync(server, interactive: false, budget), budget)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.LogWarning(
+                "Renewing the authorization for MCP server {Name} took longer than the launch waits for, so this session starts without it.",
+                server.Name);
+            return McpOAuthAccess.AuthorizationRequired;
+        }
+
+        if (access.State == McpAuthState.AuthorizationRequired)
+        {
+            logger?.LogWarning(
+                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
+                server.Name);
+        }
+
+        return access;
+    }
+
+    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the credential this server needs (a static API
+    // key, or the token from the cockpit's own OAuth sign-in — AC-353), plus a CockpitHosted flag for a cockpit
+    // loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here — AC-40); stdio → command/args. A
+    // server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken) => server.Transport switch
     {
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,
             Url = server.Url,
-            BearerToken = CockpitMcpBearer.UserApiKey(server),
+            BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
             CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
