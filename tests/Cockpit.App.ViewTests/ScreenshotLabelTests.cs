@@ -27,6 +27,11 @@ public class ScreenshotLabelTests
     /// The acceptance criterion, said as the sentence that breaks it: typing "Window" must not pick a window. Every
     /// letter in it is a shortcut — W picks a window, D draws, O frames, and the rest are equally live.
     /// </summary>
+    /// <remarks>
+    /// The keys are pressed as well as the text being sent. A keyboard produces both, and it is the key half that
+    /// the shortcuts listen to — a test that only sent the text would exercise none of the standing-down this is
+    /// about, and would pass on a surface that had none.
+    /// </remarks>
     [Fact]
     public void TypingAWordMadeOfShortcuts_TriggersNoneOfThem() => _OnTheSurface(surface =>
     {
@@ -35,6 +40,15 @@ public class ScreenshotLabelTests
 
         // Read after the note is open, since opening one needs a region and taking one is what A does.
         var region = selection.Selection;
+        foreach (var key in new[]
+                 {
+                     PhysicalKey.W, PhysicalKey.I, PhysicalKey.N, PhysicalKey.D, PhysicalKey.O, PhysicalKey.W,
+                     PhysicalKey.A, PhysicalKey.B, PhysicalKey.H, PhysicalKey.P, PhysicalKey.R, PhysicalKey.T,
+                 })
+        {
+            surface.KeyPressQwerty(key, RawInputModifiers.None);
+        }
+
         surface.KeyTextInput("Window ABDOHPR");
 
         selection.PickingWindow.Should().BeFalse("W was a letter, not the window tool");
