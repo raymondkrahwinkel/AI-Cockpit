@@ -5449,22 +5449,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            // Isolation was asked for, so run the agent only when the session actually started AND its provider confines
-            // its file tools to the worktree. Two ways this fails, both refused: (1) the provider does not confine (a
-            // local model reaches files through MCP servers rooted outside the worktree, AC-174) — handing it the brief
-            // would edit the operator's real checkout; (2) the start failed, which leaves Capabilities at their pre-start
-            // default (SessionPanelViewModel seeds the fullest-featured set, whose confines flag is true), so a stale
-            // "confined" reading must never be taken as licence to run — check readiness first. Either way: refuse rather
-            // than risk contamination (Raymond: safety over function), close the session (releasing the worktree and
-            // completing its Completion so an awaiting embedder unblocks), and say why. The check precedes the brief, so
-            // the agent never runs.
-            if (request.IsolateInWorktree && (!session.IsSessionReady || !session.Capabilities.ConfinesFileAccessToWorkingDirectory))
+            // Confinement was asked for, so run the agent only when the session actually started AND its provider keeps
+            // its file tools inside the directory it runs in. Refuse rather than risk contamination (Raymond: safety over
+            // function): close the session — releasing any worktree and completing its Completion so an awaiting embedder
+            // unblocks — and say why. The check precedes the brief, so the agent never runs.
+            if (_EmbeddedConfinementRefusal(request, profile.Label, session.IsSessionReady, session.Capabilities.ConfinesFileAccessToWorkingDirectory) is { } refusal)
             {
-                var reason = session.IsSessionReady
-                    ? $"Could not isolate this run: the \"{profile.Label}\" profile does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout. A Claude profile stops confining in a permission-bypassing mode — set the Autopilot autonomy mode to \"acceptEdits\" — and a local model never confines, so route steps that need autonomous shell to a Codex profile."
-                    : "Could not isolate this run: its session did not start, so it was refused rather than run unisolated.";
-                session.Statusline = reason;
-                await _CloseEmbeddedSessionAsync(session, reason);
+                session.Statusline = refusal;
+                await _CloseEmbeddedSessionAsync(session, refusal);
                 return;
             }
 
@@ -5496,6 +5488,57 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 // Nothing more to do; the session surfaces its own failed state.
             }
         }
+    }
+
+    // Why an embedded run that asked to be confined must not start — null when it may proceed (AC-174, AC-191).
+    //
+    // The gate fires on the same condition that puts the confine flag in the launch options (_EmbeddedLaunchOptions'
+    // addConfine): asking a provider to confine and then not checking that it does is worse than no gate at all, because
+    // the caller builds trust on the answer. Two paths ask for it and both are covered: an isolated run (its own
+    // worktree, AC-85) and a run confined to the folder as given without a worktree — the non-git Autopilot path and the
+    // CEO validator that reads a run's accumulated work (AC-174).
+    //
+    // Three ways it fails, all refused: (1) there is no working directory to be held to, so the promise is empty; (2) the
+    // provider does not confine — a local model reaches files through MCP servers rooted elsewhere, and a Claude profile
+    // stops confining in a permission-bypassing mode — so handing it the brief would let an autonomous,
+    // prompt-injectable agent write outside the folder the caller chose; (3) the start failed, which leaves Capabilities
+    // at their pre-start default (SessionPanelViewModel seeds the fullest-featured set, whose confines flag is true), so
+    // a stale "confined" reading must never be taken as licence to run — readiness is checked first.
+    // Internal (not private) so a test can drive the refusal without standing up a session.
+    internal static string? _EmbeddedConfinementRefusal(EmbeddedSessionRequest request, string profileLabel, bool isSessionReady, bool confinesFileAccess)
+    {
+        if (!request.IsolateInWorktree && !request.ConfineFileToolsToWorkingDirectory)
+        {
+            return null;
+        }
+
+        // Named for what the run asked for, so the operator reads the refusal against the thing they set up: an isolated
+        // run is about its worktree and their real checkout, a confined one about the folder it was pointed at.
+        var (attempt, boundary, exposure) = request.IsolateInWorktree
+            ? ("isolate", "the worktree", "allowed to edit your real checkout")
+            : ("confine", "its working directory", "allowed to reach files outside the folder it was given");
+
+        // Confinement without a folder to confine to is not confinement. An isolated run cannot get here — resolving its
+        // worktree throws when there is no directory — but a run confined to the folder as given takes that folder
+        // verbatim, and an empty one leaves which directory it lands in to whatever the start falls back on rather than
+        // to the caller. A provider that confines natively would then vouch honestly for a folder nobody chose, so the
+        // capability check below would wave through a run bounded to somewhere nobody asked for.
+        if (!request.IsolateInWorktree && string.IsNullOrWhiteSpace(request.WorkingDirectory))
+        {
+            return $"Could not {attempt} this run: it asked to be held to its working directory but was given none, so it was refused rather than run wherever the cockpit happens to be.";
+        }
+
+        if (isSessionReady && confinesFileAccess)
+        {
+            return null;
+        }
+
+        // The way out covers both routes a bypass mode can arrive by: a step carries the run's autonomy mode, while the
+        // validating CEO names none and so runs on whatever its profile stored. Naming only one would send half the
+        // refusals looking in the wrong place.
+        return isSessionReady
+            ? $"Could not {attempt} this run: the \"{profileLabel}\" profile does not confine its file tools to {boundary}, so it was refused rather than {exposure}. A Claude profile stops confining in a permission-bypassing mode — take the profile, or the Autopilot autonomy mode it runs under, off \"bypassPermissions\" — and a local model never confines, so route work that needs autonomous shell to a Codex profile."
+            : $"Could not {attempt} this run: its session did not start, so it was refused rather than run unconfined.";
     }
 
     // The launch options an embedded session starts with: the profile's own defaults, plus the request's hidden system

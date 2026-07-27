@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -95,5 +97,52 @@ public class AutopilotRunContextTests
         // AwaitingOperator. A run that is merely Running, however many, must not raise the marker.
         AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
             [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running]).Should().BeFalse();
+    }
+
+    /// <summary>Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".</summary>
+    private sealed class FakeStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
+
+        public T? Get<T>(string key) => _data.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
+
+        public void Set<T>(string key, T value) => _data[key] = JsonSerializer.Serialize(value);
+
+        public void SetSecret(string key, string value) => Set(key, value);
+
+        public string? GetSecret(string key) => Get<string>(key);
+    }
+
+    private static AutopilotPlan _SourcePlan() =>
+        new("Do the work", new AutopilotPlanSource("YouTrack", "AC-191", "A title"), []);
+
+    [Fact]
+    public void ValidatorCeoRequest_AsksToBeConfined_ToTheDirectoryItValidates()
+    {
+        var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", _SourcePlan());
+
+        request.ConfineFileToolsToWorkingDirectory.Should().BeTrue();
+        request.WorkingDirectory.Should().Be("/runs/worktree");
+        // The validator never cuts its own worktree — it reads the one the run already has.
+        request.IsolateInWorktree.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ValidatorCeoRequest_NamesItsOwnPermissionMode_SoAProfileSavedInBypassCannotDecideIt()
+    {
+        // The confinement the request above asks for is only granted if the provider vouches for it, and a
+        // permission-based provider stops vouching in a bypass mode. Naming a mode here is what drops whatever the CEO
+        // profile has stored (the host keeps the profile's default when a request names none) — without it, a profile
+        // saved on bypassPermissions makes the host's fail-closed gate refuse the validator, and the run waits on a CEO
+        // that never starts (AC-191).
+        var storage = new FakeStorage();
+        var settings = new AutopilotSettings(storage);
+        settings.SetAutonomyMode("bypassPermissions");
+
+        var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan());
+
+        request.PermissionMode.Should().NotBeNullOrWhiteSpace();
+        // Coerced away from bypass by AutopilotSettings (AC-209), so even a stored bypass cannot reach the driver here.
+        request.PermissionMode.Should().Be(AutopilotSettings.DefaultAutonomyMode).And.NotBe("bypassPermissions");
     }
 }

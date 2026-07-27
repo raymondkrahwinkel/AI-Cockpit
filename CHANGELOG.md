@@ -433,6 +433,22 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a run that asks for its agent's file tools to stay inside the folder it works in is now refused when the
+  profile it runs on cannot promise that — not only when the run has a worktree of its own. Autopilot works this way
+  when the folder is not a git repository, and the CEO that reviews a run's work does too: both asked for the folder
+  to be the boundary and were answered yes, while nothing checked that the profile behind them honoured it. Three
+  providers that ship — Kimi, Gemini and GitHub Models — never state that they keep file access inside the working
+  directory, so a run pointed at one is now stopped and told which profile refused, where before it went ahead with an
+  agent nobody was watching and the whole disk in reach. Claude and Codex do state it, and a local model states it once
+  it is held to the folder, so runs on those are unaffected. A run that asks to be held to a folder but is given none
+  is refused too: confinement to nothing is not confinement.
+- fixed: the CEO that reviews an Autopilot run's work now runs on the run's own autonomy mode, rather than whatever
+  permission mode its profile happened to have saved. A profile stored on the permission-bypassing mode used to hand
+  that mode to the reviewer, which switched off the very confinement the run asks for it — so the reviewer read your
+  work with more reach than the run it was reviewing.
+- fixed: a run whose reviewing CEO never starts now fails the step and says why, instead of waiting for a verdict that
+  can no longer come. The run would sit on its first step with the pipeline frozen and nothing on screen to explain it;
+  it now reads like any other refusal, naming the profile that could not start.
 - fixed: a worktree whose folder you deleted by hand can be removed from Managed worktrees again. git no longer knows
   such a tree, so it refused the removal and the row came straight back — with nothing on screen to say why. The row
   is now cleared away (the branch is kept, as always), "Clean up finished" sweeps one up too, and a removal git does
