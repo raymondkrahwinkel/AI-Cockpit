@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -45,12 +44,7 @@ public partial class ScreenshotSelectionWindow : Window
         using var stream = new MemoryStream(capture.Image);
         var bitmap = new Bitmap(stream);
 
-        var window = new ScreenshotSelectionWindow();
-        var selection = new ScreenshotSelectionViewModel(capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, lastRegion, windows);
-        window._selection = selection;
-        window._bitmap = bitmap;
-        window.DataContext = selection;
-        window.Capture.Source = bitmap;
+        var window = Build(capture, bitmap, lastRegion, windows);
         window._Cover(owner.Screens);
 
         // Shown rather than ShowDialog'd. A modal needs a visible owner, and the cockpit's main window is often
@@ -62,7 +56,27 @@ public partial class ScreenshotSelectionWindow : Window
         window.Show();
 
         await closed.Task;
-        return selection.Result;
+        return window._selection?.Result;
+    }
+
+    /// <summary>
+    /// The surface built and wired, without being put on screen. Its own step because everything here runs
+    /// before anything is shown, and it is where the window touches the controls its XAML declares — which is
+    /// exactly what a test can reach and what nothing was reaching.
+    /// </summary>
+    internal static ScreenshotSelectionWindow Build(
+        ScreenCapture capture, Bitmap bitmap, CaptureRect? lastRegion, IDesktopWindows windows)
+    {
+        var window = new ScreenshotSelectionWindow
+        {
+            _selection = new ScreenshotSelectionViewModel(capture, bitmap.PixelSize.Width, bitmap.PixelSize.Height, lastRegion, windows),
+            _bitmap = bitmap,
+        };
+
+        window.DataContext = window._selection;
+        window.Capture.Source = bitmap;
+
+        return window;
     }
 
     /// <summary>
@@ -90,8 +104,6 @@ public partial class ScreenshotSelectionWindow : Window
         Width = bounds.Width / scaling;
         Height = bounds.Height / scaling;
     }
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
     /// <summary>
     /// Gives up when the screens change underneath it. The surface is a frozen picture of a desktop that no
