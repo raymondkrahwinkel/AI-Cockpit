@@ -64,27 +64,6 @@ public class ScreenshotInjectionTests
     }
 
     /// <summary>
-    /// On Windows the capture reads the image off the clipboard, so it is already there — and writing it back is
-    /// not a harmless no-op. Measured on 2026-07-25: the round trip replaced what the OS had put there with our
-    /// own re-encoding, and afterwards even a manual Ctrl+V no longer pasted. Worse than not working, because it
-    /// destroys what the operator had on their clipboard.
-    /// </summary>
-    [Fact]
-    public async Task AnImageTheClipboardAlreadyHolds_IsNotWrittenBack()
-    {
-        var clipboard = new FakeScreenshotClipboard { ReadResult = Png };
-        var session = _CreateTtySession(clipboard);
-        var pastes = 0;
-        session.PasteAsync = () => { pastes++; return Task.CompletedTask; };
-
-        var reason = await session.InjectScreenshotAsync(Png);
-
-        reason.Should().BeNull();
-        clipboard.Written.Should().BeEmpty("it is already on the clipboard; rewriting it is what broke it");
-        pastes.Should().Be(1, "the paste is still what makes the TUI read it");
-    }
-
-    /// <summary>
     /// A clipboard that would not take the image must not be followed by the paste key: the TUI would go looking,
     /// find nothing, and answer with its own "no image in clipboard" — an error about the wrong thing, and one the
     /// operator cannot act on.

@@ -9,36 +9,40 @@ using Cockpit.Core.Abstractions.Screenshots;
 namespace Cockpit.App.Services;
 
 /// <summary>
-/// Reads the system clipboard through Avalonia for the Windows screenshot capture (AC-220), which has no other
-/// way of learning that a snip happened. Lives here rather than in Infrastructure because Avalonia's clipboard
-/// hangs off a window, and the only window is this app's.
+/// Writes a capture to the system clipboard through Avalonia, which is how it reaches a terminal session
+/// (AC-226). Lives here rather than in Infrastructure because Avalonia's clipboard hangs off a window, and the
+/// only window is this app's.
 /// </summary>
 /// <remarks>
-/// Every read is marshalled to the UI thread: the capture polls from a background task, and on Windows the
-/// clipboard is owned by the thread that pumps messages. The same encode the CTRL+V paste path uses
-/// (<c>Bitmap.Save</c> to a memory stream) produces the PNG bytes, so a snipped image and a pasted one arrive
-/// at the session in exactly the same shape.
+/// Every write is marshalled to the UI thread: the capture finishes on a background task, and on Windows the
+/// clipboard is owned by the thread that pumps messages.
 /// </remarks>
 internal sealed class AvaloniaScreenshotClipboard : IScreenshotClipboard, ISingletonService
 {
-    public Task<byte[]?> TryReadImageAsync(CancellationToken cancellationToken = default) =>
-        Dispatcher.UIThread.InvokeAsync(_ReadAsync).WaitAsync(cancellationToken);
-
     public Task<bool> TrySetImageAsync(byte[] png, CancellationToken cancellationToken = default) =>
-        Dispatcher.UIThread.InvokeAsync(() => _WriteAsync(png)).WaitAsync(cancellationToken);
+        Dispatcher.UIThread.InvokeAsync(() => _Clipboard() is { } clipboard
+            ? WriteAsync(clipboard, png)
+            : Task.FromResult(false)).WaitAsync(cancellationToken);
 
-    private static async Task<bool> _WriteAsync(byte[] png)
+    /// <summary>
+    /// Puts the image on <paramref name="clipboard"/> so that another program can read it back. Internal for
+    /// the test that holds the flush in place; production goes through <see cref="TrySetImageAsync"/>.
+    /// </summary>
+    internal static async Task<bool> WriteAsync(IClipboard clipboard, byte[] png)
     {
-        if (_Clipboard() is not { } clipboard)
-        {
-            return false;
-        }
-
         try
         {
             using var stream = new MemoryStream(png);
             using var bitmap = new Bitmap(stream);
             await clipboard.SetBitmapAsync(bitmap);
+
+            // The set on its own only promises the image: Avalonia's Win32 clipboard hands the OS a data object
+            // that renders on demand, and until it is flushed there is nothing for anyone to redeem — not the
+            // terminal, not a manual CTRL+V, not Paint. That is what AC-341 was, and it is also what made a
+            // capture appear to *destroy* the clipboard (measured 2026-07-25): the promise replaced whatever the
+            // operator had copied and then answered no one. Flushing while the bitmap is still alive is the whole
+            // point — it is what forces the render — so this cannot move out of the using above.
+            await clipboard.FlushAsync();
             return true;
         }
         catch (Exception)
@@ -47,34 +51,6 @@ internal sealed class AvaloniaScreenshotClipboard : IScreenshotClipboard, ISingl
             // image to hand on. Either way it did not land, which is what the caller asked — and what it will
             // tell the operator, rather than sending a paste key for an image that is not there.
             return false;
-        }
-    }
-
-    private static async Task<byte[]?> _ReadAsync()
-    {
-        if (_Clipboard() is not { } clipboard)
-        {
-            return null;
-        }
-
-        try
-        {
-            using var bitmap = await clipboard.TryGetBitmapAsync();
-            if (bitmap is null)
-            {
-                return null;
-            }
-
-            using var stream = new MemoryStream();
-            bitmap.Save(stream);
-            return stream.ToArray();
-        }
-        catch (Exception)
-        {
-            // Another application can hold the clipboard locked, and a format it advertises can fail to decode.
-            // Either way there is no image to be had right now, which is what the caller is asking; it polls, so
-            // a momentary lock resolves itself on the next pass.
-            return null;
         }
     }
 

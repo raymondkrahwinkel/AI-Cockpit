@@ -304,11 +304,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return ScreenshotKindRefusal;
         }
 
-        // The Windows capture comes off the clipboard to begin with, so the image is already there and putting it
-        // back is not a no-op: it replaces a clipboard entry the OS wrote with our own re-encoding, and that
-        // re-encoding is not one the TUI can paste. Measured on 2026-07-25 — after a capture even a manual Ctrl+V
-        // no longer pasted, which is worse than not working: it destroyed what was on the clipboard.
-        if (!await _IsAlreadyOnClipboardAsync(clipboard, screenshotPng) && !await clipboard.TrySetImageAsync(screenshotPng))
+        if (!await clipboard.TrySetImageAsync(screenshotPng))
         {
             // Sending the paste key now would ask the TUI to paste an image that is not there, and it would
             // answer with its own "no image in clipboard" — an error about the wrong thing.
@@ -347,19 +343,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// gone report success into nothing, which is the one outcome this whole path exists to prevent.
     /// </remarks>
     public Func<Task>? PasteAsync { get; set; }
-
-    /// <summary>
-    /// Whether the clipboard already holds exactly this image — true on the Windows route, where the capture read
-    /// it from there in the first place. Comparing beats trusting the platform: it keeps the terminal route from
-    /// knowing which capture it is talking to, and a write that is not needed is a write that cannot go wrong.
-    /// </summary>
-    private static async Task<bool> _IsAlreadyOnClipboardAsync(IScreenshotClipboard clipboard, byte[] screenshotPng)
-    {
-        var onClipboard = await clipboard.TryReadImageAsync();
-        return onClipboard is not null
-            && onClipboard.Length == screenshotPng.Length
-            && onClipboard.AsSpan().SequenceEqual(screenshotPng);
-    }
 
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 

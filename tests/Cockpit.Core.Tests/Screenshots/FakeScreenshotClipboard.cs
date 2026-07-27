@@ -11,12 +11,6 @@ internal sealed class FakeScreenshotClipboard : IScreenshotClipboard
     /// <summary>What was put on the clipboard, in order.</summary>
     public List<byte[]> Written { get; } = [];
 
-    /// <summary>What a read returns; null for an empty clipboard.</summary>
-    public byte[]? ReadResult { get; init; }
-
-    public Task<byte[]?> TryReadImageAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(ReadResult);
-
     public Task<bool> TrySetImageAsync(byte[] png, CancellationToken cancellationToken = default)
     {
         if (!AcceptsWrites)
