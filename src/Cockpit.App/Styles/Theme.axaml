@@ -68,9 +68,13 @@
             <SolidColorBrush x:Key="CockpitStatusBackgroundBrush" Color="{StaticResource CockpitStatusBackgroundColor}"/>
             <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{StaticResource CockpitStatusErrorColor}"/>
 
-            <!-- Geometry -->
-            <CornerRadius x:Key="CockpitControlRadius">6</CornerRadius>
-            <CornerRadius x:Key="CockpitPanelRadius">10</CornerRadius>
+            <!-- Geometry. The mockup's control radius (9px) is what every input, select and button
+                 carries. Its window radius (14px) belongs to the rounded card a web page draws to
+                 stand in for a window; a desktop app gets that corner from the OS, so no token
+                 answers to it. The panel radius follows the mockup's cards instead: 12px for the
+                 large ones, 10px for the compact ones. -->
+            <CornerRadius x:Key="CockpitControlRadius">9</CornerRadius>
+            <CornerRadius x:Key="CockpitPanelRadius">12</CornerRadius>
             <Thickness x:Key="CockpitHairlineThickness">1</Thickness>
 
             <!-- The sub-navigation rail's width (Border.subnavRail below). A token rather than a literal on the
