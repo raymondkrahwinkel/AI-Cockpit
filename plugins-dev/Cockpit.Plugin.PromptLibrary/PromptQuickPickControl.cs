@@ -200,7 +200,14 @@ internal sealed class PromptQuickPickControl : UserControl
             return;
         }
 
-        await PromptInjection.SendAsync(_actions, template);
+        if (_actions.HasActiveSession)
+        {
+            await _actions.InjectIntoActiveSessionAsync(template.Body);
+        }
+        else
+        {
+            await _actions.SetClipboardTextAsync(template.Body);
+        }
 
         _Close();
     }
