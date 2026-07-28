@@ -641,6 +641,70 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
+    <!-- RadioButton: one choice out of a set, and the CheckBox story one control further along — it was still
+         drawing in Avalonia's *system* accent (#0078d7) while the theme's is #3b82f6 (found by the AC-338
+         palette baseline, fixed as AC-404). It could not be done the way the CheckBox was: Fluent's radio in
+         Avalonia 12 names no template parts at all — walking a rendered one finds only Border#RootBorder, and
+         its ellipses carry no name — so there is nothing for a `/template/ Ellipse#…` rule to bind to, and a
+         selector naming a part that does not exist styles nothing without saying so. Hence a template of its
+         own, with the parts named, drawn from the same tokens the CheckBox rules use.
+         The parts are Ring and Dot rather than Fluent's OuterEllipse/CheckGlyph on purpose: Fluent's radio
+         *rules* are still loaded even though its template is gone, and they match by part name — one of them
+         fades OuterEllipse to Opacity 0 on :checked. Named that way, a picked button came out as a white dot
+         with no ring at all, while every colour assertion passed, because the fill was right and invisible. -->
+    <Style Selector="RadioButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Ellipse Name="Ring" Width="18" Height="18" Margin="0,0,8,0"
+                             VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitPanelBgBrush}"
+                             Stroke="{StaticResource CockpitHairlineBrush}"
+                             StrokeThickness="1"/>
+                    <!-- Same cell and same margin as the ring, so the dot sits on its centre rather than on the
+                         cell's — the ring's own margin is what moves the two apart if the dot omits it. -->
+                    <Ellipse Name="Dot" Width="8" Height="8" Margin="0,0,8,0"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitTextOnAccentBrush}"
+                             IsVisible="False"/>
+                    <ContentPresenter Grid.Column="1"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      VerticalAlignment="Center"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Dot">
+        <Setter Property="IsVisible" Value="True"/>
+    </Style>
+    <Style Selector="RadioButton:focus-visible /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Dot">
+        <Setter Property="Fill" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
     <!-- Switch: a setting that is on or off, drawn as a track the knob slides along rather than as a box
          you tick. Applied by class, not to every CheckBox: a list of options you pick from is a set of
          checkboxes and stays one — a switch says "this is running now", which is a different sentence.

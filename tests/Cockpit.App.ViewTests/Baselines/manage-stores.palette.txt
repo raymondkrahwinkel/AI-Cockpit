@@ -5,7 +5,6 @@
 
 #99FFFFFF  off-palette
 #FF000000  off-palette
-#FF0078D7  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF12141A  CockpitChromeBgColor
 #FF1A1D24  CockpitPanelBgColor
