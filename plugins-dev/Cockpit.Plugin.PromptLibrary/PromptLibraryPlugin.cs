@@ -26,12 +26,14 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
         var settings = new PromptLibrarySettings(host.Storage);
         host.AddSideMenuButton(
             "Prompt Library",
-            () => _ = host.ShowDialogAsync("Prompt Library", () => new PromptLibraryDialogControl(settings, host.Actions), 900, 620));
+            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
+            () => _ = host.ShowDialogAsync("Prompt Library", () => new PromptLibraryDialogControl(settings, host.Actions), "library", width: 900, height: 620));
 
         // Quick-insert palette (#: prompt quick-inject): a small search-and-inject dialog reached by the
         // keyboard shortcut and the command palette (no separate menu button — that duplicated "Prompt Library").
+        // Its own key: reopening it while it's up should refocus it, not stack on top of the library dialog.
         void QuickInsert() =>
-            _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), 540, 380);
+            _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), "insert", width: 540, height: 380);
 
         host.AddShortcut(new PluginShortcut("prompt-library.quick-insert", "Insert prompt", "Ctrl+Shift+P", QuickInsert));
     }

@@ -198,6 +198,8 @@ internal sealed class WorkflowManagerControl : UserControl
             return;
         }
 
+        // No key: this dialog returns the chosen template to this awaiting call, so a second call must get its
+        // own instance and its own answer rather than the first caller's still-pending Task.
         await _host.ShowDialogAsync("Start from a template", () =>
         {
             var picker = new TemplatePickerControl(_templates);

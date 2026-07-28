@@ -76,11 +76,13 @@ internal sealed class GitHubPullRequestsWidget : UserControl
             HorizontalAlignment = HorizontalAlignment.Left,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
+        // Same window as the side-section's "View all": two entry points, one dialog.
         viewAll.Click += (_, _) => _ = _host.ShowDialogAsync(
             "GitHub Pull Requests",
             () => new GitHubPullRequestsDialogControl(_settings, _host),
-            1040,
-            700);
+            "pull-requests",
+            width: 1040,
+            height: 700);
 
         // The list scrolls: a pane can be short and its count can be twenty, so the rows own a scroller rather
         // than pushing the "View all" link off the bottom of the pane.

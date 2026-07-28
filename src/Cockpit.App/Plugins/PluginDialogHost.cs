@@ -4,22 +4,42 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Shows a plugin's content in a modal window over the cockpit's main window (#14), wrapped in the shared
-/// cockpit window chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app.
-/// The plugin owns the content control. The settings variant adds a host-provided Save/Close footer so
-/// every plugin's settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/>
-/// and closes the dialog on success.
+/// Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
+/// chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app. The plugin owns
+/// the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
+/// settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and
+/// closes the window on success.
+/// <para>
+/// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
+/// in for minutes, and as a modal it took every running session down with it.
+/// </para>
+/// <para>
+/// Reduced to one window apiece only where the plugin says so, through a key it supplies. The host cannot
+/// work that out on its own: all it is handed is a caption, and a caption is not an identity. The YouTrack
+/// and GitHub-Issues plugins both title theirs "Track an issue in this session" over different panes, and
+/// Transcript-search puts two different controls behind "Search transcripts" — the standalone search and the
+/// conversation picker that answers the New-session dialog. Keying on the caption linked an issue to the
+/// wrong session and left the picker's caller with a window that answers nothing.
+/// </para>
 /// </summary>
-internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
+internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
-    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
+    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null)
     {
+        var key = _Key(singleInstanceKey);
+        if (surfaces.TryActivateAsync(key) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out _))
         {
             return;
@@ -27,11 +47,18 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         window.Content = _WithToasts(createContent(), owner);
         CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
-        await window.ShowDialog(owner);
+        await surfaces.ShowAsync(key, window, owner);
     }
 
-    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
+    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null, string? singleInstanceKey = null)
     {
+        var key = _Key(singleInstanceKey);
+        if (surfaces.TryActivateAsync(key) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out var maximum))
         {
             return;
@@ -88,12 +115,18 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
-        await window.ShowDialog(owner);
+        await surfaces.ShowAsync(key, window, owner);
     }
 
-    // A dialog is modal, and the cockpit's toasts live on the window behind it — so a toast raised from inside a
-    // plugin's dialog (a workflow's Notify step, say) appeared nowhere at all. The same overlay goes on top of the
-    // dialog, bound to the same view model, so one toast shows in whichever window the operator is looking at.
+    // No key means no folding: a fresh object matches nothing, so every ask opens its own window. Keys are
+    // namespaced away from the cockpit's own surfaces, which key on their dialog's Type, so a plugin cannot
+    // collide with Options however it names its window.
+    private static object _Key(string? singleInstanceKey) =>
+        singleInstanceKey is null ? new object() : ("plugin", singleInstanceKey);
+
+    // The cockpit's toasts live on the main window, so a toast raised from inside a plugin's window (a workflow's
+    // Notify step, say) appeared nowhere at all when that window covered it. The same overlay goes on top of this
+    // one, bound to the same view model, so one toast shows in whichever window the operator is looking at.
     private static Control _WithToasts(Control content, Window owner)
     {
         var overlay = new ToastOverlay { DataContext = owner.DataContext };
@@ -113,9 +146,8 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         // The owner is whichever window the operator is actually looking at, not always the main one: a settings
         // dialog opened from the gear on a plugin's own dialog must sit on top of that dialog. Owned by the main
-        // window it would open behind a modal that blocks its own owner — visible nowhere, with the app looking
-        // hung. The main window stays the fallback, which is what it is for every dialog opened from the cockpit
-        // itself.
+        // window it would open behind the very window that asked for it. The main window stays the fallback,
+        // which is what it is for every dialog opened from the cockpit itself.
         owner = lifetime.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
 
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit

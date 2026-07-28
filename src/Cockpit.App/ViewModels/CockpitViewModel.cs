@@ -514,7 +514,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             settings.CreateView,
             640,
             560,
-            onSaved: () => ((IPluginContributionSink)this).NotifySettingsSaved(pluginId));
+            onSaved: () => ((IPluginContributionSink)this).NotifySettingsSaved(pluginId),
+            // One settings window per plugin (AC-367): every gear that reaches a plugin's settings routes here, so
+            // the one on its own dialog and the one in the manager would otherwise open two forms over one store,
+            // where whichever is saved last wins without saying so.
+            singleInstanceKey: $"settings:{pluginId}");
     }
 
     /// <summary>
@@ -535,7 +539,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             () => form,
             520,
             460,
-            onSaved: pane.Refresh);
+            onSaved: pane.Refresh,
+            // Per widget, and not optional here (AC-367): the form is built once above and handed to the window as
+            // a captured instance, so a second window would try to adopt a control that already has a parent.
+            singleInstanceKey: $"widget:{pane.Id}");
     }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never

@@ -68,7 +68,8 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
             var usable = contributed.Where(step => !Engine.ContributedStep.IsUndeclared(step)).ToList();
             Model.NodeCatalog.Contribute([.. usable.Select(Engine.ContributedStep.Describe)]);
 
-            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs, usable), 1600, 1000);
+            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
+            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs, usable), "workflows", width: 1600, height: 1000);
         }
 
         host.AddSideMenuButton("Workflows", OpenEditor);

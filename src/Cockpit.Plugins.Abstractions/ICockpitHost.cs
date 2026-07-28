@@ -17,7 +17,7 @@ namespace Cockpit.Plugins.Abstractions;
 /// What the host offers a plugin during <see cref="ICockpitPlugin.Initialize"/>: the built service
 /// provider, cockpit actions, per-plugin storage, and the contribution points — a settings view (opened
 /// from the plugin manager's gear), a left-menu launcher button and/or an inline left-menu section, and a
-/// helper to open a modal dialog. This facade is the contract's only intended growth surface — new
+/// helper to open a window beside the cockpit. This facade is the contract's only intended growth surface — new
 /// capabilities are added here (as default interface methods) rather than by widening the other interfaces.
 /// </summary>
 public interface ICockpitHost
@@ -214,8 +214,29 @@ public interface ICockpitHost
     /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
     IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
 
-    /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
+    /// <summary>Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh. Use the <paramref name="singleInstanceKey"/> overload for a window there should only ever be one of.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+
+    /// <summary>
+    /// The same, for a window there should only ever be one of: asked for again while it is open, the cockpit
+    /// brings that window forward and builds nothing. Two calls share a window when they pass the same
+    /// <paramref name="singleInstanceKey"/> — the host scopes it to your plugin, so it only has to be unique
+    /// within your own.
+    /// <para>
+    /// Key what is genuinely one thing ("issues"), and key per subject what is not: a picker opened from a
+    /// session's header belongs to that session, so it wants the pane in its key
+    /// (<c>$"track.{session.PaneId}"</c>) or no key at all. The host cannot work this out for you — it is handed
+    /// a caption, and two plugins can title different windows the same.
+    /// </para>
+    /// <para>
+    /// A separate overload rather than a fifth optional parameter, because every plugin zip already published
+    /// calls the four-argument method and its signature has to stay (the AC-40 binary-compat rule). The default
+    /// body forwards to that one, so an older host that has this member opens a second window as it always did.
+    /// A plugin calling this raises its manifest's minHostVersion.
+    /// </para>
+    /// </summary>
+    Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
+        ShowDialogAsync(title, createContent, width, height);
 
     /// <summary>
     /// Renders <paramref name="markdown"/> the way the cockpit's own transcript does (AC-296) — the seam that

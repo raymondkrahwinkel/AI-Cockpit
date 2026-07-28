@@ -7,9 +7,15 @@ using Cockpit.App.ViewModels;
 namespace Cockpit.App.Views;
 
 /// <summary>
-/// Modal New-session dialog. Closes with the confirmed <see cref="NewSessionResult"/> (or null on
-/// cancel) when the view model raises <see cref="NewSessionDialogViewModel.CloseRequested"/>, so the
-/// caller gets the result straight from <c>ShowDialog&lt;NewSessionResult?&gt;</c>.
+/// The New-session form, opened beside the cockpit rather than over it (AC-367). Closes with the confirmed
+/// <see cref="NewSessionResult"/> (or null on cancel) when the view model raises
+/// <see cref="NewSessionDialogViewModel.CloseRequested"/>.
+/// <para>
+/// ⚠️ This window is not shown with <c>ShowDialog</c>, so the value handed to <see cref="Window.Close(object)"/>
+/// reaches nobody — <see cref="Services.SessionDialogService"/> subscribes to the same event to record the
+/// answer, and it must do so <em>before</em> setting this window's DataContext, because the handler below is
+/// registered from <c>DataContextChanged</c> and closes the window. Whoever closes first wins.
+/// </para>
 /// </summary>
 public partial class NewSessionDialog : Window
 {

@@ -38,7 +38,8 @@ public sealed class GitStatusPlugin : ICockpitPlugin
         }
         host.AddSideMenuButton(
             "Git status",
-            () => _ = host.ShowDialogAsync("Git status", () => new GitStatusDialogControl(settings, host.Actions), 780, 540));
+            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
+            () => _ = host.ShowDialogAsync("Git status", () => new GitStatusDialogControl(settings, host.Actions), "status", width: 780, height: 540));
     }
 
     public void Dispose()

@@ -51,7 +51,8 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         // clamps this against the cockpit's own window size, so a smaller screen still gets a dialog that fits.
         host.AddSideMenuButton(
             "GitHub Issues",
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host, links), 1280, 860));
+            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
+            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host, links), "issues", width: 1280, height: 860));
 
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
         host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, links, settings));

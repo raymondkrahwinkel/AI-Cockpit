@@ -139,6 +139,12 @@ public partial class App : Application
         // the desktop was still locked, where activation does not stick.
         _screenLockWindow = window;
 
+        // The lock is modal over the main window, and modality holds an owner rather than that owner's siblings.
+        // Since AC-367 the work surfaces are siblings, so a locked cockpit still had options, MCP servers, the
+        // plugin store and every plugin window open beside it. Hidden for the duration and put back on unlock, so
+        // the lock covers the whole app without throwing away what was being filled in.
+        using var surfaces = Program.Services.GetRequiredService<SurfaceWindows>().HideAll();
+
         try
         {
             await window.ShowDialog(_mainWindow);

@@ -156,11 +156,13 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             HorizontalAlignment = HorizontalAlignment.Left,
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
+        // Same window as the widget's "View all": two entry points, one dialog.
         viewAll.Click += (_, _) => _ = _host.ShowDialogAsync(
             "GitHub Pull Requests",
             () => new GitHubPullRequestsDialogControl(_settings, _host),
-            1040,
-            700);
+            "pull-requests",
+            width: 1040,
+            height: 700);
 
         // Under the counts, above the list: this section refreshes on a timer and whenever a session touches a pull
         // request, so it is often working while nobody asked it to. Without this the list simply looks stale — or,

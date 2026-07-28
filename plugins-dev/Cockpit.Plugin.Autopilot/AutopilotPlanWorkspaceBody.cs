@@ -725,7 +725,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             });
             _ceo = ceo;
             _plan.BindSession(ceo.PaneId);
-            await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), 980, 660);
+            // One planning pop-out per plugin: reopening while it's up should refocus it, not stack a second one.
+            await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), "plan", width: 980, height: 660);
         }
         catch (Exception)
         {
@@ -882,6 +883,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         Select(0);
 
+        // One "Start a run" dialog per plugin: reopening while it's up should refocus it, not stack a second one.
         await _host.ShowDialogAsync("Start a run", () =>
         {
             // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
@@ -946,7 +948,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             };
 
             return new DockPanel { LastChildFill = true, Children = { footer, new ScrollViewer { Content = body } } };
-        }, 560, 520);
+        }, "start-run", width: 560, height: 520);
 
         return (cancelled, chosen);
     }

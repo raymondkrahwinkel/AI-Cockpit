@@ -8,7 +8,14 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.8.0 also carries AC-419: a plugin opening the New-session dialog names the cockpit project by the link the
+    <!-- 0.9.0: windows beside the cockpit (AC-367) — the dialogs an operator works in stop being modal, so a
+         plugin's own window no longer holds every running session, and with two of them able to be open at once
+         the host gains a way to be told which ones are one-of-a-kind: ICockpitHost.ShowDialogAsync's
+         singleInstanceKey overload. A plugin that calls it sets minHostVersion 0.9.0 — an older host's copy of
+         the SDK has no such member, so the call fails before any default body runs. Deliberately not folded into
+         0.8.0: a published plugin (autopilot 0.9.0) already claims that gate, and letting "0.8.0" mean two
+         different capability sets is how a gate starts lying. Minor because it is additive; still 0.x.
+         0.8.0 also carries AC-419: a plugin opening the New-session dialog names the cockpit project by the link the
          operator gave it (NewSessionPrefill.LinkedProject / ProjectLink) and the host preselects the project that
          declares it. Same shape as the usage trail below — an init-only property an older host's copy of the record
          does not have — so a plugin that sets it sets minHostVersion 0.8.0 too.
@@ -57,7 +64,7 @@
          credentials. Deliberately still 0.x — under 1.0.0 semver promises nothing, which is the honest state of a
          thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself,
          and it is what switches on the minHostVersion gate (PluginLoadPolicy). -->
-    <VersionPrefix>0.8.0</VersionPrefix>
+    <VersionPrefix>0.9.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

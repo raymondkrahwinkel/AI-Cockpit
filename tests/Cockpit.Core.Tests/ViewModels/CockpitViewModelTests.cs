@@ -1031,7 +1031,10 @@ public class CockpitViewModelTests
             Arg.Any<Func<Control>>(),
             Arg.Any<double>(),
             Arg.Any<double>(),
-            Arg.Any<Action?>());
+            Arg.Any<Action?>(),
+            // Keyed on the plugin, not merely keyed (AC-367): both gears route here, and since these windows stopped
+            // being modal two forms could otherwise stand open over one store with the last save winning silently.
+            "settings:youtrack");
     }
 
     // Saving from any gear must run the plugin's settings-saved handlers: a plugin that re-registers its MCP
@@ -1041,7 +1044,7 @@ public class CockpitViewModelTests
     {
         var dialogHost = Substitute.For<IPluginDialogHost>();
         dialogHost
-            .ShowSettingsDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<Action?>())
+            .ShowSettingsDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<Action?>(), Arg.Any<string?>())
             .Returns(callInfo =>
             {
                 callInfo.Arg<Action?>()?.Invoke();
