@@ -79,6 +79,38 @@ public class PluginStoreBusyGateTests
         }
     });
 
+    /// <summary>
+    /// The version picker's Install sits in the same pane and reaches the same download-and-move, so it needs
+    /// the same gate. The overlay is not that gate: it covers the button against a pointer, but a control
+    /// underneath it keeps its focus, so Tab and a space bar still reach it.
+    /// </summary>
+    [Fact]
+    public void TheVersionPickersInstall_GoesDead_Too_AndIsNotMerelyCovered() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("plugin-store");
+        try
+        {
+            var manager = _Manager(window);
+            var dialog = Assert.IsType<PluginStoreDialogViewModel>(window.DataContext);
+            window.UpdateLayout();
+
+            var install = Assert.Single(
+                window.GetVisualDescendants().OfType<Button>(),
+                button => ReferenceEquals(button.Command, dialog.InstallSelectedVersionCommand));
+            Assert.True(install.IsEffectivelyEnabled);
+
+            manager.IsBusy = true;
+            window.UpdateLayout();
+
+            Assert.False(install.IsEffectivelyEnabled, "a second install of the same plugin must not be startable");
+            Assert.False(dialog.InstallSelectedVersionCommand.CanExecute(null));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     [Fact]
     public void TheBusyOverlay_ComesUpOverTheCatalogue_AndGoesAwayAgain() => HeadlessAvalonia.Run(() =>
     {
