@@ -785,10 +785,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _updateBannerVisible;
 
-    /// <summary>The identity (version + commit) of the release now on offer, and of the one the operator last
-    /// dismissed from the banner. A nightly has no version — its commit is its whole identity — so both go in.</summary>
+    /// <summary>The version of the release now on offer, and of the one the operator last dismissed from the banner.
+    /// A version identifies a build on its own: a nightly is packed as <c>-nightly.&lt;run&gt;</c>, so the rolling tag
+    /// it is published under repeats but the version does not.</summary>
     private string _offeredRelease = string.Empty;
     private string _dismissedRelease = string.Empty;
+
+    /// <summary>
+    /// The channel the operator picked, or null while nobody has (AC-387). Held apart from
+    /// <see cref="IncludeNightlyBuilds"/> — which shows the channel in force, chosen or derived — so that saving the
+    /// settings for an unrelated reason cannot turn a derived channel into a choice behind the operator's back.
+    /// </summary>
+    private UpdateChannel? _chosenChannel;
+
+    /// <summary>True while the stored settings are being applied, so filling the controls does not read as using them.</summary>
+    private bool _loadingUpdateSettings;
+
+    /// <summary>
+    /// Which of the two update settings the operator has decided for. Kept apart rather than as one "touched" flag:
+    /// they are stored together but chosen separately, and one flag for both means changing either one claims the
+    /// other as well.
+    /// </summary>
+    private bool _startupChoiceMade;
+    private bool _channelChoiceMade;
+
+    /// <summary>
+    /// Whether the stored update settings have been read and applied, and whether the operator changed something
+    /// before that happened. Two plain flags rather than awaiting the read: both this and the read run on the UI
+    /// thread, and awaiting the same task from two places says nothing about which of them resumes first — a save
+    /// that woke up first would still be writing settings it had not learned yet.
+    /// </summary>
+    private bool _updateSettingsRead;
+    private bool _updateSettingsSavePending;
 
     // How often the background re-check for a newer build runs while the cockpit is open (AC-188) — the startup look
     // is a single shot, this catches a release cut hours after the window opened.
@@ -3205,8 +3233,44 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (_updateSettingsStore is { } store)
         {
             var settings = await store.LoadAsync();
-            CheckForUpdatesOnStartup = settings.CheckOnStartup;
-            IncludeNightlyBuilds = settings.Channel == UpdateChannel.Nightly;
+
+            // Reading the file waits out anything holding it, for up to a couple of seconds, and the Updates tab is
+            // reachable while it does. A control the operator changed in that window is theirs and keeps their value;
+            // every other one takes what was read. Per control rather than all-or-nothing: they touched one setting,
+            // not the section, and treating the whole section as spoken for is how touching the startup box came to
+            // discard a channel chosen on an earlier run.
+            _loadingUpdateSettings = true;
+            try
+            {
+                if (!_startupChoiceMade)
+                {
+                    CheckForUpdatesOnStartup = settings.CheckOnStartup;
+                }
+
+                if (!_channelChoiceMade)
+                {
+                    _chosenChannel = settings.Channel;
+
+                    // Nobody has chosen, so the build decides (AC-387). Defaulting to stable instead is how a nightly
+                    // started without a configuration file is offered the latest stable as its first update — a
+                    // downgrade, presented as an upgrade.
+                    IncludeNightlyBuilds = (_chosenChannel ?? BuildChannel.FromVersion(version)) == UpdateChannel.Nightly;
+                }
+            }
+            finally
+            {
+                _loadingUpdateSettings = false;
+            }
+
+            _updateSettingsRead = true;
+
+            // A change the operator made while this was reading was held back rather than written — it would have
+            // persisted a channel not yet read, erasing an earlier choice. Now that both halves are known, it goes.
+            if (_updateSettingsSavePending)
+            {
+                _updateSettingsSavePending = false;
+                _SaveUpdateSettings();
+            }
         }
 
         if (!CheckForUpdatesOnStartup)
@@ -3214,7 +3278,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+        var result = await updates.CheckAsync(_Stream);
         if (result.Release is not { } release)
         {
             return;
@@ -3231,7 +3295,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The "a newer build is out" toast, shared by the startup check and the hourly re-check (AC-188) so the two never
     // drift. Raised on ToastHost for the same circular-dependency reason as the startup toast above.
     private void _ToastUpdate(AppRelease release) =>
-        ToastHost.Add($"{release.Name} is out. You are on {CurrentBuild}.", ToastSeverity.Information, "Open it", OpenUpdate);
+        ToastHost.Add($"{release.Version} is out. You are on {CurrentBuild}.", ToastSeverity.Information, "Open it", OpenUpdate);
 
     /// <summary>
     /// One background re-check for a newer build (AC-188), on the hourly cadence set by <see cref="StartPeriodicUpdateChecks"/>.
@@ -3248,7 +3312,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateCheckResult result;
         try
         {
-            result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+            result = await updates.CheckAsync(_Stream);
         }
         catch (Exception)
         {
@@ -3321,7 +3385,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = "Looking…";
         UpdateUrl = string.Empty;
 
-        var result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+        var result = await updates.CheckAsync(_Stream);
 
         if (result.Failure is { } failure)
         {
@@ -3371,8 +3435,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _Announce(AppRelease release)
     {
         UpdateUrl = release.Url;
-        UpdateName = release.Name;
-        UpdateStatus = $"{release.Name} is available (published {release.PublishedAt.ToLocalTime():d MMMM yyyy}).";
+        UpdateName = release.Version;
+        UpdateStatus = $"{release.Version} is available.";
         OnPropertyChanged(nameof(HasUpdate));
 
         // The banner shows unless the operator already dismissed this exact build; a newer build always has a
@@ -3381,18 +3445,63 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateBannerVisible = _offeredRelease != _dismissedRelease;
     }
 
-    // The dedup identity of a release — version + commit (a nightly's version is empty, so the commit carries it). One
-    // source of truth: _Announce and the hourly check must key off the same string, or dedup silently breaks.
-    private static string _ReleaseKey(AppRelease release) => $"{release.Version} {release.Commit}";
+    // The dedup identity of a release. One source of truth: _Announce and the hourly check must key off the same
+    // string, or dedup silently breaks.
+    private static string _ReleaseKey(AppRelease release) => release.Version;
 
-    partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();
+    /// <summary>The stream the checks ask on: what the channel control says, however it came to say it.</summary>
+    private UpdateChannel _Stream => IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable;
 
-    partial void OnIncludeNightlyBuildsChanged(bool value) => _SaveUpdateSettings();
+    // Saves the startup preference without touching the channel: a cockpit that recorded a channel choice because
+    // somebody ticked an unrelated box would have exactly the drift AC-387 removes, arriving by the side door.
+    partial void OnCheckForUpdatesOnStartupChanged(bool value)
+    {
+        if (_loadingUpdateSettings)
+        {
+            return;
+        }
 
-    private void _SaveUpdateSettings() => _ = _updateSettingsStore?.SaveAsync(
-        new UpdateSettings(
-            CheckForUpdatesOnStartup,
-            IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable));
+        _startupChoiceMade = true;
+        _SaveUpdateSettings();
+    }
+
+    /// <summary>
+    /// Touching the channel is the choice (AC-387). From here on it is the operator's and it wins over what the build
+    /// would have implied — including when they set it back to the value the build gave them.
+    /// </summary>
+    partial void OnIncludeNightlyBuildsChanged(bool value)
+    {
+        if (_loadingUpdateSettings)
+        {
+            return;
+        }
+
+        _channelChoiceMade = true;
+        _chosenChannel = _Stream;
+        _SaveUpdateSettings();
+    }
+
+    /// <summary>
+    /// Writes both settings — but never before the stored ones have been read. A save that went first would persist a
+    /// channel this cockpit has not learned yet, writing "nobody chose" over a choice made on an earlier run and
+    /// erasing it. Held back instead, and performed by <see cref="InitialiseUpdatesAsync"/> the moment both halves
+    /// are known.
+    /// </summary>
+    private void _SaveUpdateSettings()
+    {
+        if (_updateSettingsStore is not { } store)
+        {
+            return;
+        }
+
+        if (!_updateSettingsRead)
+        {
+            _updateSettingsSavePending = true;
+            return;
+        }
+
+        _ = store.SaveAsync(new UpdateSettings(CheckForUpdatesOnStartup, _chosenChannel));
+    }
 
     /// <summary>
     /// Writes the whole cockpit to <paramref name="archivePath"/> (#70). The view picks the file; this decides what
