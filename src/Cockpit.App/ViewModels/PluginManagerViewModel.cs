@@ -184,12 +184,29 @@ public partial class PluginManagerViewModel : ViewModelBase
     // is still false for the duration), so the ticket's account of that failure was wrong. What was missing
     // is gating *across* commands — the toolkit's guard is per command, so an install stayed startable while
     // Update all or a version install was running, and those do reach the same download and folder move.
+    //
+    // Everything that changes what the store is made of joined them in AC-455, gated for a different reason:
+    // not that they start a second install, but that they write over what one is working through — see
+    // CanChangePlugins for which of them writes what.
     partial void OnIsBusyChanged(bool value)
     {
         RestartNowCommand.NotifyCanExecuteChanged();
         InstallFromStoreCommand.NotifyCanExecuteChanged();
         InstallFromZipCommand.NotifyCanExecuteChanged();
         UpdateAllCommand.NotifyCanExecuteChanged();
+        BrowseStoresCommand.NotifyCanExecuteChanged();
+
+        AddStoreCommand.NotifyCanExecuteChanged();
+        RemoveStoreCommand.NotifyCanExecuteChanged();
+        EnablePluginCommand.NotifyCanExecuteChanged();
+        DisablePluginCommand.NotifyCanExecuteChanged();
+        RemovePluginCommand.NotifyCanExecuteChanged();
+        MovePluginUpCommand.NotifyCanExecuteChanged();
+        MovePluginDownCommand.NotifyCanExecuteChanged();
+        TogglePluginMenuVisibilityCommand.NotifyCanExecuteChanged();
+        ToggleStorePluginCommand.NotifyCanExecuteChanged();
+        InstallTemplateCommand.NotifyCanExecuteChanged();
+        RemoveTemplateCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -209,6 +226,31 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// with a banner saying the update was done.
     /// </summary>
     public bool CanRestart => _restartService is not null && !IsBusy;
+
+    /// <summary>
+    /// Whether the operator may change what the store is made of — the installed plugins, the workflow
+    /// templates, and the stores they come from (AC-455). Closed while the store is working, and read by every
+    /// one of those commands rather than by the overlay drawn over their buttons: an overlay stops a pointer
+    /// and leaves the focus underneath it, so a Tab and a space bar walk straight past it.
+    /// </summary>
+    /// <remarks>
+    /// Three families, with three different reasons, which is why the list is longer than "everything that
+    /// reloads":
+    /// <list type="bullet">
+    /// <item>Enable, disable, remove and the catalogue card's power toggle rewrite the registration entry an
+    /// install re-pins on its way out (<see cref="_AfterInstallAsync"/>), then reload — and the toggle
+    /// re-browses on top of that, rebuilding the very catalogue the install is walking.</item>
+    /// <item>The menu arrows reload nothing, but write <em>every</em> plugin's position into that same
+    /// registration file, one save per plugin, interleaved with the install's own writes to it.</item>
+    /// <item>The template commands touch neither the plugins folder nor the registration store. They are here
+    /// for <see cref="StatusMessage"/> and <see cref="NeedsRestart"/>: the status line is the running
+    /// install's only line — it is what the overlay is showing — and a template installed over it replaces
+    /// the sentence naming the plugin being downloaded with one naming the template.</item>
+    /// </list>
+    /// The two settings buttons deliberately stay live: they open a plugin's own settings dialog, which
+    /// writes that plugin's settings and touches none of the above.
+    /// </remarks>
+    public bool CanChangePlugins => !IsBusy;
 
     /// <summary>Design-time constructor for the previewer.</summary>
     public PluginManagerViewModel()
@@ -279,6 +321,15 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
+    /// <remarks>
+    /// Deliberately not gated on <see cref="IsBusy"/>, unlike the commands above (AC-455). Three routes reach
+    /// it from the main window — Options, the store, the update toast — and none of them belongs to the store
+    /// dialog, so a gate here would mean "you cannot open Options while a plugin installs", which is a real
+    /// cost for a real but small risk: since the sweeps moved to startup this is a read of the plugins folder,
+    /// and the one crash it could cause (clearing the store list a running browse was walking) is closed by
+    /// that browse taking a snapshot. What is left is cosmetic and outlives this ticket: a rebuild mid-install
+    /// leaves the Manage-stores dialog's per-store counts stale until the next browse.
+    /// </remarks>
     public async Task LoadAsync()
     {
         if (_bootstrap is not null)
@@ -362,7 +413,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         });
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task EnablePluginAsync(PluginRowViewModel row)
     {
         if (_registrationStore is null || _dialogService is null)
@@ -397,11 +448,11 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     /// <summary>Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MovePluginUpAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) - 1);
 
     /// <summary>Moves the plugin down the left menu (#72).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MovePluginDownAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) + 1);
 
     /// <summary>
@@ -447,7 +498,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// Hides or shows the plugin's left-menu contributions (#72). The plugin keeps running either way — its
     /// shortcut and command-palette entry still work — so this is emphatically not a quieter way to disable it.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task TogglePluginMenuVisibilityAsync(PluginRowViewModel row)
     {
         if (_registrationStore is null)
@@ -467,7 +518,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             : $"'{row.DisplayName}' shown in the left menu again.";
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task DisablePluginAsync(PluginRowViewModel row)
     {
         if (_registrationStore is null)
@@ -481,7 +532,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         NeedsRestart = true;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task RemovePluginAsync(PluginRowViewModel row)
     {
         if (_registrationStore is null || _installer is null)
@@ -520,7 +571,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task AddStoreAsync()
     {
         if (_storeConfigStore is null)
@@ -580,7 +631,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         return true;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task RemoveStoreAsync(PluginStoreInfo info)
     {
         if (_storeConfigStore is null)
@@ -601,8 +652,14 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _LoadStoresAsync();
     }
 
-    [RelayCommand]
-    private async Task BrowseStoresAsync()
+    /// <summary>
+    /// Refetches every configured store's index and rebuilds the catalogue. Public because the install paths
+    /// call it directly on their way out and must not be refused: the command is gated for the operator (a
+    /// refresh mid-install clears and refills the collection that install is walking), and the method is the
+    /// way in for the code that owns the install around it.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
+    public async Task BrowseStoresAsync()
     {
         if (_storeClient is null)
         {
@@ -624,7 +681,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             // Store logos are fetched after the catalogue is in — plugins show at once, the logos pop in when
             // they arrive, and a slow or broken image never delays the list.
             var logoLoads = new List<Task>();
-            foreach (var store in Stores)
+            // Over a snapshot, for the reason "Update all" takes one: this loop awaits a fetch per store, and
+            // opening Options or the store from the main window reloads the store list underneath it — that is
+            // reachable from the keyboard mid-install, and enumerating a collection someone cleared throws.
+            foreach (var store in Stores.ToList())
             {
                 var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
 
@@ -744,7 +804,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// the library the editor's picker reads. Nothing is loaded and no code runs — a template is a flow as text, and it
     /// arrives switched off, for the operator to read before arming it.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task InstallTemplateAsync(StoreTemplateRowViewModel row)
     {
         if (_storeClient is null || _templateLibrary is null)
@@ -787,7 +847,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     /// <summary>Takes an installed template out of the library. The flows already made from it are yours and stay.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private void RemoveTemplate(StoreTemplateRowViewModel row)
     {
         if (_templateLibrary is null)
@@ -953,6 +1013,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             try
             {
                 var updated = 0;
+                // Kept rather than only shown as they happen (AC-455): StatusMessage is one line, so each
+                // failure was overwritten by the next plugin, then by the catalogue reload, then by a summary
+                // telling the operator to read a message that no longer existed anywhere.
+                var failed = new List<string>();
                 for (var i = 0; i < updates.Count; i++)
                 {
                     var row = updates[i];
@@ -964,9 +1028,14 @@ public partial class PluginManagerViewModel : ViewModelBase
                         {
                             updated++;
                         }
+                        else
+                        {
+                            failed.Add(row.Name);
+                        }
                     }
                     catch (Exception exception)
                     {
+                        failed.Add(row.Name);
                         StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
                     }
 
@@ -976,9 +1045,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                 }
 
                 await BrowseStoresAsync();
-                StatusMessage = updated == updates.Count
+                StatusMessage = failed.Count == 0
                     ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
-                    : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the message above. Restart to activate.";
+                    : $"Updated {updated} of {updates.Count} plugin(s). {string.Join(", ", failed.Select(name => $"'{name}'"))} failed."
+                      + (updated > 0 ? " Restart the cockpit to activate the rest." : string.Empty);
                 NeedsRestart = updated > 0;
             }
             finally
@@ -1005,7 +1075,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     /// <summary>Enables or disables the installed plugin behind a store row (the card's power toggle), then refreshes the catalogue so the toggle reflects the new state.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task ToggleStorePluginAsync(StorePluginRowViewModel row)
     {
         if (_InstalledRowFor(row) is not { } installed)
@@ -1126,6 +1196,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         var installed = Plugins.FirstOrDefault(row => row.FolderId == result.FolderId);
         if (installed is not null && installed.CanEnable)
         {
+            // The method, not EnablePluginCommand: the command is closed while the store is working (AC-455)
+            // and this runs inside the install that made it so. Routing it through the command would drop the
+            // consent step of every fresh install without a word.
             await EnablePluginAsync(installed);
         }
         else

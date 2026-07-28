@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -266,7 +267,9 @@ public class PluginManagerViewModelBusyGateTests
             .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(async _ =>
             {
-                await manager.BrowseStoresCommand.ExecuteAsync(null);
+                // The method, as the install paths themselves call it: the command is refused while the store
+                // is working (AC-455), and this browse is the running install's own.
+                await manager.BrowseStoresAsync();
                 whileInstalling.Add((manager.IsBusy, manager.RestartNowCommand.CanExecute(null)));
 
                 return new PluginStoreDownloadResult(true, null, _ZipPath);
@@ -420,6 +423,188 @@ public class PluginManagerViewModelBusyGateTests
         await manager.InstallFromStoreCommand.ExecuteAsync(row);
 
         Assert.Equal([(true, true)], midInstall);
+        Assert.False(manager.IsBusy);
+    }
+
+    /// <summary>
+    /// AC-455's answer, swept in one place so a command added to this family without a gate is caught here
+    /// rather than by the operator. What they have in common is not a reload — four of them reload nothing —
+    /// but that each writes over something a running install is working through: the registration file, the
+    /// catalogue collection, or the single status line the overlay is showing. Which one, per command, is in
+    /// <c>CanChangePlugins</c>. The parameter is not read: the gate is a property, deliberately, so it does
+    /// not depend on which row was clicked.
+    /// </summary>
+    [Fact]
+    public void EveryCommandThatChangesWhatIsInstalled_IsClosed_WhileTheStoreIsWorking()
+    {
+        var manager = new PluginManagerViewModel();
+        var gated = new (string Name, IRelayCommand Command)[]
+        {
+            ("browse the stores", manager.BrowseStoresCommand),
+            ("add a store", manager.AddStoreCommand),
+            ("remove a store", manager.RemoveStoreCommand),
+            ("enable", manager.EnablePluginCommand),
+            ("disable", manager.DisablePluginCommand),
+            ("remove", manager.RemovePluginCommand),
+            ("move up the menu", manager.MovePluginUpCommand),
+            ("move down the menu", manager.MovePluginDownCommand),
+            ("hide from the menu", manager.TogglePluginMenuVisibilityCommand),
+            ("the catalogue card's power toggle", manager.ToggleStorePluginCommand),
+            ("install a template", manager.InstallTemplateCommand),
+            ("remove a template", manager.RemoveTemplateCommand),
+        };
+
+        var reasked = gated.ToDictionary(entry => entry.Name, _ => 0);
+        foreach (var (name, command) in gated)
+        {
+            Assert.True(command.CanExecute(null), $"'{name}' is there to be used on an idle store");
+            command.CanExecuteChanged += (_, _) => reasked[name]++;
+        }
+
+        manager.IsBusy = true;
+
+        Assert.Equal([], gated.Where(entry => entry.Command.CanExecute(null)).Select(entry => entry.Name));
+        // And each bound button is told to ask again — a gate nobody re-reads leaves the button live (AC-420).
+        Assert.DoesNotContain(reasked, entry => entry.Value == 0);
+    }
+
+    /// <summary>
+    /// The menu arrows are the dialog's own commands rather than the manager's — they move a plugin past its
+    /// neighbour <em>under the same heading</em>, which the manager's flat ±1 cannot express — so they carry
+    /// their own gate over the same signal. Both write the whole menu order through the manager.
+    /// </summary>
+    [Fact]
+    public void TheDialogsOwnCommands_AreClosed_WhileTheStoreIsWorking()
+    {
+        var manager = new PluginManagerViewModel();
+        var dialog = new PluginStoreDialogViewModel(manager);
+        var gated = new (string Name, IRelayCommand Command)[]
+        {
+            ("move up the menu", dialog.MoveInstalledPluginUpCommand),
+            ("move down the menu", dialog.MoveInstalledPluginDownCommand),
+            // Refresh reaches the same browse: it clears the catalogue and refills it from the stores. Its own
+            // gate is what makes the button go dead rather than look live and quietly do nothing — the manager
+            // refusing the command underneath it would leave exactly that.
+            ("refresh the catalogue", dialog.RefreshCommand),
+        };
+
+        var reasked = gated.ToDictionary(entry => entry.Name, _ => 0);
+        foreach (var (name, command) in gated)
+        {
+            Assert.True(command.CanExecute(null), $"'{name}' is there to be used on an idle store");
+            command.CanExecuteChanged += (_, _) => reasked[name]++;
+        }
+
+        manager.IsBusy = true;
+
+        Assert.Equal([], gated.Where(entry => entry.Command.CanExecute(null)).Select(entry => entry.Name));
+        Assert.DoesNotContain(reasked, entry => entry.Value == 0);
+    }
+
+    /// <summary>
+    /// The deliberate exception, pinned so widening the gate over it is a decision rather than a tidy-up. A
+    /// plugin's own settings dialog writes that plugin's settings and touches neither the plugins folder, the
+    /// registration store, nor the catalogue — and an install is no reason to stop the operator reading.
+    /// </summary>
+    [Fact]
+    public void TheSettingsButtons_StayOpen_WhileTheStoreIsWorking()
+    {
+        var manager = new PluginManagerViewModel { IsBusy = true };
+
+        Assert.True(manager.OpenPluginSettingsCommand.CanExecute(null));
+        Assert.True(manager.OpenStorePluginSettingsCommand.CanExecute(null));
+    }
+
+    /// <summary>
+    /// A batch that loses a plugin used to end with "the rest failed — see the message above", and there was no
+    /// message above: each failure was overwritten by the next plugin's line, then by the catalogue reload,
+    /// then by that summary. The names are what the operator needs, so they are kept and said.
+    /// </summary>
+    [Fact]
+    public async Task ABatchThatLosesAPlugin_NamesIt_RatherThanPointingAtALineThatIsGone()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>());
+        foreach (var row in _UpdatableRows("github-issues", "git-status", "workflows"))
+        {
+            manager.AvailablePlugins.Add(row);
+        }
+
+        var attempt = 0;
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ++attempt == 2
+                ? throw new IOException("the store went away mid-download")
+                : Task.FromResult(new PluginStoreDownloadResult(true, null, _ZipPath)));
+        _StagesTheUpdate(installer);
+
+        await manager.UpdateAllCommand.ExecuteAsync(null);
+
+        Assert.Contains("'git-status' failed", manager.StatusMessage);
+        Assert.DoesNotContain("above", manager.StatusMessage);
+        // The two that worked are still worth restarting for, and the line still says so.
+        Assert.Contains("Updated 2 of 3", manager.StatusMessage);
+        Assert.Contains("Restart", manager.StatusMessage);
+    }
+
+    /// <summary>
+    /// The commoner failure, and the one the first version of this missed: a download that fails rather than
+    /// throws — no version to download, an http error, an install the installer refuses. It returns false and
+    /// the loop carries on, so a batch could end naming nothing at all ("… plugin(s).  failed.") while every
+    /// test stayed green.
+    /// </summary>
+    [Fact]
+    public async Task ABatchWhoseDownloadsFailWithoutThrowing_NamesThemToo()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>());
+        foreach (var row in _UpdatableRows("github-issues", "git-status"))
+        {
+            manager.AvailablePlugins.Add(row);
+        }
+
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new PluginStoreDownloadResult(false, "the store answered 404", null)));
+
+        await manager.UpdateAllCommand.ExecuteAsync(null);
+
+        Assert.Contains("'github-issues'", manager.StatusMessage);
+        Assert.Contains("'git-status'", manager.StatusMessage);
+        Assert.Contains("Updated 0 of 2", manager.StatusMessage);
+        // Nothing was updated, so there is nothing a restart would apply and the line does not ask for one.
+        Assert.DoesNotContain("Restart", manager.StatusMessage);
+        Assert.False(manager.NeedsRestart);
+    }
+
+    /// <summary>
+    /// Opening Options or the store from the main window reloads the store list, and that is reachable from the
+    /// keyboard while an install runs — the dialog does not own the work, so closing it changes nothing. The
+    /// browse awaits a fetch per store, so it walks a snapshot; enumerating a list someone cleared throws.
+    /// </summary>
+    [Fact]
+    public async Task ABrowse_SurvivesTheStoreListBeingReloadedUnderIt()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var manager = _Manager(storeClient, Substitute.For<IPluginInstaller>(), Substitute.For<IAppRestartService>());
+        manager.Stores.Add(PluginStoreConfig.Remote("https://store.example/index.json"));
+        manager.Stores.Add(PluginStoreConfig.Remote("https://other.example/index.json"));
+
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                // What LoadAsync does to the list this loop is walking.
+                manager.Stores.Clear();
+                manager.Stores.Add(PluginStoreConfig.Remote("https://store.example/index.json"));
+
+                return Task.FromResult(new PluginStoreFetchResult(false, "unreachable", null, null));
+            });
+
+        await manager.BrowseStoresCommand.ExecuteAsync(null);
+
+        await storeClient.Received(2).FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>());
         Assert.False(manager.IsBusy);
     }
 

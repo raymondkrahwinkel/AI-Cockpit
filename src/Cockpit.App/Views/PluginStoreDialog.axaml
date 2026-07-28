@@ -41,7 +41,10 @@
 
         <!-- Search/sort bar, always visible above every filter/page. -->
         <Border DockPanel.Dock="Top" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,12" IsEnabled="{Binding !Manager.IsBusy}">
+            <!-- No IsEnabled on the bar itself (AC-455): Refresh and Update all carry their own gates now, and
+                 searching or sorting the catalogue changes nothing, so there is no reason to stop reading it
+                 while the store works. -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,12">
                 <TextBox Text="{Binding SearchText}" Width="260" PlaceholderText="Search plugins…"/>
                 <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSortModeOption}"
                           DisplayMemberBinding="{Binding Label}"/>
@@ -296,10 +299,6 @@
                         </MultiBinding>
                     </Panel.IsVisible>
 
-                <TextBlock Text="Loading plugin catalogue…" IsVisible="{Binding IsLoadingCatalogue}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-
                 <StackPanel IsVisible="{Binding HasNoStores}" HorizontalAlignment="Center" VerticalAlignment="Center"
                             Spacing="10" MaxWidth="320">
                     <TextBlock Text="No plugin stores configured yet." HorizontalAlignment="Center"
@@ -439,8 +438,8 @@
                 </ScrollViewer>
             </Border>
 
-            <!-- Busy layer (AC-420). While an install or a batch update runs the catalogue is covered and out
-                 of reach, showing the line the footer is already writing (which names the plugin) and a bar:
+            <!-- Busy layer (AC-420). While an install or a batch update runs it reports what the store is
+                 doing, showing the line the footer is already writing (which names the plugin) and a bar:
                  determinate over the batch's plugin count, indeterminate for a single install, where there is
                  no honest fraction to draw — the download buffers whole, so there is no byte progress to tap.
 
@@ -448,23 +447,23 @@
                  so it draws over its siblings, and spanning so it reaches the detail pane as well. The footer
                  stays uncovered on purpose — its status line has to remain readable.
 
-                 The cover is not the gate. It stops a pointer and nothing else: a control underneath keeps its
-                 focus, so Tab and a space bar still reach it. What must not start a second install is held off
-                 by its own command — CanRestart, CanInstallFromStore, CanInstallFromZip, CanUpdateAll and the
-                 picker's CanInstallSelectedVersion.
+                 It reports; it does not guard, and since AC-455 it no longer half-does. It cannot be the guard:
+                 a control underneath keeps its focus, so a Tab and a space bar walk past a scrim that stops a
+                 pointer. Blocking the pointer only made the two disagree — dead to the mouse, live to the
+                 keyboard — so it lets the pointer through as well, and every command decides for itself:
+                 CanRestart, CanInstallFromStore, CanInstallFromZip, CanUpdateAll, the picker's
+                 CanInstallSelectedVersion, and CanChangePlugins for everything that changes what is installed.
 
                  Those gates read IsBusy, so they cover a route only from the moment it raises it, and the zip
                  install deliberately does not raise it while its file picker is open. That window is held
                  instead by a single claim on the folder itself (AC-456, PluginManagerViewModel), not by these
-                 five — do not read this list as "unreachable from anywhere else".
+                 six — do not read this list as "unreachable from anywhere else".
 
-                 Not gated, and reachable by keyboard while this is up: the per-plugin enable/disable/settings
-                 buttons and the template install. The template install writes to the template library rather
-                 than the plugins folder, but enable and disable both reload, and a reload sweeps staged updates
-                 and removals through that folder (PluginBootstrap.DiscoverAsync) — so they do reach it. What
-                 should be inert here is a separate question (AC-455), not part of this one. -->
+                 Deliberately still live under it: the two settings buttons, and reading — switching sidebar
+                 view, opening a plugin's details, following its links. None of them change what is installed,
+                 and freezing them buys nothing but a dialog that cannot be read while it works. -->
             <Border x:Name="BusyOverlay" Grid.Column="0" Grid.ColumnSpan="3"
-                    IsVisible="{Binding Manager.IsBusy}"
+                    IsVisible="{Binding Manager.IsBusy}" IsHitTestVisible="False"
                     Background="{StaticResource CockpitScrimBrush}">
                 <Border Width="380" Padding="20,18" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{StaticResource CockpitPanelBgBrush}"

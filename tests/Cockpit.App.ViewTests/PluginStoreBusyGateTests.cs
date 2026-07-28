@@ -97,10 +97,10 @@ public class PluginStoreBusyGateTests
     });
 
     /// <summary>
-    /// The overlay has to actually cover what it is drawn over. Asserting that its progress bar is visible says
+    /// The overlay has to be read over everything it reports on. Asserting that its progress bar is visible says
     /// nothing about that — an overlay shrunk to one column, or pushed behind its siblings, leaves the bar
-    /// exactly where it was — so this asserts the two things "covers" means: it spans every sibling's box, and
-    /// it is drawn after them.
+    /// exactly where it was — so this asserts the two things that means: it spans every sibling's box, and it is
+    /// drawn after them.
     /// </summary>
     [Fact]
     public void TheBusyOverlay_SpansItsSiblings_AndIsDrawnOverThem() => HeadlessAvalonia.Run(() =>
@@ -115,7 +115,7 @@ public class PluginStoreBusyGateTests
             var content = Assert.IsType<Grid>(overlay.Parent);
             var covered = content.Children.Where(child => !ReferenceEquals(child, overlay) && child.IsVisible).ToList();
 
-            // The sidebar, the catalogue and the detail pane — all three, or the column it misses stays live.
+            // The sidebar, the catalogue and the detail pane — all three, or the column it misses is not dimmed.
             Assert.Equal(3, covered.Count);
             foreach (var sibling in covered)
             {
@@ -126,11 +126,76 @@ public class PluginStoreBusyGateTests
             Assert.Same(content.Children[^1], overlay);
             Assert.DoesNotContain(covered, sibling => sibling.ZIndex > overlay.ZIndex);
 
-            // And it has to be a cover rather than a pane of glass: a null brush paints nothing and hit-tests
-            // nothing, and IsHitTestVisible=false lets a pointer straight through. Both span, sit last, and
-            // leave the catalogue as reachable as it was.
-            Assert.True(overlay.IsHitTestVisible);
+            // It paints, and it does not block. AC-420 asserted the opposite here on purpose, when the scrim was
+            // the only thing between the operator and a second install. It never was that: a control underneath
+            // keeps its focus, so a Tab and a space bar went straight past it, and it stopped only the pointer —
+            // leaving the same button dead to the mouse and live to the keyboard. Every route that matters is
+            // gated at its own command now (AC-455), so what is left under here is what stays deliberately
+            // usable — the settings buttons, the sidebar, the links — and it may not be blocked from the mouse
+            // only to look consistent with a scrim.
             Assert.NotNull(overlay.Background);
+            Assert.False(overlay.IsHitTestVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>
+    /// The catalogue card's power toggle, rendered — the button AC-455 was reported against. What this adds
+    /// over the view-model test is that the card's XAML binds the <em>gated</em> command: a card wired to
+    /// something else would leave the button live with every view-model test still green.
+    /// </summary>
+    [Fact]
+    public void ThePowerTogglesOnTheCatalogue_GoDead_WhileTheStoreWorks() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("plugin-store");
+        try
+        {
+            var manager = _Manager(window);
+            window.UpdateLayout();
+
+            var toggles = _ButtonsFor(window, manager.ToggleStorePluginCommand);
+            Assert.NotEmpty(toggles);
+            Assert.Contains(toggles, button => button.IsEffectivelyEnabled);
+
+            manager.IsBusy = true;
+            window.UpdateLayout();
+
+            Assert.DoesNotContain(toggles, button => button.IsEffectivelyEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>
+    /// And the settings gear beside it does not, which is the decision AC-455 recorded rather than an oversight:
+    /// it opens that plugin's own settings and touches nothing an install is working through.
+    /// </summary>
+    /// <remarks>
+    /// This asserts enabled, and enabled only. Whether a <em>pointer</em> reaches it is a different question and
+    /// this cannot answer it: the overlay is the gear's sibling rather than its ancestor, so it never touched
+    /// <c>IsEffectivelyEnabled</c> — before this change the gear was enabled too and the scrim swallowed every
+    /// click on it. The pointer half is pinned one test up, by the overlay's own <c>IsHitTestVisible</c>, which
+    /// is the only thing that was ever stopping it. (Hit-testing itself is not available to measure here — it
+    /// goes through the compositor, and the headless harness renders no frames.)
+    /// </remarks>
+    [Fact]
+    public void TheSettingsGearBesideIt_StaysEnabled() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("plugin-store");
+        try
+        {
+            var manager = _Manager(window);
+            manager.IsBusy = true;
+            window.UpdateLayout();
+
+            var gears = _ButtonsFor(window, manager.OpenStorePluginSettingsCommand);
+            Assert.NotEmpty(gears);
+            Assert.All(gears, button => Assert.True(button.IsEffectivelyEnabled));
         }
         finally
         {
@@ -220,6 +285,9 @@ public class PluginStoreBusyGateTests
             new Dictionary<string, PluginSettingsRegistration>(),
             new PluginDiagnostics(),
             restartService: Substitute.For<IAppRestartService>());
+
+    private static List<Button> _ButtonsFor(Window window, ICommand command) =>
+        [.. window.GetVisualDescendants().OfType<Button>().Where(button => ReferenceEquals(button.Command, command))];
 
     private static PluginManagerViewModel _Manager(Window window) =>
         Assert.IsType<PluginStoreDialogViewModel>(window.DataContext).Manager;

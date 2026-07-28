@@ -148,8 +148,11 @@ sealed class Program
             _RefreshDevPlugins(loggerFactory);
 #endif
 
+            // The startup pass, which is the only thing that applies a staged update or a marked removal: this is
+            // the one moment no plugin is loaded yet, which is the whole reason both are deferred to a restart.
+            // Every other discovery in the app (the plugin manager's, the update checker's) reads and no more.
             var discoveredPlugins = new PluginBootstrap()
-                .DiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
+                .ApplyPendingChangesAndDiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
             var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
             pluginManager.LoadAndConfigure(discoveredPlugins, services, pluginActivator.Activate);
         }
