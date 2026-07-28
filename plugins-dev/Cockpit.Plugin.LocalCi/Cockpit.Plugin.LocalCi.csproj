@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Local CI plugin (AC-448): work out whether this machine can run a GitHub workflow job locally, and which
+       jobs are worth trying. Built OUTSIDE the main solution (plugins-dev/) like the other plugins; package
+       bin/<config>/net10.0 into a .zip and install it via the plugin store. EnableDynamicLoading emits the
+       .deps.json the host's AssemblyDependencyResolver needs. Shared assemblies (Cockpit.Plugins.Abstractions,
+       Avalonia, the DI abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's copies
+       load and shared types keep one identity. YamlDotNet is this plugin's own runtime dependency (like Docker
+       ships Docker.DotNet), so it is packaged into the plugin folder. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- Reading workflow YAML. A hand-rolled subset parser is exactly the failure this plugin must not have: it
+         guesses silently at a construct it does not know, where a real parser hands over a document tree we can
+         refuse explicitly. Not compile-only — the host carries no YAML parser, so it ships in the plugin folder. -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.LocalCi.Tests" />
+  </ItemGroup>
+
+</Project>
