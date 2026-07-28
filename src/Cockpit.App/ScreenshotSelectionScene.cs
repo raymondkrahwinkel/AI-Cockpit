@@ -261,22 +261,24 @@ internal static class ScreenshotSelectionScene
     /// </summary>
     private static double _ClearOfTheControls(ScreenshotSelectionWindow surface, double preferred)
     {
-        // The panel is placed once the surface has a region to place it against, and its bounds are whatever the
-        // last layout pass left — which, straight after a drag, is not yet this one.
+        // The panels are placed once the surface has a region to place them against, and their bounds are whatever
+        // the last layout pass left — which, straight after a drag, is not yet this one.
         surface.UpdateLayout();
 
-        var controls = surface.GetVisualDescendants()
+        // Both of them: the mark tools sit in a second panel stacked under the first, and measuring only the top
+        // one left the note scene still pressing into a panel below 840x630. Whichever reaches lowest is the one
+        // a press has to clear, and taking the lowest keeps that true if either panel grows.
+        var lowest = surface.GetVisualDescendants()
             .OfType<Border>()
-            .FirstOrDefault(border => border.Name == "Controls");
+            .Where(border => border.Name is "Controls" or "MarkControls")
+            .Select(border => border.TranslatePoint(new Point(0, border.Bounds.Height), surface)?.Y)
+            .Where(bottom => bottom is not null)
+            .DefaultIfEmpty(null)
+            .Max();
 
-        if (controls?.TranslatePoint(new Point(0, controls.Bounds.Height), surface) is not { } bottom)
-        {
-            return preferred;
-        }
-
-        // A margin, because a press exactly on the seam is a press on whichever of the two the hit test reaches
+        // A margin, because a press exactly on the seam belongs to whichever of the two the hit test reaches
         // first, and that is not something a scene should be deciding by a pixel.
-        return Math.Max(preferred, bottom.Y + 12);
+        return lowest is null ? preferred : Math.Max(preferred, lowest.Value + 12);
     }
 
     /// <summary>

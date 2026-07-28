@@ -33,11 +33,14 @@ namespace Cockpit.TestSupport;
 /// </para>
 /// <para>
 /// <b>What it cannot see, and these are not small.</b> A control that paints in <c>Render(DrawingContext)</c>
-/// puts nothing on a property, so <c>LimitBar</c>, <c>MicLevelMeter</c>, <c>DashboardGridLines</c> and the
-/// workflow canvas's <c>DotGrid</c> are invisible here — including their <c>Brushes.Red</c>/<c>Brushes.Orange</c>
-/// fallbacks, which is the very shape this was meant to catch. Nor an <c>Image</c> or a <c>DrawingBrush</c>, nor
-/// a gradient (no single colour to record), nor a list item that virtualisation has not materialised. A colour
-/// reached only by those routes can change without moving a line in any baseline.
+/// puts nothing on a property, so <c>LimitBar</c>, <c>MicLevelMeter</c> and <c>DashboardGridLines</c> are
+/// invisible here. <c>LimitBar</c> is the one that stings: its fallbacks are <c>Brushes.Gray</c>,
+/// <c>Brushes.DimGray</c> and <c>Brushes.Orange</c> — a named framework colour is the very shape this was meant
+/// to catch, and it goes past. The other two fall back to a hex through <c>ThemeBrush.Resolve</c>, which is the
+/// house idiom and a smaller problem. Also unreachable: an <c>Image</c>; a <c>DrawingBrush</c>, which is how the
+/// workflow canvas's <c>DotGrid</c> is drawn; a gradient, having no single colour to record; and a list item
+/// virtualisation has not materialised. A colour reached only by those routes can change without moving a line
+/// in any baseline.
 /// </para>
 /// </remarks>
 public static partial class ThemePalette
