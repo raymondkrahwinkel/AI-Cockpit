@@ -23,10 +23,8 @@ namespace Cockpit.TestSupport;
 /// colour on screen that no token accounts for.
 /// </para>
 /// <para>
-/// <b>No bounds and no text, deliberately.</b> This repo embeds no fonts — <c>Assets/</c> holds the app icon and
-/// nothing else, and <c>Program.CockpitFontOptions</c> adds a different emoji fallback per platform — so glyph
-/// metrics, and every layout measured from them, differ between a developer's machine and CI's Linux runner.
-/// Colour and corner radius do not.
+/// <b>No bounds and no text, deliberately.</b> Those are layout, and layout is measured from glyphs — reliable
+/// only as far as every machine shapes text the same way. Colour and corner radius do not depend on it.
 /// </para>
 /// <para>
 /// <b>No counts, deliberately.</b> A tally moves the moment a row is added, so a baseline carrying one would
@@ -34,8 +32,12 @@ namespace Cockpit.TestSupport;
 /// overwrite unread.
 /// </para>
 /// <para>
-/// Two things it cannot see: a popup is its own visual root, so an open dropdown or flyout is not reached from
-/// the window (the ticket lists those as live-only anyway), and a gradient has no single colour to record.
+/// <b>What it cannot see, and these are not small.</b> A control that paints in <c>Render(DrawingContext)</c>
+/// puts nothing on a property, so <c>LimitBar</c>, <c>MicLevelMeter</c>, <c>DashboardGridLines</c> and the
+/// workflow canvas's <c>DotGrid</c> are invisible here — including their <c>Brushes.Red</c>/<c>Brushes.Orange</c>
+/// fallbacks, which is the very shape this was meant to catch. Nor an <c>Image</c> or a <c>DrawingBrush</c>, nor
+/// a gradient (no single colour to record), nor a list item that virtualisation has not materialised. A colour
+/// reached only by those routes can change without moving a line in any baseline.
 /// </para>
 /// </remarks>
 public static partial class ThemePalette
@@ -71,14 +73,14 @@ public static partial class ThemePalette
     }
 
     /// <summary>
-    /// Walks what is drawn. It stops at <see cref="Visual.IsVisible"/> — a hidden branch paints nothing — but
-    /// deliberately not at zero-sized nodes, the way <c>VisualTreeSnapshot</c> does: a size comes out of
-    /// measurement, measurement comes out of the fonts, and that is the machine-dependence this whole file exists
-    /// to stay clear of.
+    /// Walks what is drawn. It stops at a hidden or fully transparent branch, because neither puts anything on
+    /// screen and the surface has a one-pixel invisible text box that would otherwise contribute a colour to every
+    /// selection baseline. It deliberately does not stop at zero-sized nodes: a size comes out of measurement, and
+    /// leaving a colour out because a row happened to collapse is the kind of difference nobody can act on.
     /// </summary>
     private static void _Collect(Visual visual, HashSet<Color> colours, HashSet<CornerRadius> radii)
     {
-        if (!visual.IsVisible)
+        if (!visual.IsVisible || visual.Opacity <= 0)
         {
             return;
         }

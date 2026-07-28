@@ -4,12 +4,10 @@
 # that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
 
 #99000000  off-palette
-#99FFFFFF  off-palette
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
 #FF1A1D24  CockpitPanelBgColor
-#FF1F1F1F  off-palette
 #FF202430  CockpitInsetBgColor
 #FF2A2F39  CockpitHairlineColor
 #FF30A46C  off-palette

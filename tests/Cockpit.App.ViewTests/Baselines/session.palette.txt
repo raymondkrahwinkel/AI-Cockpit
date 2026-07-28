@@ -11,7 +11,6 @@
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
 #FF12141A  CockpitChromeBgColor
 #FF1A1D24  CockpitPanelBgColor
-#FF1F1F1F  off-palette
 #FF20242C  CockpitHairlineSoftColor
 #FF202430  CockpitInsetBgColor
 #FF22D3EE  CockpitStatusBusyColor
@@ -32,5 +31,4 @@ radius  4.5,4.5,4.5,4.5
 radius  5,5,5,5
 radius  6,6,6,6
 radius  7,7,7,7
-radius  8,8,8,8
 radius  9,9,9,9

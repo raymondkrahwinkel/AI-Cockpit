@@ -7,7 +7,6 @@
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
 #FF1A1D24  CockpitPanelBgColor
-#FF1F1F1F  off-palette
 #FF2A2F39  CockpitHairlineColor
 #FF3B82F6  CockpitAccentColor
 #FF949AA5  CockpitTextSecondaryColor

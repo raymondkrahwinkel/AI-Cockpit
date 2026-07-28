@@ -295,6 +295,11 @@ internal static class Screenshotter
     private static AppBuilder BuildHeadlessAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UseSkia()
+            // The app's own font, for the same reason it takes the app's own fonts options: a render is only
+            // worth looking at if it is of this program. Without it the harness measured text in whatever the
+            // machine happened to offer, which is also how the same window came out with a scroll bar here and
+            // none on CI.
+            .WithInterFont()
             .With(Program.CockpitFontOptions())
             .UseHeadless(new AvaloniaHeadlessPlatformOptions
             {

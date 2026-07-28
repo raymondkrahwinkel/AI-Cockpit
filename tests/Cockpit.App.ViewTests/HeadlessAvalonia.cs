@@ -45,6 +45,10 @@ public sealed class HeadlessAvalonia : IDisposable
                 AppBuilder.Configure<Cockpit.App.App>()
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                     .UseSkia()
+                    // The app ships Inter and asks for it at startup; a harness that leaves it out measures text
+                    // in whatever font the machine happens to offer. That is not this program, and it is what
+                    // made the same window come out with a scroll bar here and without one on CI.
+                    .WithInterFont()
                     .SetupWithoutStarting();
 
                 ready.Set();

@@ -41,6 +41,9 @@ public sealed class HeadlessAvalonia
             AppBuilder.Configure<Application>()
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .UseSkia()
+                // The app ships Inter and asks for it at startup; a harness without it measures text in whatever
+                // font the machine offers, which is not this program and not the same on CI.
+                .WithInterFont()
                 .AfterSetup(builder =>
                 {
                     var application = builder.Instance

@@ -11,7 +11,6 @@
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
 #FF1A1D24  CockpitPanelBgColor
-#FF1F1F1F  off-palette
 #FF20242C  CockpitHairlineSoftColor
 #FF202430  CockpitInsetBgColor
 #FF2A2F39  CockpitHairlineColor
@@ -20,7 +19,6 @@
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
 #FFE8EAEF  CockpitTextPrimaryColor
-#FFFFF000  off-palette
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
 radius  3,3,3,3

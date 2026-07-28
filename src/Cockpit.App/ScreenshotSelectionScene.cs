@@ -1,6 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -161,11 +163,10 @@ internal static class ScreenshotSelectionScene
                 // "Window" begins with the key that picks a window, and typing it must not.
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
-                // Both notes sit clear of the control panel. The first one has to be said out loud: at 0.32 it
-                // pressed inside the panel, so the press belonged to the panel and no note opened — after which
-                // the string ran as shortcuts and Enter took the shot and closed the surface out from under the
-                // second note. Measured, not guessed: a press there is refused however many have come before it.
-                _Note(surface, new Point(width * 0.58, height * 0.42), "Window is empty here");
+                // The first note is placed off the panel rather than at a fraction. At 0.32 it pressed inside the
+                // panel, so the press belonged to the panel and no note opened — after which the string ran as
+                // shortcuts and Enter took the shot and closed the surface out from under the second note.
+                _Note(surface, new Point(width * 0.58, _ClearOfTheControls(surface, height * 0.42)), "Window is empty here");
                 _Note(surface, new Point(width * 0.58, height * 0.70), "expected 12, got 7");
                 break;
 
@@ -187,11 +188,11 @@ internal static class ScreenshotSelectionScene
                 surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
                 // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
                 // panel, so a band begun under it is a band that never gets drawn at all. 0.305 cleared it at the
-                // 1440x900 the view tests use and did not at the 1100x760 a render defaults to — these positions
-                // are fractions of the window and the panel is a fixed size, so the same fraction lands in a
-                // different place on it. This scene had been rendering one band, over the terminal, for that
-                // reason: the half that proves the tool works, and not the half that proves it stays readable.
-                _Drag(surface, new Point(width * 0.56, height * 0.42), new Point(width * 0.90, height * 0.465));
+                // 1440x900 the view tests use and did not at the 1100x760 a render defaults to, so this one is
+                // measured off the panel too: the scene had been rendering one band, over the terminal, which is
+                // the half that shows the tool works and not the half that shows it stays readable.
+                var band = _ClearOfTheControls(surface, height * 0.42);
+                _Drag(surface, new Point(width * 0.56, band), new Point(width * 0.90, band + (height * 0.045)));
                 _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
 
@@ -250,6 +251,32 @@ internal static class ScreenshotSelectionScene
                 + "control panel belongs to the panel, so a mark begun under it is never drawn — check the positions "
                 + "against where the panels rest now.");
         }
+    }
+
+    /// <summary>
+    /// A y far enough down to be clear of the control panel, whatever size the surface came up at. Every position
+    /// in a scene is a fraction of the window and the panel is a fixed size, so a fraction that misses it at one
+    /// size lands inside it at another — which is how two scenes came to stage marks that were never drawn, and
+    /// why this is measured off the panel rather than tuned until the default size looked right.
+    /// </summary>
+    private static double _ClearOfTheControls(ScreenshotSelectionWindow surface, double preferred)
+    {
+        // The panel is placed once the surface has a region to place it against, and its bounds are whatever the
+        // last layout pass left — which, straight after a drag, is not yet this one.
+        surface.UpdateLayout();
+
+        var controls = surface.GetVisualDescendants()
+            .OfType<Border>()
+            .FirstOrDefault(border => border.Name == "Controls");
+
+        if (controls?.TranslatePoint(new Point(0, controls.Bounds.Height), surface) is not { } bottom)
+        {
+            return preferred;
+        }
+
+        // A margin, because a press exactly on the seam is a press on whichever of the two the hit test reaches
+        // first, and that is not something a scene should be deciding by a pixel.
+        return Math.Max(preferred, bottom.Y + 12);
     }
 
     /// <summary>

@@ -37,6 +37,9 @@ public sealed class HeadlessAvalonia
             // render ever shows emoji content, add the parity there rather than reaching for the internal helper.
             AppBuilder.Configure<Cockpit.App.App>()
                 .UseSkia()
+                // The app ships Inter and asks for it at startup; a harness without it measures text in whatever
+                // font the machine offers, which is not this program and not the same on CI.
+                .WithInterFont()
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .SetupWithoutStarting();
 
