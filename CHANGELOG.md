@@ -493,6 +493,30 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the shortcut that zooms a session pane to full width is now Ctrl+Shift+M. It was Ctrl+B, which never
+  arrived while a terminal had the keyboard — the shell claimed it first, as its tmux prefix or as
+  backward-char — and a zoomed pane is exactly the moment a terminal has the keyboard, so the shortcut was
+  unusable where it was meant to be used. Two modifiers get it past a focused terminal, the way the session and
+  workspace switches already do. Not Ctrl+Shift+Z, which would read better: that is the platform's second Redo
+  chord, and a two-modifier shortcut is taken before a text field sees it, so it would have eaten Redo in the
+  prompt box. Not Ctrl+Alt+a-letter either — AltGr arrives as Ctrl+Alt, so on an ISO layout that combination is
+  how you type a character (the Ctrl+Alt+arrows that move between panes are unaffected: an arrow types nothing).
+  If you had ever saved your shortcuts, the old Ctrl+B is carried over for you; any other gesture
+  you set is left as it is. Note that the carry-over goes by the gesture, not by when you set it, so binding zoom
+  back to Ctrl+B does not stick — it is moved again on the next start, which is deliberate: Ctrl+B is a gesture
+  that cannot reach the cockpit from a focused terminal.
+
+- changed: the model list offered when you start a Claude session names a family rather than a release — "Opus", not
+  "Opus 4.8". The value behind it is the CLI's own alias, which follows whatever that alias resolves to today, so a
+  label carrying a version number could only ever go stale while the session it started ran on something else. The
+  field stays free text, so a specific model or snapshot can still be pinned by typing it.
+
+- changed: **Fable** can be picked from that list. It was reachable before only by typing it in by hand.
+
+- changed: scroll bars follow the theme. The track, the thumb and the square where two bars meet were still drawn in
+  the greys the underlying toolkit ships with, on nearly every scrollable surface in the app. The thumb sits several
+  steps lighter than the groove it slides on, so it stays visible rather than merely correct.
+
 - changed: the plugins are painted in the same colours as the rest of the cockpit. The repaint reached the app but
   not the plugins that draw their own surfaces, so several were still finished in the old orange: the prompt
   palette's search spark, the thin progress line above an issue list, the stripe down a workflow step. Buttons,
@@ -623,6 +647,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   as the only thing still visible. The notice now wraps into the room that is left over and the buttons keep theirs,
   so neither the length of the message, the sign-in method a server uses, nor the number of custom headers you add
   can move them. The window can be resized now as well, since what it holds grows with the servers you add.
+
+- fixed: in the New session dialog, a plugin's option label ran over the control beside it — "Permission mode" came
+  out cut off and sitting on top of its own dropdown. The label column now sizes to the longest label the plugin
+  declared instead of to a width chosen for a shorter one, and the rows still line up as a single column. A plugin
+  that writes a sentence for a label gets an ellipsis and the full text on hover, rather than squeezing its own
+  control off the row.
+
+- fixed: radio buttons — the two that choose between a remote store and a local folder — drew in the system blue
+  instead of the cockpit's accent. The two colours are close enough that it passed an eyeball test, and nothing
+  connected them: the day the accent moves, that control would have stayed behind.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"
