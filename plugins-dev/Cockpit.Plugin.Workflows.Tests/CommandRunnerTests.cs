@@ -23,10 +23,20 @@ public class CommandRunnerTests
         outcome.Items.Single().Json["output"]!.ToString().Should().Be("hello from the flow");
     }
 
+    // CommandRunner hands the line to cmd.exe on Windows and /bin/sh elsewhere, so a test that writes one shell's
+    // syntax is testing one platform. cmd does not read ';' as a separator: "echo it broke >&2; exit 3" is a single
+    // echo there, the step succeeds, and the test reads as a runner that ignores exit codes. These are the same two
+    // commands in each shell's own words.
+    private static string FailsWithMessageOnStderr => OperatingSystem.IsWindows()
+        ? "echo it broke 1>&2 & exit 3"
+        : "echo it broke >&2; exit 3";
+
+    private static string PrintsTheWorkingDirectory => OperatingSystem.IsWindows() ? "cd" : "pwd";
+
     [Fact]
     public async Task ACommandThatFails_FailsTheStep_AndSaysWhy()
     {
-        var node = _Command("echo it broke >&2; exit 3");
+        var node = _Command(FailsWithMessageOnStderr);
 
         var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
@@ -46,8 +56,8 @@ public class CommandRunnerTests
     [Fact]
     public async Task AWorkingDirectoryThatDoesNotExist_IsSaidPlainly_NotSwallowed()
     {
-        var node = _Command("pwd");
-        node.Parameters["Working directory"] = "/there/is/no/such/place";
+        var node = _Command(PrintsTheWorkingDirectory);
+        node.Parameters["Working directory"] = Path.Combine(Path.GetTempPath(), "there", "is", "no", "such", "place");
 
         var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
@@ -58,12 +68,23 @@ public class CommandRunnerTests
     [Fact]
     public async Task TheCommandRunsWhereItWasTold()
     {
-        var node = _Command("pwd");
-        node.Parameters["Working directory"] = Path.GetTempPath().TrimEnd('/');
+        // A directory of its own rather than the temp root: "contains tmp" happened to hold on Linux and says
+        // nothing about being told where to run, and on Windows the temp path is spelled Temp anyway. A folder
+        // this test just made can only appear in the output if the command ran inside it.
+        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"cockpit-workflows-{Guid.NewGuid():n}"));
+        try
+        {
+            var node = _Command(PrintsTheWorkingDirectory);
+            node.Parameters["Working directory"] = directory.FullName;
 
-        var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
+            var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-        outcome.Output.Should().Contain("tmp");
+            outcome.Output.Should().EndWith(directory.Name);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
     }
 
     [Fact]

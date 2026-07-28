@@ -11,18 +11,25 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 /// </summary>
 public class AutopilotWorkingDirectoryTests
 {
+    // Resolve ends in Path.GetFullPath, so a bare "/chosen" comes back drive-rooted on Windows and the test read
+    // as a failure of code that was doing exactly what it promises. These are already-absolute paths on either
+    // platform, so normalising them is a no-op and the expectation stays a literal rather than a second call to
+    // the method under test.
+    private static readonly string ChosenFolder = Path.Combine(Path.GetTempPath(), "chosen");
+    private static readonly string ActiveSession = Path.Combine(Path.GetTempPath(), "active", "session");
+
     [Fact]
     public void Resolve_PrefersTheChosenFolder_OverTheActiveSession()
     {
-        AutopilotWorkingDirectory.Resolve(_Context("/active/session"), "/chosen").Should().Be("/chosen");
+        AutopilotWorkingDirectory.Resolve(_Context(ActiveSession), ChosenFolder).Should().Be(ChosenFolder);
     }
 
     [Fact]
     public void Resolve_FallsBackToTheActiveSession_WhenNoFolderChosen()
     {
-        var context = _Context("/active/session");
-        AutopilotWorkingDirectory.Resolve(context, null).Should().Be("/active/session");
-        AutopilotWorkingDirectory.Resolve(context, "   ").Should().Be("/active/session");
+        var context = _Context(ActiveSession);
+        AutopilotWorkingDirectory.Resolve(context, null).Should().Be(ActiveSession);
+        AutopilotWorkingDirectory.Resolve(context, "   ").Should().Be(ActiveSession);
     }
 
     [Fact]
