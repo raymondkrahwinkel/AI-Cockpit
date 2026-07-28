@@ -33,7 +33,7 @@ public class GitWorkflowStepsTests : IDisposable
     {
         // Every one of these tests passed and then failed in teardown on Windows, which reads as six broken git
         // steps rather than one unremovable directory.
-        TemporaryGitRepository.Delete(_repo);
+        TestGitDirectory.Remove(_repo);
         GC.SuppressFinalize(this);
     }
 
