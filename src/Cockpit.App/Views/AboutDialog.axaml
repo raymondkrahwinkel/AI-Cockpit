@@ -22,54 +22,62 @@
                       PluginStoreUrl="https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins"/>
     </Design.DataContext>
 
-    <StackPanel Margin="20" Spacing="12">
-
-        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <!-- The mark itself, where a bordered tile with the letters "AI" in it used to stand in for one. Only
-                 the height is set: the mark is wider than it is tall and squaring it off would deform it. -->
-            <Image Source="/Assets/BrandMark.png" Height="36" Stretch="Uniform"
-                   RenderOptions.BitmapInterpolationMode="HighQuality"
-                   VerticalAlignment="Center"/>
-            <StackPanel Spacing="1" VerticalAlignment="Center">
-                <TextBlock Text="{Binding AppName}" FontSize="16" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding VersionText, StringFormat='Version {0}'}"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
-                <TextBlock Text="{Binding BuildText}" TextWrapping="Wrap"
-                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
-            </StackPanel>
-        </StackPanel>
-
-        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
-                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-
-        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
-
-        <StackPanel Spacing="3">
-            <TextBlock Text="Providers" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
-            <TextBlock Text="{Binding Providers}" TextWrapping="Wrap" FontSize="12"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-        </StackPanel>
-
-        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
-
-        <StackPanel Spacing="6">
-            <Button Content="GitHub repository" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
-                    Foreground="{StaticResource CockpitAccentBrush}"
-                    Click="OnOpenGitHub" ToolTip.Tip="{Binding GitHubUrl}"/>
-            <Button Content="Report an issue" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
-                    Foreground="{StaticResource CockpitAccentBrush}"
-                    Click="OnOpenIssues" ToolTip.Tip="{Binding IssuesUrl}"/>
-            <Button Content="Plugin store" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
-                    Foreground="{StaticResource CockpitAccentBrush}"
-                    Click="OnOpenPluginStore" ToolTip.Tip="{Binding PluginStoreUrl}"/>
-        </StackPanel>
-
-        <TextBlock Text="{Binding LicenseText}" TextWrapping="Wrap" FontSize="11"
-                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
-
-        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+    <!-- AC-428: Close is docked and the rest scrolls. Its content comes from the assembly rather than from a
+         caller, so nothing here grows unexpectedly — but the window is capped at the screen it opens on, and a
+         Close that is the last child of the panel doing the sizing is the child a cap removes. -->
+    <DockPanel>
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="20,0,20,20">
             <Button Grid.Column="1" Content="Close" Click="OnClose"/>
         </Grid>
-    </StackPanel>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,20,20,12" Spacing="12">
+
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <!-- The mark itself, where a bordered tile with the letters "AI" in it used to stand in for
+                         one. Only the height is set: the mark is wider than it is tall and squaring it off
+                         would deform it. -->
+                    <Image Source="/Assets/BrandMark.png" Height="36" Stretch="Uniform"
+                           RenderOptions.BitmapInterpolationMode="HighQuality"
+                           VerticalAlignment="Center"/>
+                    <StackPanel Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AppName}" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding VersionText, StringFormat='Version {0}'}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+                        <TextBlock Text="{Binding BuildText}" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                <StackPanel Spacing="3">
+                    <TextBlock Text="Providers" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding Providers}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                <StackPanel Spacing="6">
+                    <Button Content="GitHub repository" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Click="OnOpenGitHub" ToolTip.Tip="{Binding GitHubUrl}"/>
+                    <Button Content="Report an issue" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Click="OnOpenIssues" ToolTip.Tip="{Binding IssuesUrl}"/>
+                    <Button Content="Plugin store" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Click="OnOpenPluginStore" ToolTip.Tip="{Binding PluginStoreUrl}"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding LicenseText}" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

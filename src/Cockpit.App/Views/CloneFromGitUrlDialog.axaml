@@ -30,28 +30,33 @@
             </Grid>
         </Border>
 
-        <StackPanel Margin="20,18" Spacing="10">
-            <TextBlock Text="Clone a repository into a managed folder and start the session there. Private HTTPS repos use your own git credential helper — no token is handled here."
-                       TextWrapping="Wrap" FontSize="12.5"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            <TextBox Name="UrlBox" Text="{Binding Url}"
-                     IsEnabled="{Binding !IsCloning}"
-                     PlaceholderText="e.g. https://github.com/org/repo.git" KeyDown="OnUrlBoxKeyDown"/>
-            <TextBlock Text="Target folder" FontSize="12.5" Margin="0,4,0,0"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox Grid.Column="0" Name="TargetBox" Text="{Binding TargetFolder}"
+        <!-- Scrolled, because a failed clone reports git's own message and git's own messages run to a page
+             (AC-428). The window is capped at the screen it opens on, so without this the URL and target boxes
+             are what a long error pushes out of view. -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,18" Spacing="10">
+                <TextBlock Text="Clone a repository into a managed folder and start the session there. Private HTTPS repos use your own git credential helper — no token is handled here."
+                           TextWrapping="Wrap" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBox Name="UrlBox" Text="{Binding Url}"
                          IsEnabled="{Binding !IsCloning}"
-                         PlaceholderText="Managed default (host/org/repo)"/>
-                <Button Grid.Column="1" Content="Browse…" Click="OnBrowseTarget"
-                        IsEnabled="{Binding !IsCloning}"/>
-            </Grid>
-            <TextBlock Text="{Binding DefaultRootHint}" TextWrapping="Wrap" FontSize="11.5"
-                       IsVisible="{Binding HasDefaultRootHint}"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12.5"
-                       Foreground="{StaticResource CockpitStatusErrorBrush}"
-                       IsVisible="{Binding HasError}"/>
-        </StackPanel>
+                         PlaceholderText="e.g. https://github.com/org/repo.git" KeyDown="OnUrlBoxKeyDown"/>
+                <TextBlock Text="Target folder" FontSize="12.5" Margin="0,4,0,0"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Grid.Column="0" Name="TargetBox" Text="{Binding TargetFolder}"
+                             IsEnabled="{Binding !IsCloning}"
+                             PlaceholderText="Managed default (host/org/repo)"/>
+                    <Button Grid.Column="1" Content="Browse…" Click="OnBrowseTarget"
+                            IsEnabled="{Binding !IsCloning}"/>
+                </Grid>
+                <TextBlock Text="{Binding DefaultRootHint}" TextWrapping="Wrap" FontSize="11.5"
+                           IsVisible="{Binding HasDefaultRootHint}"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12.5"
+                           Foreground="{StaticResource CockpitStatusErrorBrush}"
+                           IsVisible="{Binding HasError}"/>
+            </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>

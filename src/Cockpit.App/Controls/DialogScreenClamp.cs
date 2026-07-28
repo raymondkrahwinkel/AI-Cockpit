@@ -29,6 +29,18 @@ internal static class DialogScreenClamp
             window.Width, window.Height,
             window.MinWidth, window.MinHeight,
             available.Width / screen.Scaling, available.Height / screen.Scaling);
+
+        // A window that measures itself has no height for the line above to clamp, and measures itself again
+        // every time its content changes — a git error arriving in the clone dialog, a plugin's install path in
+        // the consent prompt. It gets a ceiling instead, which outlives this call. A window with a height of its
+        // own does not: the operator can still drag it larger than the screen, as they always could, and taking
+        // that away is not what fitting on the screen means.
+        if (window.SizeToContent is not SizeToContent.Manual)
+        {
+            window.MaxHeight = Math.Min(
+                window.MaxHeight,
+                Math.Max(window.MinHeight, available.Height / screen.Scaling * MaxScreenFraction));
+        }
     }
 
     // Never below the minimums: a dialog too small to use is the failure this is avoiding, not a fix for it.

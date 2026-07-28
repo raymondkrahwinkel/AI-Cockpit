@@ -26,6 +26,10 @@
              is disabled unless the profile is logged in (CanStart), so it never launches into a failure. -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <!-- AC-428 looked at this band and left it alone. It has the shape AC-427 named — a bound label in a
+                 StackPanel with a button — but LoginStatusLabel is "logged in" or "not logged in" and nothing
+                 else, so no data can reach the failure. Restructuring it moved Manage profiles 127px to sit
+                 beside Start, which is a real change in exchange for none. -->
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                     <!-- Login status is Claude-only — a local provider has no login. -->
@@ -52,339 +56,344 @@
              initialised from the profile's saved defaults, still overridable. Mode/model/effort are shown
              for both kinds: TTY passes these as launch-only CLI flags, the real TUI owns any live
              switching. SelectedKind/IsSdk/IsTty is the seam for showing/hiding kind-specific fields later. -->
-        <StackPanel Margin="16" Spacing="12">
+        <!-- Scrolled, because the window is capped at the screen it opens on (AC-428) and this body grows with
+             the number of projects, profiles and MCP servers offered. Without it a cap removes the bottom of the
+             form — the Browse and Manage-profiles buttons among it — instead of scrolling to it. -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16" Spacing="12">
 
-            <!-- Project above profile (AC-163): picking one pre-fills the profile, folder, worktree choice and MCP
-                 checklist below, so the usual case is one choice and Start. Hidden when there are no projects, which
-                 leaves the dialog exactly as it was before they existed. -->
-            <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasProjects}">
-                <!-- The label sits on the control's line, not centred on the column: the right-hand side grows a
-                     hint under the picker, and centring on the pair drops the label below the box it names. The
-                     hint carries its own top margin rather than leaning on the stack's spacing, so a hidden one
-                     takes up nothing at all. -->
-                <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1">
-                    <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
-                              HorizontalAlignment="Stretch" PlaceholderText="No project">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="projects:Project">
-                                <TextBlock Text="{Binding Name}"/>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Text="{Binding SelectedProjectDescription}" FontSize="11" TextWrapping="Wrap"
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding SelectedProjectDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
-            </Grid>
+                <!-- Project above profile (AC-163): picking one pre-fills the profile, folder, worktree choice and MCP
+                     checklist below, so the usual case is one choice and Start. Hidden when there are no projects, which
+                     leaves the dialog exactly as it was before they existed. -->
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasProjects}">
+                    <!-- The label sits on the control's line, not centred on the column: the right-hand side grows a
+                         hint under the picker, and centring on the pair drops the label below the box it names. The
+                         hint carries its own top margin rather than leaning on the stack's spacing, so a hidden one
+                         takes up nothing at all. -->
+                    <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1">
+                        <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
+                                  HorizontalAlignment="Stretch" PlaceholderText="No project">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="projects:Project">
+                                    <TextBlock Text="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="{Binding SelectedProjectDescription}" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,3,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding SelectedProjectDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </Grid>
 
-            <!-- Profile first: its provider decides which of the options below apply (#26). The picker shows
-                 the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
-            <Grid ColumnDefinitions="72,*">
-                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1">
-                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
-                              HorizontalAlignment="Stretch">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="profiles:SessionProfile">
-                                <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
-                               FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
-                               FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
-                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                               IsVisible="{Binding ShowLoginHint}"/>
-                </StackPanel>
-            </Grid>
+                <!-- Profile first: its provider decides which of the options below apply (#26). The picker shows
+                     the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
+                <Grid ColumnDefinitions="72,*">
+                    <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1">
+                        <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="profiles:SessionProfile">
+                                    <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
+                                   FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                   IsVisible="{Binding ShowLoginHint}"/>
+                    </StackPanel>
+                </Grid>
 
-            <!-- Session name is provider-independent, so it is always shown. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <TextBox Grid.Column="1" Text="{Binding SessionName}"
-                         PlaceholderText="Optional — defaults to the profile name"/>
-            </Grid>
+                <!-- Session name is provider-independent, so it is always shown. -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                    <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <TextBox Grid.Column="1" Text="{Binding SessionName}"
+                             PlaceholderText="Optional — defaults to the profile name"/>
+                </Grid>
 
-            <!-- The first prompt a plugin pre-filled (NewSessionPrefill.InitialPrompt): shown because confirming this
-                 dialog confirms that text too, and it is the one field that can carry words nobody here wrote — an
-                 issue body from a tracker anyone can post to. Read-only: the operator's answer is Start or Cancel,
-                 not an edit. Hidden entirely when nothing pre-filled a prompt. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding HasInitialPrompt}">
-                <TextBlock Grid.Column="0" Text="Prompt" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <TextBox Grid.Column="1" Text="{Binding InitialPrompt, Mode=OneWay}" IsReadOnly="True"
-                         AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="132"
-                         ToolTip.Tip="The first prompt this session is given once it starts — read it before you start."/>
-            </Grid>
+                <!-- The first prompt a plugin pre-filled (NewSessionPrefill.InitialPrompt): shown because confirming this
+                     dialog confirms that text too, and it is the one field that can carry words nobody here wrote — an
+                     issue body from a tracker anyone can post to. Read-only: the operator's answer is Start or Cancel,
+                     not an edit. Hidden entirely when nothing pre-filled a prompt. -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding HasInitialPrompt}">
+                    <TextBlock Grid.Column="0" Text="Prompt" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <TextBox Grid.Column="1" Text="{Binding InitialPrompt, Mode=OneWay}" IsReadOnly="True"
+                             AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="132"
+                             ToolTip.Tip="The first prompt this session is given once it starts — read it before you start."/>
+                </Grid>
 
-            <!-- Optional per-session working directory: launch this session in a project folder instead of the
-                 app directory. Browse picks one; the star pins the current one; the picker offers previously-used
-                 folders (favorites first). Blank keeps the global default. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top">
-                <TextBlock Grid.Column="0" Text="Folder" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="4">
-                    <Grid ColumnDefinitions="*,Auto,Auto">
-                        <TextBox Grid.Column="0" Text="{Binding WorkingDirectory}"
-                                 PlaceholderText="Optional — defaults to the app directory"/>
-                        <Button Grid.Column="1" Margin="4,0,0,0"
-                                Command="{Binding ToggleWorkingDirectoryFavoriteCommand}"
-                                IsEnabled="{Binding CanFavoriteWorkingDirectory}"
-                                Foreground="{StaticResource CockpitAccentBrush}"
-                                ToolTip.Tip="Pin this folder as a favorite">
-                            <materialIcons:MaterialIcon Kind="{Binding FavoriteToggleGlyph}" Width="14" Height="14"/>
-                        </Button>
-                        <Button Grid.Column="2" Content="Browse…" Margin="4,0,0,0" Click="OnBrowseWorkingDirectory"/>
-                    </Grid>
-                    <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RememberedPaths}"
-                              SelectedItem="{Binding SelectedRememberedPath}"
-                              PlaceholderText="Recent / favorite folders…"
-                              IsVisible="{Binding HasRememberedPaths}">
-                        <!-- The favorites/recents ruler (AC-131) is inert: disable its container so it can't be
-                             selected, keyboard-navigated onto, or fill the folder field. -->
-                        <ComboBox.Styles>
-                            <Style Selector="ComboBoxItem" x:DataType="vm:RememberedPathOption">
-                                <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
-                            </Style>
-                        </ComboBox.Styles>
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RememberedPathOption">
-                                <Panel>
-                                    <!-- Ruler between the favorites (above) and the recents (below). -->
-                                    <Border Height="1" Margin="0,4" VerticalAlignment="Center"
-                                            Background="{StaticResource CockpitHairlineBrush}"
-                                            IsVisible="{Binding IsSeparator}"/>
-                                    <!-- A folder or the clone action, with a ✕ to forget a remembered folder. -->
-                                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsSeparator}">
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                            <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
-                                            <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
-                                                                        Foreground="{StaticResource CockpitAccentBrush}"
-                                                                        IsVisible="{Binding IsCloneAction}"/>
-                                            <TextBlock Text="{Binding Path}" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <!-- The ✕ forgets this folder (AC-131). A Button handles its own pointer press,
-                                             so clicking it removes the row without selecting it (the folder field is
-                                             never filled by the same click). Hidden for the clone action. -->
-                                        <Button Grid.Column="1" Classes="Subtle" Padding="4,0" Margin="8,0,0,0"
-                                                VerticalAlignment="Center" IsVisible="{Binding IsRemovable}"
-                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                Command="{Binding $parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).RemoveRememberedPathCommand}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip.Tip="Forget this folder">
-                                            <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
-                                        </Button>
-                                    </Grid>
-                                </Panel>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                <!-- Optional per-session working directory: launch this session in a project folder instead of the
+                     app directory. Browse picks one; the star pins the current one; the picker offers previously-used
+                     folders (favorites first). Blank keeps the global default. -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Top">
+                    <TextBlock Grid.Column="0" Text="Folder" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding WorkingDirectory}"
+                                     PlaceholderText="Optional — defaults to the app directory"/>
+                            <Button Grid.Column="1" Margin="4,0,0,0"
+                                    Command="{Binding ToggleWorkingDirectoryFavoriteCommand}"
+                                    IsEnabled="{Binding CanFavoriteWorkingDirectory}"
+                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    ToolTip.Tip="Pin this folder as a favorite">
+                                <materialIcons:MaterialIcon Kind="{Binding FavoriteToggleGlyph}" Width="14" Height="14"/>
+                            </Button>
+                            <Button Grid.Column="2" Content="Browse…" Margin="4,0,0,0" Click="OnBrowseWorkingDirectory"/>
+                        </Grid>
+                        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RememberedPaths}"
+                                  SelectedItem="{Binding SelectedRememberedPath}"
+                                  PlaceholderText="Recent / favorite folders…"
+                                  IsVisible="{Binding HasRememberedPaths}">
+                            <!-- The favorites/recents ruler (AC-131) is inert: disable its container so it can't be
+                                 selected, keyboard-navigated onto, or fill the folder field. -->
+                            <ComboBox.Styles>
+                                <Style Selector="ComboBoxItem" x:DataType="vm:RememberedPathOption">
+                                    <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                                </Style>
+                            </ComboBox.Styles>
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RememberedPathOption">
+                                    <Panel>
+                                        <!-- Ruler between the favorites (above) and the recents (below). -->
+                                        <Border Height="1" Margin="0,4" VerticalAlignment="Center"
+                                                Background="{StaticResource CockpitHairlineBrush}"
+                                                IsVisible="{Binding IsSeparator}"/>
+                                        <!-- A folder or the clone action, with a ✕ to forget a remembered folder. -->
+                                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsSeparator}">
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
+                                                <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
+                                                                            Foreground="{StaticResource CockpitAccentBrush}"
+                                                                            IsVisible="{Binding IsCloneAction}"/>
+                                                <TextBlock Text="{Binding Path}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <!-- The ✕ forgets this folder (AC-131). A Button handles its own pointer press,
+                                                 so clicking it removes the row without selecting it (the folder field is
+                                                 never filled by the same click). Hidden for the clone action. -->
+                                            <Button Grid.Column="1" Classes="Subtle" Padding="4,0" Margin="8,0,0,0"
+                                                    VerticalAlignment="Center" IsVisible="{Binding IsRemovable}"
+                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                    Command="{Binding $parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).RemoveRememberedPathCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Forget this folder">
+                                                <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                            </Button>
+                                        </Grid>
+                                    </Panel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
 
-                    <!-- Worktree isolation (AC-85): a per-session choice, right under the folder it applies to.
-                         Disabled with a hint when the folder is not a git repository — reactive, never a silent
-                         no-op (§4). ShowOnDisabled so the disabled checkbox still explains itself. -->
-                    <StackPanel Spacing="2" Margin="0,2,0,0" IsVisible="{Binding ShowWorktreeIsolation}">
-                        <CheckBox Classes="Switch" Content="Isolate in a git worktree"
-                                  IsChecked="{Binding IsolateInWorktree}"
-                                  IsEnabled="{Binding CanIsolateInWorktree}"
-                                  ToolTip.ShowOnDisabled="True"
-                                  ToolTip.Tip="Run this session in its own git worktree on a new branch, so it never shares a working tree with another session on the same repository."/>
-                        <TextBlock Text="{Binding WorktreeStatusText}" FontSize="11"
+                        <!-- Worktree isolation (AC-85): a per-session choice, right under the folder it applies to.
+                             Disabled with a hint when the folder is not a git repository — reactive, never a silent
+                             no-op (§4). ShowOnDisabled so the disabled checkbox still explains itself. -->
+                        <StackPanel Spacing="2" Margin="0,2,0,0" IsVisible="{Binding ShowWorktreeIsolation}">
+                            <CheckBox Classes="Switch" Content="Isolate in a git worktree"
+                                      IsChecked="{Binding IsolateInWorktree}"
+                                      IsEnabled="{Binding CanIsolateInWorktree}"
+                                      ToolTip.ShowOnDisabled="True"
+                                      ToolTip.Tip="Run this session in its own git worktree on a new branch, so it never shares a working tree with another session on the same repository."/>
+                            <TextBlock Text="{Binding WorktreeStatusText}" FontSize="11"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Kind is offered only for a profile that actually has a TUI to run: Claude always does, a plugin
+                     profile only when it registered a TTY provider under the same id as its session provider, and
+                     a local HTTP provider (Ollama/LM Studio) never does. Offering it and then silently launching
+                     the wrong CLI (or none) is the dead-control shape this guards against (#45 fase B2). -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding HasTtyProvider}">
+                    <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <Button Content="SDK" Classes.Accent="{Binding IsSdk}" Command="{Binding SelectSdkCommand}"
+                                ToolTip.Tip="Headless stream-json rendered as the chat UI, with live mode/model/effort switching"/>
+                        <Button Content="TTY" Classes.Accent="{Binding IsTty}" Command="{Binding SelectTtyCommand}"
+                                ToolTip.Tip="The real interactive claude TUI in a terminal panel"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- View (AC-138): the reading level this session opens with, inherited from the profile's default view and
+                     overridable here. SDK-only — a TTY session is a raw terminal with no reading level, so the row is hidden
+                     for it. The running session's header can still switch it live. -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding IsSdk}">
+                    <TextBlock Grid.Column="0" Text="View" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Spacing="3">
+                        <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
-                </StackPanel>
-            </Grid>
+                </Grid>
 
-            <!-- Kind is offered only for a profile that actually has a TUI to run: Claude always does, a plugin
-                 profile only when it registered a TTY provider under the same id as its session provider, and
-                 a local HTTP provider (Ollama/LM Studio) never does. Offering it and then silently launching
-                 the wrong CLI (or none) is the dead-control shape this guards against (#45 fase B2). -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding HasTtyProvider}">
-                <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                    <Button Content="SDK" Classes.Accent="{Binding IsSdk}" Command="{Binding SelectSdkCommand}"
-                            ToolTip.Tip="Headless stream-json rendered as the chat UI, with live mode/model/effort switching"/>
-                    <Button Content="TTY" Classes.Accent="{Binding IsTty}" Command="{Binding SelectTtyCommand}"
-                            ToolTip.Tip="The real interactive claude TUI in a terminal panel"/>
-                </StackPanel>
-            </Grid>
-
-            <!-- View (AC-138): the reading level this session opens with, inherited from the profile's default view and
-                 overridable here. SDK-only — a TTY session is a raw terminal with no reading level, so the row is hidden
-                 for it. The running session's header can still switch it live. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding IsSdk}">
-                <TextBlock Grid.Column="0" Text="View" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="3">
-                    <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
-                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-                    <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                </StackPanel>
-            </Grid>
-
-            <!-- Resume (#: resume): pick up an earlier conversation instead of starting cold — what you want after a
-                 crash, or when you closed a session you were not done with. Claude-only: the local providers keep no
-                 conversation history to resume from, so the row is hidden rather than offered and ignored. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding ShowResumeOptions}">
-                <TextBlock Grid.Column="0" Text="Start" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="4">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="New" Classes.Accent="{Binding IsStartingFresh}"
-                                Command="{Binding StartFreshConversationCommand}"
-                                ToolTip.Tip="Start a new conversation"/>
-                        <Button Content="Continue last" Classes.Accent="{Binding IsResumingMostRecent}"
-                                Command="{Binding ContinueMostRecentConversationCommand}"
-                                ToolTip.Tip="Pick up the most recent conversation in this folder (claude --continue)"/>
-                        <Button Content="By session id" Classes.Accent="{Binding IsResumingBySessionId}"
-                                Command="{Binding ResumeConversationByIdCommand}"
-                                ToolTip.Tip="Resume a specific conversation by its id (claude --resume &lt;id&gt;)"/>
+                <!-- Resume (#: resume): pick up an earlier conversation instead of starting cold — what you want after a
+                     crash, or when you closed a session you were not done with. Claude-only: the local providers keep no
+                     conversation history to resume from, so the row is hidden rather than offered and ignored. -->
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding ShowResumeOptions}">
+                    <TextBlock Grid.Column="0" Text="Start" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Content="New" Classes.Accent="{Binding IsStartingFresh}"
+                                    Command="{Binding StartFreshConversationCommand}"
+                                    ToolTip.Tip="Start a new conversation"/>
+                            <Button Content="Continue last" Classes.Accent="{Binding IsResumingMostRecent}"
+                                    Command="{Binding ContinueMostRecentConversationCommand}"
+                                    ToolTip.Tip="Pick up the most recent conversation in this folder (claude --continue)"/>
+                            <Button Content="By session id" Classes.Accent="{Binding IsResumingBySessionId}"
+                                    Command="{Binding ResumeConversationByIdCommand}"
+                                    ToolTip.Tip="Resume a specific conversation by its id (claude --resume &lt;id&gt;)"/>
+                        </StackPanel>
+                        <!-- The search button appears only when a plugin offers a conversation picker (the cockpit
+                             itself knows nothing about any provider's history). Without one the id can still be
+                             typed by hand. -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsResumingBySessionId}">
+                            <TextBox Grid.Column="0" Text="{Binding ResumeSessionId}"
+                                     PlaceholderText="Session id"/>
+                            <Button Grid.Column="1" Content="Search…" Margin="4,0,0,0"
+                                    Command="{Binding PickConversationCommand}"
+                                    IsVisible="{Binding HasConversationPicker}"
+                                    ToolTip.Tip="{Binding ConversationPickerTitle}"/>
+                        </Grid>
                     </StackPanel>
-                    <!-- The search button appears only when a plugin offers a conversation picker (the cockpit
-                         itself knows nothing about any provider's history). Without one the id can still be
-                         typed by hand. -->
-                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsResumingBySessionId}">
-                        <TextBox Grid.Column="0" Text="{Binding ResumeSessionId}"
-                                 PlaceholderText="Session id"/>
-                        <Button Grid.Column="1" Content="Search…" Margin="4,0,0,0"
-                                Command="{Binding PickConversationCommand}"
-                                IsVisible="{Binding HasConversationPicker}"
-                                ToolTip.Tip="{Binding ConversationPickerTitle}"/>
-                    </Grid>
-                </StackPanel>
-            </Grid>
+                </Grid>
 
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
-                <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ComboBox Grid.Column="1" ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
-                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-            </Grid>
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                    <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                </Grid>
 
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
-                <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <AutoCompleteBox Grid.Column="1" ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding SelectedClaudeModel}"
-                                 FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
-                                 HorizontalAlignment="Stretch"/>
-            </Grid>
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                    <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <AutoCompleteBox Grid.Column="1" ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding SelectedClaudeModel}"
+                                     FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
+                                     HorizontalAlignment="Stretch"/>
+                </Grid>
 
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
-                <TextBlock Grid.Column="0" Text="Effort" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
-                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-            </Grid>
+                <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                    <TextBlock Grid.Column="0" Text="Effort" VerticalAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                </Grid>
 
-            <!-- Plugin TTY start defaults (#45 fase B2): whatever the selected plugin's TTY provider declared
-                 (Codex's sandbox policy, its model) — rendered generically, since the host renders exactly
-                 what was declared and never learns what any of it means. Shown instead of Claude's mode/
-                 model/effort above (ShowSessionOptions is Claude-only): a plugin provider speaks its own
-                 vocabulary, not Claude's. -->
-            <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowPluginTtyOptions}">
-                <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}" Grid.IsSharedSizeScope="True">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                            <!-- The label column sizes to the longest label a plugin declared rather than to a
-                                 number picked for Claude's: at 90px "Permission mode" drew over the dropdown beside
-                                 it (AC-417). The shared size group keeps the rows one column, and the cap plus
-                                 trimming keeps a plugin with a sentence for a label from squeezing the control away. -->
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
-                                           Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
-                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
-                                          DisplayMemberBinding="{Binding Label}"
-                                          IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                          PlaceholderText="(CLI default)"/>
-                                <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
-                                         PlaceholderText="(CLI default)"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Grid>
+                <!-- Plugin TTY start defaults (#45 fase B2): whatever the selected plugin's TTY provider declared
+                     (Codex's sandbox policy, its model) — rendered generically, since the host renders exactly
+                     what was declared and never learns what any of it means. Shown instead of Claude's mode/
+                     model/effort above (ShowSessionOptions is Claude-only): a plugin provider speaks its own
+                     vocabulary, not Claude's. -->
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowPluginTtyOptions}">
+                    <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}" Grid.IsSharedSizeScope="True">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                                <!-- The label column sizes to the longest label a plugin declared rather than to a
+                                     number picked for Claude's: at 90px "Permission mode" drew over the dropdown beside
+                                     it (AC-417). The shared size group keeps the rows one column, and the cap plus
+                                     trimming keeps a plugin with a sentence for a label from squeezing the control away. -->
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                               Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                              DisplayMemberBinding="{Binding Label}"
+                                              IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                              PlaceholderText="(CLI default)"/>
+                                    <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                             PlaceholderText="(CLI default)"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
 
-            <!-- Per-session SDK launch options (increment 2 step A): the SDK mirror of the plugin TTY options
-                 above — the provider's own declared start defaults (Codex's sandbox/model), shown when SDK is
-                 chosen for a plugin profile that declared them. Same generic option row (reused view model). -->
-            <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowSdkLaunchOptions}">
-                <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}" Grid.IsSharedSizeScope="True">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                            <!-- Same row as the TTY route above, and it carried the same 90px defect (AC-417). The
-                                 two templates stay separate only because the placeholder wording differs. -->
-                            <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
-                                           Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
-                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
-                                          DisplayMemberBinding="{Binding Label}"
-                                          IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                          PlaceholderText="(provider default)"/>
-                                <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
-                                         PlaceholderText="(provider default)"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Grid>
+                <!-- Per-session SDK launch options (increment 2 step A): the SDK mirror of the plugin TTY options
+                     above — the provider's own declared start defaults (Codex's sandbox/model), shown when SDK is
+                     chosen for a plugin profile that declared them. Same generic option row (reused view model). -->
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowSdkLaunchOptions}">
+                    <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}" Grid.IsSharedSizeScope="True">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                                <!-- Same row as the TTY route above, and it carried the same 90px defect (AC-417). The
+                                     two templates stay separate only because the placeholder wording differs. -->
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                               Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                              DisplayMemberBinding="{Binding Label}"
+                                              IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                              PlaceholderText="(provider default)"/>
+                                    <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                             PlaceholderText="(provider default)"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
 
-            <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to
-                 all checked (matching the pre-#44 behaviour). Hidden entirely when the registry has none. -->
-            <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
-                <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <controls:McpServerChecklist Grid.Column="1"
-                                             Servers="{Binding McpServers}"
-                                             TokenSummary="{Binding McpToolTokenSummary}"
-                                             ShowTokenSummary="{Binding HasMcpTokenSummary}"
-                                             RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
-            </Grid>
+                <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to
+                     all checked (matching the pre-#44 behaviour). Hidden entirely when the registry has none. -->
+                <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
+                    <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <controls:McpServerChecklist Grid.Column="1"
+                                                 Servers="{Binding McpServers}"
+                                                 TokenSummary="{Binding McpToolTokenSummary}"
+                                                 ShowTokenSummary="{Binding HasMcpTokenSummary}"
+                                                 RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
+                </Grid>
 
-            <!-- AC-355: a selected server the cockpit already knows needs a sign-in — said up front, same
-                 non-blocking inline-hint style as the login hint below; Start stays enabled either way. -->
-            <TextBlock Text="{Binding McpAuthorizationHintText}"
-                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                       IsVisible="{Binding ShowMcpAuthorizationHint}"/>
+                <!-- AC-355: a selected server the cockpit already knows needs a sign-in — said up front, same
+                     non-blocking inline-hint style as the login hint below; Start stays enabled either way. -->
+                <TextBlock Text="{Binding McpAuthorizationHintText}"
+                           FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                           Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                           IsVisible="{Binding ShowMcpAuthorizationHint}"/>
 
-            <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
-                 owns live switching itself, unlike the SDK per-session dropdowns. -->
-            <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."
-                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                       Foreground="{StaticResource CockpitTextFaintBrush}"
-                       IsVisible="{Binding ShowTtyStartHint}"/>
+                <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
+                     owns live switching itself, unlike the SDK per-session dropdowns. -->
+                <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."
+                           FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding ShowTtyStartHint}"/>
 
-            <!-- SDK hint: short reassurance that these stay live-switchable, mirroring the TTY note above. -->
-            <TextBlock Text="These stay live-switchable during the session via the per-session dropdowns."
-                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
-                       Foreground="{StaticResource CockpitTextFaintBrush}"
-                       IsVisible="{Binding ShowSdkStartHint}"/>
+                <!-- SDK hint: short reassurance that these stay live-switchable, mirroring the TTY note above. -->
+                <TextBlock Text="These stay live-switchable during the session via the per-session dropdowns."
+                           FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding ShowSdkStartHint}"/>
 
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>

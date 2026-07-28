@@ -17,7 +17,6 @@ public partial class ManageStoresDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
-        DialogScreenClamp.Apply(this);
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();

@@ -847,6 +847,31 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a dialog can no longer put its own buttons out of reach. Configuring an MCP server whose name clashed with
+  one the cockpit already runs left Cancel and Save off the right-hand edge of a window that could not be resized, so
+  the server you had just filled in could not be saved. The cause was never the height it looked like: a message
+  whose length comes from your data shared a column with the buttons, and a column does not clip, so the buttons
+  were laid out past the edge and the window cut them off.
+
+  Every dialog was then swept for the same shape, with each text it lays out driven far past any length it would
+  really carry, and three more had it. Managing profiles pushed Cancel and Save out and squeezed Remove to
+  nothing when a status message named several profiles, and did it again when asked to confirm removing one. The
+  list of delegated tasks put Stop — the only way to end a running task — past the edge for a long enough task
+  name. And a plugin asking you to confirm something could carry its own button off the dialog with a long
+  enough label. Those texts now wrap and shorten, with the whole message on the tooltip, because the text is the
+  one thing on such a row that can afford to give way.
+
+- fixed: dialogs now fit the screen they open on. A dialog is centred on the cockpit with nothing to drag it back
+  by, so one designed for a desktop opened with its buttons past the bottom edge of a 768-pixel laptop panel and
+  there was no way to reach them. Three of them already shrank to fit — the plugin store, managing profiles and
+  managing stores — while the rest, the project editor at 760 tall among them, did not. All of them do now,
+  including the windows a plugin opens.
+
+  A dialog that sizes itself to its content is capped rather than resized, since there is no size to shrink, and
+  the form inside it scrolls. That settles what used to happen when something long arrived in one: a git error a
+  page long in the clone dialog, a plugin's install path in the consent prompt, or a caller's explanation above
+  the password boxes would grow the window off the bottom of the screen. A dialog with a size of its own is
+  shrunk to fit and keeps no cap, so you can still drag it larger than the screen if that is what you want.
 - fixed: Autopilot's "Needs you" state could leave you with no way to answer. With more than one run active, the
   pane could keep showing a still-running run's session while the badge lit up for a different run waiting on you —
   a notice with no path to the run it was about. The badge now takes you to the run that needs you, and clicking it

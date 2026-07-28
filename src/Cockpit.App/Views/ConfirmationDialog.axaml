@@ -21,7 +21,17 @@
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Classes="Ghost" Content="Cancel" Click="OnCancel"/>
-                <Button Content="{Binding ConfirmLabel}" Classes="Accent" Click="OnConfirm"/>
+                <!-- AC-428: the label is the caller's, and callers include plugins — ICockpitActions.ConfirmAsync
+                     takes it as a free string. In a window fixed at 440 an unbounded label laid this button out
+                     past the right edge (measured: an 86-character one ended at x=634), so it is bounded and
+                     trimmed, with the whole label on the tooltip. The Width="440" above leaves 333 for it once
+                     the padding, Cancel and the gap between them are taken off; 260 stops short of that, so a
+                     label at the limit still reads as a button standing beside Cancel rather than as the whole
+                     footer. Change the window's width and this wants recomputing. -->
+                <Button Classes="Accent" Click="OnConfirm" MaxWidth="260"
+                        ToolTip.Tip="{Binding ConfirmLabel}">
+                    <TextBlock Text="{Binding ConfirmLabel}" TextTrimming="CharacterEllipsis"/>
+                </Button>
             </StackPanel>
         </Border>
 
