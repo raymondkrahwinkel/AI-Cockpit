@@ -293,11 +293,20 @@
             <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowPluginTtyOptions}">
                 <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}">
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}" Grid.IsSharedSizeScope="True">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                            <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
+                            <!-- The label column sizes to the longest label a plugin declared rather than to a
+                                 number picked for Claude's: at 90px "Permission mode" drew over the dropdown beside
+                                 it (AC-417). The shared size group keeps the rows one column, and the cap plus
+                                 trimming keeps a plugin with a sentence for a label from squeezing the control away. -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                           Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
                                           SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
@@ -318,11 +327,18 @@
             <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowSdkLaunchOptions}">
                 <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}">
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}" Grid.IsSharedSizeScope="True">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                            <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
+                            <!-- Same row as the TTY route above, and it carried the same 90px defect (AC-417). The
+                                 two templates stay separate only because the placeholder wording differs. -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="90" MaxWidth="180" SharedSizeGroup="PluginOptionLabel"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                           Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
                                           SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
