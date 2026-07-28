@@ -34,6 +34,8 @@
                             VerticalAlignment="Center"
                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
                             Command="{Binding RemoveProfileCommand}"/>
+                    <!-- Three lines: enough for a message naming several profiles, few enough that the band
+                         cannot grow over the form above it. The tooltip carries a longer one whole. -->
                     <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
                                TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
                                ToolTip.Tip="{Binding StatusMessage}"
@@ -48,6 +50,8 @@
                      question carries a profile label the operator typed, so it takes the star column for the
                      same reason the status line above does. -->
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" IsVisible="{Binding IsConfirmingRemove}">
+                    <!-- Two lines rather than the status line's three: this one is a question waiting for an
+                         answer, so the answer is what has to stay in view. -->
                     <TextBlock Grid.Column="0" Text="{Binding PendingRemovalLabel, StringFormat='Remove profile ‘{0}’?'}"
                                VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2"
                                TextTrimming="CharacterEllipsis"

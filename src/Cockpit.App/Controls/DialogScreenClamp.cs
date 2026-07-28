@@ -28,11 +28,9 @@ internal static class DialogScreenClamp
         var (widthBudget, heightBudget) =
             (available.Width / screen.Scaling * MaxScreenFraction, available.Height / screen.Scaling * MaxScreenFraction);
 
-        // A ceiling as well as a size (AC-428). Clamping Width/Height alone misses the dialogs that carry no
-        // height to clamp: a SizeToContent window measures itself, and it measures itself again every time its
-        // content changes — a long git error arriving in the clone dialog, a plugin's install path in the consent
-        // dialog. The bound therefore has to outlive this call. Whatever the window already asked for wins when
-        // it is stricter, so ConfirmationDialog keeps its own 560.
+        // A ceiling as well as a size: a SizeToContent window has no Width/Height to clamp and re-measures itself
+        // on every content change, so the bound has to outlive this call. Min() leaves a stricter existing bound
+        // alone, like ConfirmationDialog's own 560.
         window.MaxWidth = Math.Min(window.MaxWidth, Math.Max(window.MinWidth, widthBudget));
         window.MaxHeight = Math.Min(window.MaxHeight, Math.Max(window.MinHeight, heightBudget));
 

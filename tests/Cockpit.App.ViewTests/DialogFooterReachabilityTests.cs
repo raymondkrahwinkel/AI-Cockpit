@@ -189,6 +189,38 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     });
 
     /// <summary>
+    /// The second band in the profiles dialog's footer, which replaces the first one while a removal is being
+    /// confirmed. A scene shows a dialog in one state, so the theories above never see this one — a mutation of
+    /// its columns stayed green, which is how that was found. Its question carries a profile label the operator
+    /// typed, so it is the same shape as the status line beside it.
+    /// </summary>
+    [Fact]
+    public void TheRemoveConfirmation_KeepsItsAnswersInsideTheDialog() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ViewModels.ManageProfilesDialogViewModel
+        {
+            PendingRemovalLabel = "the profile I keep for the long-running review sessions on the big repository",
+            IsConfirmingRemove = true,
+        };
+
+        var window = new Views.ManageProfilesDialog { DataContext = viewModel };
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            var unreachable = _Unreachable(window);
+
+            Assert.True(unreachable.Count == 0,
+                "the answer to a removal has to stay inside the dialog asking it:" +
+                Environment.NewLine + string.Join(Environment.NewLine, unreachable));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>
     /// The direction the theory above cannot fail in: it walks the scenes, so a dialog with no scene is not
     /// tested and nothing says so. Same argument as <c>VerifyNoOrphans</c>, pointed the other way.
     /// </summary>
@@ -259,36 +291,55 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The buttons an operator cannot press: laid out past an edge, or squeezed to nothing — which is what
-    /// became of Remove in AC-427 when the star column collapsed. A button inside a scroller is left out: it is
-    /// reachable by scrolling, and that is the difference this whole guard turns on.
+    /// The controls an operator cannot reach: laid out past an edge, or squeezed to nothing — which is what
+    /// became of Remove in AC-427 when the star column collapsed. One inside a scroller is left out, because it
+    /// is reachable by scrolling, and that is the difference this whole guard turns on.
+    /// <para>
+    /// Not only buttons. A password dialog whose form is cut off has lost the boxes you type into, and a guard
+    /// watching the buttons alone reports that as fine — which it did, until a mutation of the scroller that
+    /// keeps that form reachable stayed green.
+    /// </para>
     /// </summary>
     private List<string> _Unreachable(Window window)
     {
         var unreachable = new List<string>();
-        foreach (var button in window.GetVisualDescendants().OfType<Button>())
+        foreach (var control in window.GetVisualDescendants().OfType<Control>().Where(_IsOperated))
         {
-            if (!button.IsEffectivelyVisible || _Ancestor<ScrollViewer>(button, window))
+            if (!control.IsEffectivelyVisible || _Ancestor<ScrollViewer>(control, window))
             {
                 continue;
             }
 
-            var topLeft = button.TranslatePoint(default, window) ?? default;
-            var (right, bottom) = (topLeft.X + button.Bounds.Width, topLeft.Y + button.Bounds.Height);
+            var topLeft = control.TranslatePoint(default, window) ?? default;
+            var (right, bottom) = (topLeft.X + control.Bounds.Width, topLeft.Y + control.Bounds.Height);
             if (topLeft.X >= -1 && topLeft.Y >= -1
                 && right <= window.Bounds.Width + 1 && bottom <= window.Bounds.Height + 1
-                && button.Bounds.Width >= 1)
+                && control.Bounds.Width >= 1 && control.Bounds.Height >= 1)
             {
                 continue;
             }
 
-            var label = button.Content as string ?? button.Name ?? button.Content?.GetType().Name ?? "a button";
-            unreachable.Add($"  {label}: x {topLeft.X:0.#}..{right:0.#}, y {topLeft.Y:0.#}..{bottom:0.#}, " +
-                            $"width {button.Bounds.Width:0.#}");
+            unreachable.Add($"  {_Describe(control)}: x {topLeft.X:0.#}..{right:0.#}, " +
+                            $"y {topLeft.Y:0.#}..{bottom:0.#}, size {control.Bounds.Width:0.#}×{control.Bounds.Height:0.#}");
         }
 
         return unreachable;
     }
+
+    /// <summary>
+    /// What an operator works a dialog with. Listed by type rather than taken from <c>Focusable</c>, which is
+    /// true of a great deal that is not operated — a ScrollViewer, every item in a list, the window itself —
+    /// and would report the contents of a list as unreachable the moment it scrolled.
+    /// </summary>
+    private static bool _IsOperated(Control control) =>
+        control is Button or TextBox or ComboBox or CheckBox or RadioButton or Slider or ToggleSwitch;
+
+    private static string _Describe(Control control) => control switch
+    {
+        ContentControl { Content: string label } => label,
+        TextBox { Watermark: { Length: > 0 } hint } => $"the box for '{hint}'",
+        _ => control.Name ?? control.GetType().Name,
+    };
 
     private static bool _Ancestor<T>(Visual control, Window window) where T : Visual
     {

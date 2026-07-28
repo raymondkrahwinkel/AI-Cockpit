@@ -34,6 +34,7 @@
                 <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
                          IsVisible="{Binding IsClaudeProfile}"
                          Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                <!-- Two lines: this band also carries Start, so the status may narrow but never push it down. -->
                 <TextBlock Grid.Column="1" Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
                            IsVisible="{Binding IsClaudeProfile}"
                            TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
