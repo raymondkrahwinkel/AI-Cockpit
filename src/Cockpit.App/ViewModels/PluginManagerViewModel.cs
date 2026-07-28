@@ -148,10 +148,15 @@ public partial class PluginManagerViewModel : ViewModelBase
         {
             // Refused without a word, deliberately. StatusMessage is the running install's only line — the
             // overlay draws it, and InstallFromStoreAsync captures it across its browse to put it back — so a
-            // refusal written here would be restored as that install's closing message. Nor can an operator
-            // arrive here: the file picker is owned by the store dialog, so the catalogue is not clickable
-            // while it is open, and CanInstallFromZip/CanInstallFromStore close the buttons the rest of the
-            // time. This is the backstop under both, for a caller that is not a button.
+            // refusal written here would be restored as that install's closing message, which is worse than
+            // saying nothing.
+            //
+            // That is a real cost, so it is worth being plain about what it buys: this is a backstop, not the
+            // gate. The gates are the four CanExecute properties, and over the one window they cannot cover —
+            // an install started while the file picker is open — the picker is owned by the store dialog, so
+            // the catalogue is not clickable behind it. How firmly an owned native picker holds its owner is
+            // the platform's decision, not ours, and it is not covered by a test; this is what stands under it
+            // when the answer is "not firmly enough".
             return;
         }
 
@@ -168,9 +173,11 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    // A restart and a fresh install are both unreachable while work is in flight (AC-420), gated by their
+    // A restart and every route that unpacks are closed while work is in flight (AC-420), gated by their
     // command's CanExecute — which is what a bound Button consults, so the affordance goes dead rather than
-    // only looking dead.
+    // only looking dead. "Update all" is here too since AC-456: its gate used to be an IsEnabled binding on
+    // the whole search bar, so the fourth unpacking route was held shut by a control it has nothing to do
+    // with, and a rearrangement of that bar would have dropped it silently onto the wordless backstop.
     //
     // What this gate is *not* for: a second click of the install button while its own install runs.
     // AsyncRelayCommand already refuses to re-enter itself (measured: with this gate neutralised, CanExecute
@@ -182,6 +189,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         RestartNowCommand.NotifyCanExecuteChanged();
         InstallFromStoreCommand.NotifyCanExecuteChanged();
         InstallFromZipCommand.NotifyCanExecuteChanged();
+        UpdateAllCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -325,7 +333,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Whether a zip install can be started — it reaches the same installer as a store install, so it waits its turn (AC-420).</summary>
+    /// <summary>Whether a zip install can be started — it reaches the same installer as a store install, so it is closed while the store is working (AC-420). Nothing queues: the button goes dead and the operator presses it again afterwards.</summary>
     public bool CanInstallFromZip => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanInstallFromZip))]
@@ -918,7 +926,10 @@ public partial class PluginManagerViewModel : ViewModelBase
     public bool IsUpdateStaged(string entryId, string latestVersion) =>
         _pendingUpdateVersions.TryGetValue(entryId, out var staged) && !PluginVersion.IsNewer(latestVersion, staged);
 
-    [RelayCommand]
+    /// <summary>Whether the batch update can be started — it unpacks into the same folder as every other route, so it is closed while the store is working (AC-456).</summary>
+    public bool CanUpdateAll => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanUpdateAll))]
     private async Task UpdateAllAsync()
     {
         if (_storeClient is null || _installer is null)

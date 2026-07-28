@@ -450,13 +450,19 @@
 
                  The cover is not the gate. It stops a pointer and nothing else: a control underneath keeps its
                  focus, so Tab and a space bar still reach it. What must not start a second install is held off
-                 by its own command — CanRestart, CanInstallFromStore, CanInstallFromZip and the picker's
-                 CanInstallSelectedVersion — which is also what keeps it unreachable from anywhere else.
+                 by its own command — CanRestart, CanInstallFromStore, CanInstallFromZip, CanUpdateAll and the
+                 picker's CanInstallSelectedVersion.
+
+                 Those gates read IsBusy, so they cover a route only from the moment it raises it, and the zip
+                 install deliberately does not raise it while its file picker is open. That window is held
+                 instead by a single claim on the folder itself (AC-456, PluginManagerViewModel), not by these
+                 five — do not read this list as "unreachable from anywhere else".
 
                  Not gated, and reachable by keyboard while this is up: the per-plugin enable/disable/settings
-                 buttons and the template install. They do not touch the folder an install is moving into, so
-                 they are a separate question about what should be inert here (AC-455) rather than part of this
-                 one. -->
+                 buttons and the template install. The template install writes to the template library rather
+                 than the plugins folder, but enable and disable both reload, and a reload sweeps staged updates
+                 and removals through that folder (PluginBootstrap.DiscoverAsync) — so they do reach it. What
+                 should be inert here is a separate question (AC-455), not part of this one. -->
             <Border x:Name="BusyOverlay" Grid.Column="0" Grid.ColumnSpan="3"
                     IsVisible="{Binding Manager.IsBusy}"
                     Background="{StaticResource CockpitScrimBrush}">

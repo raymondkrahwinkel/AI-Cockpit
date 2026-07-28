@@ -107,6 +107,113 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     /// <summary>
+    /// The claim on the folder is handed back when the install ends, or the store takes one install per session
+    /// and silently refuses every one after it. Nothing else here observes that release — every other test does
+    /// a single install — so deleting the reset left the whole suite green.
+    /// </summary>
+    [Fact]
+    public async Task TheStore_TakesASecondInstall_OnceTheFirstIsDone()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _Downloads(storeClient, () => { });
+        _StagesTheUpdate(installer);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>());
+        var row = _UpdatableRow("github-issues", "GitHub Issues");
+
+        await manager.InstallFromStoreCommand.ExecuteAsync(row);
+        await manager.InstallFromStoreCommand.ExecuteAsync(row);
+
+        await installer.Received(2).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        Assert.False(manager.IsBusy);
+    }
+
+    /// <summary>
+    /// The per-version install — the detail panel's rollback — holds the folder like the rest. Its button is
+    /// gated by the dialog's own CanInstallSelectedVersion, so taking it back out of the shared claim broke
+    /// nothing any test could see until this one.
+    /// </summary>
+    [Fact]
+    public async Task AVersionInstall_HoldsTheFolder_AgainstAZipReturningFromItsPicker()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _StagesTheUpdate(installer);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var picker = new TaskCompletionSource<string?>();
+        dialogService.PickPluginZipAsync().Returns(_ => picker.Task);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), dialogService);
+        var download = new TaskCompletionSource<PluginStoreDownloadResult>();
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => download.Task);
+
+        var zipInstall = manager.InstallFromZipCommand.ExecuteAsync(null);
+        var row = _UpdatableRow("github-issues", "GitHub Issues");
+        var versionInstall = manager.InstallStoreVersionAsync(row, _RollbackVersion);
+
+        picker.SetResult(_ZipPath);
+        await zipInstall;
+
+        download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
+        await versionInstall;
+
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And so does a running batch, which is the longest any of them holds it — ten plugins' worth of window
+    /// for a zip install to come back into.
+    /// </summary>
+    [Fact]
+    public async Task ARunningBatch_HoldsTheFolder_AgainstAZipReturningFromItsPicker()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _StagesTheUpdate(installer);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var picker = new TaskCompletionSource<string?>();
+        dialogService.PickPluginZipAsync().Returns(_ => picker.Task);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), dialogService);
+        manager.AvailablePlugins.Add(_UpdatableRow("github-issues", "GitHub Issues"));
+        var download = new TaskCompletionSource<PluginStoreDownloadResult>();
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => download.Task);
+
+        var zipInstall = manager.InstallFromZipCommand.ExecuteAsync(null);
+        var batch = manager.UpdateAllCommand.ExecuteAsync(null);
+
+        picker.SetResult(_ZipPath);
+        await zipInstall;
+
+        download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
+        await batch;
+
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The batch update is the fourth route into the folder, and its gate belongs on its command like the other
+    /// three. It used to hang off an IsEnabled binding on the whole search bar — so it was held shut by a
+    /// control it has nothing to do with, and rearranging that bar would have dropped it onto the backstop.
+    /// </summary>
+    [Fact]
+    public void TheBatchUpdate_IsClosed_WhileSomethingIsAlreadyInstalling()
+    {
+        var manager = new PluginManagerViewModel();
+        var reasked = 0;
+        manager.UpdateAllCommand.CanExecuteChanged += (_, _) => reasked++;
+
+        Assert.True(manager.UpdateAllCommand.CanExecute(null));
+
+        manager.IsBusy = true;
+
+        Assert.False(manager.UpdateAllCommand.CanExecute(null));
+        Assert.NotEqual(0, reasked);
+    }
+
+    /// <summary>
     /// The zip install holds the store while it runs, so it is not a way in behind the other gates. It used to
     /// raise nothing at all: no overlay, and every other install route still open on top of it — the gate on it
     /// only closed the other direction. Scoped to what this measures: the window *after* the file picker.
@@ -316,6 +423,10 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     private static readonly string _ZipPath = Path.Combine(Path.GetTempPath(), "ac-420-download-that-is-never-written.zip");
+
+    // An older version than the row advertises — what the detail panel's per-version install rolls back to.
+    private static readonly PluginStoreVersion _RollbackVersion =
+        new("1.5.0", "plugins/github-issues-1.5.0.zip", null, null, null, null);
 
     private static void _Downloads(IPluginStoreClient storeClient, Action observe) =>
         storeClient
