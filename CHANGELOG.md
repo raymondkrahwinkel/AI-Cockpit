@@ -41,9 +41,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   plugin.
 - added: a message from another agent now reaches a session on its own, instead of sitting there until that session
   happens to go and look. Whenever the session next takes a turn — because you typed something, or because a scheduled
-  resume woke it — whatever is waiting for it goes out with that turn, in a block that says plainly that it came from
-  another agent and not from you, and names the session it came from. Nothing about a message starts a turn by itself:
-  it rides on one that was going to happen anyway.
+  resume woke it — what is waiting for it rides out with that turn, a few messages at a time, in a block that says
+  plainly that it came from another agent and not from you, and names the session it came from. Your own transcript
+  says so too, next to what you typed, so an answer never arrives without a visible reason for it. Nothing about a
+  message starts a turn by itself: it rides on one that was going to happen anyway.
 
   This works for the sessions the cockpit composes turns for. A session that is a command-line agent running inside a
   terminal cannot have it, and that is a real limit rather than an oversight: there the cockpit writes keystrokes and
@@ -52,9 +53,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   and so does the reply when one agent messages another — so a sender can tell "waiting to be collected" apart from
   "will be seen", instead of reading "delivered" and waiting for an answer that was never coming.
 
-  At most five messages ride along on any one turn, well under the twenty-five a session gets when it asks for its own
-  mail: this is text arriving on a turn you started and are paying for, so a backlog cannot bury what you actually
-  typed. The rest stay waiting, and the block says how many there are. A session with nothing waiting adds nothing
+  At most five messages ride along on any one turn, and no more than about twelve thousand characters of them — both
+  well under what a session gets when it asks for its own mail. This is text arriving on a turn you started and are
+  paying for, so neither a backlog nor one very long message can bury what you actually typed; the character limit is
+  counted on the text as it is really sent, since a message can take up several times its own length once it is marked
+  up. The rest stay waiting, and the block says how many there are. A session with nothing waiting adds nothing
   whatsoever to its turns. And a message counts as read only once the turn carrying it has really gone out — if that
   send fails it goes back to waiting, rather than vanishing with its sender having been told it arrived.
 

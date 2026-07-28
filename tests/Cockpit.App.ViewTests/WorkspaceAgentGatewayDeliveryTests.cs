@@ -1,6 +1,9 @@
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
 
@@ -23,8 +26,12 @@ public class WorkspaceAgentGatewayDeliveryTests
             var cockpit = new CockpitViewModel();
 
             // Both are agent panes sharing a desk — the terminal one is a CLI running in a pty, not a plain shell, so
-            // it is on the roster like any other. That is exactly the pane this ticket cannot deliver to.
-            var session = new SessionViewModel();
+            // it is on the roster like any other. That is exactly the pane this ticket cannot deliver to. The session
+            // is built with the delivery seam because that is what makes its answer true; one built without it would
+            // report false, which is the whole point of asking the pane rather than its type.
+            var session = new SessionViewModel(
+                Substitute.For<ISessionManager>(),
+                turnInboxDelivery: Substitute.For<IAgentTurnInboxDelivery>());
             var terminal = new TtyViewModel();
             cockpit.Sessions.Add(session);
             cockpit.Sessions.Add(terminal);

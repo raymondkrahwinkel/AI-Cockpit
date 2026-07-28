@@ -60,6 +60,63 @@ public class AgentTurnInboxDeliveryTests
             + $"{AgentsMcpTools.MaxMessagesPerRead} on request — the unasked-for batch must be the smaller of the two");
     }
 
+    /// <summary>
+    /// Five messages is not a bound on size. The sender-facing limit is 2 000 characters of body, but an ampersand
+    /// renders as five, so five maximal ampersand bodies are ten times what "five messages" sounds like — arriving
+    /// ahead of the sentence the operator typed and is paying for.
+    /// </summary>
+    [Fact]
+    public void TakeForTurn_StopsAtTheCharacterBudget_NotJustTheMessageCount()
+    {
+        var inbox = new AgentMessageInbox();
+        for (var index = 0; index < 5; index++)
+        {
+            // Distinct bodies so the inbox's own deduplication does not collapse them into one.
+            inbox.Deliver("pane-a", "pane-b", "question", new string('&', 1_999) + (char)('a' + index));
+        }
+
+        var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
+
+        Assert.NotNull(notice);
+        Assert.True(
+            notice.Messages.Count < 5,
+            $"five bodies of 2 000 ampersands render as roughly 50 000 characters, well past the "
+            + $"{AgentTurnInboxDelivery.MaxRenderedCharsPerTurn}-character budget, yet all five were carried");
+        Assert.True(notice.Render().Length <= AgentTurnInboxDelivery.MaxRenderedCharsPerTurn + 2_000);
+
+        // What did not fit is not lost and not read: it is counted as still waiting, and the next turn offers it.
+        Assert.Equal(5 - notice.Messages.Count, notice.Remaining);
+        Assert.Equal(5 - notice.Messages.Count, inbox.Drain("pane-b", 25).Messages.Count);
+    }
+
+    /// <summary>
+    /// One message larger than the whole budget still goes. Refusing it would leave it at the head of the queue being
+    /// refused again every turn, with everything behind it stuck too — a message that can never arrive and can never
+    /// be got past is worse than one oversized turn.
+    /// <para>
+    /// Delivered straight into the store, because nothing can reach this state through <c>notify</c> today: that path
+    /// caps a body at 2 000 characters, which even at the worst escaping expansion renders below the budget. The
+    /// branch is a guard on the store's own contract rather than on a reachable input, and it is tested here so that
+    /// raising the body cap later cannot silently turn a large message into a permanently stuck one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void TakeForTurn_CarriesAnOversizedMessageRatherThanStrandingIt()
+    {
+        var inbox = new AgentMessageInbox();
+        inbox.Deliver("pane-a", "pane-b", "question", new string('x', AgentTurnInboxDelivery.MaxRenderedCharsPerTurn + 1_000));
+        inbox.Deliver("pane-a", "pane-b", "question", "and a short one behind it");
+
+        var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
+
+        Assert.NotNull(notice);
+        Assert.Single(notice.Messages);
+        Assert.Equal(1, notice.Remaining);
+
+        // The one behind it is still there, so the next turn takes it: over budget is deferred, never dropped.
+        Assert.Equal("and a short one behind it", Assert.Single(inbox.Drain("pane-b", 25).Messages).Body);
+    }
+
     [Fact]
     public void ConfirmDelivered_LeavesTheRecipientWithNothingToRead()
     {

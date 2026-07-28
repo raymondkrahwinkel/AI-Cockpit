@@ -175,15 +175,23 @@ public sealed class AgentsMcpToolsTests : IDisposable
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
             new WorkspaceAgentPane("pane-sender", "Sender", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-sdk", "Session 2", null, string.Empty, true),
             new WorkspaceAgentPane("pane-tty", "Terminal", null, string.Empty, false),
         ]);
         _gateway.GetWorkspaceSnapshotAsync("pane-sender").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-sender");
 
-        var sent = _Json(await _Tools().NotifyAsync("pane-tty", "question", "are you on this branch?"));
+        var toTerminal = _Json(await _Tools().NotifyAsync("pane-tty", "question", "are you on this branch?"));
+        var toSession = _Json(await _Tools().NotifyAsync("pane-sdk", "question", "are you on this branch?"));
 
-        Assert.True(_Flag(sent, "ok"));
-        Assert.False(_Flag(sent, "deliversAtTurnStart"));
+        Assert.True(_Flag(toTerminal, "ok"));
+        Assert.True(_Flag(toSession, "ok"));
+
+        // Both answers, not just the false one. Asserting only the pane that reports false leaves the reply free to
+        // be hard-coded to false — which reads as "nobody surfaces anything", sends every sender off to poll a pane
+        // that would have surfaced it, and makes the tool's own promise that the reply distinguishes the two untrue.
+        Assert.False(_Flag(toTerminal, "deliversAtTurnStart"));
+        Assert.True(_Flag(toSession, "deliversAtTurnStart"));
     }
 
     [Fact]

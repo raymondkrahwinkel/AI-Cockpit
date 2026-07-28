@@ -39,8 +39,13 @@ public partial class SessionViewModelSendPathTests
             + "the funnel instead of sending directly.");
     }
 
-    /// <summary>Whitespace-tolerant so reformatting the call does not quietly retire this test.</summary>
-    [GeneratedRegex(@"runtime\s*\.\s*SendUserMessageAsync\s*\(")]
+    /// <summary>
+    /// Whitespace-tolerant so reformatting the call does not quietly retire this test, and tolerant of <c>?.</c> and
+    /// <c>!.</c> because those are the shapes a bypass would most plausibly take: this same file already writes
+    /// <c>_ = _runtime?.SetAutoApproveToolsAsync(value)</c>, so a third send path added in the house idiom would have
+    /// slipped straight past a pattern that only knew the plain dot.
+    /// </summary>
+    [GeneratedRegex(@"runtime\s*[?!]?\s*\.\s*SendUserMessageAsync\s*\(")]
     private static partial Regex RuntimeSendRegex();
 
     private static string _LocateSessionViewModel()

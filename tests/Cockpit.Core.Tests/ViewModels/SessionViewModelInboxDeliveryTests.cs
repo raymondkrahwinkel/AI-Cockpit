@@ -141,6 +141,53 @@ public class SessionViewModelInboxDeliveryTests
         await vm.DisposeAsync();
     }
 
+    /// <summary>
+    /// A pane whose session never came up still holds a runtime, and that runtime accepts a send and reports success
+    /// without a driver to hand it to. Taking mail for that turn would confirm a delivery that never happened and
+    /// drop the messages for good — the sender told they arrived, the recipient never having seen them.
+    /// </summary>
+    [Fact]
+    public async Task Send_OnAPaneWhoseSessionFailedToStart_DoesNotTakeMailAtAll()
+    {
+        var inbox = Substitute.For<IAgentTurnInboxDelivery>();
+        inbox.TakeForTurn(Arg.Any<string>()).Returns(_Notice("are you on this branch?"));
+
+        // The driver cannot be created — the case the start path documents: a profile naming a provider that does not
+        // resolve. The runtime is assigned before the start is attempted, so the pane keeps holding a runtime that
+        // will never run.
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(_ => throw new InvalidOperationException("no such provider"));
+        var vm = new SessionViewModel(new SessionManager(factory), turnInboxDelivery: inbox);
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.InputText = "run the tests";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        inbox.DidNotReceive().TakeForTurn(Arg.Any<string>());
+        inbox.DidNotReceive().ConfirmDelivered(Arg.Any<AgentInboxTurnNotice>());
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// The first text ever to enter a session's context that the operator neither typed nor asked for. The route it
+    /// replaces was a tool call, and a tool call is a visible row — without a note here the agent answers a question
+    /// the transcript does not contain.
+    /// </summary>
+    [Fact]
+    public async Task Send_LeavesANoteInTheTranscript_SoAnAnswerNeverArrivesWithoutAVisibleReason()
+    {
+        var (vm, _, _, _) = await _StartedWith(_Notice("are you on this branch?"));
+
+        vm.InputText = "run the tests";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        Assert.Contains(
+            vm.Transcript,
+            row => row.Text.Contains("1 message from pane-sender delivered with this turn", StringComparison.Ordinal));
+    }
+
     private static AgentInboxTurnNotice _Notice(string body) =>
         new("pane-me", [new AgentMessage("m1", "pane-sender", "pane-me", "question", body, Sent)], Remaining: 0);
 
