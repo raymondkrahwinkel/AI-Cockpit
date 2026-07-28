@@ -40,10 +40,76 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     /// <summary>
+    /// The store is deliberately *not* held while the operator browses for a file (AC-456) — a busy overlay over
+    /// a dialog that is waiting on a file picker covers nothing that is working. This pins that choice, and is
+    /// the test the previous three rounds did not have: they all measured the window after the scope is entered,
+    /// so moving the scope to before the picker changed nothing they could see.
+    /// </summary>
+    [Fact]
+    public async Task TheStoreIsNotHeld_WhileTheFilePickerIsStillOpen()
+    {
+        var installer = Substitute.For<IPluginInstaller>();
+        _StagesTheUpdate(installer);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var picker = new TaskCompletionSource<string?>();
+        dialogService.PickPluginZipAsync().Returns(_ => picker.Task);
+        var manager = _Manager(Substitute.For<IPluginStoreClient>(), installer, Substitute.For<IAppRestartService>(), dialogService);
+
+        var install = manager.InstallFromZipCommand.ExecuteAsync(null);
+
+        Assert.False(manager.IsBusy);
+
+        picker.SetResult(_ZipPath);
+        await install;
+
+        Assert.False(manager.IsBusy);
+    }
+
+    /// <summary>
+    /// The measured repro from AC-456: press Install from zip, and while the picker is parked start an install
+    /// from the catalogue. Both routes reach the same installer unpacking into the same folder, and the zip
+    /// route used to raise its count blindly on the way back out — two installers at once. It asks for the store
+    /// now instead of assuming it, so the one that comes back late does not install on top of the other.
+    /// </summary>
+    [Fact]
+    public async Task AZipInstall_ThatComesBackToAClaimedStore_DoesNotInstallOnTopOfIt()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _StagesTheUpdate(installer);
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var picker = new TaskCompletionSource<string?>();
+        dialogService.PickPluginZipAsync().Returns(_ => picker.Task);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), dialogService);
+
+        // Held open so the catalogue install is genuinely still running when the picker returns, as it is in the repro.
+        var download = new TaskCompletionSource<PluginStoreDownloadResult>();
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => download.Task);
+
+        var zipInstall = manager.InstallFromZipCommand.ExecuteAsync(null);
+
+        // The premise of the repro, and it survives this fix: with the picker open the store reports itself idle,
+        // so the catalogue's install button is live. What changes is what happens when the two meet.
+        var row = _UpdatableRow("github-issues", "GitHub Issues");
+        Assert.True(manager.InstallFromStoreCommand.CanExecute(row));
+        var storeInstall = manager.InstallFromStoreCommand.ExecuteAsync(row);
+
+        picker.SetResult(_ZipPath);
+        await zipInstall;
+
+        download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
+        await storeInstall;
+
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        Assert.False(manager.IsBusy);
+    }
+
+    /// <summary>
     /// The zip install holds the store while it runs, so it is not a way in behind the other gates. It used to
     /// raise nothing at all: no overlay, and every other install route still open on top of it — the gate on it
-    /// only closed the other direction. Scoped to what this measures: the window *after* the file picker. The
-    /// picker window itself is still open (AC-456).
+    /// only closed the other direction. Scoped to what this measures: the window *after* the file picker.
     /// </summary>
     [Fact]
     public async Task ARunningZipInstall_OnceItIsPastThePicker_HoldsTheStore()

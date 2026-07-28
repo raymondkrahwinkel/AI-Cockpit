@@ -130,6 +130,44 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
+    // Whether something is unpacking into the plugins folder right now (AC-456). Not the same question as the
+    // depth above: that one answers "is the store working", which the zip route deliberately says no to while
+    // the operator browses for a file. Three per-route guards each closed the seam they were aimed at and left
+    // the next one, so the routes no longer decide this for themselves — _InstallExclusivelyAsync does, once.
+    private bool _installInFlight;
+
+    /// <summary>
+    /// Runs work that unpacks into the plugins folder, and refuses while another such run holds it (AC-456) —
+    /// the single owner the per-route gates were standing in for. A plain bool carries it because these are
+    /// dispatcher-thread commands: they interleave at their awaits, never in parallel, so there is no
+    /// read-modify-write to lose.
+    /// </summary>
+    private async Task _InstallExclusivelyAsync(Func<Task> install)
+    {
+        if (_installInFlight)
+        {
+            // Refused without a word, deliberately. StatusMessage is the running install's only line — the
+            // overlay draws it, and InstallFromStoreAsync captures it across its browse to put it back — so a
+            // refusal written here would be restored as that install's closing message. Nor can an operator
+            // arrive here: the file picker is owned by the store dialog, so the catalogue is not clickable
+            // while it is open, and CanInstallFromZip/CanInstallFromStore close the buttons the rest of the
+            // time. This is the backstop under both, for a caller that is not a button.
+            return;
+        }
+
+        _installInFlight = true;
+        _EnterBusy();
+        try
+        {
+            await install();
+        }
+        finally
+        {
+            _ExitBusy();
+            _installInFlight = false;
+        }
+    }
+
     // A restart and a fresh install are both unreachable while work is in flight (AC-420), gated by their
     // command's CanExecute — which is what a bound Button consults, so the affordance goes dead rather than
     // only looking dead.
@@ -304,25 +342,16 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        // Raised only now, not around the picker: the operator choosing a file is their time, and covering the
+        // Claimed only now, not around the picker: the operator choosing a file is their time, and covering the
         // dialog behind a busy overlay while a file picker is open would be covering nothing that is working.
-        //
-        // ⚠️ That leaves a hole this change does not close (AC-456). The picker hangs off MainWindow while this
-        // dialog is its own modal, so the store stays clickable while it is open: a store install started in
-        // that window is running by the time the picker returns, and this raises the count on top of it —
-        // two installers in the same folder. Closing it needs a decision about where the store is held, not
-        // another guard here; three attempts at a guard have each moved the gap somewhere else.
-        _EnterBusy();
-        try
+        // The store can therefore have been claimed by something else while we were parked here, which is why
+        // the claim is asked for rather than assumed (AC-456).
+        await _InstallExclusivelyAsync(async () =>
         {
             StatusMessage = $"Installing '{Path.GetFileName(zipPath)}'…";
             var result = await _installer.InstallFromZipAsync(zipPath, AbstractionsContract.Version);
             await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
-        }
-        finally
-        {
-            _ExitBusy();
-        }
+        });
     }
 
     [RelayCommand]
@@ -775,24 +804,26 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        _EnterBusy();
-        try
+        await _InstallExclusivelyAsync(async () =>
         {
-            await _DownloadAndInstallRowAsync(row);
+            try
+            {
+                await _DownloadAndInstallRowAsync(row);
 
-            // Refresh the catalogue rows to their new installed/up-to-date state, but keep the install
-            // (or consent) message the operator just saw rather than the browse summary.
-            var installMessage = StatusMessage;
-            await BrowseStoresAsync();
-            StatusMessage = installMessage;
-        }
-        finally
-        {
-            _ExitBusy();
-            // The catalogue was rebuilt (or cleared) — refresh the "Update all" button's gate and count.
-            OnPropertyChanged(nameof(HasAvailableUpdates));
-            OnPropertyChanged(nameof(AvailableUpdateCount));
-        }
+                // Refresh the catalogue rows to their new installed/up-to-date state, but keep the install
+                // (or consent) message the operator just saw rather than the browse summary.
+                var installMessage = StatusMessage;
+                await BrowseStoresAsync();
+                StatusMessage = installMessage;
+            }
+            finally
+            {
+                // The catalogue was rebuilt (or cleared) — refresh the "Update all" button's gate and count.
+                // Inside the scope, so a refused start leaves the running install's catalogue alone.
+                OnPropertyChanged(nameof(HasAvailableUpdates));
+                OnPropertyChanged(nameof(AvailableUpdateCount));
+            }
+        });
     }
 
     /// <summary>True when at least one installed plugin has a newer version in a store — gates the "Update all" button.</summary>
@@ -904,50 +935,52 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        _EnterBusy();
-        BusyProgressValue = 0;
-        BusyProgressIndeterminate = false;
-        try
+        await _InstallExclusivelyAsync(async () =>
         {
-            var updated = 0;
-            for (var i = 0; i < updates.Count; i++)
-            {
-                var row = updates[i];
-                StatusMessage = $"Updating '{row.Name}' ({i + 1} of {updates.Count})…";
-                try
-                {
-                    // Isolate each plugin: one failing update must not abort the whole batch.
-                    if (await _DownloadAndInstallRowAsync(row))
-                    {
-                        updated++;
-                    }
-                }
-                catch (Exception exception)
-                {
-                    StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
-                }
-
-                // Counted whether it worked or not: the bar tracks how far through the batch we are, and a
-                // failed plugin is behind us too. Whether it installed is what `updated` answers.
-                BusyProgressValue = (i + 1) * 100.0 / updates.Count;
-            }
-
-            await BrowseStoresAsync();
-            StatusMessage = updated == updates.Count
-                ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
-                : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the message above. Restart to activate.";
-            NeedsRestart = updated > 0;
-        }
-        finally
-        {
-            _ExitBusy();
-            // Back to indeterminate here rather than only on the next batch: a single install that follows has
-            // no fraction to show, and a bar left at 100% behind its overlay would be showing other work.
-            BusyProgressIndeterminate = true;
             BusyProgressValue = 0;
-            OnPropertyChanged(nameof(HasAvailableUpdates));
-            OnPropertyChanged(nameof(AvailableUpdateCount));
-        }
+            BusyProgressIndeterminate = false;
+            try
+            {
+                var updated = 0;
+                for (var i = 0; i < updates.Count; i++)
+                {
+                    var row = updates[i];
+                    StatusMessage = $"Updating '{row.Name}' ({i + 1} of {updates.Count})…";
+                    try
+                    {
+                        // Isolate each plugin: one failing update must not abort the whole batch.
+                        if (await _DownloadAndInstallRowAsync(row))
+                        {
+                            updated++;
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
+                    }
+
+                    // Counted whether it worked or not: the bar tracks how far through the batch we are, and a
+                    // failed plugin is behind us too. Whether it installed is what `updated` answers.
+                    BusyProgressValue = (i + 1) * 100.0 / updates.Count;
+                }
+
+                await BrowseStoresAsync();
+                StatusMessage = updated == updates.Count
+                    ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
+                    : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the message above. Restart to activate.";
+                NeedsRestart = updated > 0;
+            }
+            finally
+            {
+                // Back to indeterminate here rather than only on the next batch: a single install that follows
+                // has no fraction to show, and a bar left at 100% behind its overlay would be showing other
+                // work. Inside the scope, so a refused start leaves the running batch's bar alone.
+                BusyProgressIndeterminate = true;
+                BusyProgressValue = 0;
+                OnPropertyChanged(nameof(HasAvailableUpdates));
+                OnPropertyChanged(nameof(AvailableUpdateCount));
+            }
+        });
     }
 
     /// <summary>Opens the settings of the installed plugin behind a store row (the card's ⚙). No-op when it isn't installed or has no settings.</summary>
@@ -991,18 +1024,13 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        _EnterBusy();
-        try
+        await _InstallExclusivelyAsync(async () =>
         {
             await _DownloadAndInstallRowAsync(row, version);
             var message = StatusMessage;
             await BrowseStoresAsync();
             StatusMessage = message;
-        }
-        finally
-        {
-            _ExitBusy();
-        }
+        });
     }
 
     private PluginRowViewModel? _InstalledRowFor(StorePluginRowViewModel row) =>
