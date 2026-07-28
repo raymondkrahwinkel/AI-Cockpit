@@ -144,8 +144,10 @@ public class DialogChromeTests
     private const double LineSpacing = 1;
     private const double CaptionButtonHeight = 26;
 
-    // What the bar comes to at those values, against the 63px and 97px it used to. A change here is either the
-    // header growing back or the bundled font moving under us; both are worth being stopped for.
+    // What the bar comes to at those values, measured on the window this theory builds. The old figures on the
+    // same rig were 64 and 83 — the 63 and 97 quoted below are real dialogs, so the two sets are not each other's
+    // before and after. A change here is either the header growing back or the bundled font moving under us; both
+    // are worth being stopped for.
     private const double BarWithAName = 44;
     private const double BarWithANameAndALine = 59;
 
@@ -194,6 +196,9 @@ public class DialogChromeTests
         var band = _Band(_ShownProjectsDialog());
         var heading = _Heading(band);
 
+        // The bar's own height first: it is what this whole guard is built around, and proving it only on the rig
+        // would leave the one figure that matters resting on the rig being representative.
+        Assert.Equal(BarWithANameAndALine, band.Bounds.Height, 1);
         Assert.Equal(SidePadding, heading.Bounds.Left, 1);
         Assert.Equal(VerticalPadding, heading.Bounds.Top, 1);
         Assert.Equal(VerticalPadding + Seam, band.Bounds.Height - heading.Bounds.Bottom, 1);
