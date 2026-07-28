@@ -73,14 +73,19 @@ internal sealed class LocalCiMcpTools(
             tracker.Complete(checkout, result, commit, DateTimeOffset.UtcNow);
             return McpJson.Of(_Report(result));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // Whatever went wrong, the run is over. Without this the status bar would keep offering a Kill for
-            // something that is not running, which is worse than showing nothing.
+            // something that is not running, which is worse than showing nothing. A stop and a fault are recorded
+            // as the different things they are: filing a bug in the runner as "cancelled" would tell the operator
+            // that somebody stopped this, and nobody did.
+            var (outcome, reason) = exception is OperationCanceledException
+                ? (LocalRunOutcome.Cancelled, "the run was stopped before it reached a verdict.")
+                : (LocalRunOutcome.CouldNotRun, $"the run ended in an error: {exception.Message}");
+
             tracker.Complete(
                 checkout,
-                LocalRunResult.DidNotRun(
-                    chosen.WorkflowPath, chosen.JobId, LocalRunOutcome.Cancelled, "the run ended without a verdict."),
+                LocalRunResult.DidNotRun(chosen.WorkflowPath, chosen.JobId, outcome, reason),
                 commit,
                 DateTimeOffset.UtcNow);
             throw;

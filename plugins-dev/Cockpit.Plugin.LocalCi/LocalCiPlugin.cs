@@ -27,7 +27,9 @@ public sealed class LocalCiPlugin : ICockpitPlugin
             "on the code. Docker is reported in three states — missing, installed but the engine is not answering, " +
             "or ready — and each job in the project's workflows is either offered or refused with the concrete " +
             "reason it cannot run here. A job runs whole or not at all: what this plugin does not understand it " +
-            "refuses rather than skipping quietly. The result says it ran on this machine, never that CI is green.");
+            "refuses rather than skipping quietly. A session can start a run itself and read the verdict back, " +
+            "with you approving the exact command each time, and a checkout can be set to hold back its pull " +
+            "requests until a local run has passed. The result says it ran on this machine, never that CI is green.");
 
     private LocalCiRuntime? _runtime;
     private LocalJobRunner? _runner;
