@@ -286,6 +286,41 @@ public class PluginStoreBusyGateTests
             new PluginDiagnostics(),
             restartService: Substitute.For<IAppRestartService>());
 
+    /// <summary>
+    /// The search bar sits outside the overlay and used to be switched off wholesale by an IsEnabled binding on
+    /// the panel holding it — the pattern AC-456 removed from Update all and AC-455 removed from here. Now every
+    /// button on that bar carries its own gate, which has to leave the two controls that change nothing alone.
+    /// Rendered, because the bar is at full contrast up there: a live Refresh and a dead one look alike, and
+    /// only this can tell them apart.
+    /// </summary>
+    [Fact]
+    public void TheSearchBar_KeepsSearchAndSort_AndLosesRefresh_WhileTheStoreWorks() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("plugin-store");
+        try
+        {
+            var dialog = Assert.IsType<PluginStoreDialogViewModel>(window.DataContext);
+            var refresh = Assert.Single(_ButtonsFor(window, dialog.RefreshCommand));
+            var search = Assert.Single(window.GetVisualDescendants().OfType<TextBox>(), box => box.PlaceholderText == "Search plugins…");
+            // The sort picker off the search box's own row, not the version picker in the detail pane.
+            var sort = Assert.Single(Assert.IsType<StackPanel>(search.Parent).Children.OfType<ComboBox>());
+            window.UpdateLayout();
+
+            Assert.True(refresh.IsEffectivelyEnabled);
+
+            dialog.Manager.IsBusy = true;
+            window.UpdateLayout();
+
+            Assert.False(refresh.IsEffectivelyEnabled, "a refresh clears the catalogue the install is walking");
+            Assert.True(search.IsEffectivelyEnabled, "searching changes nothing, and reading is what the wait is for");
+            Assert.True(sort.IsEffectivelyEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     private static List<Button> _ButtonsFor(Window window, ICommand command) =>
         [.. window.GetVisualDescendants().OfType<Button>().Where(button => ReferenceEquals(button.Command, command))];
 
