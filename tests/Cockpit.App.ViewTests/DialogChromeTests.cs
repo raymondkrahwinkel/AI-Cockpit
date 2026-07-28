@@ -130,25 +130,32 @@ public class DialogChromeTests
             "the line under the name explains it, so it cannot be reading as loudly as the name");
     });
 
-    [Fact]
-    public void TheBar_AddsNoMoreRoomAroundItsHeading_ThanTheHeadingItselfIsWorth() => HeadlessAvalonia.Run(() =>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("What is this session working on?")]
+    public void TheBar_AddsNoMoreAroundItsText_ThanItsPaddingSeamAndLineSpacing(string? subtitle) => HeadlessAvalonia.Run(() =>
     {
         // AC-426: the bar was 63px for a name alone and 97px with its explanation — on a short dialog like Set
-        // status, two fifths of the window before its first control. What made it heavy was the room around the
-        // heading, not the heading, so that is what this holds: everything the bar adds on top of the text it
-        // carries. Measured as a difference rather than an absolute height on purpose — the fonts come from the
-        // OS, so a bound on the bar's own height would mean something different on CI than it does here.
+        // status, two fifths of the window before its first control. What made it heavy was everything except the
+        // text, so the bar is measured against the text and not against the panel holding it: a panel's Bounds
+        // exclude its own Margin, so a difference taken there is the padding and nothing else, and the line
+        // spacing and the caption column — two of the five values this ticket moved — would go unwatched.
+        //
+        // A difference rather than an absolute height, because the fonts come from the OS and CI runs on another
+        // one. That holds here: the room is whole pixels, so it survives any metric the text itself measures.
         var window = new Window { Width = 600, Height = 400 };
-        CockpitWindowChrome.Apply(window, "Set status", "What is this session working on?");
+        CockpitWindowChrome.Apply(window, "Set status", subtitle);
         window.Show();
         window.UpdateLayout();
 
-        var name = window.GetVisualDescendants().OfType<TextBlock>().First(block => block.IsVisible);
-        var heading = name.GetVisualAncestors().OfType<StackPanel>().First();
-        var bar = name.GetVisualAncestors().OfType<Border>().First();
+        var lines = window.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsVisible).ToList();
+        var bar = lines[0].GetVisualAncestors().OfType<Border>().First();
+        var text = lines.Sum(line => line.Bounds.Height);
 
-        // 12 above, 12 below, and the seam. A pixel of slack for rounding, and nothing for a second opinion.
-        Assert.InRange(bar.Bounds.Height - heading.Bounds.Height, 0, 26);
+        // 12 above, 12 below, the seam, and — with a second line — the 1px between them. The caption column hangs
+        // in the same bar, so a close button outgrowing the heading lands here too. One pixel of slack for
+        // rounding, and nothing for a second opinion.
+        Assert.InRange(bar.Bounds.Height - text, 0, 27);
     });
 
     [Fact]

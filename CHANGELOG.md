@@ -494,10 +494,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Changed
 
 - changed: the header every dialog wears is lighter. Its name sat at heading size with a lot of room around it, which
-  on a short dialog — Set status, Insert prompt — took two fifths of the window before you reached the first control,
-  and on About left the header shouting over the dialog's own content. The name, the line under it and the room around
-  them have all come down; the band and the hairline under it are unchanged, so a dialog still reads as having a head
-  and a foot. Nothing was removed: every dialog keeps its name and its close button.
+  on a short dialog like Set status took two fifths of the window before you reached the first control, and on About
+  left the header shouting over the dialog's own content. The name, the line under it and the room around them have
+  all come down; the band and the hairline under it are unchanged, so a dialog still reads as having a head and a
+  foot. Nothing was removed: every dialog keeps its name and its close button.
 
   One header, so this lands on all of them at once — including the ones a plugin puts up.
 

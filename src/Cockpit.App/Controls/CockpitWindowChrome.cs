@@ -24,12 +24,8 @@ internal static class CockpitWindowChrome
     // Weights are the closest real ones: the reference asks for 600/660, which a variable web font can hit
     // and the desktop UI font rounds to SemiBold either way.
     //
-    // The dialog sizes below deliberately depart from that reference. Transcribed literally, its heading
-    // ran to 63px of bar for a name alone and 97px with the explanation under it — on a short dialog like
-    // Set status, two fifths of the window before its first control. The reference is a web page mocking up
-    // one dialog at a comfortable size; the same figures on the smallest real one made the header the loudest
-    // thing in it. Measured against three rendered dialogs and chosen from four side-by-side variants
-    // (AC-426), so these are the values the header was judged on, not the ones it was drawn from.
+    // The dialog sizes below deliberately depart from it: transcribed literally they gave 97px of bar on a
+    // dialog 229px tall, so the header outweighed what it introduced. Judged on rendered dialogs (AC-426).
     private const double DialogTitleFontSize = 15;
     private const double DialogSubtitleFontSize = 11.5;
     private const double WindowTitleFontSize = 15.5;
@@ -278,7 +274,8 @@ internal static class CockpitWindowChrome
         VerticalAlignment = VerticalAlignment.Center,
         MaxLines = 1,
         TextTrimming = TextTrimming.CharacterEllipsis,
-        // The reference's -0.01em, which at the heading size is a fifth of a pixel off each pair.
+        // The reference's -0.01em: a fraction of a pixel off each pair, which is why it scales with the size
+        // rather than being a figure of its own.
         LetterSpacing = fontSize * -0.01,
     };
 
