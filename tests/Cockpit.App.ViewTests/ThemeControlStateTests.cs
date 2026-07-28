@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 using Avalonia.VisualTree;
@@ -87,6 +88,47 @@ public class ThemeControlStateTests
 
         Assert.Equal(_Token("CockpitSecondaryBgColor"), _EllipseFill(choice, "Ring"));
         Assert.Equal(_Token("CockpitHairlineSoftColor"), _Stroke(choice, "Ring"));
+    });
+
+    [Fact]
+    public void AScrollBar_DrawsInTheThemeRatherThanFluentsOwnGreys() => HeadlessAvalonia.Run(() =>
+    {
+        // The theme never claimed a ScrollBar, so every scrollable surface carried Fluent's #1F1F1F track and
+        // corner and its #858585 thumb — colours no source lint could find, because we never wrote them (AC-405).
+        var viewer = _Scrolled();
+        using var host = _Shown(viewer);
+
+        Assert.Equal(_Token("CockpitInsetBgColor"), _ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
+        Assert.Equal(_Token("CockpitInsetBgColor"), _ColourOf(_Named<Panel>(viewer, "PART_ScrollBarsSeparator").Background));
+        Assert.Equal(_Token("CockpitTextFaintColor"), _ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
+    });
+
+    [Fact]
+    public void AScrollBarThumb_StandsOutFromTheTrackItSlidesOn() => HeadlessAvalonia.Run(() =>
+    {
+        // The obvious way to get this wrong: every colour resolves to a theme token and the thumb is then
+        // invisible in its own groove. No assertion about tokens can see that; this one is about the gap.
+        var viewer = _Scrolled();
+        using var host = _Shown(viewer);
+
+        var thumb = _Brightness(_ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
+        var track = _Brightness(_ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
+
+        Assert.True(thumb - track > 30, $"a thumb at {thumb:F0} on a track at {track:F0} is not a thumb anyone can see");
+    });
+
+    [Fact]
+    public void AScrollBarThumb_ActuallyPaintsThatColour() => HeadlessAvalonia.Run(() =>
+    {
+        // Same reason as the radio button's ring: a brush is what a control was told to paint with, and the
+        // question here is what reached the screen.
+        var viewer = _Scrolled();
+        using var host = _Shown(viewer);
+
+        var thumb = viewer.GetVisualDescendants().OfType<Thumb>().First();
+        var middle = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height / 2), host.Window) ?? default;
+
+        Assert.Equal(_Channels(_Token("CockpitTextFaintColor")), _Channels(_PaintedAt(host.Window, middle)));
     });
 
     [Fact]
@@ -253,8 +295,26 @@ public class ThemeControlStateTests
             ? solid.Color
             : throw new InvalidOperationException($"expected a plain colour, got {brush?.ToString() ?? "nothing"}");
 
-    private static Color _Fill(Control control, string part) =>
-        ((ISolidColorBrush)_Part<Border>(control, part).Background!).Color;
+    /// <summary>A scroll viewer whose content overflows both ways, so both bars and the corner between them exist.</summary>
+    private static ScrollViewer _Scrolled()
+    {
+        var content = new StackPanel();
+        for (var line = 0; line < 40; line++)
+        {
+            content.Children.Add(new TextBlock { Text = new string('x', 200) });
+        }
+
+        return new ScrollViewer
+        {
+            Content = content,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+        };
+    }
+
+    /// <summary>A named element anywhere below the control — a scroll bar's parts sit in a template of their own.</summary>
+    private static T _Named<T>(Control control, string name) where T : StyledElement =>
+        control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
     /// <summary>The colour actually rendered at a point of the window, read back out of the frame.</summary>
     private static Color _PaintedAt(Window window, Point point)
@@ -276,6 +336,9 @@ public class ThemeControlStateTests
     /// on another), and this comparison is about which colour was painted, not about how the buffer stores it.
     /// </summary>
     private static IReadOnlyList<byte> _Channels(Color colour) => [.. new[] { colour.R, colour.G, colour.B }.Order()];
+
+    private static Color _Fill(Control control, string part) =>
+        ((ISolidColorBrush)_Part<Border>(control, part).Background!).Color;
 
     private static Color _EllipseFill(Control control, string part) =>
         _ColourOf(_Part<Ellipse>(control, part).Fill);

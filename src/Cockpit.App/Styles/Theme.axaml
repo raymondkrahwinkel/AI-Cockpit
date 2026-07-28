@@ -137,6 +137,13 @@
                  Claude-TTY surface; the same family the TTY panel renders with. -->
             <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
 
+            <!-- Fluent's own scroll-bar keys, redefined because the values sit inside its template at Template
+                 priority, where a style setter of ours cannot reach them (AC-405). The groove keeps one colour
+                 whether or not the pointer is over it; the thumb is the part that answers. -->
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{StaticResource CockpitInsetBgColor}"/>
+
         </ResourceDictionary>
     </Styles.Resources>
 
@@ -606,6 +613,21 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <!-- ScrollBar: the theme never claimed one, so every scrollable surface kept Fluent's greys. Only the thumb
+         is reachable from here — the track and the corner take their colour inside Fluent's template, at
+         Template priority, above a style setter, so they are redefined as resource keys in Styles.Resources.
+         The thumb sits several steps lighter than its groove: theme-correct and invisible is the way to get
+         this wrong. -->
+    <Style Selector="ScrollBar /template/ Thumb">
+        <Setter Property="Background" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb:pointerover">
+        <Setter Property="Background" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb:pressed">
+        <Setter Property="Background" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
     <!-- CheckBox: the box follows CockpitAccentColor. Until now it drew with Avalonia's *system* accent —
