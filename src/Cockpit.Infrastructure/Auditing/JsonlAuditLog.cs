@@ -44,6 +44,13 @@ internal abstract class JsonlAuditLog<T>
         _logger = logger;
     }
 
+    /// <summary>
+    /// The file this trail appends to. Exposed so the startup repair's guard test can ask each trail where it
+    /// actually writes, rather than trusting that the list it walks (<see cref="AuditTrailFiles"/>) still names the
+    /// same four files the trails do — a list that has quietly drifted repairs nothing and reads as if it does.
+    /// </summary>
+    internal string FilePath => _logFilePath;
+
     /// <summary>A short human name for this trail ("consent", "delegation"), used only in the warning when it cannot be read or written.</summary>
     protected abstract string LogName { get; }
 

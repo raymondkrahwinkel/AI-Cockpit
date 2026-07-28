@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Usage;
 using Cockpit.Infrastructure.Auditing;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Usage;
 
@@ -19,7 +18,7 @@ namespace Cockpit.Infrastructure.Usage;
 internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHistory, ISingletonService
 {
     public UsageHistoryLog(ILogger<UsageHistoryLog> logger)
-        : base(_DefaultPath(), logger)
+        : base(AuditTrailFiles.InStateRoot(AuditTrailFiles.Usage), logger)
     {
     }
 
@@ -33,7 +32,4 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
 
     // Nothing here is free text, so there is nothing to trim before writing.
     protected override UsageSnapshot PrepareForWrite(UsageSnapshot entry) => entry;
-
-    private static string _DefaultPath() =>
-        Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default) ?? string.Empty, "usage-history.jsonl");
 }

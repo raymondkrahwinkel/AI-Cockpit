@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Infrastructure.Auditing;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Agents;
 
@@ -42,7 +41,7 @@ internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>
     private const int MaxPaneIdLength = 200;
 
     public AgentNotifyAuditLog(ILogger<AgentNotifyAuditLog> logger)
-        : base(_DefaultPath(), logger)
+        : base(AuditTrailFiles.InStateRoot(AuditTrailFiles.AgentNotify), logger)
     {
     }
 
@@ -61,7 +60,4 @@ internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>
             Kind = TrimText(entry.Kind, MaxKindLength),
             Body = TrimText(entry.Body, MaxBodyLength),
         };
-
-    private static string _DefaultPath() =>
-        Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default) ?? string.Empty, "agent-notify-audit.jsonl");
 }

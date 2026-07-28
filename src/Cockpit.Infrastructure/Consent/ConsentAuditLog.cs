@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Auditing;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Consent;
 
@@ -18,7 +17,7 @@ internal sealed class ConsentAuditLog : JsonlAuditLog<ConsentAuditEntry>, IConse
     private const int MaxActionLength = 300;
 
     public ConsentAuditLog(ILogger<ConsentAuditLog> logger)
-        : base(_DefaultPath(), logger)
+        : base(AuditTrailFiles.InStateRoot(AuditTrailFiles.Consent), logger)
     {
     }
 
@@ -32,7 +31,4 @@ internal sealed class ConsentAuditLog : JsonlAuditLog<ConsentAuditEntry>, IConse
 
     protected override ConsentAuditEntry PrepareForWrite(ConsentAuditEntry entry) =>
         entry with { ActionText = TrimText(entry.ActionText, MaxActionLength) };
-
-    private static string _DefaultPath() =>
-        Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default) ?? string.Empty, "consent-audit.jsonl");
 }
