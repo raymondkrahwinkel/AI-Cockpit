@@ -8,14 +8,19 @@ namespace Cockpit.Plugin.LocalCi.Workflows;
 internal sealed record WorkflowDocument(string Path, string Name, IReadOnlyList<WorkflowJob> Jobs);
 
 /// <param name="Keys">Every key written under this job, in file order — including ones this plugin has no meaning for.</param>
-/// <param name="HasMatrix">A <c>strategy.matrix</c> was present. One job in the file, many runs on GitHub.</param>
+/// <param name="StrategyKeys">The keys under <c>strategy</c>, empty when there is none. Kept rather than reduced to a
+/// matrix flag, because a strategy without a matrix is still one run and should not be refused for existing.</param>
 internal sealed record WorkflowJob(
     string Id,
     string? Name,
     RunsOnSpec RunsOn,
-    bool HasMatrix,
+    IReadOnlyList<string> StrategyKeys,
     IReadOnlyList<string> Keys,
-    IReadOnlyList<WorkflowStep> Steps);
+    IReadOnlyList<WorkflowStep> Steps)
+{
+    /// <summary>One job in the file, many runs on GitHub.</summary>
+    public bool HasMatrix => StrategyKeys.Contains("matrix", StringComparer.OrdinalIgnoreCase);
+}
 
 /// <param name="Keys">Every key written on this step, in file order.</param>
 /// <param name="Uses">The action reference, e.g. <c>actions/checkout@v7</c>, or null for a <c>run:</c> step.</param>

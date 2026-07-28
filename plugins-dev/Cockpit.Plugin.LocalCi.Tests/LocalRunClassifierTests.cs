@@ -214,6 +214,105 @@ public class LocalRunClassifierTests
     }
 
     [Fact]
+    public void StrategyWithoutAMatrix_DoesNotBlock()
+    {
+        // fail-fast and max-parallel only govern how GitHub schedules a set of runs. There is one run here, so
+        // refusing the job for carrying a strategy at all would be a refusal with nothing behind it.
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                strategy:
+                  fail-fast: false
+                  max-parallel: 2
+                steps:
+                  - run: dotnet build
+            """);
+
+        Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    [Fact]
+    public void UnknownStrategyKey_IsStillRefused()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                strategy:
+                  some-future-key: true
+                steps:
+                  - run: dotnet build
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("its strategy uses \"some-future-key\", which this check does not understand", verdict.Reason);
+    }
+
+    [Fact]
+    public void LocalActionFromThisRepository_IsRefusedWithoutBlamingGitHub()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: ./.github/actions/setup
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("it uses ./.github/actions/setup, an action from this repository, which this check does not run", verdict.Reason);
+        Assert.DoesNotContain("GitHub", verdict.Reason);
+    }
+
+    [Fact]
+    public void ContainerAction_IsRefusedWithoutBlamingGitHub()
+    {
+        // docker:// is the one shape act runs most naturally of all; saying it "only means something on GitHub"
+        // would be the opposite of true.
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: docker://alpine:3.19
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("it uses docker://alpine:3.19, a container action, which this check does not run", verdict.Reason);
+        Assert.DoesNotContain("GitHub", verdict.Reason);
+    }
+
+    [Fact]
+    public void EmptyUses_IsRefusedRatherThanTreatedAsARunStep()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: "   "
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Contains("empty uses:", verdict.Reason);
+    }
+
+    [Fact]
+    public void ActionWhoseNameMerelyStartsWithAnAllowedOne_IsRefused()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout-but-not-really@v1
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+    }
+
+    [Fact]
     public void NeedsAlone_DoesNotBlock()
     {
         // Ordering between jobs is not the same as exchanging artifacts, and only the second one is a reason.
@@ -227,6 +326,33 @@ public class LocalRunClassifierTests
             """);
 
         Assert.True(verdict.CanRunLocally);
+    }
+
+    [Fact]
+    public void JobThatCallsAnotherWorkflow_IsRefusedForWhatItIs()
+    {
+        var verdict = _ClassifyOne("""
+            jobs:
+              shared:
+                uses: ./.github/workflows/build.yml
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("it calls another workflow instead of running steps of its own", verdict.Reason);
+    }
+
+    [Fact]
+    public void JobWithNoSteps_IsRefusedRatherThanCalledRunnable()
+    {
+        // "Nothing to do" reported as a green tick is the shape of result this whole classification exists to avoid.
+        var verdict = _ClassifyOne("""
+            jobs:
+              empty:
+                runs-on: ubuntu-latest
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("it has no steps", verdict.Reason);
     }
 
     [Fact]

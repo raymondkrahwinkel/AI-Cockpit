@@ -38,7 +38,17 @@ internal static class LocalRunClassifier
     private static readonly HashSet<string> UnderstoodJobKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "name", "runs-on", "steps", "needs", "if", "env", "defaults", "outputs", "permissions", "concurrency",
-        "timeout-minutes",
+        "timeout-minutes", "strategy",
+    };
+
+    /// <summary>
+    /// What may sit under <c>strategy</c>. <c>matrix</c> is caught first and on its own; the other two only govern
+    /// how GitHub schedules a set of runs, which is nothing to a single local one — so a strategy without a matrix
+    /// must not be refused merely for existing.
+    /// </summary>
+    private static readonly HashSet<string> UnderstoodStrategyKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "matrix", "fail-fast", "max-parallel",
     };
 
     private static readonly HashSet<string> UnderstoodStepKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -52,6 +62,11 @@ internal static class LocalRunClassifier
         ["container"] = "it runs the whole job inside a container of its own, which this plugin does not set up",
         ["services"] = "it needs service containers running alongside it",
         ["environment"] = "it targets a deployment environment, which only exists on GitHub",
+        // A job-level uses: is a call to another workflow rather than a job with steps of its own. Understood, and
+        // refused — but named for what it is, not filed under "not understood".
+        ["uses"] = "it calls another workflow instead of running steps of its own",
+        ["with"] = "it passes inputs to another workflow instead of running steps of its own",
+        ["secrets"] = "it passes secrets to another workflow instead of running steps of its own",
         ["continue-on-error"] = "it uses continue-on-error, which decides whether a failure counts — and act ignores it, "
             + "so a local result would not mean the same thing",
     };
@@ -72,6 +87,11 @@ internal static class LocalRunClassifier
             return JobVerdict.Cannot(document, job, "it uses a matrix, so it is several runs rather than one");
         }
 
+        if (job.StrategyKeys.FirstOrDefault(key => !UnderstoodStrategyKeys.Contains(key)) is { } unknownStrategyKey)
+        {
+            return JobVerdict.Cannot(document, job, $"its strategy uses \"{unknownStrategyKey}\", which this check does not understand");
+        }
+
         if (_FirstRefused(job.Keys, RefusedJobKeys) is { } refusedJobKey)
         {
             return JobVerdict.Cannot(document, job, refusedJobKey);
@@ -85,6 +105,13 @@ internal static class LocalRunClassifier
         if (_RunsOnReason(job.RunsOn) is { } runsOnReason)
         {
             return JobVerdict.Cannot(document, job, runsOnReason);
+        }
+
+        if (job.Steps.Count == 0)
+        {
+            // "Nothing to do" is not the same as "runs fine". A job with no steps we can see is one we have read
+            // wrongly, and reporting it as runnable would put a green tick on a job that does nothing.
+            return JobVerdict.Cannot(document, job, "it has no steps");
         }
 
         if (job.Steps.Select(_StepUsesReason).FirstOrDefault(reason => reason is not null) is { } usesReason)
@@ -111,9 +138,29 @@ internal static class LocalRunClassifier
 
     private static string? _StepUsesReason(WorkflowStep step)
     {
-        if (step.ActionId is not { Length: > 0 } action)
+        if (step.Uses is null)
         {
             return null;
+        }
+
+        if (step.ActionId is not { Length: > 0 } action)
+        {
+            // A uses: that is present but empty is not a run: step — waving it through would be the one thing this
+            // classification promises not to do.
+            return "a step has an empty uses:, and an empty action is not something to assume about";
+        }
+
+        // Three shapes that all refuse, but for three different reasons — and only one of them is "GitHub". Saying
+        // that about a composite action in this very repository, or about a container action, would be a lie, and a
+        // reason the operator cannot act on is no better than no reason.
+        if (action.StartsWith("./", StringComparison.Ordinal) || action.StartsWith("../", StringComparison.Ordinal))
+        {
+            return $"it uses {action}, an action from this repository, which this check does not run";
+        }
+
+        if (action.StartsWith("docker://", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"it uses {action}, a container action, which this check does not run";
         }
 
         if (ArtifactActions.Contains(action))
