@@ -32,6 +32,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: every release and nightly now carries an installer and a portable build that an in-app update will be able
+  to read — `AI-Cockpit-win-stable-Setup.exe`, `AI-Cockpit-linux-nightly-Portable.zip` and so on, with the platform
+  and the channel in the name. They sit next to the downloads that were already there, which keep working exactly as
+  before; nothing updates itself yet, and which of the two sets is the one to keep is still to be decided. If you are
+  installing fresh today, the existing files remain the ones to use.
+
+  The Windows download is no longer a single self-extracting .exe internally: an updater replaces an application
+  folder, and a self-extracting file has nothing for it to replace. The portable .exe on the release page is
+  unchanged and still a single file.
+
 - added: a session can now see the other agent sessions sharing its desk. Until now an agent had no way of knowing it
   was not alone: two of them would end up on the same working tree and only find out when an edit stopped compiling.
   A new `cockpit-agents` server answers who else is on the workspace — their name, the profile they run under and the
