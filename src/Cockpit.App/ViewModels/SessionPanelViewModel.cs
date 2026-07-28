@@ -41,6 +41,26 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public virtual bool DeliversInboxAtTurnStart => false;
 
+    /// <summary>
+    /// Whether a prompt handed to <see cref="SendPromptAsync"/> right now would actually reach the agent — the
+    /// precondition an unprompted turn needs before it is worth composing one (AC-395's wake, AC-234's scheduled
+    /// resume).
+    /// <para>
+    /// Asked separately from <see cref="SendPromptAsync"/>'s own return value because on one pane kind that return
+    /// value is not the whole answer: a session whose driver never came up still holds a runtime, and a send into
+    /// it completes without going anywhere (see <c>_SendWithWaitingMessagesAsync</c>, which is why mail is only
+    /// taken from the inbox once the turn can leave). A wake that reads "true" there would be recorded as having
+    /// woken a session that never heard it. Each pane kind answers from the one fact it already holds rather than
+    /// from a second check of its own, so the two cannot drift.
+    /// </para>
+    /// <para>
+    /// False on the base for the same reason <see cref="DeliversInboxAtTurnStart"/> is: a pane kind added later
+    /// inherits "cannot be handed a turn", and a wake that does not fire is a message that waits, while one that
+    /// fires into a pane that cannot take it is a turn the operator paid for and nobody read.
+    /// </para>
+    /// </summary>
+    public virtual bool CanTakeAPrompt => false;
+
     /// <summary>Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
     private string _title = "Session";

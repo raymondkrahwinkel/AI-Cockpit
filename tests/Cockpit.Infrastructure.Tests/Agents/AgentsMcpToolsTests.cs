@@ -295,8 +295,14 @@ public sealed class AgentsMcpToolsTests : IDisposable
         () => Task.FromCanceled<WorkspaceAgentSnapshot?>(new CancellationToken(canceled: true)),
     };
 
+    /// <summary>
+    /// <c>wakeOptIn</c> was an empty reserved field while AC-391 shipped without anything to put in it; AC-395 gives
+    /// it an answer, and off is what a pane that has never said anything reports. Kept asserting the row rather than
+    /// deleted, because "not opted in" and "this field means nothing yet" look identical to a reader and only one of
+    /// them is true now — <c>AgentsMcpToolsWakeTests</c> holds the other side, where a pane that did opt in says so.
+    /// </summary>
     [Fact]
-    public async Task ListAgents_WithNothingClaimed_ReportsNoClaimsAndReservesTheWakeOptIn()
+    public async Task ListAgents_WithNothingClaimed_ReportsNoClaimsAndNoWakeOptIn()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
@@ -306,7 +312,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
         var self = json!["agents"]!.AsArray()[0]!;
         Assert.Empty(self["claims"]!.AsArray());
-        Assert.Null(self["wakeOptIn"]);
+        Assert.False(self["wakeOptIn"]!.GetValue<bool>());
     }
 
     /// <summary>

@@ -46,4 +46,64 @@ public interface IWorkspaceAgentGateway
     /// exist.
     /// </summary>
     Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId);
+
+    /// <summary>
+    /// Starts a turn on <paramref name="targetPaneId"/> carrying a labelled notice that
+    /// <paramref name="callerPaneId"/> marked a message to it as urgent (AC-395), and says what became of the
+    /// attempt.
+    /// <para>
+    /// Every reason a wake can be refused is decided <em>here</em>, on the UI thread, against the panes as they
+    /// are at that moment — not against the snapshot the sending tool checked a few instructions earlier. The
+    /// recipient can go busy, open a consent banner or leave the desk in that window, and each of those turns a
+    /// permitted wake into one of the three things a wake must never be: an interruption, a question pushed off
+    /// the screen, or a turn on a pane in another workspace.
+    /// </para>
+    /// <para>
+    /// Consent is the one check that is <em>not</em> here. It is a fact about the pane rather than about the
+    /// moment, it costs no dispatch to read, and deciding it before this call keeps a session that never opted in
+    /// from having a turn composed for it at all.
+    /// </para>
+    /// </summary>
+    Task<AgentWakeOutcome> TryWakeAsync(string callerPaneId, string targetPaneId, string kind);
+}
+
+/// <summary>
+/// What became of one wake — recorded on the append-only trail for every urgent message, and handed back to the
+/// sender so "urgent" never quietly means "ignored".
+/// </summary>
+public enum AgentWakeOutcome
+{
+    /// <summary>A turn was started on the recipient, carrying the labelled wake notice.</summary>
+    Woken,
+
+    /// <summary>The recipient has not opted in to being woken. The message is delivered and waiting; nothing was started.</summary>
+    NotOptedIn,
+
+    /// <summary>
+    /// The identical message was already waiting unread, so this send added nothing and nothing was woken. A wake
+    /// fires when a message arrives, not every time a sender says it again — otherwise re-sending in a loop is a
+    /// loop of turns on someone else's session.
+    /// </summary>
+    AlreadyWaiting,
+
+    /// <summary>The recipient was working — a turn in flight, or background work still running. The message waits.</summary>
+    Busy,
+
+    /// <summary>
+    /// The recipient has a question open in front of its operator. A turn started now would push a decision a
+    /// human is standing at off the screen, and nothing an agent calls urgent outranks that.
+    /// </summary>
+    AwaitingOperator,
+
+    /// <summary>The recipient's session could not take a turn at all — it has not started, or has already ended.</summary>
+    CannotTakeATurn,
+
+    /// <summary>The recipient is no longer a live pane the cockpit can find.</summary>
+    PaneGone,
+
+    /// <summary>The recipient is not on the caller's desk any more — the boundary, re-checked at the moment of waking.</summary>
+    NotOnDesk,
+
+    /// <summary>The attempt threw. The message is delivered either way; only the turn did not happen.</summary>
+    Failed,
 }
