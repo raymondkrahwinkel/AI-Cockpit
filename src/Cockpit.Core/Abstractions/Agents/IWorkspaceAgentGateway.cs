@@ -5,7 +5,13 @@ namespace Cockpit.Core.Abstractions.Agents;
 /// <param name="Name">The name shown on the pane's tab/sidebar row.</param>
 /// <param name="Profile">The profile label the session was started under, or null before it is known.</param>
 /// <param name="Statusline">The free-text line the session set via <c>cockpit-session__set_status</c>, or empty when none is set.</param>
-public sealed record WorkspaceAgentPane(string PaneId, string Name, string? Profile, string Statusline);
+/// <param name="DeliversAtTurnStart">
+/// Whether a message addressed to this pane reaches it on its own, carried by its next turn (AC-394), or only when
+/// that pane thinks to call <c>read_inbox</c>. Required rather than defaulted on purpose: a pane kind added later
+/// has to answer it, and a default would answer for it — wrongly and silently, in whichever direction the default
+/// happened to be written.
+/// </param>
+public sealed record WorkspaceAgentPane(string PaneId, string Name, string? Profile, string Statusline, bool DeliversAtTurnStart);
 
 /// <summary>A caller's workspace as the agent coordination line sees it: which workspace it is, and every AI-session pane sharing it (the caller included).</summary>
 /// <param name="WorkspaceId">

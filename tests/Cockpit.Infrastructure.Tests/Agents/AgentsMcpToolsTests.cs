@@ -51,7 +51,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
     {
         var snapshot = new WorkspaceAgentSnapshot(
             "ws-1",
-            [.. paneIds.Select(paneId => new WorkspaceAgentPane(paneId, paneId, null, string.Empty))]);
+            [.. paneIds.Select(paneId => new WorkspaceAgentPane(paneId, paneId, null, string.Empty, true))]);
         foreach (var paneId in paneIds)
         {
             _gateway.GetWorkspaceSnapshotAsync(paneId).Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
@@ -105,8 +105,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task ListAgents_ReturnsThePanesOfTheCallersOwnWorkspace_WithNameProfileAndStatus()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-1", "AC-13", "claude-code", "reviewing the diff"),
-            new WorkspaceAgentPane("pane-2", "Session 2", "gpt-5", string.Empty),
+            new WorkspaceAgentPane("pane-1", "AC-13", "claude-code", "reviewing the diff", true),
+            new WorkspaceAgentPane("pane-2", "Session 2", "gpt-5", string.Empty, true),
         ]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
@@ -123,14 +123,56 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal("reviewing the diff", first["statusline"]!.GetValue<string>());
     }
 
+    /// <summary>
+    /// Whether a pane surfaces mail on its own is reported per pane (AC-394), so a sender can tell the difference
+    /// between a neighbour that will see its message and one that only ever looks when it thinks to. The desk is
+    /// deliberately mixed: with both panes answering the same way, a payload that hardcoded either answer would pass.
+    /// </summary>
+    [Fact]
+    public async Task ListAgents_SaysPerPane_WhetherAMessageWillSurfaceThereOnItsOwn()
+    {
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-sdk", "Session 1", "claude-code", string.Empty, true),
+            new WorkspaceAgentPane("pane-tty", "Terminal", "codex-cli", string.Empty, false),
+        ]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-sdk").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        McpRequestContext.Set("pane-sdk");
+
+        var agents = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!.AsArray();
+
+        Assert.True(agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-sdk")!["deliversAtTurnStart"]!.GetValue<bool>());
+        Assert.False(agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-tty")!["deliversAtTurnStart"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// And said again at the moment of sending, because that is when a sender forms its expectation. "Delivered" on a
+    /// pane with no passive delivery means the message is waiting, not that anybody has been told — a sender that then
+    /// waits for a reply is waiting on nothing, and every other field in the reply reads like success.
+    /// </summary>
+    [Fact]
+    public async Task Notify_TellsTheSenderWhetherTheRecipientWillSeeItWithoutLooking()
+    {
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-sender", "Sender", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-tty", "Terminal", null, string.Empty, false),
+        ]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-sender").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
+        McpRequestContext.Set("pane-sender");
+
+        var json = JsonNode.Parse(await _Tools().NotifyAsync("pane-tty", "question", "are you on this branch?"));
+
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.False(json["deliversAtTurnStart"]!.GetValue<bool>());
+    }
+
     [Fact]
     public async Task ListAgents_NeverSeesAnotherWorkspace_OnlyQueriesTheVerifiedCallersOwnPane()
     {
         // Two workspaces, each with its own gateway snapshot. The transport verifies the caller as pane-x; only
         // that pane id may ever reach the gateway, whatever else might be true of the process (there is no
         // argument the tool could read a different one from — it takes none).
-        var workspaceX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty)]);
-        var workspaceY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty)]);
+        var workspaceX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty, true)]);
+        var workspaceY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceX));
         _gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceY));
         McpRequestContext.Set("pane-x");
@@ -148,8 +190,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task ListAgents_APaneThatNeverCalledIn_AppearsAsAVisibleGap_NotAsAbsence()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty),
-            new WorkspaceAgentPane("pane-2", "Silent", null, string.Empty),
+            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-2", "Silent", null, string.Empty, true),
         ]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
@@ -171,8 +213,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task ListAgents_EnrollsTheVerifiedCaller()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("verified-pane", "Verified", null, string.Empty),
-            new WorkspaceAgentPane("other-pane", "Other", null, string.Empty),
+            new WorkspaceAgentPane("verified-pane", "Verified", null, string.Empty, true),
+            new WorkspaceAgentPane("other-pane", "Other", null, string.Empty, true),
         ]);
         _gateway.GetWorkspaceSnapshotAsync("verified-pane").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("verified-pane");
@@ -227,7 +269,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
     [Fact]
     public async Task ListAgents_WithNothingClaimed_ReportsNoClaimsAndReservesTheWakeOptIn()
     {
-        var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty)]);
+        var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
 
@@ -250,8 +292,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     {
         var enormous = new string('s', 10_000);
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty),
-            new WorkspaceAgentPane("pane-2", "Noisy" + Escape + "[31m", null, enormous),
+            new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-2", "Noisy" + Escape + "[31m", null, enormous, true),
         ]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
@@ -409,8 +451,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task Notify_ToAPaneOutsideTheCallersWorkspace_Refuses()
     {
         // Two desks. pane-b is a real, live agent session — it is simply not on pane-a's desk.
-        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
-        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-b", "B", null, string.Empty)]);
+        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)]);
+        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-b", "B", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
         _gateway.GetWorkspaceSnapshotAsync("pane-b").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
         McpRequestContext.Set("pane-a");
@@ -791,10 +833,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task Notify_WhenTheRecipientLeavesTheDeskBetweenTheCheckAndTheDelivery_TakesTheDeliveryBack()
     {
         var withBoth = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
-            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty, true),
         ]);
-        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)]);
 
         // The first look sees pane-b, the second does not: the session closed in between.
         _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
@@ -820,10 +862,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task Notify_WhenADuplicateArrivesAfterTheRecipientLeft_LeavesTheWaitingMessageAlone()
     {
         var withBoth = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
-            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty, true),
         ]);
-        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(withBoth));
         McpRequestContext.Set("pane-a");
         var tools = _Tools();
@@ -852,8 +894,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public async Task Notify_WhenTheSendersOwnSessionEndsAfterTheDelivery_LeavesTheMessageWaitingForTheRecipient()
     {
         var desk = new WorkspaceAgentSnapshot("ws-1", [
-            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
-            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty, true),
         ]);
 
         // The first look places the sender; by the second it cannot be placed at all — which is what a sender whose
@@ -1008,7 +1050,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
     [Fact]
     public async Task Claim_WhenTheCallersOwnSessionEndsDuringTheCall_TakesTheClaimBackRatherThanLeavingItStranded()
     {
-        var desk = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+        var desk = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty, true)]);
         // Live when the desk is resolved, gone by the time the claim has been written.
         _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
             Task.FromResult<WorkspaceAgentSnapshot?>(desk),
@@ -1090,8 +1132,8 @@ public sealed class AgentsMcpToolsTests : IDisposable
     [Fact]
     public async Task Claim_AResourceHeldOnAnotherDesk_IsNeitherVisibleNorInTheWay()
     {
-        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty)]);
-        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty)]);
+        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty, true)]);
+        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty, true)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
         _gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
         McpRequestContext.Set("pane-x");

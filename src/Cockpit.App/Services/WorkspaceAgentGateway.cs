@@ -70,7 +70,16 @@ internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit) : IWorkspa
             // Only real agent sessions share the roster: see the caller-side refusal above for why a plain
             // terminal pane is excluded on both sides of this call.
             .Where(candidate => candidate.ShowPluginHeaderItems && _ResolveWorkspaceId(candidate, firstSessionsWorkspaceId) == workspaceId)
-            .Select(candidate => new WorkspaceAgentPane(candidate.PaneId, candidate.Title, candidate.ActiveProfileLabel, candidate.Statusline))
+            // Whether a pane gets passive delivery is asked of the pane, not decided here by its type: the pane that
+            // implements turn-start delivery is the one that can honestly claim it, and a check on the type here
+            // would be a second, separate answer to the same question — free to drift from the first the moment a
+            // pane kind is added.
+            .Select(candidate => new WorkspaceAgentPane(
+                candidate.PaneId,
+                candidate.Title,
+                candidate.ActiveProfileLabel,
+                candidate.Statusline,
+                candidate.DeliversInboxAtTurnStart))
             .ToList();
 
         return new WorkspaceAgentSnapshot(workspaceId, panes);

@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -265,6 +266,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     private readonly IUsageHistory? _usageHistory;
 
+    /// <summary>
+    /// Carries messages other agents left for this pane out with its next turn (AC-394). Optional: a pane built
+    /// without it — every design-time and most test constructions — simply sends what it was given, which is the
+    /// behaviour every session had before this existed.
+    /// </summary>
+    private readonly IAgentTurnInboxDelivery? _turnInboxDelivery;
+
     /// <summary>Whether the operator drives this session or a plugin embedded it (AC-251). Set by the host when it embeds.</summary>
     internal UsageRunKind RunKind { get; set; } = UsageRunKind.Interactive;
 
@@ -489,13 +497,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null,
-        IUsageHistory? usageHistory = null)
+        IUsageHistory? usageHistory = null,
+        IAgentTurnInboxDelivery? turnInboxDelivery = null)
     {
         _sessionManager = sessionManager;
         _usageHistory = usageHistory;
+        _turnInboxDelivery = turnInboxDelivery;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
+
+    /// <summary>
+    /// This is the pane kind turn-start delivery works on (AC-394): the host composes its turns as typed calls on a
+    /// runtime, so there is a real moment before one goes out to put a peer's message in — unlike a CLI in a pty,
+    /// where the program on the other side decides what a turn is and the host only has bytes.
+    /// </summary>
+    public override bool DeliversInboxAtTurnStart => true;
 
     private void _TrackPendingAttachments()
     {
@@ -1037,7 +1054,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            await _runtime.SendUserMessageAsync(text, images);
+            await _SendWithWaitingMessagesAsync(_runtime, text, images);
         }
         catch (Exception ex)
         {
@@ -1046,6 +1063,44 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             IsBusy = false;
             IsAwaitingResponse = false;
             _RecomputeStatus();
+        }
+    }
+
+    /// <summary>
+    /// The one place this pane hands a turn to its runtime, so that turn-start delivery (AC-394) cannot be reached
+    /// by one send path and missed by another — <c>SessionViewModelSendPathTests</c> holds it to that. Messages
+    /// waiting for this pane ride out ahead of <paramref name="text"/>, as a block that says where they came from;
+    /// with nothing waiting the runtime is handed the very same string it would have been handed before, so an idle
+    /// desk adds no tokens to any turn.
+    /// </summary>
+    private async Task _SendWithWaitingMessagesAsync(
+        ISessionRuntime runtime,
+        string text,
+        IReadOnlyList<Core.Sessions.ImageAttachment>? images)
+    {
+        var waiting = _turnInboxDelivery?.TakeForTurn(PaneId);
+        var outgoing = waiting is null ? text : $"{waiting.Render()}\n\n{text}";
+
+        try
+        {
+            await runtime.SendUserMessageAsync(outgoing, images);
+        }
+        catch
+        {
+            // The turn never left, so neither did the mail. Put it back before the failure travels on, or a send that
+            // failed would have quietly consumed messages the recipient never saw and the sender was told had
+            // arrived — the one outcome this line is built to prevent.
+            if (waiting is not null)
+            {
+                _turnInboxDelivery?.ReturnUndelivered(waiting);
+            }
+
+            throw;
+        }
+
+        if (waiting is not null)
+        {
+            _turnInboxDelivery?.ConfirmDelivered(waiting);
         }
     }
 
@@ -1561,7 +1616,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return false;
         }
 
-        await _runtime.SendUserMessageAsync(prompt).ConfigureAwait(false);
+        // Through the same funnel as the composer's own sends: a scheduled resume is a real turn on a real session,
+        // so mail waiting for this pane belongs on it just as much. Routing it around the funnel is exactly the kind
+        // of second path that leaves one route delivering and the other not.
+        await _SendWithWaitingMessagesAsync(_runtime, prompt, images: null).ConfigureAwait(false);
 
         return true;
     }
