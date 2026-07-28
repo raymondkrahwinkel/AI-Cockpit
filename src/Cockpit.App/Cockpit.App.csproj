@@ -267,6 +267,12 @@
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(PublishDir)bundled-plugins\usage-trend"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <!-- The example workspace and Autopilot were copied beside the exe but never into a publish: a publish that is
+         not single-file shipped a cockpit without them, since only EmbedBundledPlugins covers that route. -->
+    <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(PublishDir)bundled-plugins\example-workspace"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(PublishDir)bundled-plugins\autopilot"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(PublishDir)bundled-plugins\fan-out"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(PublishDir)bundled-plugins\claude-provider"

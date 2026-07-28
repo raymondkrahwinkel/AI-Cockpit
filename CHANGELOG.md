@@ -44,6 +44,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
   act on yourself.
 
+- fixed: a build published as a folder rather than a single file now carries the example workspace and Autopilot with
+  it. Both were copied next to the executable but never into a publish, so that route handed over a cockpit missing
+  two of the plugins it ships with — the single-file build was unaffected, which is why it went unnoticed.
+
 - added: a Local CI plugin that answers, honestly, whether this machine could run your GitHub workflow jobs before
   anything tries. Its settings page reports Docker in three states rather than two — not installed, installed but the
   engine is not answering, and ready — because "Docker Desktop is not running" is the usual one and what you do about
