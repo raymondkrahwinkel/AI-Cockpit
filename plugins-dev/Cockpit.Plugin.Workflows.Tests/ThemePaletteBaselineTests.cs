@@ -21,7 +21,12 @@ namespace Cockpit.Plugin.Workflows.Tests;
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
-    public static TheoryData<string> Scenes => ["canvas", "manager"];
+    private static readonly string[] SceneNames = ["canvas", "manager"];
+
+    public static TheoryData<string> Scenes => [.. SceneNames];
+
+    private static string BaselineDirectory =>
+        Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.Workflows.Tests", "Baselines");
 
     [Theory]
     [MemberData(nameof(Scenes))]
@@ -29,9 +34,16 @@ public class ThemePaletteBaselineTests
     {
         var painted = _Painted(scene);
 
-        var baseline = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.Workflows.Tests", "Baselines", $"{scene}.palette.txt");
-        ThemePaletteBaseline.Verify(baseline, painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, scene), painted);
     }
+
+    /// <summary>
+    /// The other direction (AC-414): the theory above walks the scenes, so a scene that goes away takes its test
+    /// case with it and leaves its file behind, green forever because nothing reads it any more.
+    /// </summary>
+    [Fact]
+    public void EveryBaseline_BelongsToASceneThatStillExists() =>
+        ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, SceneNames);
 
     /// <summary>
     /// Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour

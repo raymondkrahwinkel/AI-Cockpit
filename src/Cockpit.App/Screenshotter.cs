@@ -82,6 +82,48 @@ internal static class Screenshotter
         ["mcp-servers"] = (_, _) => _McpServers(),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
+        // The windows that had no scene at all (AC-414). Each is staged in the state that paints the most of
+        // itself, because a dialog rendered in its resting state records the colours of an empty form and leaves
+        // exactly the surfaces nobody can eyeball — an error line, a filled list — out of its own baseline.
+        ["clone-from-git-url"] = (_, _) => _CloneFromGitUrl(),
+        ["command-palette"] = (_, _) => _CommandPalette(),
+        ["confirmation"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel(
+                "Remove store", "Remove 'AI-Cockpit Plugins'? The plugins you installed from it stay where they are.", "Remove"),
+        },
+        // Asked for while changing a password, which is the variant with the extra field: the same dialog with
+        // one fewer box paints nothing this one does not.
+        ["password"] = (_, _) => new PasswordDialog
+        {
+            DataContext = new ViewModels.PasswordDialogViewModel(
+                "Change your password", "Type the password you use now, then the one you want.", requiresCurrent: true),
+        },
+        ["plugin-consent"] = (_, _) => new PluginConsentDialog
+        {
+            DataContext = new ViewModels.PluginConsentInfo(
+                "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
+                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2"),
+        },
+        ["restore-selection"] = (_, _) => _RestoreSelection(),
+        ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },
+        // With the password rejected, because the error line is the only thing on this window that is not always
+        // there — and the window stands in front of a cockpit nobody can reach past it to look.
+        ["unlock"] = (_, _) => new UnlockWindow
+        {
+            DataContext = new ViewModels.UnlockViewModel { Error = "That password does not unlock these credentials." },
+        },
+        ["worktrees"] = (_, _) => new WorktreesDialog { DataContext = new ViewModels.WorktreesViewModel() },
+        // The voice pill's rows are mutually exclusive, so one scene shows one row — and a row with no scene
+        // cannot be rendered at all, because a render is asked for by name and nothing walks this table. All five,
+        // therefore, rather than only the three that paint ink the others do not: speaking and unavailable would
+        // each produce a baseline that repeats another file, but that is a reason to keep a duplicate file, not a
+        // reason to leave a state of a window unlookable-at (the argument is in ThemePaletteBaselineTests).
+        ["voice-overlay-listening"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Listening),
+        ["voice-overlay-preparing"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Preparing, "Downloading the speech model (1.1 of 1.6 GB)", progress: 0.7),
+        ["voice-overlay-transcribing"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Transcribing),
+        ["voice-overlay-speaking"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Speaking),
+        ["voice-overlay-unavailable"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Unavailable, "Open mic is on"),
     };
 
     /// <summary>
@@ -293,6 +335,72 @@ internal static class Screenshotter
         });
 
         return new ManageStoresDialog { DataContext = manager };
+    }
+
+    // The clone dialog after a clone was refused (AC-90): the URL and destination the operator typed are still
+    // there, and the failure sits in the form under them. That line is the reason this scene picks the failed
+    // state — it is the one part of the dialog that only exists after something went wrong.
+    private static CloneFromGitUrlDialog _CloneFromGitUrl() => new()
+    {
+        DataContext = new ViewModels.CloneFromGitUrlDialogViewModel
+        {
+            Url = "https://github.com/aicockpit/cockpit-extras.git",
+            TargetFolder = "/home/you/code/cockpit-extras",
+            ErrorMessage = "Authentication failed. The repository is private — check the credentials git uses for this host.",
+        },
+    };
+
+    // The palette with commands in it, taken from the catalogue the real one is built from rather than written
+    // out here — a made-up row renders a shortcut this app does not have, on a picture that looks like the app.
+    // The catalogue also supplies what the scene is for: it binds some actions and deliberately leaves others
+    // unbound, and an unbound one shows a blank where the gesture goes, which a list of only-bound rows would not.
+    private static CommandPaletteDialog _CommandPalette()
+    {
+        var commands = Cockpit.Core.Shortcuts.ShortcutCatalog.All
+            .Select(shortcut => new ViewModels.PaletteCommand(shortcut.Label, shortcut.DefaultGesture, () => { }))
+            .ToList();
+
+        return new CommandPaletteDialog { DataContext = new ViewModels.CommandPaletteDialogViewModel(commands) };
+    }
+
+    // What a backup offers to put back (#70), with one plugin this cockpit already has and one it has never had —
+    // the two rows read differently, and a manifest carrying only one kind would show only one of them.
+    private static RestoreSelectionDialog _RestoreSelection()
+    {
+        var manifest = new Cockpit.Core.Backup.BackupManifest(
+            Cockpit.Core.Backup.BackupManifest.CurrentSchema,
+            "1.4.0",
+            DateTimeOffset.UtcNow.AddDays(-9),
+            IncludesCredentials: false,
+            RemovedSecrets: ["Anthropic API key"],
+            ProfileConfigDirectories: new Dictionary<string, string>(),
+            Plugins: new Dictionary<string, string>
+            {
+                ["git-status"] = "1.4.0",
+                ["transcript-search"] = "1.2.0",
+            });
+
+        return new RestoreSelectionDialog { DataContext = new ViewModels.RestoreSelectionViewModel(manifest, ["git-status"]) };
+    }
+
+    // The push-to-talk pill in one of its rows. The bars are given rising levels rather than the resting height
+    // the view model starts them at, because a waveform flat at its minimum is the picture this window's
+    // "unavailable" row exists to stop being shown.
+    private static VoiceOverlayWindow _VoiceOverlay(ViewModels.VoiceOverlayState state, string? status = null, double? progress = null)
+    {
+        var viewModel = new ViewModels.VoiceOverlayViewModel
+        {
+            State = state,
+            StatusText = status ?? string.Empty,
+            Progress = progress,
+        };
+
+        for (var bar = 0; bar < viewModel.Bars.Count; bar++)
+        {
+            viewModel.Bars[bar].Height = 4 + (12 * Math.Abs(Math.Sin(bar * 0.7)));
+        }
+
+        return new VoiceOverlayWindow { DataContext = viewModel };
     }
 
     private static Bitmap? _LoadAssetBitmap(string uri)
