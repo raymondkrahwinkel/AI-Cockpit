@@ -14,6 +14,9 @@ internal sealed class FakeMcpOAuthTokenStore : IMcpOAuthTokenStore
 
     public int Reads { get; private set; }
 
+    /// <summary>Runs right after a removal, so a test can stand in for what an authorization flow would write next.</summary>
+    public Action? OnRemoved { get; set; }
+
     public Task<McpOAuthToken?> GetAsync(string serverName, CancellationToken cancellationToken = default)
     {
         Reads++;
@@ -29,6 +32,7 @@ internal sealed class FakeMcpOAuthTokenStore : IMcpOAuthTokenStore
     public Task RemoveAsync(string serverName, CancellationToken cancellationToken = default)
     {
         _tokens.Remove(serverName);
+        OnRemoved?.Invoke();
         return Task.CompletedTask;
     }
 }

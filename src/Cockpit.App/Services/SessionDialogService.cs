@@ -36,6 +36,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator _tokenEstimator;
+    private readonly IMcpOAuthCoordinator _oauthCoordinator;
     private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalMcpProviders;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
@@ -56,6 +57,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpServerStore mcpServerStore,
         IMcpServerCatalog mcpServerCatalog,
         IMcpToolTokenEstimator tokenEstimator,
+        IMcpOAuthCoordinator oauthCoordinator,
         IEnumerable<ICockpitInternalMcpProvider> internalMcpProviders,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
@@ -77,6 +79,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
+        _oauthCoordinator = oauthCoordinator;
         _internalMcpProviders = [.. internalMcpProviders];
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
@@ -105,7 +108,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
-            _projectStore);
+            _projectStore, _oauthCoordinator);
         await viewModel.LoadAsync();
 
         // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
@@ -290,7 +293,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders);
+        var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders, _oauthCoordinator);
         await viewModel.LoadAsync();
 
         var dialog = new McpServersDialog { DataContext = viewModel };

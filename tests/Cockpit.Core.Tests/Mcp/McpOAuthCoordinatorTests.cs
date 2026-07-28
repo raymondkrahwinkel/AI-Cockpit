@@ -132,6 +132,161 @@ public class McpOAuthCoordinatorTests
     }
 
     [Fact]
+    public async Task GetState_ForAServerThatDoesNotUseOAuth_NeedsNoSignIn()
+    {
+        var (coordinator, _) = _Create();
+        var apiKeyServer = new McpServerConfig
+        {
+            Name = "youtrack",
+            Transport = McpTransport.Http,
+            Url = "http://127.0.0.1:9000/mcp",
+            Auth = McpServerAuth.ApiKey,
+            ApiKey = "yt-pat-value",
+        };
+
+        Assert.Equal(McpAuthState.NotRequired, await coordinator.GetStateAsync(apiKeyServer));
+    }
+
+    [Fact]
+    public async Task GetState_WithNothingStored_SaysASignInIsNeeded()
+    {
+        var (coordinator, _) = _Create();
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
+    }
+
+    [Fact]
+    public async Task GetState_WithAValidToken_SaysSignedIn_WithoutTouchingTheNetwork()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(McpAuthState.Authorized, await coordinator.GetStateAsync(_OAuthServer()));
+
+        // Exactly one read is the evidence that nothing else happened. A handshake consults the store again on its
+        // way through — that is how the renewal path shows up in these tests — so a second read here would mean a
+        // status had gone out to the network. A status is drawn for every server in a list; opening a dialog must
+        // not become an event on somebody else's server, nor an opportunity for a browser window.
+        Assert.Equal(1, store.Reads);
+    }
+
+    [Fact]
+    public async Task GetState_WithAnExpiredTokenThatCanStillBeRenewed_SaysSignedIn()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5), refreshToken: "refresh"));
+
+        // Not the same question Acquire answers. Acquire keeps a margin because it writes a token into a config a
+        // session then reads for an hour; a status answers "are you signed in", and this one renews itself on next
+        // use without the operator doing anything — telling them to sign in again would be asking for nothing.
+        Assert.Equal(McpAuthState.Authorized, await coordinator.GetStateAsync(_OAuthServer()));
+    }
+
+    [Fact]
+    public async Task GetState_WithAnExpiredTokenAndNoWayToRenew_SaysASignInIsNeeded()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5)));
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
+    }
+
+    [Fact]
+    public async Task GetState_ForATokenHeldUnderThisNameForADifferentHost_SaysASignInIsNeeded()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        // Same rule the credential path applies: a name is not an identity. Showing "signed in" for a host this
+        // token was never issued to would be the status lying about exactly the case that matters.
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer("https://elsewhere.example/mcp")));
+    }
+
+    [Fact]
+    public async Task GetState_WithATokenAboutToExpireAndNoWayToRenew_SaysASignInIsNeeded()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20)));
+
+        // The status has to agree with what a session start will actually do. Acquire refuses this token — it keeps a
+        // margin, because it writes into a config a session reads for an hour — so a badge saying "signed in" would
+        // be wrong about precisely the case this feature exists to make visible.
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
+    }
+
+    [Fact]
+    public async Task Acquire_AskedInteractively_DoesNotAnswerFromTheStoredToken()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        // "Sign in again" has to sign in again. Answering from the stored token would make the button do nothing —
+        // and the reason someone presses it is usually that the stored token looks fine here while the server has
+        // stopped honouring it. The server is unreachable in this test, so the flow cannot succeed and the answer is
+        // that authorization is needed; what matters is that the stored token was not handed back instead.
+        var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
+        Assert.Null(access.AccessToken);
+    }
+
+    [Fact]
+    public async Task Acquire_AskedInteractively_PutsTheOldTokenBack_WhenTheFlowProducesNothing()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        // Clearing first is mechanically necessary — the SDK answers from the cache, so leaving the token in place
+        // means the flow never runs. But closing the browser window should not cost the access you already had: one
+        // click on "Sign in again" would otherwise destroy a working credential with no way back.
+        var stored = await store.GetAsync("depot");
+        Assert.Equal("stored-token", stored?.AccessToken);
+        Assert.Equal("refresh", stored?.RefreshToken);
+    }
+
+    [Fact]
+    public async Task Acquire_AskedInteractively_KeepsAFreshTokenEvenWhenTheAnswerIsNotAuthorized()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        await store.SaveAsync("depot", _TokenFor("old-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+
+        // Stand in for a flow that succeeds and issues a short-lived token: the answer is still "not authorized",
+        // because handing over a credential with under two minutes on it writes a session that breaks a minute in.
+        store.OnRemoved = () => store.SaveAsync("depot", _TokenFor("fresh-token", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(60))).GetAwaiter().GetResult();
+
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
+
+        // Restoring on "not authorized" rather than on "nothing was written" threw away the credential the operator
+        // had just been to the browser for and put the stale one back.
+        Assert.Equal("fresh-token", (await store.GetAsync("depot"))?.AccessToken);
+    }
+
+    [Fact]
+    public async Task SignOut_ForgetsTheToken_SoTheNextUseAsksAgain()
+    {
+        var (coordinator, store) = _Create();
+        await store.SaveAsync("depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
+
+        await coordinator.SignOutAsync(_OAuthServer());
+
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
+        Assert.Null(await store.GetAsync("depot"));
+    }
+
+    [Fact]
+    public async Task SignOut_ForAServerWithNothingStored_IsHarmless()
+    {
+        var (coordinator, _) = _Create();
+
+        await coordinator.SignOutAsync(_OAuthServer());
+    }
+
+    [Fact]
     public async Task Acquire_WhenTheTokenExpiresWithinTheMargin_DoesNotHandItOver()
     {
         var (coordinator, store) = _Create();

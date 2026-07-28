@@ -32,6 +32,31 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
+  having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
+  in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
+  one place it is kept. Reading the status never goes near the network: it answers from what is stored, because a
+  status is drawn for every server in the list and opening a dialog should not become an event on somebody else's
+  server.
+
+- changed: signing in to an MCP server is offered once that server is saved, and while its name is the one it is
+  saved under. A sign-in is filed under the server's name, so a server that is not in the list yet — or whose name
+  you are in the middle of retyping — has no name for it to be filed under; the dialog says which of the two it is
+  rather than leaving a button that does nothing useful. Save the server, then sign in.
+
+- changed: a saved server hidden because the cockpit already runs one by that name now says so when you open the
+  dialog, instead of quietly disappearing from your settings the next time you save.
+
+- changed: two MCP servers can no longer be saved under one name, and adding a server picks one that is free. A name
+  is not a label here — it is how a server is identified to the agents and how its sign-in is filed — so a repeat
+  used to mean one of them quietly did not exist: configured, ticked, and absent. A name already used by one of the
+  cockpit's own servers is refused for the same reason.
+
+- added: when you start a session with a server ticked that nobody has signed in to, the New-session dialog says so
+  before the session begins rather than leaving you to find out at the first tool call. It says it and no more —
+  starting anyway stays your call. The tool count beside such a server stays blank on purpose, since counting a
+  server's tools would mean connecting to it and that must not open a browser; the hover text now says that is the
+  reason, where it used to offer "offline, needs a sign-in, or its plugin isn't loaded" and leave you guessing.
 - added: Autopilot starts an issue only once someone has put it on the stage that means "this is ready to be worked
   on" — `Ready` on YouTrack, the `ready` label on GitHub Issues — and refuses anything else with a note on the issue
   saying why. The reason it does not simply read the ticket and judge for itself: the ticket is the thing that gets

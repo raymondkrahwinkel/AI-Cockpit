@@ -20,4 +20,18 @@ public interface IMcpOAuthCoordinator
     /// <see cref="McpAuthState.AuthorizationRequired"/> instead.
     /// </summary>
     Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Where the cockpit stands with <paramref name="server"/>, for showing rather than for using (AC-355). Reads
+    /// what is stored and nothing else: no network, no browser, no renewal. That restraint is the point — a status
+    /// is drawn for every server in a list, and a status that connected somewhere would make opening a dialog an
+    /// event on someone else's server.
+    /// </summary>
+    Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Forgets what the cockpit holds for <paramref name="server"/>, so the next use asks for a sign-in again.
+    /// One place to withdraw from, which is the reason the token lives in one place to begin with.
+    /// </summary>
+    Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default);
 }
