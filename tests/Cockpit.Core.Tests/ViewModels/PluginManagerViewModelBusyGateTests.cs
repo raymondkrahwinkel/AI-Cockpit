@@ -280,9 +280,10 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     /// <summary>
-    /// The zip install reaches the same installer as a store install, so it waits its turn too. It lives on the
-    /// Installed view, which is not built while the catalogue is showing, so the rendered sweep cannot see it —
-    /// this is where its gate is held.
+    /// The zip install reaches the same installer as a store install, so it is closed off too while the store is
+    /// working — nothing queues behind the gate; the button goes dead. It lives on the Installed view, which is
+    /// not built while the catalogue is showing, so the rendered sweep cannot see it — this is where its gate is
+    /// held.
     /// </summary>
     [Fact]
     public void TheZipInstall_IsClosed_WhileSomethingIsAlreadyInstalling()
