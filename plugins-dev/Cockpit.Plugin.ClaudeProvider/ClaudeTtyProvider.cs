@@ -26,6 +26,18 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         // render — in the .claude.json the CLI reads for this spawn (the profile dir for a non-default profile).
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, workingDirectory);
 
+        // AC-408: the session id is not forced on the launch (see BuildArguments' remark), so it is derived the
+        // same way ClaudeTranscriptReader already does for read-aloud/status — as the new *.jsonl transcript that
+        // appears under this config dir after launch. Snapshotting before returning captures "known before this
+        // session" so the background watch below only ever reports transcripts this session itself created.
+        if (context.ReportConversationId is { } reportConversationId)
+        {
+            var stateDirectory = ClaudeConfigPaths.ResolveStateDirectory(
+                config.ConfigDir, Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable), userHome);
+            var knownAtLaunch = new ClaudeTranscriptReader().SnapshotTranscripts(context.ConfigJson);
+            _ = WatchConversationIdAsync(stateDirectory, knownAtLaunch, reportConversationId);
+        }
+
         var environmentOverlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (ClaudeConfigPaths.ResolveSpawnOverride(config.ConfigDir, userHome) is { } configDirOverride)
         {
@@ -71,6 +83,85 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         {
             StatusFile = statusFile,
         };
+    }
+
+    /// <summary>
+    /// How often <see cref="WatchConversationIdAsync"/> re-scans the config dir — the same interval
+    /// <see cref="ClaudeTranscriptReader"/> already polls at.
+    /// </summary>
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// How long <see cref="WatchConversationIdAsync"/> keeps scanning before giving up and reporting nothing —
+    /// long enough to outlast ordinary CLI startup latency (process spawn, an auth/version check) before the
+    /// transcript file exists at all, short enough to close the cross-session window described there promptly
+    /// rather than leaving it open for the rest of the app's life.
+    /// </summary>
+    private static readonly TimeSpan WatchTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Reports this session's conversation id exactly once, as soon as its own transcript can be told apart from
+    /// every other file under <paramref name="stateDirectory"/> (AC-408) — the same "new file since launch"
+    /// identification <see cref="ClaudeTranscriptReader"/> uses for read-aloud/status, but a bounded one-shot scan
+    /// rather than a standing watch.
+    /// <para>
+    /// A standing watch would keep scanning the <em>whole</em> config dir — every session's transcripts, not just
+    /// this one's — for as long as this session runs: Claude's per-session <c>&lt;cwd-hash&gt;</c> folder name is
+    /// undocumented, so narrowing the scan to just this session's own folder was rejected (see the remark on
+    /// <see cref="BuildArguments"/>), and forcing <c>--session-id</c> is rejected for the same reason. Left
+    /// unbounded, a second session starting under the same config dir later in this session's life would
+    /// eventually be seen and misreported as <em>this</em> session's id — silently, and the wrong pane would be
+    /// resumed into the wrong conversation once a later ticket persists what this one reports. Stopping after one
+    /// report, or after <see cref="WatchTimeout"/> with nothing found, closes that window instead of leaving it
+    /// open.
+    /// </para>
+    /// <para>
+    /// If more than one new file shows up in the very same poll, this session's own transcript cannot be told
+    /// apart from another session's that just started in the same instant — reporting nothing is the correct
+    /// answer there, not guessing the newest one (a wrong <see cref="PluginConversationIdState.Known"/> is worse
+    /// than none at all).
+    /// </para>
+    /// <para>
+    /// Consequence, deliberately accepted: this route never reports a changed id after a <c>/clear</c> — the new
+    /// transcript it starts is exactly the same "unattributable new file" case above, and this scan cannot tell
+    /// it apart from another session starting. <see cref="PluginTtyLaunchContext.ReportConversationId"/> itself
+    /// still allows repeated calls, and the SDK route (<see cref="IPluginSessionDriver.Conversation"/>) does
+    /// report a live mid-session change; this TTY route only cannot do so reliably, and does not pretend it can.
+    /// </para>
+    /// </summary>
+    internal static async Task WatchConversationIdAsync(
+        string stateDirectory,
+        IReadOnlySet<string> knownAtLaunch,
+        Action<PluginConversationId> reportConversationId,
+        TimeSpan? pollInterval = null,
+        TimeSpan? timeout = null)
+    {
+        var interval = pollInterval ?? PollInterval;
+        var deadline = DateTime.UtcNow + (timeout ?? WatchTimeout);
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                var newTranscripts = ClaudeTranscriptReader.EnumerateTranscripts(stateDirectory).Where(path => !knownAtLaunch.Contains(path)).ToList();
+                if (newTranscripts.Count == 1)
+                {
+                    reportConversationId(PluginConversationId.Known(Path.GetFileNameWithoutExtension(newTranscripts[0])));
+                    return;
+                }
+
+                if (newTranscripts.Count > 1)
+                {
+                    return;
+                }
+
+                await Task.Delay(interval, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort — a transient enumeration failure (the config dir vanishing) simply ends the watch
+            // instead of reporting a conversation id that was never confirmed.
+        }
     }
 
     /// <summary>

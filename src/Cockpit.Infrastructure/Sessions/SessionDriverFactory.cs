@@ -48,8 +48,9 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
         // The adapter resolves the operator's per-session MCP selection (#44) against the shared registry before
         // handing the endpoints to the plugin driver — the registry stays host-side (plugin isolation). GetService,
         // not GetRequiredService: the store is always registered in the running app, and its absence (a unit test
-        // that wires only the registry) simply means no fan-out, which the adapter already handles.
-        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>(), sessionResources: null, oauthCoordinator: services.GetService<IMcpOAuthCoordinator>());
+        // that wires only the registry) simply means no fan-out, which the adapter already handles. Same GetService
+        // reasoning for the conversation sink (AC-408): a unit test that wires none simply gets no reporting.
+        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>(), sessionResources: null, oauthCoordinator: services.GetService<IMcpOAuthCoordinator>(), conversationSink: services.GetService<Core.Sessions.ISessionConversationSink>());
     }
 
     // A provider going missing is almost never "no such provider" — it is a provider plugin that did not load:

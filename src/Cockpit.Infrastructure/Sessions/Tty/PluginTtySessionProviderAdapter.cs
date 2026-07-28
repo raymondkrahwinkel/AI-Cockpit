@@ -4,6 +4,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Core.Sessions.Tty;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
@@ -28,13 +29,19 @@ internal sealed class PluginTtySessionProviderAdapter(
     string configJson,
     IMcpServerCatalog? mcpServerCatalog = null,
     IMcpOAuthCoordinator? oauthCoordinator = null,
-    ILogger<PluginTtySessionProviderAdapter>? logger = null) : ITtySessionProvider
+    ILogger<PluginTtySessionProviderAdapter>? logger = null,
+    ISessionConversationSink? conversationSink = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
         var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId);
+
+        // AC-408: the same pane id TtyLauncher puts on the base environment as COCKPIT_PANE_ID, read back here
+        // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
+        // report belongs to. Null when the launch carries no pane id (a profile-less quick session).
+        var paneId = _PaneId(context.BaseEnvironment);
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
         // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var
@@ -48,6 +55,11 @@ internal sealed class PluginTtySessionProviderAdapter(
         {
             McpServers = mcpServers,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
+            // No sink or no pane id means nowhere to report to, so the provider gets no callback at all — a
+            // provider that always null-checks before calling it (the documented contract) stays correct either way.
+            ReportConversationId = conversationSink is null || paneId is not { Length: > 0 }
+                ? null
+                : conversation => conversationSink.Report(paneId, conversation.ToCore()),
         });
 
         return new TtyLaunchSpec(
@@ -202,4 +214,19 @@ internal sealed class PluginTtySessionProviderAdapter(
         { Mode: SessionResumeMode.BySessionId, SessionId: { } id } when !string.IsNullOrWhiteSpace(id) => new PluginTtyResume(id.Trim()),
         _ => null,
     };
+
+    // COCKPIT_PANE_ID rides the base environment rather than TtyLaunchContext.Options (AC-13 — TtyLauncher sets it
+    // there for the spawned process to read, not for a provider adapter), so it is read back the same way here.
+    private static string? _PaneId(IReadOnlyDictionary<string, string> baseEnvironment)
+    {
+        foreach (var (key, value) in baseEnvironment)
+        {
+            if (TtyEnvironment.IsCockpitPaneIdMarker(key))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
 }
