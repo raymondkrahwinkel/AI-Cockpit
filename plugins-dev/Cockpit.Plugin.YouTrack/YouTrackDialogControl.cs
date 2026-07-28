@@ -329,7 +329,7 @@ internal sealed class YouTrackDialogControl : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 4, 0, 0),
             Child = promptScroll,
@@ -390,7 +390,7 @@ internal sealed class YouTrackDialogControl : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
         };
 
@@ -702,33 +702,36 @@ internal sealed class YouTrackDialogControl : UserControl
         _detailStatusFor = issue.IdReadable;
     }
 
+    // Border.tag — the theme's shape for a label that classifies the thing beside it, rather than one more
+    // hand-written copy of that same shape.
     private Control _BuildChip(string text) => new Border
     {
-        Background = _Brush("CockpitSecondaryBgBrush"),
-        BorderBrush = _Brush("CockpitHairlineBrush"),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(4),
-        Padding = new Thickness(7, 2),
+        Classes = { "tag" },
         Margin = new Thickness(0, 0, 6, 0),
-        Child = new TextBlock { Text = text, FontSize = 11 },
+        Child = new TextBlock { Text = text },
     };
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
     // title and description as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(YouTrackIssue issue)
-    {
-        var data = new Dictionary<string, string>
-        {
-            ["tracker"] = "youtrack",
-            ["issue"] = issue.IdReadable,
-            ["title"] = issue.Summary,
-            ["description"] = issue.Description ?? string.Empty,
-            ["project"] = issue.Project,
-            ["url"] = _BuildIssueUrl(issue),
-        };
+    private async Task _PlanInAutopilotAsync(YouTrackIssue issue) =>
+        await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _BuildIssueUrl(issue)));
 
-        await _host.SendIntent("autopilot", "plan", data);
-    }
+    /// <summary>
+    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
+    /// </summary>
+    internal static Dictionary<string, string> PlanIntentPayload(YouTrackIssue issue, string url) => new()
+    {
+        ["tracker"] = "youtrack",
+        ["issue"] = issue.IdReadable,
+        ["title"] = issue.Summary,
+        ["description"] = issue.Description ?? string.Empty,
+        ["project"] = issue.Project,
+        ["url"] = url,
+        // What stage a person put it on, so the start gate can key on that rather than on what the description claims
+        // about itself. Sent raw — judging it is the gate's job, not the tracker's.
+        ["stage"] = issue.State ?? string.Empty,
+    };
 
     // What this issue's project allows, read per selection: until it is known, Set state stays disabled rather
     // than being offered and then refused.
@@ -1019,6 +1022,12 @@ internal sealed class YouTrackDialogControl : UserControl
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

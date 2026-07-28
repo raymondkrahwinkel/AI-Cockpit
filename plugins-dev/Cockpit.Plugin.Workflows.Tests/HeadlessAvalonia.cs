@@ -1,5 +1,9 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
+using Avalonia.Themes.Fluent;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -7,6 +11,13 @@ namespace Cockpit.Plugin.Workflows.Tests;
 /// An Avalonia runtime without a screen (#69). Controls ask the platform for things as ordinary as a mouse cursor,
 /// so they cannot even be constructed without one — this gives the tests a platform, once, so control-level bugs
 /// (a Button swallowing a pointer press, say) can be caught by a test rather than by the operator.
+/// <para>
+/// It runs <b>with the host's theme loaded</b> (AC-337). A plugin draws inside the cockpit, so a canvas card built
+/// against a bare application is not the card anybody sees: every brush it asks for by name resolves to nothing and
+/// it falls back to Fluent. Cockpit.App cannot be referenced from here — a plugin that links the host is not a
+/// plugin — so <c>Styles/Theme.axaml</c> is read off disk and parsed, which is as close to the real thing as this
+/// side of the boundary can get.
+/// </para>
 /// <para>
 /// Set up by hand rather than with Avalonia.Headless.XUnit, which requires xunit v3 while this repo is on v2.
 /// </para>
@@ -25,12 +36,54 @@ public sealed class HeadlessAvalonia
                 return;
             }
 
+            // Skia rather than headless drawing: headless drawing stubs out text shaping, so a rendered card would
+            // carry no glyphs and prove nothing about what it looks like.
             AppBuilder.Configure<Application>()
-                .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+                .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+                .UseSkia()
+                .AfterSetup(builder =>
+                {
+                    var application = builder.Instance
+                        ?? throw new InvalidOperationException("Avalonia set up without an application instance.");
+
+                    // Fluent first, then the icon set, then the cockpit's theme over both — the same order
+                    // App.axaml uses, and the order matters: half of Theme.axaml exists to take states back off
+                    // Fluent. Without the icon styles a MaterialIcon draws nothing at all, which in a render reads
+                    // as a missing control rather than as a missing style.
+                    application.Styles.Add(new FluentTheme());
+                    application.Styles.Add(new MaterialIconStyles(null));
+                    application.Styles.Add(CockpitTheme());
+
+                    application.RequestedThemeVariant = ThemeVariant.Dark;
+                })
                 .SetupWithoutStarting();
 
             _started = true;
         }
+    }
+
+    /// <summary>
+    /// The host's <c>Theme.axaml</c>, parsed from the repository. Loudly, not best-effort: a theme that silently
+    /// failed to load would leave the render tests asserting Fluent's colours while reading as if they had checked
+    /// the cockpit's.
+    /// </summary>
+    private static IStyle CockpitTheme()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "src", "Cockpit.App", "Styles", "Theme.axaml");
+            if (File.Exists(candidate))
+            {
+                return AvaloniaRuntimeXamlLoader.Load(File.ReadAllText(candidate)) as IStyle
+                    ?? throw new InvalidOperationException($"{candidate} did not parse into a style.");
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException(
+            "No src/Cockpit.App/Styles/Theme.axaml above the test output — these tests read the repo they belong to.");
     }
 }
 

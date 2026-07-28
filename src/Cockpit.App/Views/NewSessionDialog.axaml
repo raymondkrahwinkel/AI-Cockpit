@@ -349,6 +349,13 @@
                                              RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
             </Grid>
 
+            <!-- AC-355: a selected server the cockpit already knows needs a sign-in — said up front, same
+                 non-blocking inline-hint style as the login hint below; Start stays enabled either way. -->
+            <TextBlock Text="{Binding McpAuthorizationHintText}"
+                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                       IsVisible="{Binding ShowMcpAuthorizationHint}"/>
+
             <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
                  owns live switching itself, unlike the SDK per-session dropdowns. -->
             <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."

@@ -29,6 +29,33 @@ internal sealed class McpOAuthCoordinator(
             return McpOAuthAccess.NotRequired;
         }
 
+        // Asking interactively is the operator saying "sign me in", which has to mean a sign-in actually happens.
+        // Answering from a stored token would make "Sign in again" a button that does nothing — and the case it
+        // exists for is precisely the one where the stored token looks fine here but the server has stopped
+        // honouring it. Clearing first is what makes the flow run rather than the cache answer.
+        if (interactive)
+        {
+            // Clearing first is mechanically necessary: the SDK reads the stored token through the cache, so leaving
+            // it in place means the flow never runs and the button does nothing. But losing a working credential
+            // because a browser window was closed is not a price for pressing "sign in again" — so the old one is
+            // put back when the flow produced nothing.
+            var previous = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+            await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
+
+            var signedIn = await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
+
+            // Put the old one back only when the flow left nothing behind — not merely when the answer was "not
+            // authorized". A sign-in that succeeds and issues a short-lived token gets that verdict too (the answer
+            // keeps a margin), and restoring over it would throw away the credential the operator just went to the
+            // browser for and hand back the stale one.
+            if (previous is not null && await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false) is null)
+            {
+                await tokenStore.SaveAsync(server.Name, previous, cancellationToken).ConfigureAwait(false);
+            }
+
+            return signedIn;
+        }
+
         // A token is stored under the server's name, and a name is not an identity — a project's own entry replaces a
         // registry server by name and may carry a different address, and a rename does the same. So a token that was
         // not issued for this address is treated as absent, refresh token and all: renewing with the other host's
@@ -53,21 +80,55 @@ internal sealed class McpOAuthCoordinator(
 
         // Nothing to renew from and nobody to ask: say so rather than spend a round trip on a handshake that cannot
         // succeed. This is the ordinary "never signed in" case, and it has to be cheap — it runs on every start.
-        if (!interactive && string.IsNullOrWhiteSpace(stored?.RefreshToken))
+        if (string.IsNullOrWhiteSpace(stored?.RefreshToken))
         {
             return McpOAuthAccess.AuthorizationRequired;
         }
 
-        // The SDK owns the refresh grant and the full authorization flow; both run inside a connect, writing any new
-        // token through the cache the authorizer installs. So the way to renew is to connect once and then read what
-        // the cache holds — rather than a second, hand-rolled OAuth implementation drifting alongside the SDK's.
+        return await _ConnectAndReadAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Connects once and reports what that left in the store. The SDK owns both the refresh grant and the full
+    /// authorization flow, and both run inside a connect, writing any new token through the cache the authorizer
+    /// installs — so connecting and then reading is how either is driven, rather than a second, hand-rolled OAuth
+    /// implementation drifting alongside the SDK's.
+    /// </summary>
+    private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
+    {
         await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
 
-        var renewed = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
-        return renewed is not null && renewed.IsForResource(server.Url) && renewed.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
-            ? McpOAuthAccess.Authorized(renewed.AccessToken)
+        var token = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        return token is not null && token.IsForResource(server.Url) && token.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
+            ? McpOAuthAccess.Authorized(token.AccessToken)
             : McpOAuthAccess.AuthorizationRequired;
     }
+
+    public async Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default)
+    {
+        if (server.Auth != McpServerAuth.OAuth)
+        {
+            return McpAuthState.NotRequired;
+        }
+
+        var stored = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        if (stored is null || !stored.IsForResource(server.Url))
+        {
+            return McpAuthState.AuthorizationRequired;
+        }
+
+        // A token that can still be renewed counts as signed in whatever its clock says: the next use renews it
+        // without the operator noticing, so asking them to sign in again would be asking for nothing. Without a
+        // refresh token the same margin applies as on the credential path — a token with a minute left is one a
+        // session start will already refuse, and a status that says "signed in" about it is wrong about exactly the
+        // case this exists to make visible.
+        return !string.IsNullOrWhiteSpace(stored.RefreshToken) || stored.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
+            ? McpAuthState.Authorized
+            : McpAuthState.AuthorizationRequired;
+    }
+
+    public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
+        tokenStore.RemoveAsync(server.Name, cancellationToken);
 
     private async Task<McpOAuthToken?> _ReadAsync(string serverName, CancellationToken cancellationToken)
     {

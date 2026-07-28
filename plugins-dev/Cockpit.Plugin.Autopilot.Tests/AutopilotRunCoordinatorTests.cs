@@ -167,6 +167,28 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_NamesTheRunOnEveryStepItEmbeds_SoTheRunsSpendAddsUp()
+    {
+        // AC-251: a run gets a fresh session per step, which is exactly why its spend cannot be read off any one
+        // of them. Each request carries the run, so the host's usage trail can group them back into one figure.
+        var plan = _RunningPlan(_HardStep("1"));
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", RunId: "run-7", RunLabel: "AC-251 - persist usage");
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+
+        await shown.Task.WaitAsync(Timeout);
+        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
+            request.RunId == "run-7" && request.RunLabel == "AC-251 - persist usage"));
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
     public async Task RunAsync_ForANonGitFolder_EmbedsTheStepUnisolatedInTheWorkingDirectory()
     {
         // AC-174: a run whose folder the host reported is not a git repository runs its steps

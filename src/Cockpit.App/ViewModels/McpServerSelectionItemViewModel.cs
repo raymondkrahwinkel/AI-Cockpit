@@ -30,6 +30,16 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
     private McpServerToolEstimate? _tokenEstimate;
 
     /// <summary>
+    /// What the cockpit knows about this server's OAuth standing (AC-355), read once when the checklist is built —
+    /// null for a server the dialog never asked (no coordinator, e.g. the design-time constructor) or that turned
+    /// out not to need one (<see cref="McpAuthState.NotRequired"/> is folded to null here too, since neither
+    /// case has anything worth telling the operator).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TokenTooltip))]
+    private McpAuthState? _authState;
+
+    /// <summary>
     /// The per-row token figure next to the checkbox: blank before an estimate exists, "…" while counting, "?" when
     /// the server could not be enumerated (unreachable or needs auth), else "~4.2k" (AC-134).
     /// </summary>
@@ -41,13 +51,19 @@ public partial class McpServerSelectionItemViewModel : ViewModelBase
 
     /// <summary>
     /// Hover text explaining the per-row figure (AC-134) — most usefully the "?": a server counts as unknown when
-    /// it could not be reached to list its tools (offline, needs a sign-in, or its plugin is not loaded), which is
-    /// otherwise easy to read as a zero. Null when there is nothing worth explaining (no estimate yet).
+    /// it could not be reached to list its tools. That reason is usually a shrug ("offline, needs a sign-in, or its
+    /// plugin isn't loaded"), but for an OAuth server the cockpit already knows which one applies
+    /// (<see cref="AuthState"/> from AC-355's status read), so the tooltip says that instead of guessing — the pre-
+    /// flight count itself still opens no browser (<see cref="McpAuthState.AuthorizationRequired"/> tells the
+    /// operator to sign in, it does not sign them in). Null when there is nothing worth explaining (no estimate yet).
     /// </summary>
     public string? TokenTooltip =>
         IsEstimatingTokens ? "Counting this server's tools…"
         : TokenEstimate is not { } estimate ? null
-        : !estimate.Available ? "Couldn't reach this server to count its tools — it may be offline, need a sign-in, or its plugin isn't loaded."
+        : !estimate.Available
+            ? AuthState == McpAuthState.AuthorizationRequired
+                ? "Couldn't count this server's tools — it needs a sign-in first. Sign in from the MCP servers dialog, then re-check."
+                : "Couldn't reach this server to count its tools — it may be offline, need a sign-in, or its plugin isn't loaded."
         : $"{estimate.ToolCount} tool{(estimate.ToolCount == 1 ? string.Empty : "s")}, ~{McpToolTokenMath.Format(estimate.EstimatedTokens)} tokens (estimate)";
 
     public McpServerSelectionItemViewModel(string name)

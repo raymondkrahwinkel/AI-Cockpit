@@ -46,6 +46,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly NumericUpDown _maxAttempts;
     private readonly NumericUpDown _maxConcurrent;
     private readonly ComboBox _autonomy;
+    // One box per tracker the operator could start from — the installed ones plus the two Autopilot ships a default
+    // for, so a tracker it knows nothing about is still configurable rather than silently ungated.
+    private readonly Dictionary<string, TextBox> _executableStages = new(StringComparer.OrdinalIgnoreCase);
     private readonly StackPanel _templateList = new() { Spacing = 0 };
 
     // The dialog's pages, filled by _Section in the order they are declared below — the rail shows the titles and
@@ -105,6 +108,14 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             SelectedItem = settings.AutonomyMode(),
         };
 
+        foreach (var trackerId in host.TrackerProviders.Select(provider => provider.TrackerId)
+                     .Concat(AutopilotSettings.TrackersWithADefaultStage)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+        {
+            _executableStages[trackerId] = _Text(settings.ExecutableStage(trackerId));
+        }
+
         var ceo = _Section("CEO (planning)");
         ceo.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
         ceo.Children.Add(_Row("CEO profile", _ceoProfile));
@@ -120,6 +131,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         safety.Children.Add(_Row("Runs at once (rest queue up)", _maxConcurrent));
         safety.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
         safety.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
+        foreach (var (trackerId, box) in _executableStages)
+        {
+            safety.Children.Add(_Row($"{trackerId} starts from", box));
+        }
+
+        safety.Children.Add(_Hint("Which stage — or, on a tracker without stages, which label — means someone has judged an item ready to be worked on. Autopilot refuses anything else and says so on the issue, so the tracker's own gate decides what is executable rather than the ticket text claiming it about itself. Leave a field empty to start from any stage on that tracker."));
 
         var templatesSection = _Section("Templates");
         templatesSection.Children.Add(_Hint("Goal/brief templates you can start a run from in the plan flow. Builtin and plugin templates you can edit (kept as an override) and reset to their default; your own you can also delete."));
@@ -262,15 +279,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             _ => ("User", "CockpitStatusDoneBrush"),
         };
 
+        // Border.tag — the theme's shape for a label that classifies the thing beside it. The colour stays here
+        // because that is the part that actually differs between a builtin, a plugin and a user template.
         return new Border
         {
-            Background = _Brush("CockpitPanelBgBrush"),
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeight.SemiBold, Foreground = _Brush(key) },
+            Classes = { "tag" },
+            Child = new TextBlock { Text = text, FontWeight = FontWeight.SemiBold, Foreground = _Brush(key) },
         };
     }
 
@@ -301,14 +315,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
         _ = _host.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
         {
+            // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the
+            // corner. The ink used to be a near-black tuned to the orange accent, which stayed behind on the blue.
             var save = new Button
             {
+                Classes = { "Accent" },
                 Content = "Save",
-                Padding = new Thickness(15, 8),
-                CornerRadius = new CornerRadius(7),
-                FontWeight = FontWeight.SemiBold,
-                Background = _Brush("CockpitAccentBrush"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };
@@ -325,13 +337,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
 
             var cancel = new Button
             {
+                Classes = { "Ghost" },
                 Content = "Cancel",
-                Padding = new Thickness(13, 8),
                 Margin = new Thickness(0, 0, 8, 0),
-                CornerRadius = new CornerRadius(7),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(1),
-                BorderBrush = _Brush("CockpitHairlineBrush"),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 [DockPanel.DockProperty] = Dock.Right,
             };
@@ -450,10 +458,17 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetMaxConcurrentRuns((int)(_maxConcurrent.Value ?? 1));
         _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);
+        foreach (var (trackerId, box) in _executableStages)
+        {
+            _settings.SetExecutableStage(trackerId, box.Text?.Trim() ?? string.Empty);
+        }
+
         return true;
     }
 
     private static string? _Trimmed(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+    private static TextBox _Text(string value) => new() { Text = value, Width = 220 };
 
     private static NumericUpDown _Number(int value, int min, int max) => new()
     {

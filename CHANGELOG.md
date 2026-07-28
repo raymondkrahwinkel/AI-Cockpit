@@ -45,6 +45,42 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
   nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
   yet, or the server may not be mounted for it — so it says that rather than picking a cause.
+- added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
+  having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
+  in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
+  one place it is kept. Reading the status never goes near the network: it answers from what is stored, because a
+  status is drawn for every server in the list and opening a dialog should not become an event on somebody else's
+  server.
+
+- changed: signing in to an MCP server is offered once that server is saved, and while its name is the one it is
+  saved under. A sign-in is filed under the server's name, so a server that is not in the list yet — or whose name
+  you are in the middle of retyping — has no name for it to be filed under; the dialog says which of the two it is
+  rather than leaving a button that does nothing useful. Save the server, then sign in.
+
+- changed: a saved server hidden because the cockpit already runs one by that name now says so when you open the
+  dialog, instead of quietly disappearing from your settings the next time you save.
+
+- changed: two MCP servers can no longer be saved under one name, and adding a server picks one that is free. A name
+  is not a label here — it is how a server is identified to the agents and how its sign-in is filed — so a repeat
+  used to mean one of them quietly did not exist: configured, ticked, and absent. A name already used by one of the
+  cockpit's own servers is refused for the same reason.
+
+- added: when you start a session with a server ticked that nobody has signed in to, the New-session dialog says so
+  before the session begins rather than leaving you to find out at the first tool call. It says it and no more —
+  starting anyway stays your call. The tool count beside such a server stays blank on purpose, since counting a
+  server's tools would mean connecting to it and that must not open a browser; the hover text now says that is the
+  reason, where it used to offer "offline, needs a sign-in, or its plugin isn't loaded" and leave you guessing.
+- added: Autopilot starts an issue only once someone has put it on the stage that means "this is ready to be worked
+  on" — `Ready` on YouTrack, the `ready` label on GitHub Issues — and refuses anything else with a note on the issue
+  saying why. The reason it does not simply read the ticket and judge for itself: the ticket is the thing that gets
+  out of date. Items sit in a backlog claiming a fix is impossible where the guard is already in the code, or calling
+  a decision open that was taken weeks ago, and an agent reading that text has no way of knowing. A stage a person
+  moved the item onto is a different kind of evidence, so that is what it keys on; its own judgement of whether the
+  work fits one run still follows, and planning an epic now leaves out the children nobody has marked ready. An issue
+  still marked `[Brainstorm]` is refused whatever stage it is on. Run safety in Autopilot's settings has a box per
+  tracker for what that stage is called — empty one and that tracker starts from any stage, as before.
+- added: a YouTrack project that calls its status field `Kanban State` has its status read like any other. The issue
+  list already knew that name; the read behind it did not, so those projects showed no status at all.
 
 - added: an MCP server that wants a header of its own now works. Some do not take `Authorization: Bearer` at all —
   they want `X-Api-Key`, or a scheme other than Bearer — and until now there was no way to configure that, not even
@@ -58,6 +94,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
   On the Codex route the value travels through the environment rather than the command line, the same way its bearer
   token already did: a process argument is readable by every other account on the machine.
+
+- added: the cockpit keeps what your sessions spend. The token and cost figures beside a session's status used to live
+  only as long as the session did — close it, or close the app, and what yesterday cost was simply gone. They are now
+  written to `usage-history.jsonl` next to your settings as each turn finishes, so they survive a crash as well as an
+  ordinary close. Every line carries the tokens split by kind (input, output, cache read, cache write), the cost, the
+  turns, how long the session had been working, the model in effect and the profile it ran under. Sessions an agent
+  started on your behalf are marked as such, and when the plugin driving them names its run — Autopilot does — every
+  session that run opened carries the same name. That last part is what makes "what did that run cost" answerable at
+  all: a run takes a fresh session per step, so the figure was never on any one of them.
 
 - added: an MCP server that asks you to sign in through your browser now reaches every kind of session, not only the
   ones the cockpit drives itself. Until now such a server was handed to Claude, Codex or Kimi as a bare address with
@@ -430,6 +475,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the plugins are painted in the same colours as the rest of the cockpit. The repaint reached the app but
+  not the plugins that draw their own surfaces, so several were still finished in the old orange: the prompt
+  palette's search spark, the thin progress line above an issue list, the stripe down a workflow step. Buttons,
+  labels and boxes inside a plugin now take their shape from the same place the app's do, so a plugin's dialog no
+  longer reads as a window borrowed from another program.
+
+- changed: the workflow canvas is retuned. A step's leading stripe says what kind of step it is, and the plain one
+  used to be a muted blue — fine beside an orange accent, and a near-copy of the accent once that turned blue, so a
+  trigger stopped standing out among ordinary steps. It is a neutral slate now. The dotted background, the wire
+  labels and the ✕ that removes a connection follow the theme as well, instead of each holding a colour of its own.
+
 - changed: buttons, text fields and dropdowns are drawn to one shape. A field and the picker beside it are now the
   same height with their text on the same line, so a form of labels and controls lines up instead of stepping. A
   field also sits a shade lighter than the window rather than cut into it, which reads as something you type in.
@@ -541,6 +597,23 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
+  full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"
+  on GitHub, and consumed the pending release notes on its way out, leaving the real release that followed with
+  nothing to show. Only a plain `v1.2.3` starts a release now; anything else stops the run before a release exists
+  and before the notes are touched.
+
+- fixed: a workflow run that failed was reported in the amber the cockpit uses for "waiting for you" rather than in
+  red. A run that broke is not waiting for anybody, and in a list of runs the two looked the same.
+
+- fixed: the file headers in a session's diff came out a flat grey instead of the theme's text colour. They asked
+  for a colour that has never existed under that name, so the lookup could only ever miss and fall through to a
+  value written beside it.
+
+- fixed: the "needs you" badge, the "the CEO is working…" band and the number inside a step's dot were lettered in a
+  near-black mixed for the old orange. They sit on bright fills, which is the one place the theme's white cannot be
+  read — there is a colour for exactly that now, and it is the same one in all three places.
 
 - fixed: the offer to pick a session up again when its allowance returns now actually appears. It was only ever made
   on the reading that first passed the warning line, and only if that reading already showed the allowance fully

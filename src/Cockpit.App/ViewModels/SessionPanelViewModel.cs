@@ -446,8 +446,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // Measured on every reading, not only on the one that crossed the warning threshold: an allowance climbs to
         // spent, it does not usually arrive there. Gated on the first crossing, the offer only ever appeared for a
         // signal whose very first reading past its line already read 100% — so in practice it appeared for nobody.
-        // Once per standing period, so a prompt being typed into the box is not overwritten by the next poll.
-        if (_offeredSignal != signal.Key
+        // One offer at a time, whichever allowance was spent first: there is one prompt box and one moment on the
+        // bar, so a second spent allowance must not take them over. Keyed on there being no offer rather than on
+        // this signal not holding it — two allowances at 100% would otherwise hand it back and forth on every
+        // poll, rewriting the prompt under whoever is typing into it. When the one holding it rolls over the
+        // offer is withdrawn, and the other can take its turn.
+        if (_offeredSignal is null
             && signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
             && used >= 100
             && reading.ResetsAt is { } moment)
@@ -459,6 +463,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             ResumePrompt = signal.DefaultResumePrompt ?? string.Empty;
             ResumeReason = $"{name} is {used:0}% used";
             _offeredSignal = signal.Key;
+
+            // An offer is not the warning that was dismissed. "Keep an eye on this" is what got clicked away; this
+            // is the allowance actually being gone, and the buttons that act on it live inside the bar — so being
+            // silenced at 91% must not leave the offer sitting behind a hidden banner where nothing can reach it.
+            // Dismissing again covers this message too, which is the operator's call to make a second time.
+            _silenced.Remove(signal.Key);
+            _ShowWhatIsStillWorthSaying();
         }
     }
 

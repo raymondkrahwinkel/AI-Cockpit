@@ -56,7 +56,6 @@ internal sealed class PromptLibraryDialogControl : UserControl
                 new TextBlock { Text = template?.Name, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(4, 3) }, true),
         };
         _list.SelectionChanged += (_, _) => _LoadSelected();
-        PromptListSelectionStyle.Apply(_list);
 
         var newButton = new Button
         {

@@ -20,6 +20,7 @@ using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Hotkeys;
 using Cockpit.Core.Screenshots;
 using Cockpit.Core.Toasts;
+using Cockpit.Core.Usage;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Updates;
@@ -5299,6 +5300,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin workspace, not EnsureSessionWorkspace's forced Sessions desk: that would switch focus to a
         // Sessions tab and put the session where BelongsToActiveWorkspace shows it in the grid.
         session.WorkspaceId = workspaceId;
+        // What the usage trail needs to tell this session's spend apart from an operator's own (AC-251). The
+        // workspace cannot stand in for the run: a plugin runs every one of its runs in the same workspace, so
+        // only the embedder knows which run this session is for.
+        session.RunKind = UsageRunKind.Embedded;
+        session.RunId = request.RunId;
+        session.RunLabel = request.RunLabel;
         session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
         _SeedSessionPreferences(session);
 
