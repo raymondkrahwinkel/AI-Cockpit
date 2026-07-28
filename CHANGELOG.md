@@ -545,6 +545,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the release page now tells you what your own machine is about to do about an unsigned download, for all
+  three platforms rather than only macOS. Windows SmartScreen calls the publisher unknown, a downloaded AppImage has
+  no executable bit, and Gatekeeper reports a perfectly good app as damaged — each refusal looks like a broken
+  download and none of them say what to do next.
+
+  **If you install the cockpit on Windows, there is a one-time step.** The old installer put it in `Program Files`;
+  the new one installs per-user and does not adopt that copy. They are two separate installations, so the old one
+  would go on running and never update — quietly, since it goes on checking and finds nothing it can reach. Run the
+  new Setup once and remove the old entry from Settings → Apps. Nothing of yours moves: settings, plugins, projects
+  and logs all live in `%APPDATA%\Cockpit`, beside neither installation.
+
 - changed: the cockpit now looks for a newer build in the same place an update would come from, instead of asking
   GitHub's release list separately. Those were two answers to one question and free to disagree — a banner offering a
   build the updater could not see, or the other way round. There is one now.

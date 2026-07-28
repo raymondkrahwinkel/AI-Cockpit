@@ -247,12 +247,20 @@ loose DLLs and hunting for the executable:
 
 | Platform | Download | Update |
 |---|---|---|
-| **Windows** | `ai-cockpit-*-win-x64.exe` — a single self-contained file | Overwrite the .exe |
+| **Windows** | `AI-Cockpit-win-stable-Setup.exe` — installs per-user, or `…-Portable.zip` to unpack and run | From inside the app, once installed |
 | **macOS** | `ai-cockpit-*-macos-arm64.dmg` — open it, drag the app onto Applications | Replace the app |
 | **Linux** | `ai-cockpit-*-x86_64.AppImage` — one file, or the tarball for a server | Overwrite the AppImage |
 
-None of them need a .NET runtime installed, and none of them need an installer. Your settings live in
-`cockpit.json` (see below), not next to the binary, so replacing the binary keeps everything.
+None of them need a .NET runtime installed. Your settings live in `cockpit.json` (see below), not next to the
+binary, so replacing the binary keeps everything — and so does switching between these forms.
+
+Only a copy the Windows installer placed can update itself; a portable folder, a tarball or your distribution's
+own package cannot, and the Updates tab says so rather than offering a button that would do nothing.
+
+> **Upgrading a Windows install made with `ai-cockpit-…-win-x64-setup.exe`?** That installer put the cockpit in
+> `Program Files`. The current one installs per-user and does not adopt that location, so the two are separate
+> installations: run the new Setup once, then remove the old entry from **Settings → Apps**. Nothing of yours
+> moves — everything lives in `%APPDATA%\Cockpit`, beside neither of them.
 
 > **macOS — "is damaged and can't be opened":** the app is ad-hoc signed but not notarized, so a freshly
 > downloaded copy is quarantined by Gatekeeper. After dragging it onto /Applications, clear the quarantine flag

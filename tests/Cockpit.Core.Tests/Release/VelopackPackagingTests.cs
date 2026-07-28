@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Updates;
 
 namespace Cockpit.Core.Tests.Release;
@@ -134,6 +135,36 @@ public class VelopackPackagingTests
     public void TheFeed_IsAttachedToTheRelease(string workflow)
     {
         Assert.Contains("artifacts-velopack/*", _ReleaseStep(workflow), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A release page is where somebody stands when their machine refuses the download, so the release notes answer
+    /// all three refusals rather than only the one macOS gives (AC-389). Asserted per platform: the note grew out of
+    /// a macOS-only one, and the way it would shrink back is a platform quietly going missing.
+    /// </summary>
+    [Theory]
+    [InlineData("SmartScreen")]
+    [InlineData("xattr -cr /Applications/AI-Cockpit.app")]
+    [InlineData("chmod +x AI-Cockpit-*.AppImage")]
+    public void TheReleaseNotes_SayWhatEachPlatformNeedsOnFirstRun(string instruction) =>
+        Assert.Contains(instruction, _Step("release.yml", "Append what each platform needs on first run"), StringComparison.Ordinal);
+
+    /// <summary>
+    /// The one-time switch for somebody already running the Inno installation (AC-389). Velopack installs per-user
+    /// and does not adopt the copy in Program Files, so without this the old installation simply stops being updated
+    /// — silently, because it goes on checking and finding nothing it can reach.
+    /// </summary>
+    [Fact]
+    public void TheReleaseNotes_TellAnExistingWindowsInstallToSwitchOnce()
+    {
+        var notes = _Step("release.yml", "Append what each platform needs on first run");
+
+        Assert.Contains("ai-cockpit-…-win-x64-setup.exe", notes, StringComparison.Ordinal);
+        Assert.Contains("Settings → Apps", notes, StringComparison.Ordinal);
+
+        // The reason the switch is safe, and the one thing they will actually worry about. The folder is named from
+        // CockpitBuild.ProductionStateFolder rather than spelled out, so a rename cannot leave this pointing nowhere.
+        Assert.Contains($@"%APPDATA%\{CockpitBuild.ProductionStateFolder}", notes, StringComparison.Ordinal);
     }
 
     /// <summary>
