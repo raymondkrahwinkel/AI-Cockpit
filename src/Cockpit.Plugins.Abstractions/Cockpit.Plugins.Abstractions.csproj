@@ -203,6 +203,17 @@
          behaves exactly as before. The other direction still holds: a provider that *reads* it fails on an older host
          whose SDK has no such member, so the three that do (claude-provider, cli-agent-provider, kimi-provider) raise
          their manifest's minHostVersion to 0.7.0. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <!-- 1.33.0 (AC-367): ShowDialogAsync gains an overload taking a singleInstanceKey, for a window there should
+         only ever be one of. Needed because the same commit stops these windows being modal: two of them can now
+         be open at once, and the host cannot tell from a caption whether two asks mean one window — YouTrack and
+         GitHub Issues both title theirs "Track an issue in this session" over different panes. The plugin knows;
+         the host does not. A separate overload rather than a fifth optional parameter, since every plugin zip
+         already published calls the four-argument method and its signature has to stay (the AC-40 binary-compat
+         rule); the default body forwards to it, so a host without the override behaves as before. A plugin
+         calling it raises its manifest's minHostVersion. Additions only — a minor; major and abstractionsVersion
+         stay 1.
+         Note that the behaviour change itself — these windows no longer holding the cockpit — is the host's and
+         carries the host's version; what moves this number is the new member, not that. -->
     <!-- 1.32.0 (AC-419): ProjectLink, and NewSessionPrefill.LinkedProject carrying one — a plugin opening the
          New-session dialog names the cockpit project by the link the operator gave it (the YouTrack project it is
          tracked in, the repository it lives in) and the host preselects it, rather than the dialog opening on "No
@@ -212,7 +223,7 @@
          setter is absent on an older host's copy of this record — so the two plugins that set it (youtrack,
          github-issues) raise their manifest's minHostVersion to 0.8.0. Additions only — a minor; major and
          abstractionsVersion stay 1. -->
-    <Version>1.32.0</Version>
+    <Version>1.33.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

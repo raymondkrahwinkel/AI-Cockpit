@@ -95,6 +95,19 @@ public sealed partial class DialogModalitySplitTests
             $"{method} must subscribe to CloseRequested before setting the dialog's DataContext, or the answer is read before it is written");
     }
 
+    // Two projects can be edited side by side; the same project twice is two forms saving over each other. That
+    // distinction lives in the key, and the service cannot be exercised here to prove it behaves — it returns
+    // early without a desktop lifetime — so the key's shape is held instead. A mutation dropping the id escaped
+    // every other test in this repository.
+    [Fact]
+    public void SessionDialogService_KeysAProjectSurfaceOnTheProjectItEdits()
+    {
+        var body = _Body(_Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs")), "ShowProjectDialogAsync");
+
+        Assert.Contains("typeof(ProjectDialog)", body, StringComparison.Ordinal);
+        Assert.Contains("project?.Id", body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void PluginDialogHost_OpensPluginWindowsBesideTheCockpit()
     {

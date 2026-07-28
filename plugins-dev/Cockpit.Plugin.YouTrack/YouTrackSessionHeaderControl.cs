@@ -132,11 +132,13 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
 
     /// <summary>Opens the picker for one pane — what the header menu's "Track a YouTrack issue" runs. Linking from the big dialog links to whichever session is selected, which is a guess as soon as four panes are open.</summary>
     public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings) =>
+        // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(
             "Track an issue in this session",
             () => new YouTrackIssuePickerControl(settings, link => links.Link(session.PaneId, link, session.WorkingDirectory)),
-            720,
-            520);
+            $"track.{session.PaneId}",
+            width: 720,
+            height: 520);
 
     private void _ShowMenu()
     {

@@ -65,7 +65,8 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // window size (94%) the same way it clamps MinWidth/MinHeight, so a smaller screen still gets a dialog
         // that fits rather than one cropped at 1280 (verified in PluginDialogHost._TryCreateWindow).
         void OpenIssues() =>
-            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), 1280, 860);
+            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
+            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), "issues", width: 1280, height: 860);
 
         host.AddSideMenuButton("YouTrack", OpenIssues);
 

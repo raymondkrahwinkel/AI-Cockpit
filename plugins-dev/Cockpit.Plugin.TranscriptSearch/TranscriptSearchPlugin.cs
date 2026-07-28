@@ -24,11 +24,13 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // One dialog for standalone search: reopening while it's up should refocus it, not stack a second one.
         void OpenSearch() => _ = host.ShowDialogAsync(
             "Search transcripts",
             () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host.Actions),
-            820,
-            600);
+            "search",
+            width: 820,
+            height: 600);
 
         host.AddSideMenuButton("Search transcripts", OpenSearch);
         host.AddShortcut(new PluginShortcut("transcript-search.open", "Search transcripts", "Ctrl+F", OpenSearch));
@@ -39,6 +41,8 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
         async Task<PickedConversation?> SearchForConversationAsync()
         {
             PickedConversation? picked = null;
+            // No key: this dialog hands its pick back to the awaiting New-session dialog, so a second call must
+            // get its own instance and its own answer rather than the first caller's still-pending Task.
             await host.ShowDialogAsync(
                 "Search transcripts",
                 () => new TranscriptSearchDialogControl(

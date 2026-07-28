@@ -313,6 +313,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             FontSize = 12,
         };
 
+        // No key: this is per template, and two templates can share a name — a key would collapse them into one window.
         _ = _host.ShowDialogAsync(isNew ? "New template" : $"Edit “{template!.Name}”", () =>
         {
             // Button.Accent, not a hand-mixed copy of it: the theme owns the fill, the ink on that fill and the

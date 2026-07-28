@@ -103,11 +103,13 @@ internal sealed class GitHubSessionHeaderControl : UserControl
 
     /// <summary>Opens the picker for one pane — what the header menu's "Track a GitHub issue" runs.</summary>
     public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, GitHubIssuesSettings settings) =>
+        // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(
             "Track an issue in this session",
             () => new GitHubIssuePickerControl(settings, issue => links.Link(session.PaneId, issue, session.WorkingDirectory)),
-            720,
-            520);
+            $"track.{session.PaneId}",
+            width: 720,
+            height: 520);
 
     private void _ShowMenu(GitHubIssue issue)
     {

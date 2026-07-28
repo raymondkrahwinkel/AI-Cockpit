@@ -287,6 +287,15 @@ internal sealed class CockpitHost(
     /// is unconfigured, so it is where the way to configure it belongs.
     /// </summary>
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
+        _ShowPluginDialogAsync(title, createContent, width, height, singleInstanceKey: null);
+
+    public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
+        // Scoped to the plugin, so a plugin only has to be unique within itself: two plugins picking "issues"
+        // are two windows, which is what they are. Without the scope the first plugin to open one would answer
+        // for the other, and the operator would act on the wrong repository.
+        _ShowPluginDialogAsync(title, createContent, width, height, $"{pluginId}:{singleInstanceKey}");
+
+    private Task _ShowPluginDialogAsync(string title, Func<Control> createContent, double width, double height, string? singleInstanceKey) =>
         dialogHost.ShowDialogAsync(
             title,
             createContent,
@@ -294,7 +303,8 @@ internal sealed class CockpitHost(
             height,
             onOpenSettings: contributionSink.HasPluginSettings(pluginId)
                 ? () => contributionSink.OpenPluginSettingsAsync(pluginId)
-                : null);
+                : null,
+            singleInstanceKey: singleInstanceKey);
 
     /// <summary>Delegates to the cockpit's own <see cref="MarkdownView"/> — no second parser, one markdown idiom for both the transcript and every plugin dialog.</summary>
     public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };

@@ -543,6 +543,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: an issue's description is now shown the way the cockpit shows any other text — headings, lists, links
   and code as they are meant to look, instead of the raw `##` and `**` the tracker stores.
 
+- added: a plugin can say which of its windows there should only ever be one of, so asking for it again brings
+  the open one forward instead of opening a second. Needed now that these windows no longer hold the cockpit and
+  two of them can be up at once. The plugin decides, not the cockpit: all the cockpit is handed is a title, and
+  two plugins can title different windows the same — YouTrack and GitHub Issues both call theirs "Track an issue
+  in this session" while meaning different sessions. Plugin authors: `ShowDialogAsync` takes a
+  `singleInstanceKey` overload, and a plugin using it needs a cockpit of 0.9.0 or newer.
+
 ### Changed
 
 - changed: the release page now tells you what your own machine is about to do about an unsigned download, for all
@@ -781,10 +788,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   window in front; the only way out was to close what you were working in and lose what you had typed into it.
 
   Those windows now open beside the cockpit instead of over it. You can read a running session, answer an agent,
-  and go back to the window you left open with everything you had filled in still there. Asking for one of the
-  cockpit's own — projects, options, the plugin store — while it is already open brings that window to the front
-  rather than stacking a copy that would save over the first. A plugin's window is not folded together that way:
-  two of them can carry the same title while showing different things, so each opening gets its own window.
+  and go back to the window you left open with everything you had filled in still there. Asking for one that is
+  already open brings that window to the front rather than stacking a copy that would save over the first — for
+  the cockpit's own windows, and for a plugin's where the plugin says which of its windows are one of a kind.
+  YouTrack's issue list is one; the issue picker it opens from a session's header is one *per session*, since
+  two of them are about different sessions and folding them together would track the issue against the wrong
+  one.
 
   What stays as it was, deliberately: confirming a removal, typing a password, trusting a plugin before it is
   installed, and choosing what a restore overwrites. Those are answered in seconds, and none of them may be left

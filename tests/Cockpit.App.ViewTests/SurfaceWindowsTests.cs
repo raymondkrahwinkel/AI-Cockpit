@@ -55,6 +55,12 @@ public sealed class SurfaceWindowsTests
             Assert.False(second.IsVisible);
             Assert.Single(owner.OwnedWindows);
 
+            // ⚠️ Not asserted, because it cannot be: that the open window is also brought *forward*. Measured —
+            // Activate() is a no-op in this backend, leaving IsActive false and never raising Activated, on the
+            // owner as well. So removing the Activate() call from SurfaceWindows escapes every test here, and a
+            // second click on Projects would silently do nothing visible. It is checked by hand instead (AC-367,
+            // IL#9). Recorded rather than papered over with an assertion that would pass either way.
+
             first.Close();
             await pending;
 
@@ -101,6 +107,11 @@ public sealed class SurfaceWindowsTests
             // off a window that was not shown with ShowDialog, so the answer never travels through Close.
             string? answer = null;
             var pending = surfaces.ShowAsync("key", surface, owner, () => answer);
+
+            // Asserted on this overload too, and not only on the one that answers nothing: a mutation round put
+            // ShowDialog back here alone and every test stayed green, which would have made the New-session form
+            // and the project editor block the cockpit again without a word.
+            Assert.False(surface.IsDialog);
 
             answer = "chosen";
             surface.Close();
@@ -149,17 +160,22 @@ public sealed class SurfaceWindowsTests
             var pending = surfaces.ShowAsync("key", surface, owner);
 
             // Saving a project closes its window and the caller reopens the list from the line after the await.
-            // A TaskCompletionSource resumes its awaiter inline, so releasing the caller before clearing the
-            // registry would hand that reopen the window that has just closed — and it would never appear.
-            async Task Caller()
-            {
-                await pending;
-                Assert.Null(surfaces.TryActivateAsync("key"));
-            }
+            // Releasing the caller before clearing the registry would hand that reopen the window that has just
+            // closed, and it would never appear.
+            //
+            // Continued synchronously on purpose: an ordinary `await` in this harness is posted to the dispatcher
+            // and runs well after the completion, so it cannot tell the two orders apart — a mutation round put
+            // the removal after the release and every test stayed green. This runs in the completion itself,
+            // which is where a real awaiter of a TaskCompletionSource resumes.
+            var observed = pending.ContinueWith(
+                _ => surfaces.TryActivateAsync("key"),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
 
-            var caller = Caller();
             surface.Close();
-            await caller;
+
+            Assert.Null(await observed);
 
             owner.Close();
         });

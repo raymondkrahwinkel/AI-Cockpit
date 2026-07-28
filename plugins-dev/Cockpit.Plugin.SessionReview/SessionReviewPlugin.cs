@@ -31,11 +31,13 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
         host.AddSessionHeaderAction(new PluginSessionAction(
             "Review changes…",
             string.Empty,
+            // One review dialog per pane: reopening for the same session should refocus it, not stack another.
             session => _ = host.ShowDialogAsync(
                 "Session review",
                 () => new SessionDiffDialogControl(host, session),
-                860,
-                620))
+                $"review.{session.PaneId}",
+                width: 860,
+                height: 620))
         {
             IconKind = MaterialIconKind.FileCompare,
         });

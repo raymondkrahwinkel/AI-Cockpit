@@ -21,18 +21,25 @@ namespace Cockpit.App.Plugins;
 /// in for minutes, and as a modal it took every running session down with it.
 /// </para>
 /// <para>
-/// Unlike the cockpit's own surfaces these are <b>not</b> reduced to one window apiece, because the host has
-/// nothing to identify them by. The only thing it is given is the caption, and a caption is not an identity:
-/// the YouTrack and GitHub-Issues plugins both open "Track an issue in this session", each closed over a
-/// different pane, and Transcript-search puts two different controls behind "Search transcripts" — the
-/// standalone search and the conversation picker that answers the New-session dialog. Folding those together
-/// would link an issue to the wrong session, or hand the picker's caller a window that answers nothing.
+/// Reduced to one window apiece only where the plugin says so, through a key it supplies. The host cannot
+/// work that out on its own: all it is handed is a caption, and a caption is not an identity. The YouTrack
+/// and GitHub-Issues plugins both title theirs "Track an issue in this session" over different panes, and
+/// Transcript-search puts two different controls behind "Search transcripts" — the standalone search and the
+/// conversation picker that answers the New-session dialog. Keying on the caption linked an issue to the
+/// wrong session and left the picker's caller with a window that answers nothing.
 /// </para>
 /// </summary>
 internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
-    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
+    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null)
     {
+        var key = _Key(singleInstanceKey);
+        if (surfaces.TryActivateAsync(key) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out _))
         {
             return;
@@ -40,11 +47,18 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
         window.Content = _WithToasts(createContent(), owner);
         CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
-        await surfaces.ShowAsync(new object(), window, owner);
+        await surfaces.ShowAsync(key, window, owner);
     }
 
-    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
+    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null, string? singleInstanceKey = null)
     {
+        var key = _Key(singleInstanceKey);
+        if (surfaces.TryActivateAsync(key) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out var maximum))
         {
             return;
@@ -101,8 +115,14 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
-        await surfaces.ShowAsync(new object(), window, owner);
+        await surfaces.ShowAsync(key, window, owner);
     }
+
+    // No key means no folding: a fresh object matches nothing, so every ask opens its own window. Keys are
+    // namespaced away from the cockpit's own surfaces, which key on their dialog's Type, so a plugin cannot
+    // collide with Options however it names its window.
+    private static object _Key(string? singleInstanceKey) =>
+        singleInstanceKey is null ? new object() : ("plugin", singleInstanceKey);
 
     // The cockpit's toasts live on the main window, so a toast raised from inside a plugin's window (a workflow's
     // Notify step, say) appeared nowhere at all when that window covered it. The same overlay goes on top of this
