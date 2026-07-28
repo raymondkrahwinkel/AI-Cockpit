@@ -157,6 +157,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   work fits one run still follows, and planning an epic now leaves out the children nobody has marked ready. An issue
   still marked `[Brainstorm]` is refused whatever stage it is on. Run safety in Autopilot's settings has a box per
   tracker for what that stage is called — empty one and that tracker starts from any stage, as before.
+- added: that same "ready to be worked on" check now also reaches an epic's children. Planning an epic reads its
+  child issues to fold them into one run, and a child the CEO names is checked against the tracker itself — its real
+  title and stage, not the CEO's own description of it — before the plan is accepted; one still on `Backlog` or
+  marked `[Brainstorm]` gets the plan turned down with the reason, the same as if you had clicked it yourself.
 - added: a YouTrack project that calls its status field `Kanban State` has its status read like any other. The issue
   list already knew that name; the read behind it did not, so those projects showed no status at all.
 
