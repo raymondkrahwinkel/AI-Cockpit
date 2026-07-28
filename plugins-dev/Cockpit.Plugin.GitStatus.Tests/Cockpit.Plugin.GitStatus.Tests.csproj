@@ -28,6 +28,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj" />
+    <!-- TestGitDirectory (AC-339), taken from the project that exists to be shared rather than copied here: git
+         leaves its objects read-only and Windows will not delete those, which failed every test in the workflow-
+         steps fixture from its teardown. Four other plugin test projects take the same reference. -->
+    <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>
