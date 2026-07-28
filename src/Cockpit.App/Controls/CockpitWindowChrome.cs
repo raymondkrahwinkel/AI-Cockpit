@@ -23,13 +23,20 @@ internal static class CockpitWindowChrome
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
     // Weights are the closest real ones: the reference asks for 600/660, which a variable web font can hit
     // and the desktop UI font rounds to SemiBold either way.
-    private const double DialogTitleFontSize = 20;
-    private const double DialogSubtitleFontSize = 12.5;
+    //
+    // The dialog sizes below deliberately depart from that reference. Transcribed literally, its heading
+    // ran to 63px of bar for a name alone and 97px with the explanation under it — on a short dialog like
+    // Set status, two fifths of the window before its first control. The reference is a web page mocking up
+    // one dialog at a comfortable size; the same figures on the smallest real one made the header the loudest
+    // thing in it. Measured against three rendered dialogs and chosen from four side-by-side variants
+    // (AC-426), so these are the values the header was judged on, not the ones it was drawn from.
+    private const double DialogTitleFontSize = 15;
+    private const double DialogSubtitleFontSize = 11.5;
     private const double WindowTitleFontSize = 15.5;
     // The brand mark at the head of the app's own bar, kept at the newer mockup's proportion to the name beside
     // it (wispslate-cockpit-2026-07-28.html asks for a 19px mark against a 13px name; ours is a 15.5px name).
     private const double AppMarkHeight = 22;
-    private const double DialogCaptionButtonHeight = 30;
+    private const double DialogCaptionButtonHeight = 26;
     // The explanation under a name is one or two lines in the reference; more than three and the bar has stopped
     // being a header. Bounded rather than trusted, for the same reason the name itself is.
     private const int SubtitleMaxLines = 3;
@@ -37,7 +44,7 @@ internal static class CockpitWindowChrome
     // The room around the heading. It sits on the heading rather than on the bar, so the caption buttons keep
     // reaching the window's own edge: the reference is a web page whose "window" has no screen corner to aim
     // at, and inset close buttons cost a maximised window the corner the mouse can be thrown at blindly.
-    private static readonly Thickness DialogPadding = new(22, 19);
+    private static readonly Thickness DialogPadding = new(20, 12);
     private static readonly Thickness WindowPadding = new(18, 14);
 
     // Decoded once rather than per window: the main window and the unlock window can both be standing.
@@ -185,7 +192,7 @@ internal static class CockpitWindowChrome
     {
         var heading = new StackPanel
         {
-            Spacing = 3,
+            Spacing = 1,
             Margin = DialogPadding,
             VerticalAlignment = VerticalAlignment.Center,
         };

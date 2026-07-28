@@ -120,12 +120,35 @@ public class DialogChromeTests
     {
         var window = _ShownProjectsDialog();
 
-        Assert.Equal(20d, _Name(window).FontSize);
+        Assert.Equal(15d, _Name(window).FontSize);
 
         var subtitle = Assert.Single(_VisibleTextBlocks(window),
             block => block.Text?.StartsWith("What your sessions work on", StringComparison.Ordinal) == true);
-        Assert.Equal(12.5d, subtitle.FontSize);
+        Assert.Equal(11.5d, subtitle.FontSize);
         Assert.True(subtitle.Bounds.Height > 0, "a heading's second line has to be on screen to be a subtitle");
+        Assert.True(subtitle.FontSize < _Name(window).FontSize,
+            "the line under the name explains it, so it cannot be reading as loudly as the name");
+    });
+
+    [Fact]
+    public void TheBar_AddsNoMoreRoomAroundItsHeading_ThanTheHeadingItselfIsWorth() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-426: the bar was 63px for a name alone and 97px with its explanation — on a short dialog like Set
+        // status, two fifths of the window before its first control. What made it heavy was the room around the
+        // heading, not the heading, so that is what this holds: everything the bar adds on top of the text it
+        // carries. Measured as a difference rather than an absolute height on purpose — the fonts come from the
+        // OS, so a bound on the bar's own height would mean something different on CI than it does here.
+        var window = new Window { Width = 600, Height = 400 };
+        CockpitWindowChrome.Apply(window, "Set status", "What is this session working on?");
+        window.Show();
+        window.UpdateLayout();
+
+        var name = window.GetVisualDescendants().OfType<TextBlock>().First(block => block.IsVisible);
+        var heading = name.GetVisualAncestors().OfType<StackPanel>().First();
+        var bar = name.GetVisualAncestors().OfType<Border>().First();
+
+        // 12 above, 12 below, and the seam. A pixel of slack for rounding, and nothing for a second opinion.
+        Assert.InRange(bar.Bounds.Height - heading.Bounds.Height, 0, 26);
     });
 
     [Fact]
@@ -145,8 +168,9 @@ public class DialogChromeTests
         Assert.Equal(CockpitProduct.DisplayName, string.Concat(runs.Select(run => run.Text)));
         Assert.DoesNotContain(_VisibleTextBlocks(window), block => block.Text == "a title from the caller");
 
-        // Smaller than a dialog's heading, and with no room asked for an explanation under it: what matters on the
-        // app window is the cockpit below the bar.
+        // One line, with no room asked for an explanation under it: what matters on the app window is the cockpit
+        // below the bar. It sits a half-point above a dialog's heading since AC-426 took the weight out of that
+        // one — the window that names the product is the one place the name is allowed to lead.
         Assert.Equal(15.5d, name.FontSize);
 
         // The product's half steps back and the maker's half does not — the mockup's `Wispslate <span>Cockpit</span>`.
