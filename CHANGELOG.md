@@ -870,6 +870,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a managed worktree whose folder was emptied but never deleted can be removed again. When a removal cleared
+  the checkout but could not delete the folder itself — a handle Windows was still holding, say — what stayed behind
+  was a row for a worktree that is no longer one. The panel called it "Uncommitted changes" about a folder holding
+  nothing, "Clean up finished" skipped it because the folder was still there, and Remove failed every time with
+  git's "is not a working tree", so the row could never be got rid of. Such a row now reads "No working copy", the
+  sweep takes it along with the ones whose folder has gone, and removing it drops the entry and clears the empty
+  folder out of the state directory. Closing a session no longer creates one either: teardown drops the record
+  instead of keeping it for review. Anything still on disk in such a folder is left exactly where it is, and the
+  branch survives the removal as it does every other one.
+
 - fixed: the lock screen and an empty Sessions workspace still stood in for the brand with a tile carrying the
   letters "AI". Both now show the same mark the title bar and the About dialog carry.
 
