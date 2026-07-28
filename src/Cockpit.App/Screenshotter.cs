@@ -75,6 +75,7 @@ internal static class Screenshotter
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
         // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
         ["terminal"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
+        ["mcp-servers"] = (_, _) => _McpServers(),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
     };
@@ -188,6 +189,29 @@ internal static class Screenshotter
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // Renders the MCP-servers dialog in the state that had no way of being looked at (AC-427): an OAuth server, so
+    // the sign-in block and both OAuth fields are showing, custom headers so the form overflows, and the notice
+    // about a hidden server, which is the longest thing the footer is ever asked to hold. That combination is what
+    // pushed Cancel and Save off the window, and the whole of it is in one frame here.
+    private static McpServersDialog _McpServers()
+    {
+        var viewModel = new McpServersViewModel
+        {
+            StatusMessage = "Hidden here because the cockpit already runs a server by that name: filesystem, fetch. "
+                            + "Saving removes them — rename yours first if you meant to keep it.",
+        };
+
+        var server = viewModel.Servers[0];
+        server.Transport = Cockpit.Core.Mcp.McpTransport.Http;
+        server.Url = "https://mcp.example.com/mcp";
+        server.Auth = Cockpit.Core.Mcp.McpServerAuth.OAuth;
+        server.OAuthAuthority = "https://login.example.com";
+        server.Headers.Add(new McpHeaderRowViewModel("X-Api-Key", "a-value"));
+        server.Headers.Add(new McpHeaderRowViewModel("X-Tenant", "cockpit"));
+
+        return new McpServersDialog { DataContext = viewModel };
     }
 
     // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's
