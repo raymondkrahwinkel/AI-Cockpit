@@ -1677,7 +1677,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <inheritdoc/>
     public override async Task<bool> SendPromptAsync(string prompt)
     {
-        if (_runtime is null)
+        // Running, not merely present. A runtime whose driver never came up is still held by the pane, and it accepts
+        // a send and hands back a completed task with nothing having gone anywhere — so the old "is there a runtime"
+        // check reported a turn that never happened, and, once this method began marking turns in flight, marked one
+        // that nothing would ever finish: no driver means no event pump, and TurnCompleted and SessionError are the
+        // only two things that clear the flag. The pane would have read as working for the rest of its life, queueing
+        // every later message behind a turn that was never there.
+        if (_runtime is not { IsRunning: true } runtime)
         {
             return false;
         }
@@ -1700,7 +1706,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // Through the same funnel as the composer's own sends: a scheduled resume is a real turn on a real session,
             // so mail waiting for this pane belongs on it just as much. Routing it around the funnel is exactly the kind
             // of second path that leaves one route delivering and the other not.
-            await _SendWithWaitingMessagesAsync(_runtime, prompt, images: null);
+            await _SendWithWaitingMessagesAsync(runtime, prompt, images: null);
         }
         catch
         {

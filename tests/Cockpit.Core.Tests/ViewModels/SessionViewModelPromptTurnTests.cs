@@ -71,6 +71,27 @@ public class SessionViewModelPromptTurnTests
     }
 
     [Fact]
+    public async Task SendPrompt_OnAPaneWhoseRuntimeNeverRan_RefusesInsteadOfMarkingATurnNothingWillFinish()
+    {
+        // The pane keeps a runtime after a failed start, and that runtime accepts a send and does nothing with it.
+        // Marking a turn in flight there is worse than the false success it replaces: with no driver there is no
+        // event pump, and the two things that clear the flag both arrive on it — so the pane would read as working
+        // for the rest of its life, queueing every later message behind a turn that never existed.
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(_ => throw new InvalidOperationException("no such provider"));
+        var vm = new SessionViewModel(new SessionManager(factory));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        Assert.False(await vm.SendPromptAsync("continue where you left off"));
+
+        Assert.False(vm.IsBusy);
+        Assert.NotEqual(SessionStatus.Busy, vm.SessionStatus);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public async Task SendPrompt_MakesTheComposerQueueBehindItRatherThanSendOnTopOfIt()
     {
         var (vm, _, sent) = await _Started();

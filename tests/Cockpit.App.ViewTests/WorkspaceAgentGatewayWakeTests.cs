@@ -266,6 +266,24 @@ public class WorkspaceAgentGatewayWakeTests
     }
 
     [Fact]
+    public async Task Wake_IsRefusedTheSecondTime_BecauseTheFirstOneLeftThePaneWorking()
+    {
+        var (cockpit, sender, target, sent) = _Desk();
+        var gateway = _Gateway(cockpit);
+
+        var first = await gateway.TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+        var second = await gateway.TryWakeAsync(sender.PaneId, target.PaneId, "worktree");
+
+        // The gate reads the pane's status, and until the wake itself marked the turn the pane went on reporting
+        // itself idle for the whole of it — so a second urgent message from anyone walked straight through onto a
+        // session that was already answering the first. A terminal pane infers its status from what its CLI prints,
+        // so the window lasted until the first line came back.
+        Assert.Equal(AgentWakeOutcome.Woken, first);
+        Assert.Equal(AgentWakeOutcome.Busy, second);
+        Assert.Single(sent);
+    }
+
+    [Fact]
     public async Task Wake_WhoseTurnThrowsOnItsWayOut_LeavesATraceInsteadOfAnUnobservedFailure()
     {
         var (cockpit, sender, target) = Dispatcher.UIThread.Invoke(() =>

@@ -744,10 +744,15 @@ internal sealed class AgentsMcpTools(
             return AgentWakeOutcome.NotOptedIn;
         }
 
-        // A deduplicated send added nothing: the identical message is already waiting, and it had its wake when it
-        // first arrived. Waking again on a re-send would make the wake as repeatable as the sender's own loop — and
-        // the cap that is meant to bound this line (AC-396) is not built yet, so the only thing standing between a
-        // retrying sender and an unbounded run of turns on a neighbour's session is this.
+        // A deduplicated send added nothing — the identical message is already waiting, unread — so there is nothing
+        // new to wake anyone about. Deliberately not a claim that it was already woken for: de-duplication is on
+        // content alone, so an ordinary send followed by an urgent copy of the same text lands here too, and no wake
+        // ever happened. The reason given to the sender says what is true either way.
+        //
+        // This is a brake on repetition, not a rate limit, and it is worth being exact about how weak it is: a sender
+        // that varies a single character is past it. What actually bounds the wake rate today is the standing-still
+        // check — a woken pane reads as working until its turn completes, so at most one wake per turn, each paid for
+        // by the recipient's operator. A real cap on that rate is AC-396, and it is not built yet.
         if (deduplicated)
         {
             return AgentWakeOutcome.AlreadyWaiting;
@@ -771,7 +776,7 @@ internal sealed class AgentsMcpTools(
     {
         AgentWakeOutcome.Woken => "A turn was started on the recipient carrying a labelled notice that you marked this urgent.",
         AgentWakeOutcome.NotOptedIn => "The recipient has not opted in to being woken, so it was not. Your message is delivered and waiting — check wakeOptIn in list_agents before treating urgent as delivery.",
-        AgentWakeOutcome.AlreadyWaiting => "This exact message was already waiting unread, so nothing was woken — a wake happens when a message arrives, not each time it is sent again. Change the message if the situation has changed.",
+        AgentWakeOutcome.AlreadyWaiting => "This exact message was already waiting unread, so this send added nothing and nothing was woken — a wake is for a message arriving, not for saying the same one again. Change the message if the situation has changed.",
         AgentWakeOutcome.Busy => "The recipient was working, so it was not interrupted. Your message is waiting and it will see it without being asked if its list_agents row says deliversAtTurnStart.",
         AgentWakeOutcome.AwaitingOperator => "The recipient has a question open in front of its operator, and a wake would have talked over it. Your message is waiting.",
         AgentWakeOutcome.CannotTakeATurn => "The recipient's session cannot take a turn right now — it has not started, or has ended. Your message is waiting.",

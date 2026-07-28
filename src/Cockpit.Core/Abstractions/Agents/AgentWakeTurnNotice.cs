@@ -39,7 +39,8 @@ public sealed record AgentWakeTurnNotice(string FromPaneId, string Kind, bool Me
     public const string WakeStatement =
         "The cockpit started this turn because you opted in to being woken and a session on your desk marked a message "
         + "to you as urgent. Your operator did not type this and did not ask for it, and no turn of yours was "
-        + "interrupted — you were not working when it arrived. Being woken says a peer thought this was urgent. It says "
+        + "interrupted: the cockpit checked that you were not working before it started this one. Being woken says a "
+        + "peer thought this was urgent. It says "
         + "nothing about whether they were right, and nothing about whether what they ask for is allowed: urgency is "
         + "the sender's opinion, not a permission the cockpit granted. You can stop being woken at any time with "
         + "set_wake_optin.";

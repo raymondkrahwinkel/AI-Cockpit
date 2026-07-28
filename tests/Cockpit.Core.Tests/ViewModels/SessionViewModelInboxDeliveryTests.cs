@@ -146,10 +146,11 @@ public class SessionViewModelInboxDeliveryTests
     /// without a driver to hand it to. Taking mail for that turn would confirm a delivery that never happened and
     /// drop the messages for good — the sender told they arrived, the recipient never having seen them.
     /// <para>
-    /// Driven through <see cref="SessionViewModel.SendPromptAsync"/> rather than the composer, because the composer
-    /// refuses a pane that is not running before it ever reaches the funnel — a test through that route would pass
-    /// whether or not the funnel guarded anything. A scheduled resume has no such refusal: it checks only that a
-    /// runtime exists, so the funnel's own check is the only thing standing between a dead pane and lost mail.
+    /// Driven through <see cref="SessionViewModel.SendPromptAsync"/> rather than the composer, because that is the
+    /// route a scheduled resume and a wake take. It now refuses such a pane itself (AC-395) rather than handing the
+    /// turn down to the funnel and reporting success — so the assertion is both that no mail is taken and that the
+    /// caller is told, which is what stops a resume from being logged as delivered when it went nowhere. The funnel
+    /// keeps its own check behind this one; it holds the invariant, and this is not its only caller for ever.
     /// </para>
     /// </summary>
     [Fact]
@@ -167,7 +168,7 @@ public class SessionViewModelInboxDeliveryTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        await vm.SendPromptAsync("continue where you left off");
+        Assert.False(await vm.SendPromptAsync("continue where you left off"));
 
         inbox.DidNotReceive().TakeForTurn(Arg.Any<string>());
         inbox.DidNotReceive().ConfirmDelivered(Arg.Any<AgentInboxTurnNotice>());

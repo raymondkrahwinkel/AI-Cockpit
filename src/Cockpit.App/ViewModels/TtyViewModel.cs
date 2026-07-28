@@ -802,6 +802,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // the trailing carriage return is the one byte here that is meant to act as a key.
         sink(_AsTypedText(prompt) + "\r");
 
+        // Told rather than waited for. This pane's status is otherwise inferred from what the CLI prints, so between
+        // pressing Enter and the first line that reads as work it would go on reporting itself standing still — long
+        // enough for a second wake (AC-395) to be let through onto a session that is already answering the first.
+        // Submitting a turn is the one moment the host knows about one without having to read it off the screen, and
+        // it is said in the tracker's own terms so the safety timeout still decays it if nothing ever comes back.
+        SessionStatus = _statusTracker.OnActivity(SessionActivity.Busy, DateTimeOffset.UtcNow);
+
         return Task.FromResult(true);
     }
 
