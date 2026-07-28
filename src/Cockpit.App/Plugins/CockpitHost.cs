@@ -50,6 +50,7 @@ internal sealed class CockpitHost(
     IPluginStorage storage,
     IPluginDialogHost dialogHost,
     ICockpitSessionObserver sessions,
+    PluginDiagnostics diagnostics,
     IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
 {
     public IServiceProvider Services => services;
@@ -361,43 +362,71 @@ internal sealed class CockpitHost(
     /// (enabled) add the next time the plugin calls this — bounded to the plugin's own trigger points
     /// (<c>Initialize</c>, its settings-saved callback), not a background loop, so it is a re-add on explicit
     /// action rather than a silent fight with the user.
+    /// <para>
+    /// Called fire-and-forget from a synchronous callback (per the interface doc), so a store I/O failure here
+    /// would otherwise throw on an unobserved task — invisible to the plugin and the operator (#184). Caught and
+    /// attributed to this plugin in <see cref="PluginDiagnostics"/>; a cancellation (app shutting down) is not
+    /// this plugin's fault and is left unrecorded, and resolving <see cref="IMcpServerStore"/> itself stays
+    /// outside the catch — a missing registration is a host bug, not something to blame on the plugin.
+    /// </para>
     /// </summary>
     public async Task AddMcpServer(McpServerContribution contribution)
     {
         var store = services.GetRequiredService<IMcpServerStore>();
-        var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
-        var existingIndex = servers.FindIndex(server => string.Equals(server.Name, contribution.Name, StringComparison.Ordinal));
 
-        if (existingIndex < 0)
+        try
         {
-            servers.Add(PluginMcpMapping.ToServerConfig(contribution));
-        }
-        else
-        {
-            // Refresh only the connection fields; the entry's Scope and Enabled are the operator's and are left as
-            // they are (a server they disabled or rescoped in the dialog stays that way).
-            servers[existingIndex] = servers[existingIndex] with
+            var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
+            var existingIndex = servers.FindIndex(server => string.Equals(server.Name, contribution.Name, StringComparison.Ordinal));
+
+            if (existingIndex < 0)
             {
-                Transport = McpTransport.Http,
-                Url = contribution.Url,
-                Auth = PluginMcpMapping.ToAuth(contribution.BearerToken),
-                ApiKey = contribution.BearerToken,
-            };
-        }
+                servers.Add(PluginMcpMapping.ToServerConfig(contribution));
+            }
+            else
+            {
+                // Refresh only the connection fields; the entry's Scope and Enabled are the operator's and are left as
+                // they are (a server they disabled or rescoped in the dialog stays that way).
+                servers[existingIndex] = servers[existingIndex] with
+                {
+                    Transport = McpTransport.Http,
+                    Url = contribution.Url,
+                    Auth = PluginMcpMapping.ToAuth(contribution.BearerToken),
+                    ApiKey = contribution.BearerToken,
+                };
+            }
 
-        await store.SaveAsync(servers).ConfigureAwait(false);
+            await store.SaveAsync(servers).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                exception, "Plugin {PluginId}'s MCP server contribution '{ServerName}' failed to register.", pluginId, contribution.Name);
+            diagnostics.Record(pluginId, pluginName, "mcp-server", exception.Message);
+        }
     }
 
+    /// <summary>Same fire-and-forget exposure as <see cref="AddMcpServer"/> (#184): a store failure here is caught and attributed to this plugin; resolving the store and a shutdown cancellation are excluded the same way.</summary>
     public async Task RemoveMcpServer(string name)
     {
         var store = services.GetRequiredService<IMcpServerStore>();
-        var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
 
-        // Only write when something actually goes — this runs on every start of a plugin that reclaims its
-        // pushed entries, and re-saving an unchanged registry each launch is needless churn.
-        if (servers.RemoveAll(server => string.Equals(server.Name, name, StringComparison.Ordinal)) > 0)
+        try
         {
-            await store.SaveAsync(servers).ConfigureAwait(false);
+            var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
+
+            // Only write when something actually goes — this runs on every start of a plugin that reclaims its
+            // pushed entries, and re-saving an unchanged registry each launch is needless churn.
+            if (servers.RemoveAll(server => string.Equals(server.Name, name, StringComparison.Ordinal)) > 0)
+            {
+                await store.SaveAsync(servers).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                exception, "Plugin {PluginId}'s MCP server removal ('{ServerName}') failed.", pluginId, name);
+            diagnostics.Record(pluginId, pluginName, "mcp-server", exception.Message);
         }
     }
 

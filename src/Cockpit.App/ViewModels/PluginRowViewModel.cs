@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 
@@ -8,8 +9,20 @@ namespace Cockpit.App.ViewModels;
 /// plugin's <see cref="PluginLoadDecision"/>. The manager owns the enable/disable/remove commands and
 /// takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
 /// </summary>
-public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, string? failureError = null, bool hiddenInMenu = false)
+public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, IReadOnlyList<PluginFailure>? failures = null, bool hiddenInMenu = false)
 {
+    private readonly IReadOnlyList<PluginFailure> _failures = failures ?? [];
+
+    // Three independent facts can live in the same folder's history (#184): whether it ever became operative,
+    // whether it is flagged as built for a newer SDK, and whether a contribution it registered later failed. A
+    // single "the failure" would collapse them — an initialize failure and a later mcp-server one are not the
+    // same fact, and neither should hide the other.
+    private PluginFailure? _ActivationFailure => _failures.LastOrDefault(failure => PluginDiagnostics.ActivationPhases.Contains(failure.Phase));
+
+    private PluginFailure? _CompatibilityWarning => _failures.LastOrDefault(failure => failure.Phase == "compatibility");
+
+    private PluginFailure? _McpContributionFailure => _failures.LastOrDefault(failure => failure.Phase == "mcp-server");
+
     public DiscoveredPlugin Discovered => discovered;
 
     /// <summary>Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.</summary>
@@ -26,13 +39,22 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
     /// <summary>True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.</summary>
     public bool HasSettings => hasSettings;
 
-    /// <summary>The load/init error for this plugin, if it failed (#14); shown in red on the row so a broken plugin is visible in the manager.</summary>
-    public string? FailureError => failureError;
+    /// <summary>True when this plugin never became operative (load/configure/initialize), or is flagged for a compatibility concern.</summary>
+    public bool HasFailure => _ActivationFailure is not null || _CompatibilityWarning is not null;
 
-    /// <summary>True when this plugin failed to load or initialize.</summary>
-    public bool HasFailure => !string.IsNullOrEmpty(failureError);
+    /// <summary>The load/init failure or compatibility warning for this plugin, if any (#14) — a contribution failing later (#184) is a separate fact, see <see cref="McpContributionFailureText"/>.</summary>
+    public string FailureText => _ActivationFailure switch
+    {
+        { } activation => $"Failed to load: {activation.Error}",
+        null => _CompatibilityWarning?.Error ?? string.Empty,
+    };
 
-    public string FailureText => $"Failed to load: {failureError}";
+    /// <summary>True when this plugin loaded but a contribution it registered afterwards failed (#184) — e.g. its MCP server upsert. Independent of <see cref="HasFailure"/>: the plugin is still running.</summary>
+    public bool HasMcpContributionFailure => _McpContributionFailure is not null;
+
+    public string McpContributionFailureText => _McpContributionFailure is { } mcp
+        ? $"Its MCP server contribution failed: {mcp.Error}"
+        : string.Empty;
 
     public string FolderId => discovered.FolderId;
 
@@ -48,6 +70,10 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
 
     public string StatusText => discovered.Decision switch
     {
+        // Load alone is a discovery-time decision (#184) — a plugin that threw while loading, configuring or
+        // initializing never became operative even though it was decided to load, and reporting it as enabled
+        // would say the opposite of what happened.
+        PluginLoadDecision.Load when _ActivationFailure is not null => "Failed to load — see below",
         PluginLoadDecision.Load => "Enabled — active this session",
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",

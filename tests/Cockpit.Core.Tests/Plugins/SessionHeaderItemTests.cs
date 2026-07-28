@@ -47,7 +47,8 @@ public class SessionHeaderItemTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            new PluginDiagnostics());
 
     /// <summary>An older host: implements only what the contract required before header items existed.</summary>
     public abstract class HostWithoutHeaderItems : ICockpitHost
