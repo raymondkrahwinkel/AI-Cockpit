@@ -18,12 +18,11 @@
     </Design.DataContext>
 
     <StackPanel Margin="28,26" Spacing="14">
-        <Border Width="48" Height="48" CornerRadius="12"
-                Background="{StaticResource CockpitAccentBrush}" HorizontalAlignment="Center">
-            <TextBlock Text="AI" FontSize="20" FontWeight="Bold"
-                       Foreground="{StaticResource CockpitWindowBgBrush}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
+        <!-- The mark, where a tile with the letters "AI" in it used to stand in for one (AC-430). Only the
+             height is set: the mark is wider than it is tall and squaring it off would deform it. -->
+        <Image Source="/Assets/BrandMark.png" Height="48" Stretch="Uniform"
+               RenderOptions.BitmapInterpolationMode="HighQuality"
+               HorizontalAlignment="Center"/>
 
         <StackPanel Spacing="4">
             <TextBlock Text="Locked" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
