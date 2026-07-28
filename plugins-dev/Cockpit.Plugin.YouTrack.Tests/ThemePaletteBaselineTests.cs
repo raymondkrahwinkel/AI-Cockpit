@@ -24,14 +24,26 @@ public class ThemePaletteBaselineTests
     private static readonly YouTrackIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
     private static readonly YouTrackIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
 
+    private const string Scene = "dialog";
+
+    private static string BaselineDirectory =>
+        Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.YouTrack.Tests", "Baselines");
+
     [Fact]
     public void TheDialog_PaintsNothingItsBaselineDoesNotAccountFor() => HeadlessAvalonia.Run(() =>
     {
         var painted = _Painted();
 
-        var baseline = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.YouTrack.Tests", "Baselines", "dialog.palette.txt");
-        ThemePaletteBaseline.Verify(baseline, painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, Scene), painted);
     });
+
+    /// <summary>
+    /// The other direction (AC-414): the check above names the one scene this plugin has, so a baseline left over
+    /// from a renamed or removed one stays behind green, because nothing reads it any more.
+    /// </summary>
+    [Fact]
+    public void EveryBaseline_BelongsToASceneThatStillExists() =>
+        ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, [Scene]);
 
     /// <summary>
     /// Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour

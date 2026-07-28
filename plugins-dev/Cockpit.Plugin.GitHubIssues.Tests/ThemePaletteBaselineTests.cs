@@ -23,14 +23,26 @@ public class ThemePaletteBaselineTests
     private static readonly GitHubIssue First = new(41, "Faster startup", "https://github.com/octocat/hello-world/issues/41", "Cold start takes 4s.", "octocat/hello-world");
     private static readonly GitHubIssue Second = new(42, "Fix the sidebar", "https://github.com/octocat/hello-world/issues/42", "It collapses.", "octocat/hello-world");
 
+    private const string Scene = "dialog";
+
+    private static string BaselineDirectory =>
+        Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubIssues.Tests", "Baselines");
+
     [Fact]
     public void TheDialog_PaintsNothingItsBaselineDoesNotAccountFor() => HeadlessAvalonia.Run(() =>
     {
         var painted = _Painted();
 
-        var baseline = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.GitHubIssues.Tests", "Baselines", "dialog.palette.txt");
-        ThemePaletteBaseline.Verify(baseline, painted);
+        ThemePaletteBaseline.Verify(ThemePaletteBaseline.PathFor(BaselineDirectory, Scene), painted);
     });
+
+    /// <summary>
+    /// The other direction (AC-414): the check above names the one scene this plugin has, so a baseline left over
+    /// from a renamed or removed one stays behind green, because nothing reads it any more.
+    /// </summary>
+    [Fact]
+    public void EveryBaseline_BelongsToASceneThatStillExists() =>
+        ThemePaletteBaseline.VerifyNoOrphans(BaselineDirectory, [Scene]);
 
     /// <summary>
     /// Proves the harness is honest before any baseline built on it is believed (AC-337): the theme's text colour

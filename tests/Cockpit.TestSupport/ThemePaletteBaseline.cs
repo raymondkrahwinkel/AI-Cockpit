@@ -9,6 +9,19 @@ public static class ThemePaletteBaseline
 {
     private const string RewriteVariable = "COCKPIT_UPDATE_THEME_BASELINES";
 
+    /// <summary>The tail every baseline file's name ends in — how <see cref="VerifyNoOrphans"/> reads a scene name back off one.</summary>
+    private const string BaselineSuffix = ".palette.txt";
+
+    /// <summary>
+    /// Where a scene's baseline lives. Callers go through this rather than spelling the file name themselves,
+    /// because the name is read back apart by <see cref="VerifyNoOrphans"/> and a second copy of the format is a
+    /// second thing to keep in step. When they were separate, changing the suffix here left every caller writing
+    /// the old name and the orphan check enumerating nothing — which is not an error, it is an empty list, so the
+    /// check went green with real orphans sitting in the directory.
+    /// </summary>
+    public static string PathFor(string baselineDirectory, string scene) =>
+        Path.Combine(baselineDirectory, $"{scene}{BaselineSuffix}");
+
     /// <summary>
     /// Fails when a screen paints a colour or a radius its baseline does not list.
     /// </summary>
@@ -60,6 +73,36 @@ public static class ThemePaletteBaseline
                 + $"{Environment.NewLine}  {string.Join($"{Environment.NewLine}  ", unknown)}"
                 + $"{Environment.NewLine}Either a colour stopped coming from the theme, or the change is meant — "
                 + $"in which case re-record with {RewriteVariable}=1 and review the diff.");
+        }
+    }
+
+    /// <summary>
+    /// Fails when a directory holds a baseline no scene asks for any more (AC-414).
+    /// </summary>
+    /// <remarks>
+    /// The per-scene check above can only look at scenes that still exist, so it goes green on a file whose scene
+    /// was renamed or deleted — the file simply stops being read, and a baseline nothing is held to is a file that
+    /// says a screen is covered when nothing has looked at it since. It is silent by construction: removing a scene
+    /// makes the suite *smaller*, which reads as a passing run.
+    /// </remarks>
+    public static void VerifyNoOrphans(string baselineDirectory, IEnumerable<string> scenes)
+    {
+        var expected = new HashSet<string>(scenes, StringComparer.Ordinal);
+
+        var orphans = Directory.EnumerateFiles(baselineDirectory, $"*{BaselineSuffix}")
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(file => !expected.Contains(file[..^BaselineSuffix.Length]))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        if (orphans.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"{baselineDirectory} holds baselines no scene asks for:"
+                + $"{Environment.NewLine}  {string.Join($"{Environment.NewLine}  ", orphans)}"
+                + $"{Environment.NewLine}A scene was renamed or removed and its file stayed behind. Delete the file, "
+                + "or put the scene back if it was not meant to go.");
         }
     }
 
