@@ -33,10 +33,10 @@ internal static class AgentMessageContent
     /// <summary>
     /// A notify is a note between two sessions, not a document: enough for a paragraph or two, and a handover that needs
     /// more can point at a file both agents can read. The number is what makes the inbox bounded in bytes rather than
-    /// only in messages — <see cref="AgentMessageInbox.MaxWaitingPerPane"/> times this is the most host memory one
-    /// recipient's unread mail can hold (about 1 MB of text), and <see cref="AgentsMcpTools.MaxMessagesPerRead"/> times
-    /// this is the most that can arrive in the recipient's context at once (about 50 000 characters). Without a bound
-    /// here both of those are whatever the sender felt like sending.
+    /// only in messages — <see cref="AgentMessageInbox.MaxWaitingPerPane"/> times this is the most one recipient's
+    /// unread mail can hold (a million characters, so two megabytes in memory), and
+    /// <see cref="AgentsMcpTools.MaxMessagesPerRead"/> times this is the most that can arrive in the recipient's context
+    /// at once (50 000 characters). Without a bound here both of those are whatever the sender felt like sending.
     /// </summary>
     internal const int MaxBodyLength = 2000;
 

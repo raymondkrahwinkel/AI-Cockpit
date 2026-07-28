@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Agents;
@@ -62,6 +63,18 @@ internal sealed class AgentsMcpTools(
     internal const int MaxMessagesPerRead = 25;
 
     /// <summary>
+    /// The most of a neighbour's name or statusline <c>list_agents</c> will repeat. Both are short lines by intent and
+    /// neither is the host's text: an agent writes its own statusline, and proposes its own name, through
+    /// <c>cockpit-session__set_status</c> — where neither is bounded, because there the audience is the operator's own
+    /// header and Avalonia decides how much of a long line to draw. Repeating them into a <em>sibling's</em> tool result
+    /// is a different audience with a different cost: unbounded, one agent's 10 MB statusline is 10 MB in the context of
+    /// every neighbour that asks who else is on the desk, which is the same thing the message body's bound exists to
+    /// stop, one field further along. Bounded here rather than at <c>set_status</c> so the operator's own header keeps
+    /// showing what the agent actually wrote.
+    /// </summary>
+    internal const int MaxRosterTextLength = 200;
+
+    /// <summary>
     /// Rides along with every drained message so the recipient's model reads it as reported speech from another
     /// agent rather than as something the operator asked for. The line carries information, not permission.
     /// <para>
@@ -108,9 +121,14 @@ internal sealed class AgentsMcpTools(
                 return new
                 {
                     paneId = pane.PaneId,
-                    name = pane.Name,
+                    // The two fields on this row the described agent wrote itself, so the two that get the same
+                    // treatment a message body does on its way into someone else's context: bounded, and stripped of
+                    // the terminal control sequences that would otherwise let one session repaint the tool output of
+                    // every neighbour that asks who is here. The profile and the pane id are the host's, not the
+                    // agent's, and are passed on as they are.
+                    name = _ForRoster(pane.Name),
                     profile = pane.Profile,
-                    statusline = pane.Statusline,
+                    statusline = _ForRoster(pane.Statusline),
                     enrolled,
                     // Deliberately not diagnosed further than this: the roster only ever learns about a pane by that
                     // pane announcing itself, so a neighbour that has simply not looked around yet looks identical to
@@ -232,10 +250,15 @@ internal sealed class AgentsMcpTools(
             if (delivery.Outcome == AgentMessageDeliveryOutcome.Delivered
                 && !await _IsStillOnTheDeskAsync(caller, addressee).ConfigureAwait(false))
             {
-                inbox.Retract(addressee, message.Id);
+                // What is reported is what the retraction actually found. A message that is no longer there was either
+                // cleared by the closing pane's own Forget or drained by the recipient in the instant before it closed,
+                // and this cannot tell those apart — so it does not claim to have taken back something it did not find.
+                var retracted = inbox.Retract(addressee, message.Id);
                 return await _RefuseNotifyAsync(
                     AgentNotifyOutcome.RefusedRecipientGone, caller, addressee, label, text,
-                    $"'{addressee}' left your workspace while this message was being delivered, so it was taken back rather than left waiting for a session that has ended.").ConfigureAwait(false);
+                    retracted
+                        ? $"'{addressee}' left your workspace while this message was being delivered, so it was taken back rather than left waiting for a session that has ended."
+                        : $"'{addressee}' left your workspace while this message was being delivered, and its inbox is already gone. Treat this as not sent — nothing is waiting for it.").ConfigureAwait(false);
             }
 
             var deduplicated = delivery.Outcome == AgentMessageDeliveryOutcome.Deduplicated;
@@ -315,6 +338,14 @@ internal sealed class AgentsMcpTools(
             return _Serialize(new { ok = false, error = exception.Message });
         }
     }
+
+    /// <summary>
+    /// One agent-authored line as a sibling may be shown it: control sequences stripped and cut to
+    /// <see cref="MaxRosterTextLength"/>. Truncated rather than refused, unlike a message body — there is no sender
+    /// waiting on an answer here to tell, and a neighbour's name is worth reporting shortened rather than not at all.
+    /// </summary>
+    private static string _ForRoster(string? text) =>
+        BoundedText.Trim(AgentMessageContent.Normalize(text, out _), MaxRosterTextLength);
 
     private static bool _IsOnTheDesk(WorkspaceAgentSnapshot snapshot, string paneId) =>
         snapshot.Panes.Any(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal));
