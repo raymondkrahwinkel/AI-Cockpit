@@ -138,10 +138,31 @@ public sealed class AgentsMcpToolsTests : IDisposable
         _gateway.GetWorkspaceSnapshotAsync("pane-sdk").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-sdk");
 
-        var agents = JsonNode.Parse(await _Tools().ListAgentsAsync())!["agents"]!.AsArray();
+        var roster = _Json(await _Tools().ListAgentsAsync());
 
-        Assert.True(agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-sdk")!["deliversAtTurnStart"]!.GetValue<bool>());
-        Assert.False(agents.First(a => a!["paneId"]!.GetValue<string>() == "pane-tty")!["deliversAtTurnStart"]!.GetValue<bool>());
+        Assert.True(_RosterFlag(roster, "pane-sdk", "deliversAtTurnStart"));
+        Assert.False(_RosterFlag(roster, "pane-tty", "deliversAtTurnStart"));
+    }
+
+    /// <summary>One boolean off one pane's roster row, with each link asserted rather than assumed — a missing row or a missing field is a failure worth naming, not a null-forgiving operator.</summary>
+    private static bool _RosterFlag(JsonNode roster, string paneId, string field)
+    {
+        var agents = roster["agents"];
+        Assert.NotNull(agents);
+
+        var row = agents.AsArray().FirstOrDefault(agent => agent?["paneId"]?.GetValue<string>() == paneId);
+        Assert.NotNull(row);
+
+        return _Flag(row, field);
+    }
+
+    /// <summary>One boolean off a tool result, asserted the same way.</summary>
+    private static bool _Flag(JsonNode payload, string field)
+    {
+        var value = payload[field];
+        Assert.NotNull(value);
+
+        return value.GetValue<bool>();
     }
 
     /// <summary>
@@ -159,10 +180,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
         _gateway.GetWorkspaceSnapshotAsync("pane-sender").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-sender");
 
-        var json = JsonNode.Parse(await _Tools().NotifyAsync("pane-tty", "question", "are you on this branch?"));
+        var sent = _Json(await _Tools().NotifyAsync("pane-tty", "question", "are you on this branch?"));
 
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.False(json["deliversAtTurnStart"]!.GetValue<bool>());
+        Assert.True(_Flag(sent, "ok"));
+        Assert.False(_Flag(sent, "deliversAtTurnStart"));
     }
 
     [Fact]
