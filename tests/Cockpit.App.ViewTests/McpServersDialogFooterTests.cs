@@ -103,7 +103,7 @@ public class McpServersDialogFooterTests
 
         Assert.True(right <= window.Width + 1,
             $"the notice must not run past the window it is in, but ends at {right:0.#} of {window.Width:0.#}");
-        Assert.Equal(TextWrapping.Wrap, wrapping);
+        Assert.True(wrapping == TextWrapping.Wrap, "it is a sentence, not a label — it wraps");
         Assert.True(height > 20, $"at this length it has to have taken more than one line, but measured {height:0.#}");
     });
 
@@ -136,10 +136,8 @@ public class McpServersDialogFooterTests
         return window;
     }
 
-    /// <summary>
-    /// The footer buttons an operator cannot press: laid out past an edge, or squeezed to nothing — which is what
-    /// became of Remove when the star column collapsed. Reported as it goes, so a failure names them.
-    /// </summary>
+    // The footer buttons an operator cannot press: laid out past an edge, or squeezed to nothing — which is what
+    // became of Remove when the star column collapsed. Reported as it goes, so a failure names them.
     private List<string> _Unreachable(Window window)
     {
         var unreachable = new List<string>();
