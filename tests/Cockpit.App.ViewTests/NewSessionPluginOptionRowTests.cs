@@ -35,6 +35,9 @@ public class NewSessionPluginOptionRowTests
         ("effort", "Effort"),
     ];
 
+    /// <summary>The label column's cap, mirroring the <c>MaxWidth</c> in <c>NewSessionDialog.axaml</c>.</summary>
+    private const double LabelColumnCap = 180;
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -54,7 +57,7 @@ public class NewSessionPluginOptionRowTests
     public void OptionRows_ShareOneLeftEdgeAndOneColumnWidth(bool sdk) => HeadlessAvalonia.Run(() =>
     {
         var window = _Show(sdk, ClaudeOptions);
-        var labels = _LabelsIn(window, ClaudeOptions);
+        var labels = _LabelsIn(window, sdk, ClaudeOptions);
 
         Assert.Equal(ClaudeOptions.Length, labels.Count);
         Assert.Single(labels.Select(label => Math.Round(label.Bounds.Width)).Distinct());
@@ -74,9 +77,6 @@ public class NewSessionPluginOptionRowTests
             $"label '{label.Text}' needs {_NaturalWidth(label):F1}px but was given {label.Bounds.Width:F1}px");
     });
 
-    private static IReadOnlyList<TextBlock> _RenderedLabels(bool sdk, IReadOnlyList<(string Key, string Label)> options) =>
-        _LabelsIn(_Show(sdk, options), options);
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -88,10 +88,13 @@ public class NewSessionPluginOptionRowTests
         var label = Assert.Single(_RenderedLabels(sdk, sentence));
 
         Assert.True(label.Bounds.Width < _NaturalWidth(label), "past the cap the label is the one that gives way");
-        Assert.True(label.Bounds.Width <= 180, $"the label column grew to {label.Bounds.Width:F1}px, past its cap");
+        Assert.True(label.Bounds.Width <= LabelColumnCap, $"the label column grew to {label.Bounds.Width:F1}px, past its cap");
         Assert.Equal(TextTrimming.CharacterEllipsis, label.TextTrimming);
         Assert.Equal(sentence[0].Label, ToolTip.GetTip(label));
     });
+
+    private static IReadOnlyList<TextBlock> _RenderedLabels(bool sdk, IReadOnlyList<(string Key, string Label)> options) =>
+        _LabelsIn(_Show(sdk, options), sdk, options);
 
     /// <summary>Shows the dialog with the given options on the chosen route.</summary>
     private static Window _Show(bool sdk, IReadOnlyList<(string Key, string Label)> options)
@@ -115,10 +118,10 @@ public class NewSessionPluginOptionRowTests
     }
 
     /// <summary>The rendered labels of the option rows, scoped to the host bound to those rows so the combo's placeholder and the retired typed rows stay out.</summary>
-    private static IReadOnlyList<TextBlock> _LabelsIn(Window window, IReadOnlyList<(string Key, string Label)> options)
+    private static IReadOnlyList<TextBlock> _LabelsIn(Window window, bool sdk, IReadOnlyList<(string Key, string Label)> options)
     {
         var viewModel = (NewSessionDialogViewModel)window.DataContext!;
-        var rows = viewModel.SdkLaunchOptions.Count > 0 ? viewModel.SdkLaunchOptions : viewModel.PluginTtyOptions;
+        var rows = sdk ? viewModel.SdkLaunchOptions : viewModel.PluginTtyOptions;
         var host = window.GetVisualDescendants().OfType<ItemsControl>()
             .Single(items => ReferenceEquals(items.ItemsSource, rows));
         var wanted = options.Select(option => option.Label).ToHashSet();
