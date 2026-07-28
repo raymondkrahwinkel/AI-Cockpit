@@ -38,6 +38,12 @@ public sealed record SessionStartDefaults(
     /// may be absent — a session without a project is how the cockpit has always started one.
     /// </summary>
     /// <param name="globalWorkingDirectory">The configured app-wide working directory, used when neither the project nor the profile names one.</param>
+    /// <param name="memorySources">
+    /// The memory sources plugins have registered (AC-165/166, <c>ICockpitHost.AddProjectMemorySource</c>), so a
+    /// project's <see cref="Project.MemoryRef"/> naming one of them is explained rather than merely quoted. Null (the
+    /// default) is exactly "none registered" — every caller that does not yet pass this list gets the plain,
+    /// unexplained sentence it always got, unchanged.
+    /// </param>
     /// <remarks>
     /// The MCP selection here stays the profile's, and that is not a gap in "the project wins": a project's
     /// selection is a per-server answer rather than a list (<see cref="ProjectMcpOverlay.IsSelectedByDefault"/>),
@@ -47,13 +53,14 @@ public sealed record SessionStartDefaults(
     public static SessionStartDefaults Resolve(
         Project? project,
         SessionProfile? profile,
-        string? globalWorkingDirectory = null) =>
+        string? globalWorkingDirectory = null,
+        IReadOnlyList<ProjectMemorySource>? memorySources = null) =>
         new(
             _FirstNonBlank(project?.SourceDirectory, profile?.DefaultWorkingDirectory, globalWorkingDirectory),
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project), _InformationNote(project)));
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project, memorySources), _InformationNote(project)));
 
     /// <summary>
     /// How much of the standing instructions a project's shared information rows may take. A ceiling rather than trust,
@@ -67,14 +74,52 @@ public sealed record SessionStartDefaults(
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
 
     /// <summary>
-    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
-    /// one. Deliberately told rather than loaded: the host does not know what lives there — a folder of notes, a
-    /// Depot project (AC-165/166) — and a session that is told where to look can go and look.
+    /// Sentence endings that count as "already punctuated" for <see cref="_MemoryNote"/> — the same idea
+    /// <see cref="_InformationNote"/> applies to a label's trailing colon, just for a sentence rather than a word.
     /// </summary>
-    private static string? _MemoryNote(Project? project) =>
-        project?.MemoryRef is { Length: > 0 } memory && !string.IsNullOrWhiteSpace(memory)
-            ? $"This project's memory lives at {memory.Trim()}. Read it there when you need what this project already knows, and keep it up to date as you work."
-            : null;
+    private static readonly char[] _SentenceEndings = ['.', '!', '?'];
+
+    /// <summary>
+    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
+    /// one.
+    /// <para>
+    /// A reference of the shape <c>&lt;scheme&gt;:&lt;value&gt;</c> naming a registered <paramref name="memorySources"/>
+    /// entry is explained — named by that source's own <c>Title</c>, with its <c>Instruction</c> appended so the
+    /// session is told how to reach it, not only where it is. Anything else — a bare path, a scheme nothing
+    /// registered, an empty value after the colon, a matched source whose <c>Title</c> is itself blank — falls back
+    /// to the plain, unexplained sentence this always said: deliberately told rather than loaded, because the host
+    /// does not know what lives there, and a session that is told where to look can go and look.
+    /// </para>
+    /// </summary>
+    private static string? _MemoryNote(Project? project, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (project?.MemoryRef is not { Length: > 0 } memory || string.IsNullOrWhiteSpace(memory))
+        {
+            return null;
+        }
+
+        var trimmed = memory.Trim();
+        if (memorySources is { Count: > 0 }
+            && ProjectMemoryRef.TryParse(trimmed, out var scheme, out var value)
+            && memorySources.FirstOrDefault(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched
+            && matched.Title.Trim() is { Length: > 0 } title)
+        {
+            var instruction = matched.Instruction.Trim();
+            var located = $"This project's memory lives in {title} \"{value}\".";
+            if (instruction.Length == 0)
+            {
+                // The registry refuses a source without an instruction, so reaching this is a caller that built its
+                // own list. Say where the memory is and stop, rather than trailing a lone full stop behind the place.
+                return located;
+            }
+
+            // An instruction that already ends its own sentence keeps its own full stop rather than getting a second.
+            var sentence = _SentenceEndings.Contains(instruction[^1]) ? instruction : $"{instruction}.";
+            return $"{located} {sentence}";
+        }
+
+        return $"This project's memory lives at {trimmed}. Read it there when you need what this project already knows, and keep it up to date as you work.";
+    }
 
     /// <summary>
     /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block — never a

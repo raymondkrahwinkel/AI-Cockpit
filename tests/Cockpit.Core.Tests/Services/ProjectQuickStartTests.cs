@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NSubstitute;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -37,7 +38,7 @@ public class ProjectQuickStartTests
         var ttyProviders = Substitute.For<ITtySessionProviderResolver>();
         ttyProviders.Resolve(Arg.Any<SessionProfile?>()).Returns(ttyProvider);
 
-        return new ProjectQuickStart(profileStore, catalog, ttyProviders);
+        return new ProjectQuickStart(profileStore, catalog, ttyProviders, new ProjectMemorySourceRegistry());
     }
 
     private static McpServerConfig Server(string name, bool enabled = true, bool @internal = false, bool alwaysMounted = false) =>
@@ -139,7 +140,7 @@ public class ProjectQuickStartTests
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([ClaudeProfile]);
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([Server("depot")]);
-        var quickStart = new ProjectQuickStart(profileStore, catalog, Substitute.For<ITtySessionProviderResolver>());
+        var quickStart = new ProjectQuickStart(profileStore, catalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 
         await quickStart.ComposeAsync(project);

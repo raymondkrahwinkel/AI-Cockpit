@@ -79,6 +79,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         ISessionProfileStore profileStore,
         IMcpServerCatalog mcpServerCatalog,
         IReadOnlyList<ProjectFieldRegistration>? pluginFields = null,
+        IReadOnlyList<ProjectMemorySourceRegistration>? memorySources = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project);
@@ -86,6 +87,42 @@ public partial class ProjectDialogViewModel : ViewModelBase
         foreach (var registration in pluginFields ?? [])
         {
             viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(registration, project?.LinkedAs(registration.Key)));
+        }
+
+        // Nothing registered leaves the picker out entirely (HasMemorySources) — the row keeps looking and behaving
+        // exactly as it did before AC-166 existed, which is the default this feature must not shift.
+        foreach (var registration in memorySources ?? [])
+        {
+            if (viewModel.MemorySourceChoices.Count == 0)
+            {
+                viewModel.MemorySourceChoices.Add(new MemorySourceChoice("Folder", Scheme: null));
+            }
+
+            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme));
+        }
+
+        // Folder is the default selection the instant there is a picker at all — a plain path, a reference naming
+        // no installed source, or (the everyday case) a brand-new project with no MemoryRef yet. The match below
+        // overwrites this only when the stored reference actually names a registered source; every other case
+        // leaves Folder selected, which is what the ComboBox must show rather than nothing at all.
+        if (viewModel.MemorySourceChoices.Count > 0)
+        {
+            viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
+        }
+
+        // A saved reference of the shape "<scheme>:<value>" naming a source actually offered here selects that
+        // source and shows the bare value; anything else — a path, a scheme no installed plugin registered, an
+        // empty value after the colon — leaves "Folder" selected (set above) and MemoryRef exactly as the project
+        // stored it (set in the constructor above). That is deliberate, not merely the fallback case: a plugin that is
+        // temporarily uninstalled must not lose or garble the reference just because this dialog was opened and
+        // saved while it was gone.
+        if (viewModel.MemorySourceChoices.Count > 0
+            && ProjectMemoryRef.TryParse(project?.MemoryRef, out var scheme, out var value)
+            && viewModel.MemorySourceChoices.FirstOrDefault(choice =>
+                choice.Scheme is { } candidate && string.Equals(candidate, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched)
+        {
+            viewModel.SelectedMemorySourceChoice = matched;
+            viewModel.MemoryRef = value;
         }
 
         // A link under a key no installed plugin claims — the plugin was removed, or is simply not on this machine —
@@ -171,11 +208,39 @@ public partial class ProjectDialogViewModel : ViewModelBase
     public string? GitUrl { get; private set; }
 
     /// <summary>
-    /// Where this project's memory lives: a folder, or a reference a plugin understands (AC-165/166). Blank for a
-    /// project that keeps none.
+    /// Where this project's memory lives: the folder's path in "Folder" mode, or the bare identifier
+    /// (<c>cockpit</c>, not <c>depot:cockpit</c>) once <see cref="SelectedMemorySourceChoice"/> names a source
+    /// (AC-165/166). Blank for a project that keeps none.
     /// </summary>
     [ObservableProperty]
     private string _memoryRef = string.Empty;
+
+    /// <summary>
+    /// The memory picker's choices: "Folder" plus one per contributed source, in registration order. Left empty
+    /// when <c>CreateAsync</c> was given none — which is what makes the picker itself disappear
+    /// (<see cref="HasMemorySources"/>) rather than show a dropdown with nothing useful in it.
+    /// </summary>
+    public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; } = [];
+
+    /// <summary>Whether the memory picker is shown at all. False keeps the Memory row exactly as it was before AC-166.</summary>
+    public bool HasMemorySources => MemorySourceChoices.Count > 0;
+
+    /// <summary>
+    /// The picker's current choice, or null when nothing was ever picked — which reads the same as "Folder"
+    /// (<see cref="IsMemoryFolderMode"/>) so a dialog with no registered sources needs no selection to behave
+    /// correctly.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsMemoryFolderMode))]
+    [NotifyPropertyChangedFor(nameof(MemoryValuePlaceholder))]
+    private MemorySourceChoice? _selectedMemorySourceChoice;
+
+    /// <summary>Whether <see cref="MemoryRef"/> holds a folder path rather than a source's bare value — gates "Choose…", which only ever browses for a folder.</summary>
+    public bool IsMemoryFolderMode => SelectedMemorySourceChoice?.Scheme is null;
+
+    /// <summary>What the empty memory box hints at: a folder when none is picked, an identifier once a source is.</summary>
+    public string MemoryValuePlaceholder =>
+        SelectedMemorySourceChoice is { Scheme.Length: > 0 } choice ? $"An identifier {choice.Label} understands" : "No memory location";
 
     /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
     public ObservableCollection<string> Profiles { get; } = [];
@@ -230,7 +295,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
             LogoPath = _NullIfBlank(LogoSource),
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
-            MemoryRef = _NullIfBlank(MemoryRef),
+            MemoryRef = _ToMemoryRef(),
             McpOverlay = new ProjectMcpOverlay
             {
                 DisabledServerNames =
@@ -249,6 +314,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
             ],
             PluginFields = _LinkedProjectFields(),
         };
+
+    /// <summary>
+    /// The saved <c>MemoryRef</c>: the folder path as typed in "Folder" mode, unchanged from before this feature
+    /// existed, or <c>"{scheme}:{value}"</c> once a source is selected — except a value the operator left blank,
+    /// which saves as no reference at all rather than a bare <c>"{scheme}:"</c> that names a source and nothing in it.
+    /// </summary>
+    private string? _ToMemoryRef() =>
+        SelectedMemorySourceChoice is { Scheme: { Length: > 0 } scheme }
+            ? _NullIfBlank(MemoryRef) is { } value ? $"{scheme}:{value}" : null
+            : _NullIfBlank(MemoryRef);
 
     /// <summary>
     /// What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins

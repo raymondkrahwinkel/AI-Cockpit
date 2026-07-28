@@ -367,9 +367,12 @@ dotnet test
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
   YouTrack, Git Status, GitHub Actions, Session Review, Prompt Library, Transcript Search), MCP plugins
   (Docker, Kubernetes), widgets (Clock, System Monitor), providers (Gemini/OpenAI, GitHub Models,
-  CLI Agent/Codex) and **Workflows** — a canvas where flows are drawn and an engine that runs them, which
+  CLI Agent/Codex), and **Workflows** — a canvas where flows are drawn and an engine that runs them, which
   other plugins contribute their own steps and triggers to. (Usage Trend is a bundled example widget under
-  `plugins-dev/`, not yet published to the store.)
+  `plugins-dev/`, not yet published to the store; **Depot** — names a Depot project as a place a project's
+  memory can live instead of a folder — lives under `plugins-dev/` too, but its `minHostVersion` (0.10.0) is
+  ahead of the newest host release the publish workflow's gate has seen, so it cannot be published until an
+  app release or nightly reaches that version.)
 - **Scaffold a new plugin:** `dotnet new install ./templates/cockpit-plugin` then
   `dotnet new cockpit-plugin -n My.Plugin -o plugins-dev/My.Plugin`.
 

@@ -73,6 +73,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
   act on yourself.
 
+- added: a project's memory can now point somewhere other than a folder. A plugin that keeps its own store of
+  project knowledge can offer itself in the project editor's Memory row, next to "Folder" — pick it and the box asks
+  for an identifier instead of a path, "Choose…" steps aside, and a session started on that project is told in
+  plain language where its memory is and how to reach it, instead of just being handed a bare reference to make
+  sense of on its own. A project pointing at a source whose plugin is not installed keeps its reference untouched;
+  saving it does not lose or garble what it already pointed at.
+
 - fixed: a build published as a folder rather than a single file now carries the example workspace and Autopilot with
   it. Both were copied next to the executable but never into a publish, so that route handed over a cockpit missing
   two of the plugins it ships with — the single-file build was unaffected, which is why it went unnoticed.

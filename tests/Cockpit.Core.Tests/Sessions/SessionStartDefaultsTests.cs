@@ -279,4 +279,109 @@ public class SessionStartDefaultsTests
 
         defaults.SystemPrompt.Should().BeNull();
     }
+
+    private static readonly SessionProfile WorkProfile = new("work", new ClaudeConfig("~/.claude"));
+
+    [Fact]
+    public void Resolve_AMemoryRefNamingARegisteredSource_ExplainsHowToReachIt()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP's read tool.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().Be(
+            "This project's memory lives in Depot project \"cockpit\". Read it through the Depot MCP's read tool.");
+    }
+
+    [Fact]
+    public void Resolve_AnInstructionWithoutTrailingPunctuation_GetsAFullStopAdded()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Ask the Depot MCP for it") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().EndWith("Ask the Depot MCP for it.");
+    }
+
+    [Fact]
+    public void Resolve_AnInstructionAlreadyEndingInPunctuation_DoesNotGetASecondFullStop()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Ask the Depot MCP for it!") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().EndWith("Ask the Depot MCP for it!").And.NotEndWith("it!.");
+    }
+
+    [Fact]
+    public void Resolve_AMemoryRefWithAnUnregisteredScheme_FallsBackToThePlainSentence()
+    {
+        // The Depot plugin (or whatever "notes" is) is simply not installed on this machine — the reference is not
+        // wrong, it just cannot be explained, so the session is told the plain, unexplained sentence it always got.
+        var project = Project.Create("Cockpit") with { MemoryRef = "notes:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it there.") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().Be(
+                "This project's memory lives at notes:cockpit. Read it there when you need what this project " +
+                "already knows, and keep it up to date as you work.");
+    }
+
+    [Fact]
+    public void Resolve_AnEmptyValueAfterTheColon_FallsBackToThePlainSentence()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:   " };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it there.") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().Be(
+                "This project's memory lives at depot:. Read it there when you need what this project already " +
+                "knows, and keep it up to date as you work.");
+    }
+
+    [Fact]
+    public void Resolve_ASourceWithoutAnInstruction_SaysWhereAndStops()
+    {
+        // The registry refuses such a source, so this is a caller that assembled its own list. Say the place and
+        // stop — a lone full stop trailing the location would read as a sentence someone forgot to finish.
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "   ") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().Be("This project's memory lives in Depot project \"cockpit\".");
+    }
+
+    [Fact]
+    public void Resolve_ASourceWithoutATitle_FallsBackToThePlainSentence()
+    {
+        // The registry refuses such a source too, so this is a caller that assembled its own list, same as the
+        // blank-instruction case above. Without a name to call the source by there is nothing worth explaining, so
+        // this must fall back to the plain sentence rather than print "lives in  \"cockpit\"" with a double space
+        // and nothing where the source's name should be.
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "   ", "Read it there.") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().Be(
+                "This project's memory lives at depot:cockpit. Read it there when you need what this project " +
+                "already knows, and keep it up to date as you work.");
+    }
+
+    /// <summary>
+    /// ⚠️ The guard this whole feature depends on: a Windows path puts a colon at index 1 too ("C:\..."), and
+    /// without a floor on how short a scheme may be, registering "c" as a memory source would silently reinterpret
+    /// every project whose folder happens to live on the C: drive.
+    /// </summary>
+    [Fact]
+    public void Resolve_AWindowsPathWithARegisteredSingleCharacterScheme_IsNotHijacked()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = @"C:\Users\raymond\Notes\Cockpit" };
+        var sources = new[] { new ProjectMemorySource("c", "Suspicious single-letter source", "Never reach this.") };
+
+        SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt
+            .Should().Be(
+                @"This project's memory lives at C:\Users\raymond\Notes\Cockpit. Read it there when you need what " +
+                "this project already knows, and keep it up to date as you work.");
+    }
 }

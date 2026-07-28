@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
@@ -21,7 +22,8 @@ namespace Cockpit.App.Services;
 public sealed class ProjectQuickStart(
     ISessionProfileStore profiles,
     IMcpServerCatalog mcpServers,
-    ITtySessionProviderResolver ttyProviders) : ISingletonService
+    ITtySessionProviderResolver ttyProviders,
+    IProjectMemorySourceRegistry memorySources) : ISingletonService
 {
     /// <summary>
     /// The session <paramref name="project"/> starts, or <see langword="null"/> when it names no profile that still
@@ -44,7 +46,7 @@ public sealed class ProjectQuickStart(
             return null;
         }
 
-        var defaults = SessionStartDefaults.Resolve(project, profile);
+        var defaults = SessionStartDefaults.Resolve(project, profile, memorySources: memorySources.Sources.ToMemorySources());
 
         // The same rule the dialog opens on, from the same place: the promise here is "the dialog, skipped", so what
         // starts has to be what pressing Start would have started.
