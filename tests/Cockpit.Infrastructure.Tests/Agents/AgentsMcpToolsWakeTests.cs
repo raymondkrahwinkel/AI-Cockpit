@@ -165,6 +165,39 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
+    public async Task Notify_UrgentResendToAPaneThatNeverOptedIn_KeepsSayingWhyItWillNotBeWoken()
+    {
+        _DeskWith("sender", "target");
+
+        _ = await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true);
+        var second = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
+
+        // Both refusals apply here — the recipient never opted in, and the message is a duplicate. Which one the
+        // sender hears is the point: consent is a standing fact about the recipient and worth repeating, where
+        // "you already said that" tells it nothing it can act on.
+        Assert.Equal(nameof(AgentWakeOutcome.NotOptedIn), second["wake"]!["outcome"]!.GetValue<string>());
+        _ = _gateway.DidNotReceiveWithAnyArgs().TryWakeAsync(default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task Notify_Urgent_WhenTheSendItselfFails_StillRecordsWhatWasAskedFor()
+    {
+        // The catch-all around the whole send, not the one around the wake: the failure happens before a message
+        // exists, so there is no wake outcome to record — only what the sender asked for, which is the half an
+        // operator reading the trail for a pane that keeps trying to wake a neighbour needs to see.
+        _gateway.GetWorkspaceSnapshotAsync("sender").Returns<Task<WorkspaceAgentSnapshot?>>(_ => throw new InvalidOperationException("the desk went away"));
+
+        var json = _Json(await _NotifyAs("sender", "target", "branch", "leave that branch alone", urgent: true));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.RefusedError, entry.Outcome);
+        Assert.True(entry.Urgent);
+        Assert.Null(entry.Wake);
+    }
+
+    [Fact]
     public async Task Notify_Urgent_WhenTheWakeThrows_KeepsTheMessageAndRecordsTheFailure()
     {
         _DeskWith("sender", "target");

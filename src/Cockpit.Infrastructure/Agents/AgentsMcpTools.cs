@@ -733,6 +733,17 @@ internal sealed class AgentsMcpTools(
     /// </summary>
     private async Task<AgentWakeOutcome> _WakeAsync(string caller, string addressee, string kind, bool deduplicated)
     {
+        // The opt-in is the consent, and this is where it is honoured. Nothing the sender passes can stand in for it.
+        //
+        // Asked before the de-duplication below, though either order refuses. What differs is what the sender is
+        // told: consent is a standing fact about the recipient and de-duplication is a fact about this one send, so
+        // a sender re-sending to a pane that never opted in should keep hearing why it will never be woken rather
+        // than have that replaced by "you already said that" on the second try.
+        if (!coordinator.HasWakeConsent(addressee))
+        {
+            return AgentWakeOutcome.NotOptedIn;
+        }
+
         // A deduplicated send added nothing: the identical message is already waiting, and it had its wake when it
         // first arrived. Waking again on a re-send would make the wake as repeatable as the sender's own loop — and
         // the cap that is meant to bound this line (AC-396) is not built yet, so the only thing standing between a
@@ -740,12 +751,6 @@ internal sealed class AgentsMcpTools(
         if (deduplicated)
         {
             return AgentWakeOutcome.AlreadyWaiting;
-        }
-
-        // The opt-in is the consent, and this is where it is honoured. Nothing the sender passes can stand in for it.
-        if (!coordinator.HasWakeConsent(addressee))
-        {
-            return AgentWakeOutcome.NotOptedIn;
         }
 
         try

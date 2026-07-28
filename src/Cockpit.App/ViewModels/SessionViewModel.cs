@@ -1682,10 +1682,36 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return false;
         }
 
-        // Through the same funnel as the composer's own sends: a scheduled resume is a real turn on a real session,
-        // so mail waiting for this pane belongs on it just as much. Routing it around the funnel is exactly the kind
-        // of second path that leaves one route delivering and the other not.
-        await _SendWithWaitingMessagesAsync(_runtime, prompt, images: null).ConfigureAwait(false);
+        // A turn started from here is as real as one the operator typed, and the rest of the cockpit only learns that
+        // from these flags: the composer queues behind IsBusy rather than sending on top of a running turn, and
+        // AC-395's wake refuses a pane that is already working. Marked here as well as in _DispatchMessageAsync
+        // because a turn nobody marked busy is one the session goes on reporting itself idle through — and the next
+        // urgent message, or the operator's own send, then lands on top of it.
+        //
+        // Set before the first await on purpose. Both callers reach this from the UI thread, so the flag is up before
+        // control returns to whoever asked for the turn; a second wake arriving in that same moment sees Busy rather
+        // than the state from before this one started.
+        IsBusy = true;
+        IsAwaitingResponse = true;
+        _RecomputeStatus();
+
+        try
+        {
+            // Through the same funnel as the composer's own sends: a scheduled resume is a real turn on a real session,
+            // so mail waiting for this pane belongs on it just as much. Routing it around the funnel is exactly the kind
+            // of second path that leaves one route delivering and the other not.
+            await _SendWithWaitingMessagesAsync(_runtime, prompt, images: null);
+        }
+        catch
+        {
+            // The turn never left, so the session is not working — left standing, it would read as permanently busy:
+            // the composer would queue forever and no later message could ever wake it. Rethrown rather than swallowed,
+            // because the callers already decide what a failed prompt means for them.
+            IsBusy = false;
+            IsAwaitingResponse = false;
+            _RecomputeStatus();
+            throw;
+        }
 
         return true;
     }

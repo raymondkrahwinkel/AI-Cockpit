@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Threading;
 using Cockpit.App.Services;
@@ -23,15 +24,29 @@ namespace Cockpit.App.ViewTests;
 public class WorkspaceAgentGatewayWakeTests
 {
     /// <summary>
-    /// A pane that both takes prompts and carries mail on its turns. No shipping pane kind is both — a terminal
-    /// pane takes a prompt and has no turn to hang delivery on, and a session pane has the turn but needs a live
-    /// runtime to take anything. Without one of these the gateway could pass a hard-coded <c>false</c> into the
-    /// notice and every test would still be green, while a woken agent was told to go and read an inbox whose
-    /// contents were already in front of it.
+    /// A pane that both takes prompts and carries mail on its turns. A running session pane is both in production —
+    /// dependency injection always hands it the delivery seam — but not one this test can build: making it answer
+    /// true to <see cref="SessionPanelViewModel.CanTakeAPrompt"/> takes a live driver, and a terminal pane, which
+    /// needs nothing but a sink, has no turn to hang delivery on. Without a pane that is both, the gateway could
+    /// pass a hard-coded <c>false</c> into the notice and every test here would still be green, while a woken agent
+    /// was told to go and read an inbox whose contents were already in front of it.
     /// </summary>
     private sealed class DeliveringTerminal : TtyViewModel
     {
         public override bool DeliversInboxAtTurnStart => true;
+    }
+
+    /// <summary>Captures what the gateway logged, so a wake whose turn failed can be shown to leave a trace rather than a swallowed exception.</summary>
+    private sealed class CapturingLogger : ILogger<WorkspaceAgentGateway>
+    {
+        public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, exception));
     }
 
     private static (CockpitViewModel Cockpit, TtyViewModel Sender, TtyViewModel Target, List<string> Sent) _Desk(
@@ -248,5 +263,30 @@ public class WorkspaceAgentGatewayWakeTests
         var outcome = await _Gateway(cockpit).TryWakeAsync(sender.PaneId, "pane-that-never-existed", "branch");
 
         Assert.Equal(AgentWakeOutcome.PaneGone, outcome);
+    }
+
+    [Fact]
+    public async Task Wake_WhoseTurnThrowsOnItsWayOut_LeavesATraceInsteadOfAnUnobservedFailure()
+    {
+        var (cockpit, sender, target) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var vm = new CockpitViewModel();
+            var from = new TtyViewModel();
+            var to = new TtyViewModel { SessionStatus = SessionStatus.Done };
+            to.PromptSink = _ => throw new IOException("the terminal went away");
+            vm.Sessions.Add(from);
+            vm.Sessions.Add(to);
+            return (vm, from, to);
+        });
+        var logger = new CapturingLogger();
+
+        // The send is deliberately not awaited by the gateway, so a throw on that path has no caller to surface it:
+        // discarded, it becomes an unobserved exception at some later garbage collection, attributed to nothing.
+        var outcome = await new WorkspaceAgentGateway(cockpit, logger).TryWakeAsync(sender.PaneId, target.PaneId, "branch");
+
+        Assert.Equal(AgentWakeOutcome.Woken, outcome);
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.IsType<IOException>(entry.Exception);
     }
 }
