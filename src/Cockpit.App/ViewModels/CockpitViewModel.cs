@@ -3119,7 +3119,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _Megabytes(session.MemoryBytes),
                 _Share(session.MemoryBytes, usage.MemoryBytes)))
             .Append(new ResourceRowViewModel(
-                "the cockpit itself",
+                // A label in a column of names, so it is capitalised like one — and it is not the product's name,
+                // because this list is in the main window and the title bar is where that gets stated.
+                "The cockpit itself",
                 "the app, its windows and its transcripts",
                 _Megabytes(usage.Parts.OwnBytes),
                 _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))

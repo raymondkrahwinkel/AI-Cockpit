@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AI-Cockpit are recorded here, newest first. The format follows
+All notable changes to Wispslate Cockpit are recorded here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the tag you release
 (`v1.2.3` → `1.2.3`) — the same string the About dialog and the in-app updater read.
 

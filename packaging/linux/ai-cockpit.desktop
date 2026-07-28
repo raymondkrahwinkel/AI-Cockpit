@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=AI Cockpit
+Name=Wispslate Cockpit
 GenericName=AI session cockpit
 Comment=Run and watch several AI coding sessions side by side
 # Exec is rewritten by scripts/install-linux.sh to the installed executable's absolute path.

@@ -962,7 +962,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
                                 <TextBlock Text="What this does not do" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="It protects the file, not a running cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
+                                    ToolTip.Tip="It protects the file, not the cockpit while it runs. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>

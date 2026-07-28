@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.Views;
 
@@ -149,7 +150,9 @@ public partial class OptionsDialog : Window
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Back up the cockpit",
+            // The one string here that names the app: this dialog is the OS's, drawn among windows from every
+            // other program, where "back up the cockpit" says nothing about whose backup it is.
+            Title = $"Back up {CockpitProduct.DisplayName}",
             SuggestedFileName = $"cockpit-backup-{DateTime.Now:yyyy-MM-dd}.zip",
             DefaultExtension = "zip",
             FileTypeChoices = [new FilePickerFileType("Cockpit backup") { Patterns = ["*.zip"] }],

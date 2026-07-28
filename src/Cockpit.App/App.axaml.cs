@@ -371,7 +371,7 @@ public partial class App : Application
             });
     }
 
-    /// <summary>Restores and focuses the main window (tray left-click / "Show AI-Cockpit").</summary>
+    /// <summary>Restores and focuses the main window (tray left-click / the tray menu's "Show …" entry).</summary>
     public void ShowMainWindow()
     {
         if (_mainWindow is null)

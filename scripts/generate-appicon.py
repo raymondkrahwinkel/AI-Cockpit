@@ -36,7 +36,11 @@ BORDER_WIDTH = 0.025  # of the tile, so it survives the downscale to a taskbar s
 
 SIZE = 1024
 RADIUS = int(SIZE * 14 / 56)  # the empty-state tile's CornerRadius, as a fraction of its size
-MARK_WIDTH = 0.62  # of the tile — the mark's own aspect then decides its height, as it does everywhere else
+# Of the tile — the mark's own aspect then decides its height, as it does everywhere else. Set by what survives
+# 16px, not by what looks composed at 1024: the mark is a third as tall as it is wide, so a width that leaves a
+# comfortable margin leaves a glyph too small to read where a taskbar draws it. This is as far as it goes before
+# the trail's glow reaches the tile's corner radius.
+MARK_WIDTH = 0.82
 MACOS_TILE = 824  # Apple's icon grid: the rounded-rect footprint inside the 1024px canvas
 
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]

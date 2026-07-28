@@ -35,17 +35,17 @@
 [Setup]
 ; A stable AppId so a later version replaces this one in place rather than installing beside it. Never change it.
 AppId={{9C2F5B7E-3D4A-4E1C-9B6F-1A2C3D4E5F60}
-AppName=AI-Cockpit
+AppName=Wispslate Cockpit
 AppVersion={#AppVersion}
 VersionInfoVersion={#AppVersionNumeric}
 AppPublisher=Raymond Krahwinkel
 DefaultDirName={autopf}\AI-Cockpit
-DefaultGroupName=AI-Cockpit
+DefaultGroupName=Wispslate Cockpit
 ; Show the license acceptance page in the wizard. Path is relative to this .iss (scripts/), so it points at the
 ; repo-root LICENSE — the same Commons Clause + Apache 2.0 the app ships under. Inno detects RTF vs plain text
 ; from the file's header, so the extensionless LICENSE loads correctly as plain text.
 LicenseFile=..\LICENSE
-UninstallDisplayName=AI-Cockpit
+UninstallDisplayName=Wispslate Cockpit
 UninstallDisplayIcon={app}\Cockpit.App.exe
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -69,9 +69,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "Cockpit.App.exe"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\AI-Cockpit"; Filename: "{app}\Cockpit.App.exe"
-Name: "{group}\Uninstall AI-Cockpit"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\AI-Cockpit"; Filename: "{app}\Cockpit.App.exe"; Tasks: desktopicon
+Name: "{group}\Wispslate Cockpit"; Filename: "{app}\Cockpit.App.exe"
+Name: "{group}\Uninstall Wispslate Cockpit"; Filename: "{uninstallexe}"
+Name: "{userdesktop}\Wispslate Cockpit"; Filename: "{app}\Cockpit.App.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Cockpit.App.exe"; Description: "Launch AI-Cockpit"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Cockpit.App.exe"; Description: "Launch Wispslate Cockpit"; Flags: nowait postinstall skipifsilent

@@ -220,7 +220,7 @@ jobs:
           # expanding an empty array as an unbound variable under set -u and kills the step.
           vpk pack ${EXTRA[@]+"${EXTRA[@]}"} \
             --packId AI-Cockpit \
-            --packTitle "AI Cockpit" \
+            --packTitle "Wispslate Cockpit" \
             --packAuthors "Raymond Krahwinkel" \
             --packVersion "$VERSION" \
             --packDir "publish/$RID" \
