@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Cockpit.TestSupport;
 using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests;

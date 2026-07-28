@@ -10,11 +10,6 @@ namespace Cockpit.TestSupport;
 /// Linux and macOS never showed it: there, unlinking is governed by write permission on the containing directory,
 /// not by the mode of the file itself. CI is Linux, so the suite was green there the whole time it was unusable
 /// on a Windows desktop — which is the reason this lives in one place instead of being fixed where it hurt.
-/// <para>
-/// <c>Cockpit.Infrastructure.Tests</c> still carries its own copy from AC-339. Folding that one in means giving
-/// that project a reference to this one, and this one brings Avalonia and ASP.NET along for its other helpers —
-/// a decision about that project's dependencies rather than part of a test fix, so it is left standing.
-/// </para>
 /// </remarks>
 public static class TestGitDirectory
 {

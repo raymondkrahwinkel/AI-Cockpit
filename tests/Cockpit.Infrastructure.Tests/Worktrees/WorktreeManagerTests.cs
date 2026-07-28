@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.TestSupport;
 using FluentAssertions;
 using NSubstitute;
 
