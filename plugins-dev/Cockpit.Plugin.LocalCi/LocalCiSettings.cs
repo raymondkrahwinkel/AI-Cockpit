@@ -14,6 +14,13 @@ internal sealed class LocalCiSettings(IPluginStorage storage)
     /// differ from GitHub's runner images: a project whose jobs need a tool the medium image lacks has nowhere else
     /// to say so, and the alternative — this plugin guessing a bigger image for everyone — costs 50 GB.
     /// </summary>
+    /// <summary>Whether sessions are offered the <c>cockpit-local-ci</c> tools at all.</summary>
+    public bool McpEnabled
+    {
+        get => storage.Get<bool?>("mcpEnabled") ?? true;
+        set => storage.Set("mcpEnabled", value);
+    }
+
     public string RunnerImage
     {
         get => storage.Get<string>("runnerImage") is { Length: > 0 } image ? image : ActRunOptions.DefaultRunnerImage;

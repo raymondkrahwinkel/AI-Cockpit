@@ -1,5 +1,7 @@
 using Cockpit.Plugin.LocalCi.Execution;
+using Cockpit.Plugin.LocalCi.Mcp;
 using Cockpit.Plugin.LocalCi.Runtime;
+using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugin.LocalCi.Ui;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -62,6 +64,23 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         // A container this plugin started on an agent's say-so belongs in the status bar with a Kill only the
         // operator can press (AC-82).
         host.AddSupervisedActivityProvider(tracker);
+
+        // Built once per session panel, which is the only place the host hands over a session's own context — so
+        // it is both where the last run is shown and where the pane-to-checkout answer the MCP tools need is
+        // learned. There is no lookup for that: see SessionCheckouts.
+        var checkouts = new SessionCheckouts();
+        host.AddSessionHeaderItem(session =>
+        {
+            checkouts.Remember(session);
+            return new LocalCiSessionBadge(session, tracker);
+        });
+
+        // The agent's side: a session can check its own work before it pushes it. Every run goes through the
+        // operator's consent, and the tools take no path — the checkout is the caller's own.
+        _ = host.AddMcpEndpoint(
+            "cockpit-local-ci",
+            new LocalCiMcpTools(host, checkouts, runner, tracker, head),
+            isEnabled: () => settings.McpEnabled);
 
         // From the session's own header, so the run is about the checkout that session is working in rather than
         // whichever pane happens to be selected when the operator gets to it.

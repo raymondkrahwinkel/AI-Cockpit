@@ -25,6 +25,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     private readonly TextBlock _dockerLine = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _actLine = ProviderConfigStatus.CreateLine();
     private readonly TextBox _runnerImage;
+    private readonly CheckBox _mcpEnabled;
     private readonly Button _checkAgain;
 
     public LocalCiSettingsControl(ILocalCiRuntime runtime, LocalCiSettings settings)
@@ -41,6 +42,12 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
             Text = settings.RunnerImage,
         };
 
+        _mcpEnabled = new CheckBox
+        {
+            Content = "Offer the cockpit-local-ci tools to sessions",
+            IsChecked = settings.McpEnabled,
+            Margin = new(0, 16, 0, 0),
+        };
 
         Content = new StackPanel
         {
@@ -70,6 +77,14 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap,
                 },
+                _mcpEnabled,
+                new TextBlock
+                {
+                    Text = "A session can then start these checks on its own project and read the verdict back. Every "
+                        + "run still asks you to approve the exact command first.",
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
         };
 
@@ -79,6 +94,7 @@ internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
     public bool Save()
     {
         _settings.RunnerImage = _runnerImage.Text ?? string.Empty;
+        _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
         return true;
     }
 
