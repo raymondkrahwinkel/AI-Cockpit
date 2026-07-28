@@ -50,6 +50,16 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
+        // cockpit-agents (AC-391): the foundation of an agent-to-agent communication line — for now, one tool,
+        // list_agents, so a session can see the other agents sharing its workspace. A tickable server rather than
+        // AlwaysMounted, like cockpit-verify/cockpit-worktrees, not forced on the way cockpit-session's status line
+        // is — that one the header itself depends on, so it is kept off the checklist entirely. "Tickable" cuts
+        // both ways, though: for a session/profile with no explicit MCP selection (the common case) this is on by
+        // default and the checklist is where an operator opts back out; but a profile that has ever saved an
+        // explicit selection (McpServerRegistryFilter.ApplySessionSelection) — including an empty one — is read as
+        // a deliberate choice, and cockpit-agents is silently not mounted there unless that profile names it.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools)));
+
         AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);

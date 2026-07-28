@@ -26,3 +26,6 @@ plugins-dev/dist/
 # Packaged app bundles (scripts/package-macos.sh)
 artifacts/
 publish/
+
+# Session scratch notes an agent may drop here — never part of the repository
+scratchpad/

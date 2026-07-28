@@ -32,6 +32,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a session can now see the other agent sessions sharing its desk. Until now an agent had no way of knowing it
+  was not alone: two of them would end up on the same working tree and only find out when an edit stopped compiling.
+  A new `cockpit-agents` server answers who else is on the workspace — their name, the profile they run under and the
+  status line they last set — so an agent can look before it touches something shared.
+
+  It only ever answers about the desk you are on. There is no argument naming a session, deliberately: the cockpit
+  works out which pane asked from the connection itself, so an agent cannot reach another workspace by naming one,
+  and a request the cockpit cannot attribute to a session is refused rather than guessed at.
+
+  A pane that is on the desk but has never called in is listed as such instead of being left out. The difference
+  matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
+  nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
+  yet, or the server may not be mounted for it — so it says that rather than picking a cause.
 - added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
   having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
   in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
