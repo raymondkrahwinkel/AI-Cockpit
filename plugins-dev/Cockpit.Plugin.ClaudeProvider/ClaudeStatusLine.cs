@@ -138,7 +138,7 @@ internal static class ClaudeStatusLine
 
         var script = $"""
             #!/usr/bin/env bash
-            # Written by AI-Cockpit (Claude provider plugin). Claude Code pipes its statusline JSON in on stdin; this
+            # Written by Wispslate Cockpit (Claude provider plugin). Claude Code pipes its statusline JSON in on stdin; this
             # keeps a copy for the session's header (${StatusFileVariable}) and then runs the operator's own statusline.
             set -o pipefail
             umask 077
@@ -171,7 +171,7 @@ internal static class ClaudeStatusLine
                """;
 
         var script = $$"""
-            # Written by AI-Cockpit (Claude provider plugin). Claude Code pipes its statusline JSON in on stdin; this
+            # Written by Wispslate Cockpit (Claude provider plugin). Claude Code pipes its statusline JSON in on stdin; this
             # keeps a copy for the session's header ({{StatusFileVariable}}) and then runs the operator's own statusline.
             $ErrorActionPreference = 'SilentlyContinue'
             $payload = [Console]::In.ReadToEnd()

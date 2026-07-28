@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
@@ -13,7 +14,7 @@ public sealed partial class RestoreSelectionViewModel : ViewModelBase
 {
     public RestoreSelectionViewModel(BackupManifest manifest, IReadOnlyCollection<string> installed)
     {
-        MadeOn = $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by AI-Cockpit {manifest.AppVersion}";
+        MadeOn = $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by {CockpitProduct.DisplayName} {manifest.AppVersion}";
 
         Credentials = manifest.IncludesCredentials
             ? "It carries its own keys and tokens."

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Cockpit.Core.Configuration;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
@@ -45,7 +46,7 @@ public sealed record AboutInfo(
     /// for a fresh install and simply leaves the built-in providers standing.
     /// </param>
     public static AboutInfo FromAssembly(Assembly assembly, IEnumerable<string>? pluginProviderNames = null) => new(
-        "AI-Cockpit",
+        CockpitProduct.DisplayName,
         _VersionText(assembly),
         "Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript.",
         _ProviderText(pluginProviderNames),

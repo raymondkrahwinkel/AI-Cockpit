@@ -14,7 +14,7 @@ The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`
 1. Reads that plugin's `plugin.json` (the source of truth: version, `minHostVersion`, `abstractionsVersion`).
 2. **Gates on host availability.** If the plugin's `minHostVersion` is newer than any published host — the
    highest `v*` release and the base version baked into the current nightly — it stops. A plugin published
-   ahead of the host it needs would install and then be refused with *"Needs a newer AI-Cockpit"*, so the
+   ahead of the host it needs would install and then be refused with *"Needs a newer cockpit"*, so the
    workflow blocks it and tells you to ship the app release/nightly first. **This gate is only as honest as
    the `minHostVersion` you set** — bump it whenever a plugin starts using a new host API, or the gate waves
    through a plugin that will not run.

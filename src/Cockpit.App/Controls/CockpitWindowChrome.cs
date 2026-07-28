@@ -1,8 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Cockpit.Core.Configuration;
 using Material.Icons;
 
 namespace Cockpit.App.Controls;
@@ -22,7 +26,9 @@ internal static class CockpitWindowChrome
     private const double DialogTitleFontSize = 20;
     private const double DialogSubtitleFontSize = 12.5;
     private const double WindowTitleFontSize = 15.5;
-    private const double AppDotSize = 9;
+    // The brand mark at the head of the app's own bar, kept at the newer mockup's proportion to the name beside
+    // it (wispslate-cockpit-2026-07-28.html asks for a 19px mark against a 13px name; ours is a 15.5px name).
+    private const double AppMarkHeight = 22;
     private const double DialogCaptionButtonHeight = 30;
     // The explanation under a name is one or two lines in the reference; more than three and the bar has stopped
     // being a header. Bounded rather than trusted, for the same reason the name itself is.
@@ -34,6 +40,14 @@ internal static class CockpitWindowChrome
     private static readonly Thickness DialogPadding = new(22, 19);
     private static readonly Thickness WindowPadding = new(18, 14);
 
+    // Decoded once rather than per window: the main window and the unlock window can both be standing.
+    private static readonly Lazy<Bitmap> AppMark = new(() =>
+        new Bitmap(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/BrandMark.png"))));
+
+    /// <param name="title">
+    /// The name in the bar. Ignored by <see cref="CockpitTitleBar.Window"/>: the app's own window is not named by
+    /// its caller, it carries the product's name and mark (AC-430).
+    /// </param>
     /// <param name="subtitle">
     /// The line under a dialog's name saying what it is for (the mockup's .tsub). Left out, the header is just
     /// the name. Ignored by <see cref="CockpitTitleBar.Window"/>, which has no room for a second line.
@@ -134,7 +148,7 @@ internal static class CockpitWindowChrome
         var bar = new DockPanel();
         DockPanel.SetDock(captionButtons, Dock.Right);
         bar.Children.Add(captionButtons);
-        bar.Children.Add(isDialog ? _DialogHeading(title, subtitle) : _WindowHeading(title));
+        bar.Children.Add(isDialog ? _DialogHeading(title, subtitle) : _WindowHeading());
 
         var wrapper = new Border
         {
@@ -194,18 +208,23 @@ internal static class CockpitWindowChrome
         return heading;
     }
 
-    // The app window's line: the name, and an accent dot in front of it so the window reads as the cockpit
-    // itself rather than as one more dialog.
-    private static Control _WindowHeading(string title)
+    // The app window's line: the brand mark, then the product's name — so the window reads as the cockpit itself
+    // rather than as one more dialog. The mark stood here as a plain accent dot until the product got one.
+    private static Control _WindowHeading()
     {
-        var dot = new Border
+        var mark = new Image
         {
-            Width = AppDotSize,
-            Height = AppDotSize,
-            CornerRadius = new CornerRadius(AppDotSize / 2),
-            Background = _Brush("CockpitAccentBrush"),
+            Source = AppMark.Value,
+            Height = AppMarkHeight,
+            // Uniform, and only the height is given: the mark is wider than it is tall, and squaring it off would
+            // deform it. The bar's own height follows the heading, so it makes room for whatever this measures.
+            Stretch = Stretch.Uniform,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        // A 276x206 bitmap landing at a fraction of that size. The default filtering leaves the thin strokes in
+        // the mark ragged against the chrome, which at this size is the whole of it.
+        RenderOptions.SetBitmapInterpolationMode(mark, BitmapInterpolationMode.HighQuality);
 
         var heading = new StackPanel
         {
@@ -215,18 +234,38 @@ internal static class CockpitWindowChrome
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        heading.Children.Add(dot);
-        heading.Children.Add(_NameLine(title, WindowTitleFontSize));
+        heading.Children.Add(mark);
+        heading.Children.Add(_BrandLine());
 
         return heading;
+    }
+
+    // The product's name in two strengths on one line — the mockup's `Wispslate <span>Cockpit</span>`. The second
+    // word steps back so the bar states which app this is without shouting a brand at someone who came to look at
+    // their own sessions. Inlines rather than two TextBlocks, so the pair trims and aligns as one line of text.
+    private static Control _BrandLine()
+    {
+        var line = _Line(WindowTitleFontSize);
+        line.Inlines =
+        [
+            new Run(CockpitProduct.Brand),
+            new Run($" {CockpitProduct.Product}") { Foreground = _Brush("CockpitTextFaintBrush") },
+        ];
+        return line;
     }
 
     // The window's name, on exactly one line. A title is not always the app's own: a plugin supplies the one on
     // its dialog, and a title carrying newlines would otherwise make the bar as tall as it liked — the bar used to
     // be a fixed 38px, which bounded that by accident, and it now grows with its heading.
-    private static TextBlock _NameLine(string title, double fontSize) => new()
+    private static TextBlock _NameLine(string title, double fontSize)
     {
-        Text = title,
+        var line = _Line(fontSize);
+        line.Text = title;
+        return line;
+    }
+
+    private static TextBlock _Line(double fontSize) => new()
+    {
         FontSize = fontSize,
         FontWeight = FontWeight.SemiBold,
         VerticalAlignment = VerticalAlignment.Center,

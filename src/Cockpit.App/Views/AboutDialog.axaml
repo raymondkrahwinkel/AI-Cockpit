@@ -12,7 +12,7 @@
         Background="{StaticResource CockpitPanelBgBrush}">
 
     <Design.DataContext>
-        <vm:AboutInfo AppName="AI-Cockpit" VersionText="0.3.0"
+        <vm:AboutInfo AppName="Wispslate Cockpit" VersionText="0.3.0"
                       BuildText="Plugin API 1 (SDK 1.4.0) · .NET 10.0.10"
                       Description="Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript."
                       Providers="Ollama · LM Studio · plus any provider a plugin adds (Claude, Codex, Gemini, OpenAI, GitHub Models)."
@@ -25,12 +25,11 @@
     <StackPanel Margin="20" Spacing="12">
 
         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <Border Width="36" Height="36" CornerRadius="10"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                <TextBlock Text="AI" FontSize="15" FontWeight="Bold"
-                           Foreground="{StaticResource CockpitAccentBrush}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+            <!-- The mark itself, where a bordered tile with the letters "AI" in it used to stand in for one. Only
+                 the height is set: the mark is wider than it is tall and squaring it off would deform it. -->
+            <Image Source="/Assets/BrandMark.png" Height="36" Stretch="Uniform"
+                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                   VerticalAlignment="Center"/>
             <StackPanel Spacing="1" VerticalAlignment="Center">
                 <TextBlock Text="{Binding AppName}" FontSize="16" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding VersionText, StringFormat='Version {0}'}"

@@ -1,6 +1,7 @@
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Services;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.ViewModels;
@@ -40,7 +41,7 @@ public sealed partial class DiagnosticsViewModel(
     private static string _Format(DiagnosticsSnapshot snapshot)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"AI-Cockpit diagnostics — {snapshot.CapturedAt:yyyy-MM-dd HH:mm:ss}");
+        builder.AppendLine($"{CockpitProduct.DisplayName} diagnostics — {snapshot.CapturedAt:yyyy-MM-dd HH:mm:ss}");
 
         var platform = snapshot.Platform;
         builder.AppendLine().AppendLine("Platform");

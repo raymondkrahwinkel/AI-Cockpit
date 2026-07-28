@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AI-Cockpit are recorded here, newest first. The format follows
+All notable changes to Wispslate Cockpit are recorded here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are the tag you release
 (`v1.2.3` → `1.2.3`) — the same string the About dialog and the in-app updater read.
 
@@ -492,6 +492,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   and code as they are meant to look, instead of the raw `##` and `**` the tracker stores.
 
 ### Changed
+
+- changed: the cockpit is called **Wispslate Cockpit**, and now carries its own mark. The title bar shows the mark
+  and the name — the maker's half at full strength, the product's half a step behind it — where an accent dot and
+  the old name used to stand. That bar is the only place the main window states the name at all; the window title
+  your taskbar reads, the tray, the About dialog and the app icon follow the same one.
+
+  Everywhere else the cockpit goes back to calling itself "the cockpit", the way it already did in a few places:
+  a settings page that names a product in every second sentence is advertising at someone who has already installed
+  it. So "Restart the cockpit to activate it", not the brand again.
+
+  Nothing you have configured moves. The settings directory, the config keys, your profiles, the worktree and
+  container names and the repository all keep the names they have, so an existing install carries over untouched —
+  the change is what you read, not what the machine reads.
 
 - changed: the shortcut that zooms a session pane to full width is now Ctrl+Shift+M. It was Ctrl+B, which never
   arrived while a terminal had the keyboard — the shell claimed it first, as its tmux prefix or as
