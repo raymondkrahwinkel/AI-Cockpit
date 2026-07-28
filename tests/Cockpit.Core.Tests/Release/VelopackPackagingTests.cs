@@ -91,26 +91,50 @@ public class VelopackPackagingTests
     /// The feed is only a feed if it reaches the release: the index file is what the updater looks the release up
     /// in. A glob over the artifacts directory alone matches the Velopack directory rather than descending into it,
     /// which is why both are named.
+    /// <para>
+    /// Asserted against the release-creating step alone, not the file. Over the whole file this passes on
+    /// <c>nightly.yml</c> no matter what, because the same path appears in the artifact upload — so dropping it from
+    /// the release command would have left the feed off the release with the guard still green.
+    /// </para>
     /// </summary>
     [Theory]
     [MemberData(nameof(Workflows))]
     public void TheFeed_IsAttachedToTheRelease(string workflow)
     {
-        Assert.Contains("artifacts-velopack/*", _Workflow(workflow), StringComparison.Ordinal);
+        Assert.Contains("artifacts-velopack/*", _ReleaseStep(workflow), StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The step that creates the release. Named in the nightly, anonymous in the release workflow — where it is the
+    /// action's own <c>uses:</c> line — so each is found by what identifies it there.
+    /// </summary>
+    private static string _ReleaseStep(string workflow) => workflow switch
+    {
+        "nightly.yml" => _Step(workflow, "Publish the rolling nightly"),
+        "release.yml" => _StepAt(workflow, line => line.Trim() == "- uses: softprops/action-gh-release@v2"),
+        _ => throw new ArgumentOutOfRangeException(nameof(workflow), workflow, "no release step is known for this workflow"),
+    };
 
     /// <summary>
     /// One step of a workflow, by its name. Steps sit at six spaces and everything within them is indented further,
     /// so the next line at that indent ends the block.
     /// </summary>
-    private static string _Step(string workflow, string stepName)
+    private static string _Step(string workflow, string stepName) =>
+        _StepAt(workflow, line => line.Trim() == $"- name: {stepName}");
+
+    /// <summary>
+    /// The block belonging to the first line the predicate matches. A job key also ends it — without that, a step
+    /// that happens to be its job's last would swallow the whole of the next job, and an assertion meant for one
+    /// step would quietly be reading another's.
+    /// </summary>
+    private static string _StepAt(string workflow, Func<string, bool> isStart)
     {
         var lines = File.ReadAllLines(_WorkflowPath(workflow));
-        var start = Array.FindIndex(lines, line => line.Trim() == $"- name: {stepName}");
-        Assert.True(start >= 0, $"{workflow} has no step named '{stepName}'");
+        var start = Array.FindIndex(lines, line => isStart(line));
+        Assert.True(start >= 0, $"{workflow} has no step matching the expected start line");
 
         var block = lines.Skip(start + 1)
-            .TakeWhile(line => !Regex.IsMatch(line, @"^      - \S"))
+            .TakeWhile(line => !Regex.IsMatch(line, @"^      - \S") && !Regex.IsMatch(line, @"^ {0,2}\S"))
             .Where(line => !line.TrimStart().StartsWith('#'));
 
         return string.Join('\n', block);
