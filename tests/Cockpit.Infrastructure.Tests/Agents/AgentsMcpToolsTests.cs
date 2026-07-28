@@ -520,6 +520,32 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal("pane-b", trail[0].ToPaneId);
     }
 
+    /// <summary>
+    /// Every field of the trail the sender controls is trimmed before it is written — the kind and the body, and
+    /// the addressee too. On a refused attempt <c>toPaneId</c> is whatever string the agent typed and not a pane id
+    /// the host vouches for, so it is sender-controlled free text exactly like the other two. Untrimmed, one notify
+    /// puts an arbitrarily long line into an append-only file nothing in the app can erase, and the tail-read has to
+    /// carry that line whole to get past it.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithEnormousSenderControlledText_TrimsEveryOneOfThoseFieldsOnTheTrail()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+        var enormous = new string('x', 50_000);
+
+        // Refused (that addressee is not on the desk) — which is the path where toPaneId is unvalidated text.
+        await _Tools().NotifyAsync(enormous, enormous, enormous);
+
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.RefusedNotInWorkspace, entry.Outcome);
+        foreach (var field in new[] { entry.ToPaneId, entry.Kind, entry.Body })
+        {
+            Assert.True(field.Length < 1_000, $"a sender-controlled field was written at {field.Length} characters");
+            Assert.EndsWith("…", field, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public async Task Notify_ToARecipientWhoseInboxIsFull_IsRefusedRatherThanDroppingWhatIsAlreadyThere()
     {

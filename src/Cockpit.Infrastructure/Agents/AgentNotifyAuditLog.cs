@@ -10,8 +10,10 @@ namespace Cockpit.Infrastructure.Agents;
 /// Appends the agent-notify trail (AC-392) to <c>agent-notify-audit.jsonl</c> next to <c>cockpit.json</c>. The
 /// append-only, never-throws, JSON-per-line machinery — and the tail-read that keeps the last N without loading the
 /// whole file — lives in <see cref="JsonlAuditLog{T}"/>, the same base the consent trail uses; this only names the
-/// file and trims the two free-text fields the sender controls, so one agent cannot make the trail unreadable by
-/// sending a megabyte.
+/// file and trims the three free-text fields the sender controls, so one agent cannot make the trail unreadable by
+/// sending a megabyte. The addressee is one of those three: on a refused attempt <c>ToPaneId</c> is whatever string
+/// the agent passed and not a pane id the host vouches for, so it is no more bounded than the kind or the body.
+/// The sender is not trimmed — it is stamped host-side from the verified pane, or null.
 /// </summary>
 internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>, IAgentNotifyAuditLog, ISingletonService
 {
@@ -20,6 +22,12 @@ internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>
 
     /// <summary>The kind is a short label by design, so anything past this is not a label — it is a body in the wrong field.</summary>
     private const int MaxKindLength = 100;
+
+    /// <summary>
+    /// A pane id the host minted is far shorter than this, so trimming never touches a real one; what it bounds is
+    /// the refusal path, where the addressee is a string the sending agent chose and nothing has validated.
+    /// </summary>
+    private const int MaxPaneIdLength = 200;
 
     public AgentNotifyAuditLog(ILogger<AgentNotifyAuditLog> logger)
         : base(_DefaultPath(), logger)
@@ -37,6 +45,7 @@ internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>
     protected override AgentNotifyAuditEntry PrepareForWrite(AgentNotifyAuditEntry entry) =>
         entry with
         {
+            ToPaneId = TrimText(entry.ToPaneId, MaxPaneIdLength),
             Kind = TrimText(entry.Kind, MaxKindLength),
             Body = TrimText(entry.Body, MaxBodyLength),
         };

@@ -22,10 +22,12 @@ namespace Cockpit.Infrastructure.Agents;
 /// authorized without naming a pane) — is refused outright rather than given something to name instead.
 /// </para>
 /// <para>
-/// <c>notify</c> moves information, never authority. All it does is put an envelope in the addressee's inbox: no
-/// other service is called, nothing is scheduled, and the recipient is not woken (automatic delivery at turn start
-/// is a later ticket — here the recipient pulls). Whatever the body asks for happens only if the recipient's own
-/// session decides to do it and passes its own gates, exactly as it would for text from anywhere else.
+/// <c>notify</c> moves information, never authority. Its whole effect on the addressee is an envelope waiting in its
+/// inbox: nothing is looked up, decided or scheduled on the recipient's behalf, and it is not woken (automatic
+/// delivery at turn start is a later ticket — here the recipient pulls). The two other things a send does touch are
+/// both on the <em>sender's</em> side — it enrols the sender on the roster, as <c>list_agents</c> does, and it writes
+/// the attempt to the append-only trail. Whatever the body asks for happens only if the recipient's own session
+/// decides to do it and passes its own gates, exactly as it would for text from anywhere else.
 /// </para>
 /// </summary>
 internal sealed class AgentsMcpTools(
