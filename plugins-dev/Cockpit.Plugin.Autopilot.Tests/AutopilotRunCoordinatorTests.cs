@@ -331,6 +331,49 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_AStepSessionThatEndsBeforeReporting_ThenASuccessfulRetry_CountsTheAttemptButNotARework()
+    {
+        // AC-347 FIX J: the coordinator's own fault path — a session the host refused to isolate, ending before it
+        // ever reports done — reaches _ExecuteStepAsync's general catch, which must return Faulted, not Rejected: no
+        // CEO ever saw this step's work on the first attempt. With attempts left the step reworks; a passing retry
+        // must then show Attempts == 2 but Reworks == 0, proving the distinction holds through the real coordinator
+        // wiring, not just AutopilotRunDriver's own loop with a fake executeStep.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var ended = new TaskCompletionSource<string?>();
+        var firstAttemptSession = _Session("step-pane-1", ended.Task);
+        var secondAttemptSession = _Session("step-pane-2");
+        var context = Substitute.For<IWorkspaceContext>();
+        context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(firstAttemptSession, secondAttemptSession);
+        context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shownCount = 0;
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(
+            context, _Session("ceo-pane"), _Settings(maxAttempts: 2),
+            _ => Interlocked.Increment(ref shownCount), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await _Until(() => shownCount >= 1);
+        // First attempt: the session ends before ever reporting done — the general catch turns this into Faulted.
+        ended.TrySetResult("Could not isolate this run: the Qwen (local) profile's provider does not confine its file tools to the worktree.");
+
+        await _Until(() => shownCount >= 2);
+        // Second attempt (a fresh session): report done normally and have the CEO accept it.
+        coordinator.ReportStepDone("step-pane-2", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        var step = plan.Plan!.Steps[0];
+        step.Attempts.Should().Be(2);
+        step.Reworks.Should().Be(0);
+    }
+
+    [Fact]
     public async Task RunAsync_StepNeverReportsDone_StallDeadlineElapses_FailsTheStep_SettlesBlocked()
     {
         // AC-192: a step agent that keeps its session live but never reports done (a local model stuck emitting a text

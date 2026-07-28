@@ -11,8 +11,12 @@ namespace Cockpit.Plugin.Autopilot;
 /// executeStep seam. Per step it embeds a session on the step's profile/model/minimal-MCP with the step brief as its
 /// opening turn, shows it on the surface, waits for the agent to report done (<c>autopilot_step_done</c>), asks the
 /// still-live CEO to validate the result against the step's acceptance (<c>autopilot_validate</c>), and returns the
-/// pass/fail the driver reworks or advances on. Parallel agents (<see cref="AutopilotStep.AgentCount"/> &gt; 1) run as
-/// isolated sessions; the step passes only when every agent reports and the CEO validates the combined result.
+/// <see cref="AutopilotStepOutcome"/> the driver reworks or advances on: <see cref="AutopilotStepOutcome.Passed"/> or
+/// <see cref="AutopilotStepOutcome.Rejected"/> only from the path that actually reaches the CEO's verdict —
+/// <see cref="AutopilotStepOutcome.Faulted"/> from every other path (a refused embed, a crashed or stalled session, a
+/// dead CEO, a cancellation), so a run restart is never mistaken for a review finding (AC-347). Parallel agents
+/// (<see cref="AutopilotStep.AgentCount"/> &gt; 1) run as isolated sessions; the step passes only when every agent
+/// reports and the CEO validates the combined result.
 /// <para>
 /// The MCP tools (<see cref="AutopilotRunTools"/>) call <see cref="ReportStepDone"/>/<see cref="ReportValidation"/> on
 /// background MCP-call threads while a step awaits; the state that couples them is guarded by <see cref="_lock"/>. UI
@@ -529,9 +533,12 @@ internal sealed class AutopilotRunCoordinator(
     }
 
     // One step: embed the agent session(s) on the step's profile/model/minimal-MCP with the brief as their opening turn,
-    // show the first on the surface, await every agent's done-report, then have the CEO validate the combined result. A
-    // cancelled or thrown step is a failed attempt (false) — the driver reworks or gives up — never a crashed run.
-    private async Task<bool> _ExecuteStepAsync(
+    // show the first on the surface, await every agent's done-report, then have the CEO validate the combined result.
+    // Only the path that actually reaches the CEO's verdict returns Passed/Rejected; every other path — a failed embed,
+    // a cancelled run, a thrown exception (a dead session, a stall, a refused isolation, a profile/model mismatch, a
+    // dead CEO) — returns Faulted, because nobody judged the work there. The driver reworks or gives up on a Faulted
+    // step exactly like a Rejected one, but never counts it as a review finding (AC-347).
+    private async Task<AutopilotStepOutcome> _ExecuteStepAsync(
         IWorkspaceContext context,
         IEmbeddedSession ceo,
         AutopilotSettings settings,
@@ -635,7 +642,9 @@ internal sealed class AutopilotRunCoordinator(
 
                 if (embedded is not { } agent)
                 {
-                    return false;
+                    // The host refused to embed this agent's session — no CEO ever saw this step's work. Faulted, not a
+                    // rejection.
+                    return AutopilotStepOutcome.Faulted;
                 }
 
                 lock (_lock)
@@ -682,19 +691,23 @@ internal sealed class AutopilotRunCoordinator(
                     : $"CEO: {reason.Trim()}");
             }
 
-            return passed;
+            // The only path that actually reached the CEO's verdict: a genuine acceptance or a genuine rejection.
+            return passed ? AutopilotStepOutcome.Passed : AutopilotStepOutcome.Rejected;
         }
         catch (OperationCanceledException)
         {
-            // The run was cancelled (the surface closed) — nothing to explain on a step that is going away.
-            return false;
+            // The run was cancelled (the surface closed) — nothing to explain on a step that is going away, and no
+            // verdict was ever reached.
+            return AutopilotStepOutcome.Faulted;
         }
         catch (Exception failure)
         {
-            // A step whose execution threw is a failed attempt (the driver reworks or gives up). Record why — a session
-            // the host refused to isolate carries its reason here — so the block shows it instead of a silent red dot.
+            // A step whose execution threw is a failed attempt (the driver reworks or gives up), and it never reached a
+            // verdict — a session the host refused to isolate, a stalled agent, a profile/model mismatch, or a CEO
+            // session that ended before it validated all throw here. Record why — the failure's message carries the
+            // reason — so the block shows it instead of a silent red dot.
             plan.NoteStep(step.Id, failure.Message);
-            return false;
+            return AutopilotStepOutcome.Faulted;
         }
         finally
         {

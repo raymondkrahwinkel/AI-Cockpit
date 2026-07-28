@@ -164,41 +164,80 @@ public class AutopilotPlanControllerTests
         controller.Approve();
         controller.StartStep("1");
 
-        controller.ValidateStep("1", passed: true, maxAttempts: 2).Should().BeFalse();
+        controller.ValidateStep("1", AutopilotStepOutcome.Passed, maxAttempts: 2).Should().BeFalse();
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Passed);
         controller.Plan!.Steps[0].Reworks.Should().Be(0);
     }
 
     [Fact]
-    public void ValidateStep_OnFail_WithAttemptsLeft_SendsItBackToRework_AndCountsTheRework()
+    public void ValidateStep_Rejected_WithAttemptsLeft_SendsItBackToRework_AndCountsTheRework()
     {
+        // Rejected is a genuine CEO verdict — the step's output was judged against its acceptance and turned down —
+        // so it is the one outcome that counts as a rework (AC-347).
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
         controller.StartStep("1"); // attempt 1
 
-        controller.ValidateStep("1", passed: false, maxAttempts: 2).Should().BeTrue();
+        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeTrue();
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Pending);
         controller.Plan!.Steps[0].Reworks.Should().Be(1);
     }
 
     [Fact]
-    public void ValidateStep_OnFail_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_AndDoesNotCountARework()
+    public void ValidateStep_Rejected_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_AndDoesNotCountARework()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
         controller.Approve();
 
-        // Attempt 1 → fail → rework; attempt 2 → fail → out of attempts → Failed, no more rework.
+        // Attempt 1 → rejected → rework; attempt 2 → rejected → out of attempts → Failed, no more rework.
         controller.StartStep("1");
-        controller.ValidateStep("1", passed: false, maxAttempts: 2).Should().BeTrue();
+        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeTrue();
         controller.StartStep("1");
-        controller.ValidateStep("1", passed: false, maxAttempts: 2).Should().BeFalse();
+        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeFalse();
 
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
         controller.Plan!.Steps[0].Attempts.Should().Be(2);
-        // Only the first fail sent it back to rework; the second ran out of attempts and settled Failed directly.
+        // Only the first rejection sent it back to rework; the second ran out of attempts and settled Failed directly.
         controller.Plan!.Steps[0].Reworks.Should().Be(1);
+    }
+
+    [Fact]
+    public void ValidateStep_Faulted_WithAttemptsLeft_SendsItBackToRework_ButDoesNotCountARework()
+    {
+        // Faulted means no verdict was ever reached (a crash, a stall, a refused isolation, a dead CEO) — this is the
+        // AC-347 distinction a plain bool could not carry. The step still reworks (the driver re-runs it under the
+        // attempt cap), but it must never be classified as a review finding later, so Reworks stays untouched.
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        controller.StartStep("1"); // attempt 1
+
+        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeTrue();
+        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Pending);
+        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+    }
+
+    [Fact]
+    public void ValidateStep_Faulted_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_WithNoReworkEver()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+
+        // Attempt 1 → faulted → back to Pending, no rework counted; attempt 2 → faulted → out of attempts → Failed.
+        controller.StartStep("1");
+        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeTrue();
+        controller.StartStep("1");
+        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeFalse();
+
+        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
+        controller.Plan!.Steps[0].Attempts.Should().Be(2);
+        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+        // Attempts > 1 with zero reworks is exactly the run-restart shape AutopilotCorrection.Classify reads.
+        AutopilotCorrection.Classify(controller.Plan!.Steps[0].Status, controller.Plan!.Steps[0].Attempts, controller.Plan!.Steps[0].Reworks)
+            .Should().Be(AutopilotCorrectionKind.RunRestart);
     }
 
     [Fact]

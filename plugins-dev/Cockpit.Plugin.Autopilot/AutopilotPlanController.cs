@@ -209,13 +209,19 @@ internal sealed class AutopilotPlanController
         _MutateStep(stepId, step => step.WithAttempt().WithStatus(AutopilotStepStatus.Running));
 
     /// <summary>
-    /// Records the CEO's validation of a step's output against its acceptance (AC-174). A pass settles
-    /// the step; a fail sends it back to rework (<see cref="AutopilotStepStatus.Pending"/>) while it still has attempts
-    /// left under <paramref name="maxAttempts"/>, and settles it <see cref="AutopilotStepStatus.Failed"/> once those run
-    /// out — so a rework loop is bounded and never becomes an endless loop. Returns true when the step goes back to
-    /// rework (the driver re-runs it), false when it settled (passed, or gave up after the last attempt).
+    /// Records what a step's execution actually produced (AC-347): <see cref="AutopilotStepOutcome.Passed"/> settles the
+    /// step; <see cref="AutopilotStepOutcome.Rejected"/> — the CEO judged the output against its acceptance and turned
+    /// it down — or <see cref="AutopilotStepOutcome.Faulted"/> — no verdict was ever reached (a crash, a stall, a
+    /// refused session, a dead CEO) — both send it back to rework (<see cref="AutopilotStepStatus.Pending"/>) while it
+    /// still has attempts left under <paramref name="maxAttempts"/>, and settle it
+    /// <see cref="AutopilotStepStatus.Failed"/> once those run out — so a rework loop is bounded and never becomes an
+    /// endless loop. Only a <see cref="AutopilotStepOutcome.Rejected"/> rework counts as a rework
+    /// (<see cref="AutopilotStep.WithRework"/>): a <see cref="AutopilotStepOutcome.Faulted"/> restart is a run restart,
+    /// never a review finding, because nobody judged the work — this is the one place that distinction is recorded, the
+    /// distinction a plain <c>bool</c> could not carry. Returns true when the step goes back to rework (the driver
+    /// re-runs it), false when it settled (passed, or gave up after the last attempt).
     /// </summary>
-    public bool ValidateStep(string stepId, bool passed, int maxAttempts)
+    public bool ValidateStep(string stepId, AutopilotStepOutcome outcome, int maxAttempts)
     {
         AutopilotStep? step;
         lock (_lock)
@@ -228,7 +234,7 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        if (passed)
+        if (outcome == AutopilotStepOutcome.Passed)
         {
             _SetStepStatus(stepId, AutopilotStepStatus.Passed);
             return false;
@@ -240,10 +246,20 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt. One
-        // mutation records both the rework and the status together, so a re-entrant read never sees the rework count
-        // bumped without the status having moved (or vice versa).
-        _MutateStep(stepId, target => target.WithRework().WithStatus(AutopilotStepStatus.Pending));
+        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt. Only a
+        // Rejected outcome (an actual CEO verdict) counts as a rework; a Faulted one (no verdict at all) moves the step
+        // back to Pending too, but without WithRework() — it is a run restart, not a review finding. Each branch is one
+        // mutation that records the status and (for Rejected) the rework together, so a re-entrant read never sees the
+        // rework count bumped without the status having moved (or vice versa).
+        if (outcome == AutopilotStepOutcome.Rejected)
+        {
+            _MutateStep(stepId, target => target.WithRework().WithStatus(AutopilotStepStatus.Pending));
+        }
+        else
+        {
+            _SetStepStatus(stepId, AutopilotStepStatus.Pending);
+        }
+
         return true;
     }
 
