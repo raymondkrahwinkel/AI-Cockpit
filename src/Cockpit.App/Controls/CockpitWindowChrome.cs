@@ -23,13 +23,16 @@ internal static class CockpitWindowChrome
     // The mockup's two title bars (cockpit-projects-flow-2026-07-21.html: .titlebar and .titlebar.dlg).
     // Weights are the closest real ones: the reference asks for 600/660, which a variable web font can hit
     // and the desktop UI font rounds to SemiBold either way.
-    private const double DialogTitleFontSize = 20;
-    private const double DialogSubtitleFontSize = 12.5;
+    //
+    // The dialog sizes below deliberately depart from it: transcribed literally they gave 97px of bar on a
+    // dialog 229px tall, so the header outweighed what it introduced. Judged on rendered dialogs (AC-426).
+    private const double DialogTitleFontSize = 15;
+    private const double DialogSubtitleFontSize = 11.5;
     private const double WindowTitleFontSize = 15.5;
     // The brand mark at the head of the app's own bar, kept at the newer mockup's proportion to the name beside
     // it (wispslate-cockpit-2026-07-28.html asks for a 19px mark against a 13px name; ours is a 15.5px name).
     private const double AppMarkHeight = 22;
-    private const double DialogCaptionButtonHeight = 30;
+    private const double DialogCaptionButtonHeight = 26;
     // The explanation under a name is one or two lines in the reference; more than three and the bar has stopped
     // being a header. Bounded rather than trusted, for the same reason the name itself is.
     private const int SubtitleMaxLines = 3;
@@ -37,7 +40,7 @@ internal static class CockpitWindowChrome
     // The room around the heading. It sits on the heading rather than on the bar, so the caption buttons keep
     // reaching the window's own edge: the reference is a web page whose "window" has no screen corner to aim
     // at, and inset close buttons cost a maximised window the corner the mouse can be thrown at blindly.
-    private static readonly Thickness DialogPadding = new(22, 19);
+    private static readonly Thickness DialogPadding = new(20, 12);
     private static readonly Thickness WindowPadding = new(18, 14);
 
     // Decoded once rather than per window: the main window and the unlock window can both be standing.
@@ -185,7 +188,7 @@ internal static class CockpitWindowChrome
     {
         var heading = new StackPanel
         {
-            Spacing = 3,
+            Spacing = 1,
             Margin = DialogPadding,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -271,7 +274,8 @@ internal static class CockpitWindowChrome
         VerticalAlignment = VerticalAlignment.Center,
         MaxLines = 1,
         TextTrimming = TextTrimming.CharacterEllipsis,
-        // The reference's -0.01em, which at the heading size is a fifth of a pixel off each pair.
+        // The reference's -0.01em: a fraction of a pixel off each pair, which is why it scales with the size
+        // rather than being a figure of its own.
         LetterSpacing = fontSize * -0.01,
     };
 
