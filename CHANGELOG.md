@@ -640,6 +640,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the MCP servers dialog could put its Cancel and Save buttons out of reach, so a server you had just
+  configured could not be saved. It happened whenever the dialog had something to tell you — the notice naming the
+  servers it hid because the cockpit already runs one by that name — because that notice shared its space with the
+  buttons and took as much width as its text wanted, pushing them off the edge and leaving the half-finished notice
+  as the only thing still visible. The notice now wraps into the room that is left over and the buttons keep theirs,
+  so neither the length of the message, the sign-in method a server uses, nor the number of custom headers you add
+  can move them. The window can be resized now as well, since what it holds grows with the servers you add.
+
 - fixed: in the New session dialog, a plugin's option label ran over the control beside it — "Permission mode" came
   out cut off and sitting on top of its own dropdown. The label column now sizes to the longest label the plugin
   declared instead of to a width chosen for a shorter one, and the rows still line up as a single column. A plugin
