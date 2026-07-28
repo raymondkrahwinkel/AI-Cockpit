@@ -313,8 +313,8 @@ public class ThemeControlStateTests
     }
 
     /// <summary>A named element anywhere below the control — a scroll bar's parts sit in a template of their own.</summary>
-    private static T _Named<T>(Control control, string name) where T : Visual =>
-        control.GetVisualDescendants().OfType<T>().First(part => (part as StyledElement)?.Name == name);
+    private static T _Named<T>(Control control, string name) where T : StyledElement =>
+        control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
     /// <summary>The colour actually rendered at a point of the window, read back out of the frame.</summary>
     private static Color _PaintedAt(Window window, Point point)

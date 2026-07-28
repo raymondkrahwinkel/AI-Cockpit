@@ -137,11 +137,9 @@
                  Claude-TTY surface; the same family the TTY panel renders with. -->
             <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
 
-            <!-- Fluent's own keys, redefined rather than styled over (AC-405). The scroll bar's track and the
-                 square between two bars take their colour inside Fluent's control template, which is
-                 Template priority — above a style setter — so a `/template/` rule of ours sets a value that
-                 never wins. Redefining the key is what the template resolves, so it is the one lever that
-                 reaches those two. Anything a Fluent *style* sets (the thumb) is reachable the ordinary way. -->
+            <!-- Fluent's own scroll-bar keys, redefined because the values sit inside its template at Template
+                 priority, where a style setter of ours cannot reach them (AC-405). The groove keeps one colour
+                 whether or not the pointer is over it; the thumb is the part that answers. -->
             <SolidColorBrush x:Key="ScrollBarTrackFill" Color="{StaticResource CockpitInsetBgColor}"/>
             <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{StaticResource CockpitInsetBgColor}"/>
             <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{StaticResource CockpitInsetBgColor}"/>
@@ -617,16 +615,11 @@
         <Setter Property="BorderThickness" Value="0"/>
     </Style>
 
-    <!-- ScrollBar: the theme never claimed one, so every scrollable surface in the app carried Fluent's own
-         dark-theme greys — #1F1F1F for the track and the corner between two bars, #858585 for the thumb
-         (AC-405). No hex literal of ours could have found that: it is a colour we never wrote down, and only
-         what is rendered shows it, which is what the AC-338 palette baseline reads.
-         The thumb is deliberately several steps lighter than the track it slides on: a thumb that resolves to
-         a theme token and then cannot be seen against its own groove is the obvious way to get this wrong.
-         Only the thumb is reachable from here. The track and the corner take their colour inside Fluent's own
-         template, at Template priority — above a style setter — so a rule naming those parts would set a value
-         that never wins and say so to nobody. Those two are redefined as resource keys instead (see
-         ScrollBarTrackFill / ScrollViewerScrollBarsSeparatorBackground in Styles.Resources above). -->
+    <!-- ScrollBar: the theme never claimed one, so every scrollable surface kept Fluent's greys. Only the thumb
+         is reachable from here — the track and the corner take their colour inside Fluent's template, at
+         Template priority, above a style setter, so they are redefined as resource keys in Styles.Resources.
+         The thumb sits several steps lighter than its groove: theme-correct and invisible is the way to get
+         this wrong. -->
     <Style Selector="ScrollBar /template/ Thumb">
         <Setter Property="Background" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
@@ -636,6 +629,7 @@
     <Style Selector="ScrollBar /template/ Thumb:pressed">
         <Setter Property="Background" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
+
     <!-- CheckBox: the box follows CockpitAccentColor. Until now it drew with Avalonia's *system* accent —
          they happen to coincide since the theme moved onto blue (AC-334), but nothing connects them, so a
          change to the token would have quietly left every tick behind on the old colour. -->
