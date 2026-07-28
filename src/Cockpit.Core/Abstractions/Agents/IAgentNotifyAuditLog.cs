@@ -67,6 +67,18 @@ public enum AgentNotifyOutcome
 /// <param name="Kind">The sender's label for the message, trimmed.</param>
 /// <param name="Body">The message text, trimmed: the trail is for recognising an attempt later, not for keeping a second copy of every message.</param>
 /// <param name="MessageId">The id of the message now waiting for the recipient, or null when nothing is.</param>
+/// <param name="Urgent">Whether the sender asked for the recipient to be woken (AC-395) — what it asked for, kept separate from what it got.</param>
+/// <param name="Wake">
+/// What became of that wake, or null when none was attempted — an ordinary message, or one refused before it
+/// ever reached the question. The trail is the only place a refused wake is written down: the sender is told, but
+/// the sender is not who this record is for. Without it the operator can see that agents talked and never that
+/// one tried to start a turn on another's session.
+/// <para>
+/// Defaulted rather than required, and last, so the lines already on disk from before wake existed still read
+/// back. A trail that stops parsing its own history the day a field is added is not append-only in any sense
+/// that matters.
+/// </para>
+/// </param>
 public sealed record AgentNotifyAuditEntry(
     DateTimeOffset At,
     AgentNotifyOutcome Outcome,
@@ -74,4 +86,6 @@ public sealed record AgentNotifyAuditEntry(
     string ToPaneId,
     string Kind,
     string Body,
-    string? MessageId);
+    string? MessageId,
+    bool Urgent = false,
+    AgentWakeOutcome? Wake = null);

@@ -527,6 +527,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public override bool DeliversInboxAtTurnStart => _turnInboxDelivery is not null;
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The same condition the cockpit already gates its own unprompted first turn on
+    /// (<c>CockpitViewModel._StartEmbeddedSessionAsync</c> checks <see cref="IsSessionReady"/> before injecting an
+    /// embedded run's brief), rather than a second reading of the runtime: a driver that never came up leaves a
+    /// runtime behind that accepts a send and does nothing with it.
+    /// </remarks>
+    public override bool CanTakeAPrompt => IsSessionReady;
+
     private void _TrackPendingAttachments()
     {
         PendingAttachments.CollectionChanged += (_, _) =>

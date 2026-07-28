@@ -786,6 +786,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     public Action<string>? PromptSink { get; set; }
 
     /// <inheritdoc/>
+    /// <remarks>The pty sink is the whole answer here: with one, a prompt is typed and submitted; without one, there is nowhere to type it.</remarks>
+    public override bool CanTakeAPrompt => PromptSink is not null;
+
+    /// <inheritdoc/>
     public override Task<bool> SendPromptAsync(string prompt)
     {
         if (PromptSink is not { } sink)

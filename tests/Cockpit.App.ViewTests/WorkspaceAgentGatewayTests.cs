@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Concurrent;
 using Avalonia.Threading;
 using Cockpit.App.Services;
@@ -49,7 +50,7 @@ public class WorkspaceAgentGatewayTests
             cockpit.Sessions.Add(sessionA);
             cockpit.Sessions.Add(sessionB);
 
-            return (new WorkspaceAgentGateway(cockpit), sessionA, sessionB);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), sessionA, sessionB);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(deskA.PaneId).GetAwaiter().GetResult());
@@ -72,7 +73,7 @@ public class WorkspaceAgentGatewayTests
             cockpit.Sessions.Add(a);
             cockpit.Sessions.Add(b);
 
-            return (new WorkspaceAgentGateway(cockpit), a, b);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), a, b);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(sessionA.PaneId).GetAwaiter().GetResult());
@@ -86,7 +87,7 @@ public class WorkspaceAgentGatewayTests
     [Fact]
     public void GetWorkspaceSnapshot_UnknownPaneId_ReturnsNull()
     {
-        var gateway = Dispatcher.UIThread.Invoke(() => new WorkspaceAgentGateway(new CockpitViewModel()));
+        var gateway = Dispatcher.UIThread.Invoke(() => new WorkspaceAgentGateway(new CockpitViewModel(), NullLogger<WorkspaceAgentGateway>.Instance));
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync("no-such-pane").GetAwaiter().GetResult());
 
@@ -118,7 +119,7 @@ public class WorkspaceAgentGatewayTests
             cockpit.Sessions.Add(b);
             cockpit.Sessions.Add(elsewhere);
 
-            return (new WorkspaceAgentGateway(cockpit), a, b, elsewhere, firstSessionsWorkspace.Id);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), a, b, elsewhere, firstSessionsWorkspace.Id);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(unstampedA.PaneId).GetAwaiter().GetResult());
@@ -141,7 +142,7 @@ public class WorkspaceAgentGatewayTests
             cockpit.Sessions.Add(agent);
             cockpit.Sessions.Add(terminal);
 
-            return (new WorkspaceAgentGateway(cockpit), agent, terminal);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), agent, terminal);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(agentSession.PaneId).GetAwaiter().GetResult());
@@ -166,7 +167,7 @@ public class WorkspaceAgentGatewayTests
             var terminal = new SessionViewModel { WorkspaceId = "desk-a", ShowPluginHeaderItems = false };
             cockpit.Sessions.Add(terminal);
 
-            return (new WorkspaceAgentGateway(cockpit), terminal);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), terminal);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(terminal.PaneId).GetAwaiter().GetResult());
@@ -194,7 +195,7 @@ public class WorkspaceAgentGatewayTests
             var session = new SessionViewModel();
             cockpit.Sessions.Add(session);
 
-            return (new WorkspaceAgentGateway(cockpit), session);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), session);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(unstamped.PaneId).GetAwaiter().GetResult());
@@ -219,7 +220,7 @@ public class WorkspaceAgentGatewayTests
 
             var embedded = cockpit.Embed("plugin-desk", new EmbeddedSessionRequest());
 
-            return (new WorkspaceAgentGateway(cockpit), grid, embedded.PaneId);
+            return (new WorkspaceAgentGateway(cockpit, NullLogger<WorkspaceAgentGateway>.Instance), grid, embedded.PaneId);
         });
 
         var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(gridSession.PaneId).GetAwaiter().GetResult());
@@ -405,7 +406,7 @@ public class WorkspaceAgentGatewayTests
             var vm = new CockpitViewModel();
             var caller = new SessionViewModel { WorkspaceId = "desk-a" };
             vm.Sessions.Add(caller);
-            return (new WorkspaceAgentGateway(vm), vm, caller.PaneId);
+            return (new WorkspaceAgentGateway(vm, NullLogger<WorkspaceAgentGateway>.Instance), vm, caller.PaneId);
         });
 
         var stop = 0;
