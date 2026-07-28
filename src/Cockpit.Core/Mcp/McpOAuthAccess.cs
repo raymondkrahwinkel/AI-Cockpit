@@ -7,7 +7,14 @@ namespace Cockpit.Core.Mcp;
 /// </summary>
 /// <param name="State">What the cockpit knows about its standing with the server.</param>
 /// <param name="AccessToken">The credential to present, or <see langword="null"/> when there is none to present.</param>
-public readonly record struct McpOAuthAccess(McpAuthState State, string? AccessToken)
+/// <param name="SignInStage">
+/// How far a sign-in got on the way to this answer (AC-457). A stage and nothing else: an exception would carry
+/// detail the operator must not be shown, while a stage is enough to stop the UI naming a window that never opened.
+/// </param>
+public readonly record struct McpOAuthAccess(
+    McpAuthState State,
+    string? AccessToken,
+    McpSignInStage SignInStage = McpSignInStage.NoBrowserLaunched)
 {
     /// <summary>The server needs nothing from the OAuth machinery.</summary>
     public static McpOAuthAccess NotRequired { get; } = new(McpAuthState.NotRequired, null);
@@ -24,5 +31,6 @@ public readonly record struct McpOAuthAccess(McpAuthState State, string? AccessT
     /// </summary>
     public override string ToString() =>
         $"{nameof(McpOAuthAccess)} {{ {nameof(State)} = {State}, "
-        + $"{nameof(AccessToken)} = {(string.IsNullOrEmpty(AccessToken) ? "null" : "***")} }}";
+        + $"{nameof(AccessToken)} = {(string.IsNullOrEmpty(AccessToken) ? "null" : "***")}, "
+        + $"{nameof(SignInStage)} = {SignInStage} }}";
 }

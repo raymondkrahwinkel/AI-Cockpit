@@ -96,12 +96,26 @@ internal sealed class McpOAuthCoordinator(
     /// </summary>
     private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
     {
-        await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
+        var (stage, explained) = await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
 
         var token = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
-        return token is not null && token.IsForResource(server.Url) && token.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin)
-            ? McpOAuthAccess.Authorized(token.AccessToken)
-            : McpOAuthAccess.AuthorizationRequired;
+        if (token is not null && token.IsForResource(server.Url) && token.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin))
+        {
+            return McpOAuthAccess.Authorized(token.AccessToken) with { SignInStage = stage };
+        }
+
+        // The dialog tells the operator the reason is in the log, so an interactive failure has to leave one there
+        // whatever happened — and a handshake can end without an exception: a server with no address to reach never
+        // runs one, and a connect that is never challenged throws nothing and still yields no credential.
+        if (interactive && !explained)
+        {
+            logger.LogWarning(
+                "The sign-in for MCP server {Server} produced no usable credential; it got as far as {SignInStage}.",
+                server.Name,
+                stage);
+        }
+
+        return McpOAuthAccess.AuthorizationRequired with { SignInStage = stage };
     }
 
     public async Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default)
@@ -149,16 +163,21 @@ internal sealed class McpOAuthCoordinator(
         }
     }
 
-    // Connects far enough to make the SDK complete whatever OAuth step is outstanding, then drops the client again.
-    // Deliberately its own minimal transport rather than the tool provider's: that one overlays built-in servers and
-    // session tokens, and depending on it from here would put a cycle in the graph the tool provider already sits in.
-    private async Task _HandshakeAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
+    // Connects far enough to make the SDK complete whatever OAuth step is outstanding, then drops the client again,
+    // and answers how far a sign-in got (AC-457) so the caller can say where it stopped without being handed the
+    // reason it stopped. Deliberately its own minimal transport rather than the tool provider's: that one overlays
+    // built-in servers and session tokens, and depending on it from here would put a cycle in the graph the tool
+    // provider already sits in.
+    // <c>Explained</c> says whether this already wrote the operator's line, so the caller can supply one when it did
+    // not rather than write a second next to it.
+    private async Task<(McpSignInStage Stage, bool Explained)> _HandshakeAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken)
     {
         if (server.Transport != McpTransport.Http || string.IsNullOrWhiteSpace(server.Url))
         {
-            return;
+            return (McpSignInStage.NoBrowserLaunched, false);
         }
 
+        var stageRecorder = new McpSignInStageRecorder();
         try
         {
             var transport = new HttpClientTransport(new HttpClientTransportOptions
@@ -166,7 +185,7 @@ internal sealed class McpOAuthCoordinator(
                 Name = server.Name,
                 Endpoint = new Uri(server.Url),
                 TransportMode = HttpTransportMode.AutoDetect,
-                OAuth = authorizer.CreateOptions(server, interactive),
+                OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
             });
 
             await using var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -177,11 +196,26 @@ internal sealed class McpOAuthCoordinator(
             // server that refused from one that simply took too long, which are different things to report.
             throw;
         }
+        catch (Exception exception) when (interactive)
+        {
+            // The operator pressed Sign in and is waiting on this, so it is a failure someone is standing in front
+            // of rather than the routine outcome below — and the sentence below would say the opposite of what
+            // happened, since asking is precisely what they did.
+            logger.LogWarning(
+                exception,
+                "The sign-in for MCP server {Server} did not complete; it got as far as {SignInStage}.",
+                server.Name,
+                stageRecorder.Reached);
+
+            return (stageRecorder.Reached, true);
+        }
         catch (Exception exception)
         {
-            // An expected outcome, not an anomaly: non-interactively this is exactly what a refusal to open a browser
-            // looks like. The caller decides what it means by re-reading the store.
+            // An expected outcome, not an anomaly: with nobody to ask, this is exactly what a refusal to hand a
+            // sign-in to a browser looks like. The caller decides what it means by re-reading the store.
             logger.LogInformation(exception, "Could not renew authorization for MCP server {Server} without asking the operator.", server.Name);
         }
+
+        return (stageRecorder.Reached, false);
     }
 }

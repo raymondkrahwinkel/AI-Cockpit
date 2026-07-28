@@ -24,21 +24,35 @@ internal interface IMcpOAuthAuthorizer
     /// <see langword="false"/> the authorization step refuses instead of opening a browser, so a caller that is not
     /// the operator — starting a session, renewing a stale token — can get as far as the refresh grant and no
     /// further (AC-353).
+    /// <para>
+    /// A caller that has to report the outcome to the operator passes a <paramref name="stageRecorder"/> and is told
+    /// how far the authorization got (AC-457); one that only needs the credential leaves it out.
+    /// </para>
     /// </summary>
-    ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true);
+    ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null);
 }
 
 internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMcpOAuthTokenStore tokenStore)
     : IMcpOAuthAuthorizer, ISingletonService
 {
-    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true)
+    /// <summary>
+    /// Stands in for the hand-off to the desktop. Null in production, where <see cref="_OpenBrowser"/> is the only
+    /// part of this class that reaches outside the process — and the only part a test cannot exercise without a
+    /// browser window appearing on the machine running the suite.
+    /// </summary>
+    internal Func<Uri, bool>? BrowserOpener { get; init; }
+
+    public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null)
     {
         var options = new ClientOAuthOptions
         {
             // A fresh loopback port per server avoids collisions; the redirect is registered via DCR so a
             // dynamic port is fine. The delegate derives its listener prefix from this same RedirectUri.
             RedirectUri = new Uri($"http://127.0.0.1:{_FreeLoopbackPort()}/callback"),
-            AuthorizationRedirectDelegate = interactive ? _HandleAuthorizationAsync : _RefuseAuthorizationAsync,
+            AuthorizationRedirectDelegate = interactive
+                ? (authorizationUri, redirectUri, cancellationToken) =>
+                    _HandleAuthorizationAsync(authorizationUri, redirectUri, stageRecorder, cancellationToken)
+                : _RefuseAuthorizationAsync,
 
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
             // would work and then be thrown away with the connection. Storing it is what lets one login serve the
@@ -72,7 +86,13 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
 
     // Opens the system browser at the authorization URL and waits on a loopback listener for the redirect,
     // returning the authorization code (or null on failure/cancel — the SDK then reports the auth failure).
-    private async Task<string?> _HandleAuthorizationAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    // Each stage is recorded where it is reached and never in advance (AC-457): the operator is told which stage
+    // stopped, so a stage noted before the thing happened would put the untruth back one layer down.
+    private async Task<string?> _HandleAuthorizationAsync(
+        Uri authorizationUri,
+        Uri redirectUri,
+        McpSignInStageRecorder? stageRecorder,
+        CancellationToken cancellationToken)
     {
         var prefix = redirectUri.GetLeftPart(UriPartial.Authority);
         if (!prefix.EndsWith('/'))
@@ -93,13 +113,25 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             return null;
         }
 
-        _OpenBrowser(authorizationUri);
+        // Nothing took the URL, so no redirect can ever arrive. Waiting on the listener anyway would leave the
+        // operator on a spinner with no message at all, which is worse than the wrong message this ticket removes.
+        if (!(BrowserOpener ?? _OpenBrowser)(authorizationUri))
+        {
+            return null;
+        }
+
+        stageRecorder?.Record(McpSignInStage.BrowserRequested);
 
         try
         {
             // Stop the listener if the connect is cancelled so GetContextAsync unblocks instead of hanging.
             using var registration = cancellationToken.Register(listener.Stop);
             var context = await listener.GetContextAsync().ConfigureAwait(false);
+
+            // Recorded on arrival, not on success: a redirect carrying error=access_denied came back just as much as
+            // one carrying a code, and this listener answers the operator's browser tab either way. Waiting until
+            // the code is in hand would tell someone who watched their own browser return that nothing came back.
+            stageRecorder?.Record(McpSignInStage.AuthorizationReturned);
 
             var (code, error) = _ParseCallback(context.Request.Url?.Query);
             await _RespondAsync(context, error is null).ConfigureAwait(false);
@@ -161,20 +193,25 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         context.Response.Close();
     }
 
-    private void _OpenBrowser(Uri url)
+    // Answers whether the URL was handed over at all — not whether a window appeared, which this process cannot see.
+    // A scheme this refuses to give the shell, or a desktop with nothing on PATH to open one, throws or returns
+    // early; a handler that then declines the URL does so out of reach, and is why the stage says "requested".
+    private bool _OpenBrowser(Uri url)
     {
         if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
         {
-            return;
+            return false;
         }
 
         try
         {
             Process.Start(new ProcessStartInfo { FileName = url.ToString(), UseShellExecute = true });
+            return true;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Could not open the system browser for the MCP OAuth sign-in");
+            return false;
         }
     }
 

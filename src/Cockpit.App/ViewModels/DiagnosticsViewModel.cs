@@ -86,6 +86,11 @@ public sealed partial class DiagnosticsViewModel(
             }
         }
 
+        // Named here because the cockpit tells the operator to "see the log" in several places and until now never
+        // said where that is — a referral to a file the UI does not name is barely a referral at all.
+        builder.AppendLine().AppendLine("Cockpit log");
+        builder.AppendLine($"  {CockpitBuild.LogPath}");
+
         builder.AppendLine().AppendLine("Crash / memory logs (newest first)");
         if (snapshot.CrashLogs.Count == 0)
         {

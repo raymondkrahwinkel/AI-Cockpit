@@ -322,4 +322,96 @@ public class McpAuthStatusRegressionTests
         Assert.DoesNotContain("super-secret-value", editable.AuthMessage);
         Assert.DoesNotContain("boom", editable.AuthMessage);
     }
+
+    [Fact]
+    public async Task SignInThatNeverReachedABrowser_DoesNotSendTheOperatorToLookAtOne()
+    {
+        var editable = _RowStoppingAt(McpSignInStage.NoBrowserLaunched);
+
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        // Found live (AC-457): the server's discovery document was refused, so the authorization URL was never known
+        // and the code that hands one to a browser was never reached — while the cockpit reported it as a browser
+        // window the operator had failed to finish with. There was nothing to check. Saying a browser was never
+        // reached is the point and stays; naming a window to go and look at is what may not.
+        Assert.DoesNotContain("browser window", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(editable.AuthMessage);
+    }
+
+    [Fact]
+    public void TheThreeStages_EachGetTheirOwnWording()
+    {
+        var messages = new[]
+        {
+            McpSignInStage.NoBrowserLaunched,
+            McpSignInStage.BrowserRequested,
+            McpSignInStage.AuthorizationReturned,
+        }.Select(_MessageFor).ToArray();
+
+        // The stages exist to be told apart. Collapsing them back into one sentence that is safe everywhere is the
+        // failure mode the ticket names: it would be true, and it would say nothing the operator can act on.
+        Assert.Equal(messages.Length, messages.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    private static string _MessageFor(McpSignInStage reached)
+    {
+        var editable = _RowStoppingAt(reached);
+        editable.SignInCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        return editable.AuthMessage;
+    }
+
+    [Fact]
+    public async Task SignInTheBrowserNeverAnswered_SaysOnlyThatItWasHandedOver()
+    {
+        var editable = _RowStoppingAt(McpSignInStage.BrowserRequested);
+
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        // The case the old fixed line was written for is still worth saying — the point was never to stop mentioning
+        // the browser, but to stop mentioning it on runs that never got there. What it may not do is assert a window:
+        // handing the URL to the desktop is the last thing the cockpit can observe.
+        Assert.Contains("browser", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("browser window", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SignInThatCameBackWithoutACredential_DoesNotBlameTheServer()
+    {
+        var editable = _RowStoppingAt(McpSignInStage.AuthorizationReturned);
+
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        // A sign-in that succeeds and issues a credential with less life left than the margin lands on this stage
+        // too (McpOAuthCoordinator's ExpiryMargin). On that run nothing refused anything, so a sentence saying the
+        // server refused would be the ticket's own defect wearing the ticket's own fix.
+        Assert.DoesNotContain("refused", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("credential", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SignInThatThrew_DoesNotBlameTheUrlOrTheOAuthSettings()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns<McpOAuthAccess>(_ => throw new IOException("the config file could not be written"));
+        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+
+        await editable.SignInCommand.ExecuteAsync(null);
+
+        // The sibling of the switch above, and the same class of defect: what reaches this catch is whatever escaped
+        // the coordinator — a config write that failed, say — which is neither the address nor the OAuth settings.
+        // Repairing the switch and leaving this naming a cause it cannot know would be one instance, not the class.
+        Assert.DoesNotContain("URL", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("OAuth settings", editable.AuthMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(editable.AuthMessage);
+    }
+
+    private static EditableMcpServerViewModel _RowStoppingAt(McpSignInStage reached)
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.AuthorizationRequired with { SignInStage = reached });
+
+        return new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+    }
 }
