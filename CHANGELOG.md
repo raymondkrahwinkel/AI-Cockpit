@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the cockpit now keeps a note of what each session pane was doing — its profile, its conversation, the
+  folder and worktree it ran in, the permission mode it was on — in a `session-state.jsonl` next to your
+  `cockpit.json`. Nothing reads it back yet, so nothing looks different; this is the record that makes bringing a
+  session back after a crash possible at all. It is written the instant something changes, never on the way out:
+  a note that is only saved when the cockpit closes cleanly is precisely the note that a crash never gets to
+  write, and a crash is the whole reason it exists. It is a plain text file, one line per change, and a line that
+  gets cut in half by a crash is skipped on the way back in rather than taking the rest of the file with it. On
+  startup the log folds down to one line per pane so it does not grow forever. It drops nothing while doing so —
+  panes themselves are not remembered across a restart yet, so there is no honest way to tell a pane that is gone
+  from one the cockpit simply has not rebuilt, and guessing there would throw away the state this is for.
 - added: a provider can now tell the cockpit which conversation a session is actually running under. On its own
   this changes nothing you can see — nothing is stored and nothing is reopened yet — but it closes the gap that
   made bringing a session back impossible: the cockpit could always ask a provider to pick up a named

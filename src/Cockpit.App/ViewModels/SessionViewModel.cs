@@ -4,6 +4,7 @@ using System.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
@@ -29,6 +30,9 @@ namespace Cockpit.App.ViewModels;
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ISessionManager? _sessionManager;
+
+    /// <summary>AC-409: written on a live permission-mode switch (see <see cref="OnSelectedPermissionModeChanged"/>). Null in the design-time/unit-test graph, where the switch simply is not persisted.</summary>
+    private readonly SessionStateRecorder? _sessionStateRecorder;
 
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
@@ -498,11 +502,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
-        IAgentTurnInboxDelivery? turnInboxDelivery = null)
+        IAgentTurnInboxDelivery? turnInboxDelivery = null,
+        SessionStateRecorder? sessionStateRecorder = null)
     {
         _sessionManager = sessionManager;
         _usageHistory = usageHistory;
         _turnInboxDelivery = turnInboxDelivery;
+        _sessionStateRecorder = sessionStateRecorder;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
@@ -810,6 +816,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         try
         {
             await _runtime.SetPermissionModeAsync(mode);
+
+            // AC-409: only once the switch actually took — a failed one leaves the running session on its old
+            // mode, and recording the requested one anyway would tell a restart to bring back a mode this session
+            // never ran under.
+            _ = _sessionStateRecorder?.RecordPermissionModeChangedAsync(PaneId, mode);
         }
         catch (Exception ex)
         {
