@@ -34,22 +34,38 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     /// <summary>
+    /// The zip install reaches the same installer as a store install, so it waits its turn too. It lives on the
+    /// Installed view, which is not built while the catalogue is showing, so the rendered sweep cannot see it —
+    /// this is where its gate is held.
+    /// </summary>
+    [Fact]
+    public void TheZipInstall_IsClosed_WhileSomethingIsAlreadyInstalling()
+    {
+        var manager = new PluginManagerViewModel();
+
+        Assert.True(manager.InstallFromZipCommand.CanExecute(null));
+
+        manager.IsBusy = true;
+
+        Assert.False(manager.InstallFromZipCommand.CanExecute(null));
+    }
+
+    /// <summary>
     /// A command's CanExecute is only half of a dead button: a bound Avalonia button caches the answer and is
     /// told to ask again by CanExecuteChanged. Without that, the gate above is true and the button still works.
     /// </summary>
     [Fact]
-    public void BothGatedCommands_AreToldToReasses_WhenBusyFlips()
+    public void EveryGatedCommand_IsToldToReassess_WhenBusyFlips()
     {
         var manager = new PluginManagerViewModel();
-        var installReasked = 0;
-        var restartReasked = 0;
-        manager.InstallFromStoreCommand.CanExecuteChanged += (_, _) => installReasked++;
-        manager.RestartNowCommand.CanExecuteChanged += (_, _) => restartReasked++;
+        var reasked = new Dictionary<string, int> { ["install"] = 0, ["restart"] = 0, ["zip"] = 0 };
+        manager.InstallFromStoreCommand.CanExecuteChanged += (_, _) => reasked["install"]++;
+        manager.RestartNowCommand.CanExecuteChanged += (_, _) => reasked["restart"]++;
+        manager.InstallFromZipCommand.CanExecuteChanged += (_, _) => reasked["zip"]++;
 
         manager.IsBusy = true;
 
-        Assert.True(installReasked > 0, "the install button has to be told the answer changed");
-        Assert.True(restartReasked > 0, "the restart button has to be told the answer changed");
+        Assert.DoesNotContain(reasked, entry => entry.Value == 0);
     }
 
     /// <summary>

@@ -52,13 +52,15 @@ public class PluginStoreBusyGateTests
     });
 
     /// <summary>
-    /// Every button that can start an install, whichever command it goes through — the catalogue cards and the
-    /// detail pane's primary action (<c>InstallFromStoreCommand</c>), its version picker
-    /// (<c>InstallSelectedVersionCommand</c>) and the Installed view's zip install (<c>InstallFromZipCommand</c>).
-    /// They all reach the same installer and the same folder move, so a gate on one of them is not a gate.
+    /// Every button on the catalogue that can start an install, whichever command it goes through — one per
+    /// card plus the detail pane's primary action (<c>InstallFromStoreCommand</c>) and its version picker
+    /// (<c>InstallSelectedVersionCommand</c>). They reach the same installer and the same folder move, so a
+    /// gate on one of them is not a gate. The Installed view's zip install is deliberately not swept here: it
+    /// is on the other side of a mutually exclusive view and is not built while the catalogue is showing
+    /// (measured — zero of them in this tree), so its gate is held in the view-model tests instead.
     /// </summary>
     [Fact]
-    public void EveryInstallButton_GoesDead_WhileAnInstallRuns() => HeadlessAvalonia.Run(() =>
+    public void EveryInstallButtonOnTheCatalogue_GoesDead_WhileAnInstallRuns() => HeadlessAvalonia.Run(() =>
     {
         var window = Screenshotter.ShowScene("plugin-store");
         try
@@ -70,7 +72,6 @@ public class PluginStoreBusyGateTests
             var starters = new ICommand[]
             {
                 manager.InstallFromStoreCommand,
-                manager.InstallFromZipCommand,
                 dialog.InstallSelectedVersionCommand,
             };
             var installButtons = window.GetVisualDescendants()
@@ -78,10 +79,9 @@ public class PluginStoreBusyGateTests
                 .Where(button => button.Command is { } command && starters.Contains(command))
                 .ToList();
 
-            // One per catalogue card, the detail pane's two, and the Installed view's zip install — and at
-            // least one of them live, otherwise the assertion below would hold on a screen with nothing to
-            // press. The count is asserted so a button that stops binding its command is noticed here rather
-            // than quietly dropping out of the sweep.
+            // Twelve cards plus the version picker, and at least one of them live — otherwise the assertion
+            // below would hold on a screen with nothing to press. The count is asserted so a button that stops
+            // binding its command is noticed here rather than quietly dropping out of the sweep.
             Assert.Equal(13, installButtons.Count);
             Assert.Contains(installButtons, button => button.IsEffectivelyEnabled);
 
