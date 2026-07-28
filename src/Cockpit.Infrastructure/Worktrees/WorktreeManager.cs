@@ -198,10 +198,48 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
         catch (Exception)
         {
-            // The folder is there but git cannot read it (corrupt, mid-delete). Report it as holding changes: a
-            // status we cannot confirm is treated as not-clean, so the panel never invites a remove that might lose
-            // work it could not see.
+            // The folder is there but git could not answer from inside it. Which of the two reasons it is decides
+            // everything downstream, so ask: a folder that is no longer a working tree at all — emptied by a removal
+            // that could not delete it, its administration since reclaimed by a prune — holds no working copy to
+            // lose, and saying "uncommitted changes" about it is a claim about work nobody can point at. It also
+            // makes the row unsweepable and its Remove button permanently refusable, which is the state this reads
+            // its way out of (the sibling of AC-342, with the folder left behind instead of gone).
+            if (!await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
+            {
+                return new WorktreeStatus(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0)
+                {
+                    WorkingCopyMissing = true,
+                };
+            }
+
+            // A working copy git cannot read (corrupt, mid-delete). Report it as holding changes: a status we cannot
+            // confirm is treated as not-clean, so the panel never invites a remove that might lose work it could not
+            // see.
             return new WorktreeStatus(record, Exists: true, HasUncommittedChanges: true, StrandableCommits: 0);
+        }
+    }
+
+    // Whether a git working copy is still at <paramref name="path"/> — git's own answer, not an inference from what
+    // the folder holds. The state this exists for: the folder is on disk but the checkout inside it is not, so every
+    // question asked from within it fails, and the pessimistic reading of that failure ("it might hold work") keeps a
+    // worktree that demonstrably holds none. A git that cannot be run at all counts as "there is one": an answer we
+    // could not get is not evidence the checkout is gone, and every caller is safer keeping a worktree than forgetting
+    // one.
+    private static async Task<bool> _HasWorkingCopyAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var inside = await GitCli.RunAsync(path, ["rev-parse", "--is-inside-work-tree"], cancellationToken).ConfigureAwait(false);
+            return inside.ExitCode == 0 && inside.StandardOutput.Trim().Equals("true", StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return true;
         }
     }
 
@@ -410,7 +448,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
         catch (Exception)
         {
-            return true;
+            // Unreadable because there is no working copy left in the folder — nothing to discard, so nothing dirty.
+            // Unreadable for any other reason is the corrupt/mid-delete case above: treated as holding changes.
+            return await _HasWorkingCopyAsync(path, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -418,19 +458,22 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     {
         var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
 
-        // A refusal about a folder that is still on disk stands: it may hold work, and git said in its own words why
-        // it would not go. With the folder already gone there is nothing left for git to remove — a manual delete
-        // plus a prune, or a repository that moved away — and the registry entry is the only thing that outlived the
-        // worktree. Dropping that entry IS the removal then. Failing instead would leave the panel a row whose
-        // Remove button can never succeed (AC-342), and git's own admin entry, if one lingers, is what the reconcile
-        // sweep's prune is for.
-        if (refusal is not null && Directory.Exists(record.Path))
+        // A refusal about a folder that still holds a working copy stands: it may hold work, and git said in its own
+        // words why it would not go. With no working copy left there is nothing for git to remove — the folder gone
+        // after a manual delete plus a prune, a repository that moved away, or a folder left behind with the checkout
+        // cleared out of it — and the registry entry is the only thing that outlived the worktree. Dropping that entry
+        // IS the removal then. Failing instead would leave the panel a row whose Remove button can never succeed
+        // (AC-342), and git's own admin entry, if one lingers, is what the reconcile sweep's prune is for. Nothing on
+        // disk goes on this path beyond an empty folder: files left in a cleared-out worktree stay exactly where they
+        // are, they are simply no longer the cockpit's to manage.
+        if (refusal is not null && await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
         {
             throw new InvalidOperationException(refusal);
         }
 
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
-        _TryRemoveEmptyParentDirectory(record.Path);
+        _TryRemoveIfEmpty(record.Path);
+        _TryRemoveIfEmpty(Path.GetDirectoryName(record.Path));
     }
 
     // Asks git to remove the worktree and reports what it refused with, or null when it went through. Unlocked
@@ -457,17 +500,19 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    // The per-repository grouping folder (<worktreesRoot>/<repo-hash>/) is left behind empty once its last worktree
-    // is removed; git removes the worktree leaf, not the folder above it. Sweep it so finished repositories do not
-    // accumulate empty directories. Best-effort and only when empty — never touches a folder still holding a sibling.
-    private static void _TryRemoveEmptyParentDirectory(string worktreePath)
+    // The empty folders a removal leaves behind: the worktree's own, when git would not delete it (a removal that got
+    // as far as clearing the checkout, and a Windows handle on the directory that outlasted it), and the
+    // per-repository grouping folder (<worktreesRoot>/<repo-hash>/) above it, which git never touches — it removes
+    // the worktree leaf, not the folder holding it. Sweep both so finished repositories do not accumulate empty
+    // directories. Best-effort and only when empty: a folder still holding anything — a sibling worktree, files left
+    // in a cleared-out one — is never touched.
+    private static void _TryRemoveIfEmpty(string? directory)
     {
         try
         {
-            var parent = Path.GetDirectoryName(worktreePath);
-            if (parent is not null && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
+            if (directory is not null && Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
             {
-                Directory.Delete(parent);
+                Directory.Delete(directory);
             }
         }
         catch (Exception)
@@ -545,11 +590,12 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken)
     {
-        // A worktree whose folder is gone has no working copy left to keep, and nothing about it can be measured
-        // either: the clean check below runs git inside that folder and fails, which counts as "not clean" and marks
-        // the record retained — so teardown left exactly the entry the panel then could not remove (AC-342). Drop it
-        // here instead. The branch is kept, as on every other removal, so commits that live only there stay reachable.
-        if (!Directory.Exists(record.Path))
+        // A worktree with no working copy left — its folder gone, or the folder still there with the checkout cleared
+        // out of it — has nothing to keep, and nothing about it can be measured either: the clean check below runs git
+        // inside that folder and fails, which counts as "not clean" and marks the record retained — so teardown left
+        // exactly the entry the panel then could not remove (AC-342). Drop it here instead. The branch is kept, as on
+        // every other removal, so commits that live only there stay reachable.
+        if (!await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
         {
             await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
             return;

@@ -37,16 +37,17 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
     /// <summary>Remove is blocked while a session is still on the tree (Raymond 2026-07-19): removing it would pull the working directory out from under a running session. Close the session first.</summary>
     public bool CanRemove => !IsOwnerLive;
 
-    /// <summary>A plain-language state for the pill, in the order that matters for data safety: gone folder, then unsaved work, then commits that exist nowhere else, then retained, then clean.</summary>
+    /// <summary>A plain-language state for the pill, in the order that matters for data safety: gone folder, then an emptied one, then unsaved work, then commits that exist nowhere else, then retained, then clean.</summary>
     public string StatusLabel =>
         !Status.Exists ? "Folder missing"
+        : Status.WorkingCopyMissing ? "No working copy"
         : Status.HasUncommittedChanges ? "Uncommitted changes"
         : Status.StrandableCommits > 0 ? $"{Status.StrandableCommits} commit(s) only here"
         : Record.IsRetained ? "Retained"
         : "Clean";
 
     public string StatusBrushKey =>
-        !Status.Exists ? "CockpitTextFaintBrush"
+        Status.NothingToKeep ? "CockpitTextFaintBrush"
         : Status.HasUncommittedChanges ? "CockpitStatusWaitingBrush"
         : Status.StrandableCommits > 0 ? "CockpitStatusBusyBrush"
         : "CockpitStatusDoneBrush";

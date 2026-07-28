@@ -213,6 +213,94 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveAsync_FolderLeftBehindWithItsCheckoutClearedOut_DropsTheRegistryEntryAndTheEmptyFolder()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The state a panel row got stuck in: the checkout is gone from the folder but the folder itself is still
+        // there, and a prune has since reclaimed git's administration — so git answers every removal with "is not a
+        // working tree" while the folder on disk keeps the old guard from ever dropping the record.
+        _ClearCheckout(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+        _Git(_repo, "worktree", "list").Split('\n').Should().HaveCount(1, "git only knows the main worktree now");
+
+        await _manager.RemoveAsync(record);
+
+        (await _manager.ListAsync()).Should().BeEmpty();
+        // The shell goes too: it is empty, so nothing is lost with it, and leaving it behind is what put an
+        // undeletable folder in the operator's state directory in the first place.
+        Directory.Exists(record.Path).Should().BeFalse();
+        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task RemoveAsync_FolderLeftBehindBeforeAPruneRan_DropsTheRegistryEntryToo()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The same shell, caught before a prune: git still lists the worktree, so it refuses with a different
+        // sentence ("validation failed … '.git' does not exist"). Same answer — there is no working copy to keep.
+        _ClearCheckout(record.Path);
+
+        await _manager.RemoveAsync(record);
+
+        (await _manager.ListAsync()).Should().BeEmpty();
+        Directory.Exists(record.Path).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RemoveAsync_FolderLeftBehindStillHoldingFiles_DropsTheEntryButKeepsWhatIsOnDisk()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _ClearCheckout(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+        var leftover = Path.Combine(record.Path, "left-behind.txt");
+        File.WriteAllText(leftover, "not git's any more\n");
+
+        await _manager.RemoveAsync(record);
+
+        // Dropping the entry is a claim about what the cockpit manages, never a licence to delete: git cannot see
+        // these files, but they are still someone's, so only the registry row goes.
+        (await _manager.ListAsync()).Should().BeEmpty();
+        File.Exists(leftover).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetStatusesAsync_FolderLeftBehindWithItsCheckoutClearedOut_ReadsAsNothingToKeep()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _ClearCheckout(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+
+        var status = (await _manager.GetStatusesAsync()).Should().ContainSingle().Subject;
+
+        // It used to read as "uncommitted changes" — a claim about work nobody can point at, and the reason the
+        // sweep skipped an empty folder it should have taken.
+        status.HasUncommittedChanges.Should().BeFalse();
+        status.WorkingCopyMissing.Should().BeTrue();
+        status.NothingToKeep.Should().BeTrue();
+        status.IsClean.Should().BeFalse("nothing about a tree that is not there can be measured");
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_FolderLeftBehindWithItsCheckoutClearedOut_DropsTheRecord()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "work.txt", "unmerged\n");
+        _ClearCheckout(record.Path);
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        // Teardown used to call this "not clean" and retain it, which is how the panel filled with rows for folders
+        // holding nothing. The branch survives, so the commit that only lives on it is still reachable.
+        (await _manager.ListAsync()).Should().BeEmpty();
+        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+    }
+
+    [Fact]
     public async Task ReleaseAsync_WorktreeWhoseFolderIsGone_DropsTheRecordRatherThanRetainingItForever()
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
@@ -1162,6 +1250,17 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_tempRoot, "init", "--bare", remote);
         _Git(_repo, "remote", "add", "origin", remote);
         _Git(_repo, "push", "-u", "origin", "main");
+    }
+
+    /// <summary>
+    /// Empties a worktree folder without removing it — the checkout, including the <c>.git</c> file that makes it a
+    /// worktree, gone while the folder stays. What a removal that cleared the tree and then could not delete the
+    /// directory leaves behind, and the shape of the leftovers found in a real state directory.
+    /// </summary>
+    private static void _ClearCheckout(string worktreePath)
+    {
+        TestGitDirectory.Remove(worktreePath);
+        Directory.CreateDirectory(worktreePath);
     }
 
     private static void _Commit(string workingDirectory, string file, string content)

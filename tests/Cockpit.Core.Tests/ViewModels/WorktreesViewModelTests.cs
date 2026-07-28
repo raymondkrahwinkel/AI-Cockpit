@@ -123,6 +123,22 @@ public class WorktreesViewModelTests
         await manager.Received(1).RemoveAsync(gone.Record, false, Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task CleanUpFinished_AWorktreeWhoseFolderIsThereButHoldsNoCheckout_IsSweptToo()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+        var shell = _Row(isOwnerLive: false, workingCopyMissing: true);
+        viewModel.Worktrees.Add(shell);
+
+        await viewModel.CleanUpFinishedCommand.ExecuteAsync(null);
+
+        // The folder is still on disk, so the "gone folder" clause above does not catch it — but there is no working
+        // copy in it to lose, which is the thing the sweep actually asks about.
+        await manager.Received(1).RemoveAsync(shell.Record, false, Arg.Any<CancellationToken>());
+    }
+
     private static IWorktreeManager _RefusingManager(string message)
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -141,9 +157,11 @@ public class WorktreesViewModelTests
         return dialogs;
     }
 
-    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true)
+    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true, bool workingCopyMissing = false)
     {
         var record = new WorktreeRecord("session", "/repo", "/state/worktrees/ab/cockpit-x", "cockpit/x", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
-        return new ManagedWorktreeRowViewModel(new WorktreeStatus(record, exists, HasUncommittedChanges: false, StrandableCommits: 0), isOwnerLive);
+        var status = new WorktreeStatus(record, exists, HasUncommittedChanges: false, StrandableCommits: 0) { WorkingCopyMissing = workingCopyMissing };
+
+        return new ManagedWorktreeRowViewModel(status, isOwnerLive);
     }
 }

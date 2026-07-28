@@ -164,12 +164,13 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
 
         // Only clean trees whose session is gone: a live session's tree is never pulled from under it, even when clean.
-        // A tree whose folder has disappeared counts as one of them (AC-342): there is no working copy left to lose,
-        // and removing it keeps the branch, so all that goes is the registry entry. It does not read as clean —
-        // IsClean requires the folder to be there, since nothing can be measured about a tree that is not — which is
-        // why it is named here rather than folded into that meaning.
+        // A tree with no working copy left counts as one of them (AC-342) — its folder disappeared, or the folder is
+        // still there with the checkout cleared out of it: there is nothing left to lose, and removing it keeps the
+        // branch, so all that goes is the registry entry. Neither reads as clean — IsClean is a measurement, and
+        // nothing about a tree that is not there can be measured — which is why NothingToKeep is named here rather
+        // than folded into that meaning.
         List<string> refusals = [];
-        foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || !worktree.Status.Exists) && !worktree.IsOwnerLive).ToList())
+        foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || worktree.Status.NothingToKeep) && !worktree.IsOwnerLive).ToList())
         {
             try
             {
