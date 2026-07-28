@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a line between a session's transcript and the box you type in. The transcript scrolls under that edge and its
+  bottom row is cut off mid-letter, and with the same background on both sides and nothing drawn in between, that cut
+  row read as a bar running underneath the pulsing "Thinking…" indicator rather than as a message scrolled out of
+  view. The line makes the edge an edge, so what is scrolled away looks scrolled away.
+
 - added: the product icons now exist as a square set that can actually be used as an app icon and a favicon. The two
   files that came out of the logo sheet were separate renders — different canvases, a W drawn at different
   proportions in each — so neither was square and the pair did not read as one mark in two colours. They now share
