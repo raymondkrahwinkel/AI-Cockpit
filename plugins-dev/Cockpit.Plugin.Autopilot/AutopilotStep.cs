@@ -34,11 +34,28 @@ internal sealed record AutopilotStep(
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
     /// <summary>
+    /// The tracker-neutral id of the issue this step is drafted from, when the CEO folded a specific item into the
+    /// plan — the run's own source issue, or (for an epic) one of its child issues (AC-411). Null for a step with no
+    /// such backing item (most steps, and every step of a CEO-first run). Lets <see cref="AutopilotPlanTools.SetPlan"/>
+    /// check a child against the same executable-stage gate its parent already passed, rather than trusting the CEO's
+    /// read of the item's stage from the brief.
+    /// </summary>
+    public string? SourceIssueId { get; init; }
+
+    /// <summary>
     /// How many times this step has been started (AC-174). The CEO validates a step's output against
     /// its <see cref="Acceptance"/>; a step that does not pass is sent back to rework and re-run — but only while it has
     /// attempts left under the run's cap, so a rework loop is bounded and never becomes an endless loop.
     /// </summary>
     public int Attempts { get; init; }
+
+    /// <summary>
+    /// How many times a validation sent this step back to rework (AC-347) — in contrast to <see cref="Attempts"/>,
+    /// which counts every (re-)start, including one with no verdict behind it at all (a crashed session, a stall
+    /// timeout, a refused isolation, a profile/model mismatch). This is the narrower count the reliability
+    /// classification needs: a rework is a judged correction, a restart is not.
+    /// </summary>
+    public int Reworks { get; init; }
 
     /// <summary>
     /// How many agents work this step at once (AC-174). Default 1. The CEO decides where parallel
@@ -64,6 +81,9 @@ internal sealed record AutopilotStep(
 
     /// <summary>This step with its attempt count incremented — the driver records a (re-)run before it starts.</summary>
     public AutopilotStep WithAttempt() => this with { Attempts = Attempts + 1 };
+
+    /// <summary>This step with its rework count incremented — a validation sent it back, the one place <see cref="Reworks"/> grows.</summary>
+    public AutopilotStep WithRework() => this with { Reworks = Reworks + 1 };
 
     /// <summary>This step re-targeted at a profile (and its model), the operator's edit during the planning round.</summary>
     public AutopilotStep WithProfile(string profileLabel, string? model) =>

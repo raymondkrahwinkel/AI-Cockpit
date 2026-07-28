@@ -94,6 +94,25 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
         }
     }
 
+    public async Task<TrackerIssueSnapshot> GetIssueSnapshotAsync(string issueId, CancellationToken cancellationToken = default)
+    {
+        if (_Instance() is not { } instance)
+        {
+            return new TrackerIssueSnapshot(null, null);
+        }
+
+        try
+        {
+            var issue = await _client.GetIssueAsync(instance.InstanceUrl, instance.Token, issueId, cancellationToken);
+            var fields = await _client.GetIssueFieldsAsync(instance.InstanceUrl, instance.Token, issue, cancellationToken);
+            return new TrackerIssueSnapshot(issue.Summary, fields.State?.CurrentValue);
+        }
+        catch (Exception)
+        {
+            return new TrackerIssueSnapshot(null, null);
+        }
+    }
+
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
     {
         if (_Instance() is not { } instance)

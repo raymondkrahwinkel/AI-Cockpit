@@ -1,0 +1,11 @@
+{
+  "id": "fan-out",
+  "name": "Fan-out",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.FanOut.dll",
+  "entryType": "Cockpit.Plugin.FanOut.FanOutPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.8.0",
+  "description": "Run one task on several agents at once — each in its own worktree, tiled side by side, so you can read the takes against each other.",
+  "author": "Cockpit"
+}

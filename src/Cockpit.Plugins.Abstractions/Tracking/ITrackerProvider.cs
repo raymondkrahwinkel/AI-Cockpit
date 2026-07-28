@@ -44,4 +44,17 @@ public interface ITrackerProvider
 
     /// <summary>Reads the issue's comments (AC-155), oldest to newest — what a consumer polls to see the operator's reply to a blockade question. An empty list on failure, never a throw.</summary>
     Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads this issue's own title and stage(s) right now, in the tracker's own vocabulary — a stage is one per line
+    /// (a YouTrack issue carries a single one; a GitHub issue's labels are its stage-equivalent, so it can carry
+    /// several) — or a snapshot with both null when it could not be read. Lets a consumer (Autopilot, AC-411) check an
+    /// item it did not receive through a "start" intent — an epic's child, pulled in by the CEO during planning
+    /// rather than clicked by the operator — against the same executable-stage gate the clicked item already passed,
+    /// using the tracker's own title rather than trusting a caller-supplied one for a <c>[Brainstorm]</c> check.
+    /// Default returns an empty snapshot: a provider that does not opt in keeps compiling, and a consumer treats
+    /// "cannot tell" as not ready rather than silently skipping the check.
+    /// </summary>
+    Task<TrackerIssueSnapshot> GetIssueSnapshotAsync(string issueId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new TrackerIssueSnapshot(null, null));
 }

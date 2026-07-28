@@ -65,6 +65,42 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_MergeReady_WhenPublishingThePullRequestFails_RecordsPullRequestMissing()
+    {
+        // AC-347 FIX B: a merge-ready run that could not deliver its PR (gh present, push worked, but opening the PR
+        // failed) still needs a human to open it by hand — it must not read back as a clean settle.
+        var plan = new AutopilotPlanController();
+        plan.BeginPlanning(new AutopilotPlan("goal", null, [_HardStep("1")]) { DeliversPullRequest = true });
+        plan.BindSession("ceo-pane");
+        plan.Approve().Should().BeTrue();
+
+        var host = _Host();
+        var stepSession = _Session("step-pane");
+        var context = _Context(stepSession);
+        // A hand-rolled fake, not an NSubstitute mock: NSubstitute cannot proxy an internal interface without the
+        // assembly opting in to DynamicProxyGenAssembly2, which this project does not.
+        var publisher = new FailingPrPublisher();
+        var coordinator = new AutopilotRunCoordinator(host, plan, prPublisher: publisher);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var environment = new AutopilotRunEnvironment(
+            "/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run", RunId: "run-1", RunLabel: "run");
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.True(plan.PullRequestMissing);
+    }
+
+    [Fact]
     public async Task RunAsync_CeoValidatesFail_WithNoAttemptsLeft_SettlesBlocked()
     {
         var plan = _RunningPlan(_HardStep("1"));
@@ -292,6 +328,49 @@ public class AutopilotRunCoordinatorTests
         await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
         // The failure reason is surfaced on the step so it is not a silent red dot.
         plan.Plan!.Steps[0].Note.Should().Contain("does not confine its file tools to the worktree");
+    }
+
+    [Fact]
+    public async Task RunAsync_AStepSessionThatEndsBeforeReporting_ThenASuccessfulRetry_CountsTheAttemptButNotARework()
+    {
+        // AC-347 FIX J: the coordinator's own fault path — a session the host refused to isolate, ending before it
+        // ever reports done — reaches _ExecuteStepAsync's general catch, which must return Faulted, not Rejected: no
+        // CEO ever saw this step's work on the first attempt. With attempts left the step reworks; a passing retry
+        // must then show Attempts == 2 but Reworks == 0, proving the distinction holds through the real coordinator
+        // wiring, not just AutopilotRunDriver's own loop with a fake executeStep.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var ended = new TaskCompletionSource<string?>();
+        var firstAttemptSession = _Session("step-pane-1", ended.Task);
+        var secondAttemptSession = _Session("step-pane-2");
+        var context = Substitute.For<IWorkspaceContext>();
+        context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(firstAttemptSession, secondAttemptSession);
+        context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shownCount = 0;
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(
+            context, _Session("ceo-pane"), _Settings(maxAttempts: 2),
+            _ => Interlocked.Increment(ref shownCount), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await _Until(() => shownCount >= 1);
+        // First attempt: the session ends before ever reporting done — the general catch turns this into Faulted.
+        ended.TrySetResult("Could not isolate this run: the Qwen (local) profile's provider does not confine its file tools to the worktree.");
+
+        await _Until(() => shownCount >= 2);
+        // Second attempt (a fresh session): report done normally and have the CEO accept it.
+        coordinator.ReportStepDone("step-pane-2", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        var step = plan.Plan!.Steps[0];
+        step.Attempts.Should().Be(2);
+        step.Reworks.Should().Be(0);
     }
 
     [Fact]
@@ -862,6 +941,17 @@ public class AutopilotRunCoordinatorTests
         context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(stepSession);
         context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
         return context;
+    }
+
+    // A fake publisher that probes as a fully capable git+gh run but fails to open the pull request itself — the AC-347
+    // FIX B scenario: the branch pushes, but the PR never lands, so the run must not read back as clean.
+    private sealed class FailingPrPublisher : IAutopilotPrPublisher
+    {
+        public Task<AutopilotPrProbe> ProbeAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotPrProbe(IsGitRun: true, HasRemote: true, GhAvailable: true));
+
+        public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AutopilotPrPublishResult(Pushed: true, PrUrl: null, Error: "gh failed to open the pull request"));
     }
 
     // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an

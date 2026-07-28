@@ -32,6 +32,69 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
+
+- fixed: a build published as a folder rather than a single file now carries the example workspace and Autopilot with
+  it. Both were copied next to the executable but never into a publish, so that route handed over a cockpit missing
+  two of the plugins it ships with — the single-file build was unaffected, which is why it went unnoticed.
+
+- added: a Local CI plugin that answers, honestly, whether this machine could run your GitHub workflow jobs before
+  anything tries. Its settings page reports Docker in three states rather than two — not installed, installed but the
+  engine is not answering, and ready — because "Docker Desktop is not running" is the usual one and what you do about
+  it is nothing like what you do about a missing install. It also checks the engine runs Linux containers, since a
+  Windows-container engine is perfectly healthy and still cannot run a workflow image, and whether the act runtime is
+  on PATH, naming the command to install it rather than failing at the first run. The cockpit does not ship act: it is
+  a per-platform binary of tens of megabytes that is released far more often than the cockpit, so a bundled copy would
+  be out of date between releases.
+
+  It also reads the project's workflows and says, per job, either that it can run locally or the concrete reason it
+  cannot — it uses a matrix, it needs a macos-latest runner, it exchanges artifacts with another job, it uses an action
+  that only means something on GitHub. Only `actions/checkout` and `actions/setup-dotnet` are treated as free, because
+  the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
+  job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
+  never ran. This release only tells you; nothing is executed yet.
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
+
+- added: Autopilot's history now says how many runs in a row settled merge-ready without anything having to be put
+  right — the one figure that says whether a run can be left alone, rather than how much work it did. It shows above the
+  history list and again on the toast when a run settles, so it reaches you at the moment it changes instead of only in
+  a panel you would have to go and open.
+
+  The count is strict on purpose, because a lenient one flatters itself. A step the review sent back and a step that ran
+  out of attempts each count as a correction; a run that ended blocked or stopped, or that reached the end without the
+  pull request it promised, is never counted as clean at all. A question the run raised and you answered does not count
+  against it — that is the run doing what it is meant to do, and it is counted separately. Neither does merging it
+  yourself; that is the gate, not a repair.
+
+  Some corrections cannot be seen from the inside. If you changed the work yourself before merging it, right-click the
+  step in the history and say so — a classification you set stays marked as yours, so a number that was adjusted by hand
+  never reads as one the run arrived at on its own. Cost, tokens and duration are deliberately not repeated here; they
+  are already recorded per run, and measuring the same thing twice only produces two figures that drift apart.
+
+  One thing the count cannot see from where it stands: a review finding an agent repairs inside its own step, and then
+  passes, looks exactly like a step that never needed anything. The figure is therefore a floor, not a verdict — which
+  is why it can be corrected by hand. Update the Autopilot plugin from the store to get it.
+
 - added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
   file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
   two agents on one working tree find that out before the first edit instead of when it fails to compile. What is
@@ -141,6 +204,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   work fits one run still follows, and planning an epic now leaves out the children nobody has marked ready. An issue
   still marked `[Brainstorm]` is refused whatever stage it is on. Run safety in Autopilot's settings has a box per
   tracker for what that stage is called — empty one and that tracker starts from any stage, as before.
+- added: that same "ready to be worked on" check now also reaches an epic's children. Planning an epic reads its
+  child issues to fold them into one run, and a child the CEO names is checked against the tracker itself — its real
+  title and stage, not the CEO's own description of it — before the plan is accepted; one still on `Backlog` or
+  marked `[Brainstorm]` gets the plan turned down with the reason, the same as if you had clicked it yourself.
 - added: a YouTrack project that calls its status field `Kanban State` has its status read like any other. The issue
   list already knew that name; the read behind it did not, so those projects showed no status at all.
 
@@ -804,6 +871,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   page long in the clone dialog, a plugin's install path in the consent prompt, or a caller's explanation above
   the password boxes would grow the window off the bottom of the screen. A dialog with a size of its own is
   shrunk to fit and keeps no cap, so you can still drag it larger than the screen if that is what you want.
+- fixed: Autopilot's "Needs you" state could leave you with no way to answer. With more than one run active, the
+  pane could keep showing a still-running run's session while the badge lit up for a different run waiting on you —
+  a notice with no path to the run it was about. The badge now takes you to the run that needs you, and clicking it
+  again steps through the others if several do at once. The blockade panel also gets its own scrollbar, so a longer
+  question — several numbered options plus advice — no longer overflows the pane and pushes the answer box out of
+  reach.
+
+- fixed: the transcript no longer stops following the newest message for no reason you did anything to cause. Showing
+  the "Thinking…" indicator, the "starting" banner, a usage warning or a pending-resume notice all resize the
+  transcript's own visible area without adding a single message to it — and that resize alone was read as if you had
+  scrolled up by hand, since it moves the same numbers a real scroll does unless the box itself is checked too. A turn
+  with several tool calls flips the "Thinking…" indicator on and off many times over, so the transcript could quietly
+  give up on the newest message well before the turn had finished, with nothing you did to explain it. It keeps
+  following now regardless of how many times those rows come and go; scrolling up on purpose still pauses it and
+  scrolling back down still resumes it, exactly as before.
 
 - fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
   which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your

@@ -65,6 +65,24 @@ internal sealed class GitHubTrackerProvider : ITrackerProvider
     public Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default) =>
         Task.FromResult(false);
 
+    public async Task<TrackerIssueSnapshot> GetIssueSnapshotAsync(string issueId, CancellationToken cancellationToken = default)
+    {
+        if (_Reference(issueId) is not { } issue)
+        {
+            return new TrackerIssueSnapshot(null, null);
+        }
+
+        try
+        {
+            var fetched = await _client.GetIssueAsync(issue, cancellationToken);
+            return new TrackerIssueSnapshot(fetched.Title, string.Join("\n", fetched.Labels));
+        }
+        catch (Exception)
+        {
+            return new TrackerIssueSnapshot(null, null);
+        }
+    }
+
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
     {
         if (_Reference(issueId) is not { } issue)

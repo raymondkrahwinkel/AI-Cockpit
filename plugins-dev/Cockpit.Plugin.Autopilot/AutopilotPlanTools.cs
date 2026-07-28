@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.Autopilot;
 
@@ -12,7 +13,7 @@ namespace Cockpit.Plugin.Autopilot;
 /// the planning session bound to this controller (<see cref="AutopilotPlanController.SessionPaneId"/>) may set the plan,
 /// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
 /// </summary>
-internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan)
+internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan, AutopilotSettings settings)
 {
     /// <summary>The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.</summary>
     internal const string EndpointName = "cockpit-autopilot-plan";
@@ -27,10 +28,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
     [McpServerTool(Name = ToolName)]
-    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
+    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public async Task<string> SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,
-        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files.")] string stepsJson,
+        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files. 'issueId' is the tracker item this step is drafted from — the run's source issue, or (for an epic) one of its child issues you folded in — so it can be checked against the tracker's own stage; omit it for a step with no such backing item.")] string stepsJson,
         [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null,
         [Description("The absolute path of the folder this run should work in, when you can resolve it from the item (e.g. the repository the issue is about) — you propose it and the operator can override it before approving. Optional; when omitted the current directory is kept. A folder that is a git repository has each step isolated in its own worktree; a plain folder (an admin task with no repo) runs without isolation.")] string? workingDirectory = null)
     {
@@ -57,6 +58,15 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         if (ValidateStepProfiles(steps, profiles) is { } profileError)
         {
             return _Fail(profileError);
+        }
+
+        // AC-411: a step folded in from a tracker child (an epic's sub-item, pulled in by the CEO during planning
+        // rather than clicked by the operator) must clear the same executable-stage gate its parent already passed
+        // before the round started (AC-345) — checked here in code against the tracker itself, not left to the CEO's
+        // own reading of the item's stage from its brief.
+        if (await _ValidateChildStagesAsync(steps).ConfigureAwait(false) is { } childError)
+        {
+            return _Fail(childError);
         }
 
         var effectiveGoal = string.IsNullOrWhiteSpace(goal) ? plan.Plan?.Goal ?? string.Empty : goal.Trim();
@@ -119,6 +129,8 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                     : [],
                 // How many agents work this step at once; at least 1, the operator can force it back.
                 AgentCount = dto.Agents is { } count && count > 1 ? count : 1,
+                // The tracker item this step is drafted from, when the CEO named one (AC-411) — blank dropped to null.
+                SourceIssueId = string.IsNullOrWhiteSpace(dto.IssueId) ? null : dto.IssueId.Trim(),
             });
         }
 
@@ -184,6 +196,61 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             : $"Step \"{step.Id}\" runs on the local profile \"{profile.Label}\", which pins its own model, so leave 'model' empty; it has \"{step.Model}\".";
     }
 
+    /// <summary>
+    /// AC-411: the code half of the child-stage gate. A step with no <see cref="AutopilotStep.SourceIssueId"/>, or one
+    /// that names the run's own source issue (already checked before this planning round opened), is not re-checked.
+    /// Every other named issue is a child the CEO folded in during planning, so its title and stage are read straight
+    /// from the tracker — never the step's own title or description, which the CEO writes and this gate exists not to
+    /// trust — and run through <see cref="AutopilotReadyGate"/>: the same gate, the same bar, evaluated in code. No
+    /// source (a CEO-first run), no configured executable stage for this tracker (the operator turned the gate off),
+    /// or no matching registered provider all mean nothing to check against, so the plan is accepted as-is. Fetched
+    /// once per distinct issue id, since the same child can back more than one step.
+    /// </summary>
+    private async Task<string?> _ValidateChildStagesAsync(IReadOnlyList<AutopilotStep> steps)
+    {
+        if (plan.Plan?.Source is not { } source)
+        {
+            return null;
+        }
+
+        var executableStage = settings.ExecutableStage(source.Tracker);
+        if (string.IsNullOrWhiteSpace(executableStage))
+        {
+            return null;
+        }
+
+        // Consistent with ValidateStepProfiles' "no roster, validate nothing" precedent above: a tracker this host has
+        // no registered provider for (its plugin not installed, or not opted in) is a thing this gate cannot check
+        // against, not evidence the child failed it.
+        var tracker = host.TrackerProviders.FirstOrDefault(provider => string.Equals(provider.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
+        if (tracker is null)
+        {
+            return null;
+        }
+
+        var checkedIssues = new Dictionary<string, TrackerIssueSnapshot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in steps)
+        {
+            if (string.IsNullOrWhiteSpace(step.SourceIssueId) || string.Equals(step.SourceIssueId, source.IssueId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!checkedIssues.TryGetValue(step.SourceIssueId, out var snapshot))
+            {
+                snapshot = await tracker.GetIssueSnapshotAsync(step.SourceIssueId).ConfigureAwait(false);
+                checkedIssues[step.SourceIssueId] = snapshot;
+            }
+
+            if (AutopilotReadyGate.Decide(snapshot.Title, snapshot.Stage, executableStage) is { IsAllowed: false } refusal)
+            {
+                return $"Step \"{step.Id}\" folds in {source.Tracker} {step.SourceIssueId}, which is not ready to run: {refusal.Reason}";
+            }
+        }
+
+        return null;
+    }
+
     private bool _IsThisPlanningSession() =>
         plan.SessionPaneId is { Length: > 0 } pane && host.CurrentMcpCallerPaneId == pane;
 
@@ -203,5 +270,6 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         public bool Hard { get; init; }
         public List<string>? Mcp { get; init; }
         public int? Agents { get; init; }
+        public string? IssueId { get; init; }
     }
 }

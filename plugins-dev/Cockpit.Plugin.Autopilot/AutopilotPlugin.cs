@@ -17,7 +17,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "autopilot",
         DisplayName: "Autopilot",
-        // In lockstep with plugin.json's version: the manifest gates loading, this shows in the plugin list.
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
 
@@ -58,7 +57,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // Internal-only (AC-204): the run's own agents scope to these endpoints by name (McpServers), so they must
         // stay mountable — but a normal operator must never see or tick them in the New-session/profile MCP selection,
         // nor have them fan into an unrelated no-selection session while a run is live.
-        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
+        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController, settings), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
 
         // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports its
         // verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while any run is

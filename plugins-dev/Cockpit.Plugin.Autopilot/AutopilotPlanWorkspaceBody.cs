@@ -32,6 +32,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
 
+    // Which active run's pipeline the right pane shows, when the operator picked one explicitly via the "Needs you"
+    // badge (AC-440) rather than the phase-based default below. Never cleared explicitly — _DisplayedContext ignores it
+    // once the run it points at leaves _activeContexts (settled) or leaves AwaitingOperator (answered), and falls back
+    // to the default the next render either way.
+    private AutopilotRunContext? _focusedContext;
+
     // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint it uses to draft the plan,
     // plus — for a source-triggered run — the tracker's READ-only MCP servers (<paramref name="trackerReadServers"/>).
     // Left on the request's default empty list the CEO would inherit the host's entire selection (161 tools observed) —
@@ -177,8 +183,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     }
 
     // The run surface (AC-174): a bar with New run and the queued runs on top, the settled-run history at the bottom, and
-    // the running run's pipeline filling between them. The first running run is shown in full; any others (with a
-    // concurrency cap above one) are listed on the bar.
+    // the running run's pipeline filling between them. Which running run is shown in full is _DisplayedContext's call
+    // (AC-440: a run awaiting the operator wins over one merely running); any others are only listed on the bar.
     private Control _BuildSurface()
     {
         var surface = new DockPanel { LastChildFill = true };
@@ -195,12 +201,73 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             surface.Children.Add(historyPanel);
         }
 
-        surface.Children.Add(_activeContexts.Count > 0
-            ? _BuildPipeline(_activeContexts[0])
+        surface.Children.Add(_DisplayedContext() is { } displayed
+            ? _BuildPipeline(displayed)
             : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
 
         return surface;
     }
+
+    // Which of the active runs the right pane shows (AC-440). An explicit pick from the "Needs you" badge wins only
+    // while that run is still active AND still awaiting the operator — the moment it is answered (→ Running) or
+    // settles, the pick is stale and must not stick, or a later run turning AwaitingOperator would sit hidden behind it
+    // forever, the exact symptom this fix removes. Absent a live pick, a run in AwaitingOperator wins over one merely
+    // Running, so a second concurrent run's blockade is never hidden behind the first one's live step surface — the bug
+    // the badge used to paper over (it lit up for any awaiting run while the pane kept showing _activeContexts[0]).
+    private AutopilotRunContext? _DisplayedContext()
+    {
+        if (_focusedContext is { } focused && _activeContexts.Contains(focused) && focused.Controller.Phase == AutopilotPlanPhase.AwaitingOperator)
+        {
+            return focused;
+        }
+
+        if (_activeContexts.Count == 0)
+        {
+            return null;
+        }
+
+        return _activeContexts[PreferredContextIndex(_activeContexts.Select(context => context.Controller.Phase).ToList())];
+    }
+
+    // Pure so the default-pick rule is unit-testable without a host or a UI thread, the same way NeedsOperatorAttention
+    // is. Picks the first run awaiting the operator, or the first run at all if none is.
+    internal static int PreferredContextIndex(IReadOnlyList<AutopilotPlanPhase> activePhases)
+    {
+        for (var i = 0; i < activePhases.Count; i++)
+        {
+            if (activePhases[i] == AutopilotPlanPhase.AwaitingOperator)
+            {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    // The badge was clicked (AC-440): step to the next run awaiting the operator, past the one *shown* right now — not
+    // the last one clicked, which is the same run whenever nothing was clicked yet or the pick already went stale. Using
+    // _DisplayedContext() here (rather than _focusedContext directly) is what makes a click on a single awaiting run a
+    // no-op instead of a same-run re-pick: re-picking still triggers _Render(), which rebuilds the answer TextBox from
+    // scratch and would silently drop whatever the operator had already typed.
+    private void _FocusNextAwaitingRun()
+    {
+        var awaiting = _activeContexts.Where(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator).ToList();
+        var current = _DisplayedContext();
+        var nextIndex = NextAwaitingIndex(awaiting.Count, current is null ? -1 : awaiting.IndexOf(current));
+        if (nextIndex is not { } index || ReferenceEquals(awaiting[index], current))
+        {
+            return;
+        }
+
+        _focusedContext = awaiting[index];
+        _Render();
+    }
+
+    // Pure so the cycle-and-guard rule is unit-testable without building real run contexts. Null with nothing awaiting
+    // (a click that cannot reach the UI, since the badge is only visible while count > 0, but still guarded). Wraps
+    // past the end so repeated clicks reach every awaiting run in turn.
+    internal static int? NextAwaitingIndex(int awaitingCount, int currentIndex) =>
+        awaitingCount == 0 ? null : (currentIndex + 1) % awaitingCount;
 
     // The history section: a header with a Clear, then the settled runs newest-first in a bounded
     // scroll — each row its name, outcome and step summary — so the operator sees what has run without it cluttering the
@@ -217,7 +284,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         clear.Click += (_, _) => _history.Clear();
 
-        var header = new DockPanel
+        var titleRow = new DockPanel
         {
             LastChildFill = false,
             Children =
@@ -233,6 +300,27 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                     [DockPanel.DockProperty] = Dock.Left,
                 },
             },
+        };
+
+        // The AC-347 reliability line, right under the title so it reads next to the run count. TextTrimming keeps it
+        // readable rather than overflowing when the header is narrow.
+        var reliability = new TextBlock
+        {
+            Text = AutopilotRunReliability.Summarize(_history.Items).Describe(),
+            FontSize = 10.5,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+        };
+        // The figure is counted from what the run itself can observe — it cannot see a review finding an agent fixed
+        // inside its own step before ever reporting done, which is exactly why manual reclassification exists.
+        ToolTip.SetTip(reliability, "Counted from what the run itself can see: a step sent back, a step that ran out "
+            + "of attempts, a run that ended blocked or stopped, or one that never opened its pull request. A review "
+            + "finding an agent fixed inside its own step looks clean from here — right-click a step to correct that.");
+
+        var header = new StackPanel
+        {
+            Spacing = 1,
+            Children = { titleRow, reliability },
         };
 
         var list = new StackPanel { Spacing = 0 };
@@ -321,6 +409,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
                 : $"Blocked — {record.BlockReason}";
 
+        // AC-347: the per-run figure the ticket asks for, read straight off the row rather than counted by eye —
+        // how many of this run's steps needed no correction at all.
+        if (record.Steps.Count > 0)
+        {
+            var cleanSteps = record.Steps.Count(step => step.Correction == AutopilotCorrectionKind.None);
+            outcomeText = $"{outcomeText} · {cleanSteps} of {record.Steps.Count} steps ran clean";
+        }
+
         var meta = new StackPanel { Spacing = 2, Children = { title } };
         meta.Children.Add(new TextBlock
         {
@@ -331,29 +427,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         });
 
         // Each step on its own line with a mark, and — where it failed or was blocked — the reason it carried underneath,
-        // so the operator sees why without reopening the run.
-        foreach (var step in record.Steps)
+        // so the operator sees why without reopening the run. Right-click reclassifies it (AC-347).
+        for (var stepIndex = 0; stepIndex < record.Steps.Count; stepIndex++)
         {
-            meta.Children.Add(new TextBlock
-            {
-                Text = $"{_HistoryStepMark(step.Status)}  {step.Title}",
-                FontSize = 10.5,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 2, 0, 0),
-                Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
-            });
-
-            if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
-            {
-                meta.Children.Add(new TextBlock
-                {
-                    Text = step.Note,
-                    FontSize = 10.5,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(16, 0, 0, 0),
-                    Foreground = _Brush("CockpitTextFaintBrush"),
-                });
-            }
+            meta.Children.Add(_BuildHistoryStepRow(record, stepIndex, record.Steps[stepIndex]));
         }
 
         return new Border
@@ -373,6 +450,95 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         AutopilotStepStatus.Blocked => "⏸",
         _ => "·",
     };
+
+    // The AC-347 correction label, in operator language rather than the enum name — read next to the step title so
+    // "review finding" and "run restart" are told apart at a glance instead of both rendering as the same bare mark.
+    // Empty for None: a clean step carries no label at all.
+    private static string _CorrectionLabel(AutopilotCorrectionKind correction) => correction switch
+    {
+        AutopilotCorrectionKind.ReviewFinding => "review finding",
+        AutopilotCorrectionKind.RunRestart => "run restart",
+        AutopilotCorrectionKind.OperatorEdit => "operator edit",
+        _ => string.Empty,
+    };
+
+    // A settled step's own row (AC-347): its status mark plus, when it needed a correction, a trailing readable label
+    // so the AC-347 figure has a visible per-step counterpart that also says which kind of correction it was — and, for
+    // a step the operator reclassified by hand, a faint "set by you" line so a manually set figure never reads as if
+    // the run itself had decided it. Right-click always offers the four classifications — reclassifying is valid for
+    // any settled step regardless of its current one, so the menu is never a dead control.
+    private Control _BuildHistoryStepRow(AutopilotRunRecord record, int stepIndex, AutopilotRunStepRecord step)
+    {
+        var lines = new StackPanel { Spacing = 0 };
+
+        var correctionLabel = _CorrectionLabel(step.Correction);
+        var correctionSuffix = correctionLabel.Length == 0 ? string.Empty : $" — {correctionLabel}";
+        lines.Children.Add(new TextBlock
+        {
+            Text = $"{_HistoryStepMark(step.Status)}  {step.Title}{correctionSuffix}",
+            FontSize = 10.5,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 0),
+            Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
+        });
+
+        if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = step.Note,
+                FontSize = 10.5,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(16, 0, 0, 0),
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            });
+        }
+
+        if (step.CorrectionSource == AutopilotCorrectionSource.Operator)
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = "· set by you",
+                FontSize = 10,
+                Margin = new Thickness(16, 0, 0, 0),
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            });
+        }
+
+        return new Border { Child = lines, ContextMenu = _CorrectionMenu(record, stepIndex) };
+    }
+
+    // The reclassify menu (AC-347): the four correction kinds, each setting CorrectionSource to Operator so the manual
+    // override stays visible as one. Written back through AutopilotRunHistory.Replace — the one path a settled record is
+    // edited through after it landed. It closes over the record instance rather than its position, so an edit lands on
+    // the run it was opened on even if another run settles in the meantime.
+    private ContextMenu _CorrectionMenu(AutopilotRunRecord record, int stepIndex)
+    {
+        MenuItem Item(AutopilotCorrectionKind kind, string label)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => _SetStepCorrection(record, stepIndex, kind);
+            return item;
+        }
+
+        return new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                Item(AutopilotCorrectionKind.None, "No correction"),
+                Item(AutopilotCorrectionKind.ReviewFinding, "Review finding"),
+                Item(AutopilotCorrectionKind.RunRestart, "Run restart"),
+                Item(AutopilotCorrectionKind.OperatorEdit, "Operator edit"),
+            },
+        };
+    }
+
+    private void _SetStepCorrection(AutopilotRunRecord record, int stepIndex, AutopilotCorrectionKind kind)
+    {
+        var steps = record.Steps.ToList();
+        steps[stepIndex] = steps[stepIndex] with { Correction = kind, CorrectionSource = AutopilotCorrectionSource.Operator };
+        _history.Replace(record, record with { Steps = steps });
+    }
 
     // The finish time as a short, local, human string — parsed from the stored ISO stamp; the raw stamp is the fallback
     // if it somehow does not parse, so a row never shows blank.
@@ -456,15 +622,22 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // AwaitingOperator and disappears as soon as the operator answers (→ Running) or the run settles. This is the lasting
     // signal for an operator who missed the one-shot AC-194 toast and is not looking at the blocked run; the toast stays as
     // the in-the-moment nudge, this outlives it.
+    //
+    // Clickable since AC-440: with more than one active run, the pane could sit on a run that is merely Running while
+    // this badge lit up for a different, awaiting one — a "needs you" with no way to reach the run it was about. A click
+    // now steps the pane to the (next) run actually awaiting the operator.
     private Control _BuildNeedsYouBadge(int count)
     {
         // The theme's ink for a bright status fill. It used to be a near-black mixed by hand for the old orange
         // amber; white — the answer on the accent — reads at 2:1 on this one and is not an option.
         var onWaiting = _Brush("CockpitTextOnStatusBrush");
-        return new Border
+
+        // The amber fill lives on this inner Border, not on the Button below — FluentTheme's Button template restyles
+        // its ContentPresenter's Background on :pointerover/:pressed (Theme.axaml), which wins over a locally-set
+        // Button.Background and would turn the badge dark (near-illegible against CockpitTextOnStatusBrush) the moment
+        // it is hovered or clicked. A Border as Content sits outside that template and keeps its own colour always.
+        var fill = new Border
         {
-            [DockPanel.DockProperty] = Dock.Right,
-            VerticalAlignment = VerticalAlignment.Center,
             Background = _Brush("CockpitStatusWaitingBrush"),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(9, 3),
@@ -493,6 +666,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 },
             },
         };
+
+        var badge = new Button
+        {
+            [DockPanel.DockProperty] = Dock.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Content = fill,
+        };
+        badge.Click += (_, _) => _FocusNextAwaitingRun();
+        return badge;
     }
 
     // One queued run: its goal, and controls to move it up/down or drop it before it runs.
@@ -596,12 +781,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var settledPlan = controller.Plan;
         var outcome = controller.Phase;
         var blockReason = controller.BlockReason;
+        var blockadeAnswers = controller.BlockadeAnswers;
+        var pullRequestMissing = controller.PullRequestMissing;
 
         _OnUi(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
-            _RecordAndNotify(settledPlan, outcome, blockReason);
+            _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
             _Render();
         });
     }
@@ -616,26 +803,23 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
         outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
 
-    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason)
+    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers, bool pullRequestMissing)
     {
         // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
         // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
         if (IsSettledOutcome(outcome) && plan is not null)
         {
             _completedRuns++;
-            _history.Add(new AutopilotRunRecord(
-                plan.Name,
-                plan.Goal,
-                outcome,
-                blockReason,
-                DateTimeOffset.Now.ToString("o"),
-                [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note))]));
+            _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
             switch (outcome)
             {
                 case AutopilotPlanPhase.MergeReady:
-                    _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
+                    // The reliability line right after the settle that just moved it (AC-347) — computed after the Add
+                    // above so the just-settled run is already counted in it.
+                    var reliability = AutopilotRunReliability.Summarize(_history.Items).Describe();
+                    _host.ShowToast($"Run “{label}” is merge-ready. {reliability}", PluginToastSeverity.Success);
                     break;
                 case AutopilotPlanPhase.Stopped:
                     _host.ShowToast($"Run “{label}” stopped.", PluginToastSeverity.Information);
@@ -1688,6 +1872,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     // The blockade panel (AC-155): the step's question to the operator, an answer box, and a Send that relays the reply
     // to the blocked session and resumes the run. The step blocks stay on the left; only the right pane changes.
+    //
+    // Wrapped in its own ScrollViewer since AC-440: a question with several numbered options and an escalation's advice
+    // is routinely longer than the pane, and an escalation is exactly the case that cannot be designed away — it is the
+    // agent explaining what it could not decide itself. Without the scroll region the text used to fill the pane and
+    // push the answer box and Send button out of reach, leaving the operator unable to see what they were answering.
     private Control _BuildBlockadePanel(AutopilotRunContext context)
     {
         var answer = new TextBox
@@ -1713,30 +1902,33 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             }
         };
 
-        return new StackPanel
+        return new ScrollViewer
         {
-            VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 12,
-            MaxWidth = 520,
-            Children =
+            Content = new StackPanel
             {
-                new StackPanel
+                VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 12,
+                MaxWidth = 520,
+                Children =
                 {
-                    Spacing = 4,
-                    Children =
+                    new StackPanel
                     {
-                        new TextBlock { Text = "Waiting for you", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
-                        new TextBlock
+                        Spacing = 4,
+                        Children =
                         {
-                            Text = context.Controller.PendingQuestion ?? "The run is blocked and needs your answer.",
-                            FontSize = 14,
-                            TextWrapping = TextWrapping.Wrap,
-                            Foreground = _Brush("CockpitTextPrimaryBrush"),
+                            new TextBlock { Text = "Waiting for you", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
+                            new TextBlock
+                            {
+                                Text = context.Controller.PendingQuestion ?? "The run is blocked and needs your answer.",
+                                FontSize = 14,
+                                TextWrapping = TextWrapping.Wrap,
+                                Foreground = _Brush("CockpitTextPrimaryBrush"),
+                            },
                         },
                     },
+                    answer,
+                    send,
                 },
-                answer,
-                send,
             },
         };
     }

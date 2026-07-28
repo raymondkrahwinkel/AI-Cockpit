@@ -68,7 +68,9 @@ internal static class AutopilotCeoBrief
             : $"Take in only the children a person has already marked ready to be worked on (\"{executableStage.Trim()}\"); "
               + "leave the rest, and any child still marked [Brainstorm], out of the plan and say which ones you left out "
               + "and why. The item the operator clicked passed that check before this round started, and a child pulled in "
-              + "behind it meets the same bar rather than riding in on its parent.";
+              + "behind it meets the same bar rather than riding in on its parent — not on your say-so: pass that child's "
+              + "id as the step's issueId and the plan tool checks it against the tracker itself, so a child you got wrong "
+              + "is refused rather than quietly executed.";
 
         var tracker = plan.Source is { } tracked
             ? $$"""
@@ -100,7 +102,7 @@ internal static class AutopilotCeoBrief
             array. When you can resolve the folder the run should work in from the item — the repository the issue is
             about — pass it as workingDirectory too; it pre-fills the operator's field for them to confirm or override (a
             git repository isolates each step in a worktree, a plain folder runs without isolation). Each step: {id,
-            title, description, profile, model, brief, acceptance, hard, mcp, agents}.
+            title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}.
             - profile: the session profile the step runs on — use one of the exact profile labels listed above. model:
               MUST be exactly one of the models that profile lists above; omit it entirely for a local profile that lists
               no models (it pins its own). A model that is not on the chosen profile's list — or any model on a local
@@ -112,6 +114,9 @@ internal static class AutopilotCeoBrief
               least-privilege; leave it empty when the step needs nothing extra.
             - agents: how many agents work the step at once (default 1); more only where the work splits cleanly without
               the parts touching the same files.
+            - issueId: the tracker item this step is drafted from — the run's own source issue, or (for an epic) one of
+              its child issues you folded in — so it can be checked against the tracker itself. Omit for a step with no
+              such backing item.
 
             {{costGuidance}}
 
