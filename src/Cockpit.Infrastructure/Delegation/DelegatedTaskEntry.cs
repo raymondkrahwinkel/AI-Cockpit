@@ -87,6 +87,16 @@ internal sealed class DelegatedTaskEntry
 
     public bool IsFinished => Status is DelegatedTaskStatus.Completed or DelegatedTaskStatus.Failed or DelegatedTaskStatus.Stopped;
 
+    private int _worktreeReleaseClaimed;
+
+    /// <summary>
+    /// Claims the one worktree release this task gets (AC-106), so only the first caller performs it. The paths that
+    /// close a delegated session can overlap: an idle reap whose delay has already elapsed can no longer be cancelled
+    /// by a stop arriving at that instant, and both would then hand the same checkout back at once. A task is never
+    /// started again, so one release is all there is to hand out.
+    /// </summary>
+    public bool TryClaimWorktreeRelease() => Interlocked.Exchange(ref _worktreeReleaseClaimed, 1) == 0;
+
     public void Attach(ISessionRuntime runtime)
     {
         Runtime = runtime;

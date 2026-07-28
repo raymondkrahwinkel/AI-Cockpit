@@ -847,6 +847,26 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the working copy a delegated task is editing in is no longer treated as abandoned. A task you hand to
+  another profile runs without a tab of its own, and the cockpit counted "which sessions are running" from the tabs
+  alone — so a git worktree such a task made for itself looked like one whose owner had gone. Its row in the
+  managed-worktrees panel showed as free: Remove was offered on it, "Clean up finished" swept it whenever it
+  happened to be clean at that moment, and a new session started in that folder took it over. Each of those would
+  have pulled the working directory out from under a sub-agent that was still running there. All three now see the
+  task as running and leave the worktree alone, the same way they already did for a session with a tab.
+
+  And once the task is done, the worktree is handed back there and then — when you stop it, when it runs past the
+  time its profile allows, and once its session has sat unused long enough to close — instead of waiting for the
+  next start of the cockpit to notice. What happens to it is what happens when you close a session tab yourself: a
+  worktree with nothing left in it goes, taking its branch when that work has already landed on the branch it was
+  forked from, and one that still holds uncommitted work is kept and listed for review.
+
+  Two things follow from this that are worth knowing. A delegated agent can no longer delete its own worktree
+  part-way through its task — the cockpit now counts that task as running, so worktrees it makes and finishes with
+  along the way stay until the task ends, when they are cleaned up together. And a task the cockpit reports an
+  error on keeps its worktree until the next start: that report does not always mean the session has ended, and
+  removing a working copy out from under something still using it is the worse mistake of the two.
+
 - fixed: a dialog can no longer put its own buttons out of reach. Configuring an MCP server whose name clashed with
   one the cockpit already runs left Cancel and Save off the right-hand edge of a window that could not be resized, so
   the server you had just filled in could not be saved. The cause was never the height it looked like: a message

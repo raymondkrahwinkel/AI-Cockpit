@@ -80,7 +80,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     public IAsyncEnumerable<SessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    // launchOptions is unused: a built-in HTTP chat provider declares no per-session launch options.
+    // A built-in HTTP chat provider declares no per-session launch options of its own, but it does read the ones the
+    // host sets: the pane id it connects its tool loop on, the confinement flag, and the system prompt to append.
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         // workingDirectory is used only to confine file tools (below): a local session talks HTTP to a model server with

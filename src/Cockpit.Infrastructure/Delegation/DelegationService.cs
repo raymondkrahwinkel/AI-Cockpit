@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -19,7 +20,7 @@ namespace Cockpit.Infrastructure.Delegation;
 /// here rather than in the MCP tool layer: the tool surface is a shell, and a guard that lives in the shell is a
 /// guard an agent can talk its way around by reaching the engine another way.
 /// </summary>
-internal sealed class DelegationService : IDelegationService, ISingletonService
+internal sealed class DelegationService : IDelegationService, ILiveSessionSource, ISingletonService
 {
     /// <summary>
     /// The ceiling across all profiles together. A per-profile cap protects one provider's usage pot; this one
@@ -54,7 +55,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// <summary>How a task finds the project of the session that delegated it (AC-320). Absent in a test graph; the task then runs without a project, as delegation always did.</summary>
     private readonly ISessionProjectResolver? _projects;
 
+    /// <summary>Tears down the worktrees a finished task made for itself (AC-106). Absent in a test graph that does not exercise worktrees; the startup reconcile is the net then, as it was before.</summary>
+    private readonly IWorktreeManager? _worktrees;
+
     private readonly Func<int, TimeSpan> _timeout;
+    private readonly TimeSpan _idleWindow;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
 
@@ -65,12 +70,14 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         IDelegationAuditLog auditLog,
         ISessionWorkspaces workspaces,
         IPluginProviderRegistry? providerRegistry = null,
-        ISessionProjectResolver? projects = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects)
+        ISessionProjectResolver? projects = null,
+        IWorktreeManager? worktrees = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees)
     {
     }
 
-    /// <summary>Test seam: lets a test express the profile's timeout in milliseconds rather than waiting minutes for it.</summary>
+    /// <summary>Test seam: lets a test express the profile's timeout in milliseconds, and the idle window in
+    /// milliseconds, rather than waiting minutes for either.</summary>
     internal DelegationService(
         ISessionProfileStore profileStore,
         ISessionManager sessionManager,
@@ -79,7 +86,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         Func<int, TimeSpan> timeout,
         ISessionWorkspaces? workspaces = null,
         IPluginProviderRegistry? providerRegistry = null,
-        ISessionProjectResolver? projects = null)
+        ISessionProjectResolver? projects = null,
+        IWorktreeManager? worktrees = null,
+        TimeSpan? idleWindow = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -88,7 +97,47 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         _workspaces = workspaces ?? NoSessionWorkspaces.Instance;
         _providerRegistry = providerRegistry;
         _projects = projects;
+        _worktrees = worktrees;
         _timeout = timeout;
+        _idleWindow = idleWindow ?? IdleSessionWindow;
+    }
+
+    /// <summary>
+    /// The delegated tasks that still hold a session, as pane ids — a task's verified pane id is its task id
+    /// (see <see cref="_StartAsync"/>). A delegated session has no pane, so without this the cockpit's live-session
+    /// registry never knew it was running and the worktree guards treated its checkout as abandoned: the operator's
+    /// panel offered to sweep it and an agent's <c>worktree_remove</c> let it go (AC-106).
+    /// <para>
+    /// "Holds a session" and not "is running", deliberately: a task that has answered keeps its session for a
+    /// follow-up turn (<see cref="IdleSessionWindow"/>), and a follow-up puts it straight back to work in that same
+    /// directory.
+    /// </para>
+    /// <para>
+    /// The guard is let go one step before the checkout is gone, not at the same moment: a closing path drops the
+    /// session and then hands the worktree back, so while that release runs the task is already absent from here. The
+    /// actors that could use that gap are the worktree panel's Remove and Clean-up-finished and an agent's
+    /// <c>worktree_remove</c>; the session is stopped by then, and the agent route is refused a step earlier by the
+    /// ownership check. Left as it is rather than carried across the release on a second piece of state.
+    /// </para>
+    /// <para>
+    /// One ending is not covered: a task the driver reported an error on keeps its worktree but stops being listed
+    /// here, because <c>Finish</c> drops the session even though that error may not have ended it (see the
+    /// <c>SessionError</c> case). Until the next startup reconcile that checkout is unguarded — no worse than before
+    /// any of this, since a delegated task was never listed at all, but not fixed by it either.
+    /// </para>
+    /// </summary>
+    public IReadOnlySet<string> LiveSessionIds
+    {
+        get
+        {
+            lock (_tasksLock)
+            {
+                return _tasks
+                    .Where(task => task.Runtime is not null)
+                    .Select(task => task.TaskId)
+                    .ToHashSet(StringComparer.Ordinal);
+            }
+        }
     }
 
     /// <summary>Raised whenever a task is added or changes state, so a UI view can follow along without polling.</summary>
@@ -458,6 +507,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
 
         entry.Finish(DelegatedTaskStatus.Stopped, result: entry.Result, error: null);
+        await _ReleaseWorktreesAsync(entry);
         TasksChanged?.Invoke();
         await _Audit(DelegationAuditAction.Stopped, entry.Profile.Label, entry.TaskId, request: null, reason: null, entry);
         await _StartNextQueuedAsync(entry.Profile);
@@ -626,8 +676,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
         catch (Exception ex)
         {
-            // A task that cannot start is a visibly failed task, not one that quietly sits at Queued forever.
+            // A task that cannot start is a visibly failed task, not one that quietly sits at Queued forever. It
+            // usually has no worktree to hand back — it never got far enough to ask for one — but a start that failed
+            // late enough to have run is exactly the case where assuming that would be wrong.
             entry.Finish(DelegatedTaskStatus.Failed, result: null, error: ex.Message);
+            await _ReleaseWorktreesAsync(entry);
             TasksChanged?.Invoke();
             await _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, ex.Message, entry);
         }
@@ -637,7 +690,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// Closes a finished task's session once nobody has followed up on it for <see cref="IdleSessionWindow"/>. Without
     /// this a delegated session lived until the app did: an orchestrator that has its answer has no reason to call
     /// stop_task, and every task it ever ran would still be holding a process — or a model in a local server's
-    /// memory. The result is kept; only the session goes.
+    /// memory. The result is kept; only the session and the worktree it worked in go.
     /// </summary>
     private void _ArmIdleReap(DelegatedTaskEntry entry)
     {
@@ -648,7 +701,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         {
             try
             {
-                await Task.Delay(IdleSessionWindow, idle.Token);
+                await Task.Delay(_idleWindow, idle.Token);
             }
             catch (OperationCanceledException)
             {
@@ -661,9 +714,51 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             {
                 await _sessionManager.StopAsync(runtime.Id);
                 entry.ReleaseSession();
+                await _ReleaseWorktreesAsync(entry);
                 TasksChanged?.Invoke();
             }
         });
+    }
+
+    /// <summary>
+    /// Hands back the worktrees a delegated task made for itself, now that its session is gone (AC-106) — the same
+    /// call and so the same cleanup policy the cockpit applies when the operator closes a pane
+    /// (<c>CloseSessionAsync</c>): a clean checkout is removed, taking its branch with it when that work is already
+    /// in the base branch, and one that still holds work is kept and marked retained for review. A delegated task's
+    /// verified pane id is its task id, which is what its <c>worktree_create</c> calls were keyed on, so that id is
+    /// all the manager needs.
+    /// <para>
+    /// Called from every path that ends a delegated session for good: stop, idle reap, the profile's timeout, and a
+    /// task that never got as far as running. The first three have torn the session down before they get here; the
+    /// fourth never started one, so it can have no worktree — the call is a no-op there, made anyway so the rule has
+    /// no exception to remember. A driver error is the one ending that is <em>not</em> in this list, and the reason
+    /// is at that call site: it does not mean the session is over.
+    /// </para>
+    /// <para>
+    /// Claimed rather than merely called, because two closing paths can land together (see
+    /// <see cref="DelegatedTaskEntry.TryClaimWorktreeRelease"/>). Best-effort as the pane teardown is: a worktree git
+    /// will not let go of must not turn into a failed stop_task or a timeout that never reports, and whatever is left
+    /// behind is what the reconcile is for.
+    /// </para>
+    /// </summary>
+    private async Task _ReleaseWorktreesAsync(DelegatedTaskEntry entry)
+    {
+        // Absent manager first, on purpose: a graph without one must not spend the task's single claim on a release
+        // that was never going to happen. Swapping these two would be silent, and would only show up as a worktree
+        // that is never handed back.
+        if (_worktrees is null || !entry.TryClaimWorktreeRelease())
+        {
+            return;
+        }
+
+        try
+        {
+            await _worktrees.ReleaseAsync(entry.TaskId);
+        }
+        catch (Exception)
+        {
+            // Left for the startup reconcile.
+        }
     }
 
     /// <summary>
@@ -707,6 +802,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
             var reason = $"The task ran longer than the {minutes} minute(s) '{entry.Profile.Label}' allows and was stopped.";
             entry.Finish(DelegatedTaskStatus.Failed, result: entry.Result, error: reason);
+            await _ReleaseWorktreesAsync(entry);
             TasksChanged?.Invoke();
             await _Audit(DelegationAuditAction.TimedOut, entry.Profile.Label, entry.TaskId, request: null, reason, entry);
             await _StartNextQueuedAsync(entry.Profile);
@@ -838,6 +934,12 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
 
+            // Deliberately no worktree release here, unlike every other path that ends a task. A SessionError is not
+            // proof that the session is over: every PluginSessionError becomes one (PluginSessionDriverAdapter), and
+            // some are notices from a session that is running perfectly well — the cockpit falling behind on events
+            // (PluginSessionEventPublisher's gap notice), or a driver saying it could not apply a system prompt.
+            // Handing the checkout back on one of those would delete a live sub-agent's working directory, since a
+            // momentarily clean worktree is removed outright. So this one stays with the startup reconcile.
             case SessionError error:
                 entry.Finish(DelegatedTaskStatus.Failed, result: null, error: error.Message);
                 TasksChanged?.Invoke();

@@ -2460,12 +2460,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
         // startup read here; the section simply stays hidden until it lands.
         _ = Projects.LoadAsync();
-        // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
-        // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
-        // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
+        // The panes are one source of "which sessions are live" (their pane ids, what worktrees are keyed on); the
+        // shared registry adds the ones that run without a pane, today the delegated tasks (AC-106). Both worktree
+        // guards — the managed panel and the agent's worktree_remove MCP tool — then read that registry, so neither
+        // pulls a running session's checkout out from under it, and neither offers to sweep a checkout the other
+        // still considers taken. Without a registry (a graph built without one) the panel falls back to the panes,
+        // which is what it read before.
         IReadOnlySet<string> LivePaneIds() => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
-        Worktrees.LiveSessionIds = LivePaneIds;
         liveSessions?.SetSource(LivePaneIds);
+        Worktrees.LiveSessionIds = liveSessions is { } registry ? () => registry.LiveSessionIds : LivePaneIds;
         Worktrees.ReattachRequested += record => _ = _ReattachSessionAsync(record);
         _ = Worktrees.RefreshCountAsync();
         _worktreeSettingsStore = worktreeSettingsStore;
