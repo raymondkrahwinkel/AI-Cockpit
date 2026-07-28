@@ -46,6 +46,27 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
+    public async Task ARowThatWasNeverSaved_ReachesTheCoordinatorForNeither_EvenIfDrivenPastItsGate()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var editable = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
+        editable.Name = "depot";
+        editable.Transport = McpTransport.Http;
+        editable.Url = "https://depot.example/mcp";
+        editable.Auth = McpServerAuth.OAuth;
+
+        await editable.SignInCommand.ExecuteAsync(null);
+        await editable.SignOutCommand.ExecuteAsync(null);
+
+        // The gate is what the operator meets; ExecuteAsync walks past it, so the bodies hold the line themselves.
+        // Without that, a row with no stored name reaches the coordinator under whatever is typed — which is the
+        // guess this ticket spent five review rounds removing.
+        await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().SignOutAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ARowStoredWithATrailingSpace_StillOffersItsSignIn()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
