@@ -5286,7 +5286,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
-        await session.DisposeAsync();
+
+        // Best-effort, for the same reason the worktree release below is: the panel is already out of the collection,
+        // so a dispose that throws must not take the host-side teardown with it. The terminal couplings, the roster
+        // entry, the unread inbox and the resource claims all live outside the session object, and each one skipped is
+        // held for the life of the app — for a claim, that leaves neighbours working around a worktree nobody is on.
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // The panel is already gone from the UI; what still matters is the teardown below.
+        }
 
         // AC-34: this session may have been driving a terminal pane; releasing its couplings on close makes that pane's
         // "agent connected" bar disappear (SessionEnded raises CouplingChanged). It is the driver-side teardown the
@@ -5874,7 +5886,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ended.TrySetResult(endReason);
         }
 
-        await session.DisposeAsync();
+        // Best-effort for the same reason as the grid close path — and more so here, because this runs
+        // fire-and-forget (`_ = _TeardownEmbeddedSessionAsync(session)`), so a throwing dispose would skip the teardown
+        // below and take the exception with it into a task nobody observes.
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // The session is already unhooked and its waiters released; what still matters is the teardown below.
+        }
 
         // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings, forget the agent-presence
         // enrollment, the pane's unread inbox and its resource claims, and release the session's worktree.

@@ -327,6 +327,56 @@ public class WorkspaceAgentGatewayTests
     }
 
     /// <summary>
+    /// The teardown that drops a pane's claims runs after the session is disposed, and disposal is the step most
+    /// likely to fail — it kills a CLI process or stops a tailer. Everything the host holds on a session's behalf (the
+    /// terminal couplings, the roster entry, the unread inbox, the claims) lives outside the session object, so a
+    /// dispose that throws must not be able to strand any of it for the life of the app.
+    /// </summary>
+    [Fact]
+    public void CloseSession_WhenDisposingTheSessionThrows_StillForgetsWhatTheHostHeldForIt()
+    {
+        var claims = Substitute.For<IAgentResourceClaims>();
+        var coordinator = Substitute.For<IWorkspaceAgentCoordinator>();
+        var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var c = _NewEmbeddingCapableCockpit(coordinator, claims);
+            var s = new ThrowsOnDisposeSession();
+            c.Sessions.Add(s);
+            return (c, s);
+        });
+
+        Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
+
+        Assert.True(session.DisposeAttempted);
+        claims.Received(1).Forget(session.PaneId);
+        coordinator.Received(1).Forget(session.PaneId);
+    }
+
+    /// <summary>
+    /// The embedded half of the best-effort dispose above, where skipping the teardown costs more: this path runs
+    /// fire-and-forget, so the exception lands in a task nobody observes and the claims would simply never be
+    /// dropped, with nothing anywhere saying so.
+    /// </summary>
+    [Fact]
+    public void CloseEmbeddedSession_WhenDisposingTheSessionThrows_StillForgetsWhatTheHostHeldForIt()
+    {
+        var claims = Substitute.For<IAgentResourceClaims>();
+        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var c = _NewEmbeddingCapableCockpit(agentClaims: claims, sessionFactory: () => new ThrowsOnDisposeSession());
+            var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
+            c.Sessions.Add(grid);
+
+            var e = c.Embed("plugin-desk", new EmbeddedSessionRequest());
+            return (c, e);
+        });
+
+        Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
+
+        claims.Received(1).Forget(embedded.PaneId);
+    }
+
+    /// <summary>
     /// MF-1 (review round 2): <see cref="WorkspaceAgentGateway.GetWorkspaceSnapshotAsync"/> marshals onto the UI
     /// thread only when the caller is not already on it — but every other test above calls in from inside
     /// <see cref="Dispatcher.UIThread.Invoke(System.Action)"/>, so <c>CheckAccess()</c> is always true there and the
@@ -411,7 +461,8 @@ public class WorkspaceAgentGatewayTests
     // from this test project (a different assembly).
     private static CockpitViewModel _NewEmbeddingCapableCockpit(
         IWorkspaceAgentCoordinator? agentCoordinator = null,
-        IAgentResourceClaims? agentClaims = null)
+        IAgentResourceClaims? agentClaims = null,
+        Func<SessionViewModel>? sessionFactory = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -427,7 +478,7 @@ public class WorkspaceAgentGatewayTests
         terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
 
         return new CockpitViewModel(
-            () => new SessionViewModel(),
+            sessionFactory ?? (() => new SessionViewModel()),
             () => new TtyViewModel(),
             Substitute.For<ISessionDialogService>(),
             Substitute.For<IAudioCaptureService>(),
@@ -443,4 +494,22 @@ public class WorkspaceAgentGatewayTests
             agentCoordinator: agentCoordinator,
             agentClaims: agentClaims);
     }
+
+    /// <summary>
+    /// A session whose kind-specific teardown fails. The failure comes from <c>DisposeCoreAsync</c> because that is
+    /// where the real ones live — killing a CLI process, stopping a transcript tailer — and it is the only part of
+    /// disposal a panel defines for itself. It derives from <see cref="SessionViewModel"/> rather than the panel base
+    /// so the same failure can be driven through the embedded path, which builds its session from the factory.
+    /// </summary>
+    private sealed class ThrowsOnDisposeSession : SessionViewModel
+    {
+        public bool DisposeAttempted { get; private set; }
+
+        protected override ValueTask DisposeCoreAsync()
+        {
+            DisposeAttempted = true;
+            throw new InvalidOperationException("the CLI process would not die");
+        }
+    }
+
 }

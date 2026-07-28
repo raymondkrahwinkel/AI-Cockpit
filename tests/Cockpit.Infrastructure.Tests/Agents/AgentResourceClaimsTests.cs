@@ -221,9 +221,13 @@ public sealed class AgentResourceClaimsTests
         var desk = _Desk("pane-1", "PANE-1");
         claims.Claim("pane-1", "/repo/worktree-a", desk);
 
+        // All three lookups that key on a pane id: whose claim this is when someone else reaches for it, who may
+        // release it, and whose it is when a pane closes.
+        var claim = claims.Claim("PANE-1", "/repo/worktree-a", desk);
         var release = claims.Release("PANE-1", "/repo/worktree-a", desk);
         claims.Forget("PANE-1");
 
+        Assert.Equal(AgentClaimOutcome.HeldByAnother, claim.Outcome);
         Assert.Equal(AgentReleaseOutcome.HeldByAnother, release.Outcome);
         Assert.Equal("pane-1", Assert.Single(claims.List(desk)).OwnerPaneId);
     }
