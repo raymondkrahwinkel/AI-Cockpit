@@ -32,11 +32,16 @@ public class AgentTurnInboxDeliveryTests
         Assert.Equal("are you on this?", Assert.Single(notice.Messages).Body);
     }
 
+    /// <summary>
+    /// The cap is asserted absolutely, not against the constant it is guarding. Written the obvious way — deliver
+    /// <c>MaxMessagesPerTurn + 4</c> and expect <c>MaxMessagesPerTurn</c> back — the test moves with the number and
+    /// stays green however far the cap is raised, which is the one thing it exists to notice.
+    /// </summary>
     [Fact]
-    public void TakeForTurn_CarriesFewerThanReadInboxWould_AndSaysWhatIsLeftBehind()
+    public void TakeForTurn_CarriesAtMostFiveMessages_AndSaysWhatIsLeftBehind()
     {
         var inbox = new AgentMessageInbox();
-        for (var index = 0; index < AgentTurnInboxDelivery.MaxMessagesPerTurn + 4; index++)
+        for (var index = 0; index < 9; index++)
         {
             inbox.Deliver("pane-a", "pane-b", "question", $"message {index}");
         }
@@ -44,8 +49,15 @@ public class AgentTurnInboxDeliveryTests
         var notice = new AgentTurnInboxDelivery(inbox).TakeForTurn("pane-b");
 
         Assert.NotNull(notice);
-        Assert.Equal(AgentTurnInboxDelivery.MaxMessagesPerTurn, notice.Messages.Count);
+        Assert.Equal(5, notice.Messages.Count);
         Assert.Equal(4, notice.Remaining);
+
+        // And it stays well under what a read the recipient actually asked for hands over: an unsolicited block on a
+        // turn the operator is paying for is not the place to spend a read_inbox-sized batch.
+        Assert.True(
+            AgentTurnInboxDelivery.MaxMessagesPerTurn < AgentsMcpTools.MaxMessagesPerRead,
+            $"a turn carries {AgentTurnInboxDelivery.MaxMessagesPerTurn} messages unasked while read_inbox hands over "
+            + $"{AgentsMcpTools.MaxMessagesPerRead} on request — the unasked-for batch must be the smaller of the two");
     }
 
     [Fact]
