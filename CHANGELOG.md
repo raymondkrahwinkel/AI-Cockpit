@@ -32,10 +32,32 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
+  file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
+  two agents on one working tree find that out before the first edit instead of when it fails to compile. What is
+  claimed also shows on each session's row when an agent lists who else is on the tab.
+
+  It signals, it does not lock. Nothing stops an agent from working on a claimed resource, and nothing needs cleaning
+  up afterwards: a claim is only its holder's to release, and everything a session holds is dropped when that session
+  closes — including whatever the agent never got round to releasing. Resources are matched exactly as written, so agents have to
+  agree on the spelling — the same worktree written two ways is two claims. Claims stay inside one tab: a session on
+  another tab neither sees them nor is blocked by them, which also means two agents on different tabs reaching for the
+  same folder still do not see each other.
+
 - added: a line between a session's transcript and the box you type in. The transcript scrolls under that edge and its
   bottom row is cut off mid-letter, and with the same background on both sides and nothing drawn in between, that cut
   row read as a bar running underneath the pulsing "Thinking…" indicator rather than as a message scrolled out of
   view. The line makes the edge an edge, so what is scrolled away looks scrolled away.
+
+- added: starting a new session from a YouTrack issue or a GitHub issue now opens the dialog with the cockpit project
+  that issue belongs to already selected. It uses the link you set in the project editor under "Where it is tracked" —
+  the YouTrack project, or the repository — so a dialog that already knows which ticket it is for no longer asks you to
+  name the project by hand every time. The project brings its folder, profile, worktree default and MCP servers along,
+  exactly as picking it yourself would, and all of it stays editable until you press Start.
+
+  Nothing is guessed. If no project claims that tracker project or repository, the picker opens on "No project" as it
+  always did, and it does the same when two projects claim the same one: a preselection you would stop reading is worse
+  than none at all. Update the YouTrack and GitHub Issues plugins from the store to get it.
 
 - added: the product icons now exist as a square set that can actually be used as an app icon and a favicon. The two
   files that came out of the logo sheet were separate renders — different canvases, a W drawn at different
@@ -551,6 +573,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   chosen", and the build decides again. If you had deliberately opted into nightlies on a stable build, tick that box
   one more time; it is permanent from then on.
 
+- changed: while the plugin store is installing something, everything that changes what is installed is switched
+  off rather than merely looking that way — enabling, disabling, removing, moving a plugin up or down the left
+  menu, and adding or removing a workflow template. The layer the store draws over its catalogue while it works
+  never stopped the keyboard, so those buttons were out of reach of the mouse and one Tab and a space bar away
+  from doing exactly what they always did, halfway through an install.
+
+  That layer has stopped blocking the mouse in turn. It says what the store is doing and no longer pretends to
+  be a lock, so everything that changes nothing keeps working while you wait: reading the catalogue, opening a
+  plugin's settings, switching between the lists in the sidebar, following a plugin's homepage or repository.
+
 - changed: the header every dialog wears is lighter. Its name sat at heading size with a lot of room around it, which
   on a short dialog like Set status took two fifths of the window before you reached the first control, and on About
   left the header shouting over the dialog's own content. The name, the line under it and the room around them have
@@ -719,6 +751,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
+  which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your
+  sessions spent were created with whatever the system's default permissions said — on a stock Fedora, that means
+  world-readable. They hold free text, so a command you approved or a prompt you sent could name a token, a path or
+  a customer, and the value of such a record is exactly that nobody else can read it.
+
+  New trails are created readable and writable by you alone. The trails already on disk are put right the next time
+  the cockpit starts, so a machine that has been running it for a while does not stay open and does not need you to
+  run `chmod` on our behalf. Only the cockpit's own trails are touched — a file it did not write keeps whatever
+  permissions you gave it. On Windows this changes nothing: there are no permission bits of this kind, and the
+  per-user application-data folder is the boundary that does the same job.
+
 - fixed: a sign-in on an OAuth-protected MCP server no longer tells you to check a browser window that was never
   opened. When the server's own discovery went wrong, the cockpit stopped before it knew where to send you — and
   then reported it as a browser you had failed to finish with. The three ways a sign-in can stop now read
@@ -740,6 +784,30 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a sign-in you started and watched fail was recorded as routine background housekeeping, under a sentence stating
   the cockpit had not asked you — on the one path where asking is exactly what you did. It is a warning now, and it
   is written even when the sign-in fails quietly, so the log the message points you at is never empty.
+
+- fixed: a plugin update could be applied while the cockpit was still running the plugin it replaces. An update is
+  deliberately held back until the next start, because that is the one moment nothing is loaded — but the step that
+  *reads* which plugins are installed was applying the held-back ones on its way past, and that read runs after
+  every enable, disable or removal, and by itself every fifteen minutes while the cockpit looks for new versions.
+  A plugin could therefore be swapped underneath itself, at a moment nobody asked for and with nothing said about
+  it. Waiting updates and removals are now applied at startup and nowhere else, which is what they always claimed.
+
+- fixed: removing a plugin that had an update waiting did not remove it. The waiting update was applied first, and
+  applying it replaces the plugin's folder — the note recording the removal was inside that folder, so it went
+  with it. The plugin came back at a version you had just decided not to keep, saying nothing. Removing a plugin
+  now discards an update waiting for it.
+
+  Changing your mind still works: installing a plugin again after asking for it to be removed cancels the removal.
+  It comes back asking for your approval, the way anything whose bytes you have not approved does — it does not
+  quietly return switched off, and it does not quietly return already trusted.
+
+  A removal that could not be carried out also no longer undoes itself. Deleting the folder is best-effort — a file
+  still open leaves it for the next start — and a plugin in that state was found and loaded again on every start
+  after it. A plugin you removed now stays gone from the moment you remove it, whether or not its folder went.
+
+- fixed: **Update all** ended a batch that lost a plugin with "the rest failed — see the message above", and there
+  was no message above: the store shows one line at a time, so each failure had already been written over by the
+  next plugin, then by the catalogue reloading, then by that summary. It names the plugins that failed instead.
 
 - fixed: text boxes and dropdowns went back to the stock Fluent palette the moment you hovered or typed in them —
   a focused input turned black and grew a two-pixel ring, and a hovered picker took on a translucent dark fill,

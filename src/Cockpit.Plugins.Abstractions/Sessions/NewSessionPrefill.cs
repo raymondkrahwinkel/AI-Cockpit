@@ -36,4 +36,27 @@ public sealed record NewSessionPrefill(
     string? WorkingDirectory = null,
     string? SessionName = null,
     string? InitialPrompt = null,
-    string? ResumeSessionId = null);
+    string? ResumeSessionId = null)
+{
+    /// <summary>
+    /// The project to open the dialog on, named by the link it carries rather than by id (#AC-419): a plugin says "the
+    /// project tracked in YouTrack's <c>AC</c>" and the host preselects the one that declares it — so a session started
+    /// from an issue no longer opens on <em>No project</em> on a dialog that already knows which issue it is for.
+    /// <para>
+    /// Nothing is invented and nothing is guessed. A link no project declares leaves the picker exactly where it was,
+    /// and so does one that two projects declare: an unselected field the operator still reads beats a confident wrong
+    /// one they stop reading. Preselecting is all it does — the project's own folder, profile and worktree defaults
+    /// land first and every one of them, the project included, stays editable until Start, and an explicit
+    /// <see cref="WorkingDirectory"/> here is applied over the project's.
+    /// </para>
+    /// <para>
+    /// An <c>init</c> property rather than a sixth parameter on the primary constructor, because this record is
+    /// constructed by plugin binaries that are already published: adding the parameter is source-compatible but
+    /// binary-breaking, and an installed plugin would fail to bind the constructor it compiled against. Same reasoning
+    /// as <see cref="ICockpitHost.AddMcpEndpoint(string, object, System.Func{bool}?)"/> keeping its original signature
+    /// beside the wider one. A plugin that sets this needs a host that reads it, so it sets <c>minHostVersion</c> 0.8.0
+    /// — on an older host the setter is simply not there.
+    /// </para>
+    /// </summary>
+    public ProjectLink? LinkedProject { get; init; }
+}

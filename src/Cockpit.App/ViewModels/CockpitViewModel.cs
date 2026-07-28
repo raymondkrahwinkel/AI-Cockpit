@@ -93,6 +93,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
+    private readonly IAgentResourceClaims? _agentClaims;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
 
@@ -2396,7 +2397,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IScreenshotSettingsStore? screenshotSettingsStore = null,
         ISessionResourceResolver? sessionResourceResolver = null,
         IWorkspaceAgentCoordinator? agentCoordinator = null,
-        IAgentMessageInbox? agentMessages = null)
+        IAgentMessageInbox? agentMessages = null,
+        IAgentResourceClaims? agentClaims = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2507,6 +2509,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionResourceResolver = sessionResourceResolver;
         _agentCoordinator = agentCoordinator;
         _agentMessages = agentMessages;
+        _agentClaims = agentClaims;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -4392,7 +4395,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        var result = await _dialogService.ShowNewSessionDialogAsync(prefill);
+        var result = await _dialogService.ShowNewSessionDialogAsync(
+            prefill,
+            project: await _ProjectLinkedAsAsync(prefill?.LinkedProject));
         if (result is null)
         {
             return null;
@@ -4405,6 +4410,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         return paneId;
+    }
+
+    /// <summary>
+    /// The project a plugin's prefill named by its link (AC-419) — "the one tracked in YouTrack's AC" — handed to the
+    /// dialog through the project parameter the operator's own project pick already uses (AC-164), so a preselected
+    /// project brings its folder, profile, worktree default and MCP overlay exactly as picking it by hand would.
+    /// Null for no link, a link nothing declares, or one two projects declare; the dialog then opens on no project.
+    /// </summary>
+    private async Task<Project?> _ProjectLinkedAsAsync(ProjectLink? link)
+    {
+        if (link is null)
+        {
+            return null;
+        }
+
+        // The projects list is filled by a fire-and-forget read at startup, so a plugin that opens this dialog early —
+        // a shortcut pressed while the cockpit is still settling — can get here first and find it empty. Reading it now
+        // in that case is the difference between "no project links that" and "the list was not there yet". Guarded like
+        // _ProjectIdForDirectoryAsync's read for the same reason: an unreadable list costs a preselection, while an
+        // exception escaping here would reach the host's catch and cancel the dialog outright — no session at all
+        // because a convenience could not be worked out.
+        if (Projects.Projects.Count == 0)
+        {
+            try
+            {
+                await Projects.LoadAsync();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        return ProjectLinkMatch.For(Projects.Projects, link.FieldKey, link.Value);
     }
 
     /// <summary>
@@ -5356,7 +5395,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
-        await session.DisposeAsync();
+
+        // Best-effort, for the same reason the worktree release below is: the panel is already out of the collection,
+        // so a dispose that throws must not take the host-side teardown with it. The terminal couplings, the roster
+        // entry, the unread inbox and the resource claims all live outside the session object, and each one skipped is
+        // held for the life of the app — for a claim, that leaves neighbours working around a worktree nobody is on.
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // The panel is already gone from the UI; what still matters is the teardown below.
+        }
 
         // AC-34: this session may have been driving a terminal pane; releasing its couplings on close makes that pane's
         // "agent connected" bar disappear (SessionEnded raises CouplingChanged). It is the driver-side teardown the
@@ -5371,8 +5422,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // that would have called read_inbox is gone — so holding it only grows for the life of the app, and a reused
         // pane id would inherit another session's unread mail. The append-only notify trail is deliberately not
         // touched: it is the durable record of what was sent, and a record a closing session can erase is not one.
+        //
+        // AC-393: and whatever it had claimed. This is the whole of what keeps a claim from outliving its agent —
+        // there is no expiry and no heartbeat in phase 1 — so a session that ends without releasing must not leave
+        // its neighbours working around a worktree nobody is on any more.
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
+        _agentClaims?.Forget(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
@@ -5939,13 +5995,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ended.TrySetResult(endReason);
         }
 
-        await session.DisposeAsync();
+        // Best-effort for the same reason as the grid close path — and more so here, because this runs
+        // fire-and-forget (`_ = _TeardownEmbeddedSessionAsync(session)`), so a throwing dispose would skip the teardown
+        // below and take the exception with it into a task nobody observes.
+        try
+        {
+            await session.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // The session is already unhooked and its waiters released; what still matters is the teardown below.
+        }
 
         // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings, forget the agent-presence
-        // enrollment and the pane's unread inbox, and release the session's worktree.
+        // enrollment, the pane's unread inbox and its resource claims, and release the session's worktree.
         _terminals?.SessionEnded(session.PaneId);
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
+        _agentClaims?.Forget(session.PaneId);
         if (_worktreeManager is not null && session.WorktreeBranch is not null)
         {
             try

@@ -5,6 +5,7 @@
 
 #33FFFFFF  off-palette
 #66FFFFFF  off-palette
+#99FFFFFF  off-palette
 #B30F1116  CockpitScrimColor
 #CCFFFFFF  off-palette
 #FF000000  off-palette

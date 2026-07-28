@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Secrets;
+using Cockpit.Infrastructure.Auditing;
 using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -24,6 +25,7 @@ public static class CredentialFileHousekeeping
             CockpitConfigPath.EnsurePrivateDirectory(CockpitConfigPath.Root);
             CockpitConfigPath.RestrictExistingFile(CockpitConfigPath.Default);
             CockpitConfigPath.RestrictExistingFile(Path.Combine(CockpitConfigPath.Root, "mcp-permission.json"));
+            RestrictAuditTrails(CockpitConfigPath.Root);
 
             // The sidecars of a save that was killed halfway. Each carries a full copy of the config — profiles,
             // provider keys, MCP bearer headers — so a leftover is the whole file lying around under another name.
@@ -45,6 +47,32 @@ public static class CredentialFileHousekeeping
         {
             // Housekeeping never keeps the operator out of their cockpit. The write paths set the permissions
             // themselves, so a failure here costs the migration of an old file, not the protection of a new one.
+        }
+    }
+
+    /// <summary>
+    /// Restricts the audit trails a version before AC-435 created at the umask — world-readable on a stock Fedora.
+    /// The trails are not credential files, but they are the record of what was approved, what a sub-agent was asked
+    /// to do and what one agent told another: free text nothing stops from naming a token, a path or a customer.
+    /// <para>
+    /// The write path was fixed to create them owner-only, and a create mode only applies to a file being created —
+    /// so every machine that ran an earlier build still has its trails lying open, and only a pass like this one
+    /// closes them. It walks the known trails (<see cref="AuditTrailFiles"/>) rather than everything in the state
+    /// root: a file the cockpit did not write is not ours to change the mode of.
+    /// </para>
+    /// </summary>
+    internal static void RestrictAuditTrails(string stateDirectory)
+    {
+        foreach (var trail in AuditTrailFiles.In(stateDirectory))
+        {
+            // A symlink is followed by the mode change, so a link that happens to carry a trail's name would hand
+            // this pass a file somewhere else entirely — one the cockpit never wrote and whose permissions are the
+            // operator's business. The cockpit only ever creates these paths as regular files, so anything else
+            // under the name is not the trail this is here to close.
+            if (new FileInfo(trail) is { Exists: true, LinkTarget: null })
+            {
+                CockpitConfigPath.RestrictExistingFile(trail);
+            }
         }
     }
 

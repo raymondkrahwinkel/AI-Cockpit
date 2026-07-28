@@ -147,16 +147,15 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         if (e.PropertyName == nameof(PluginManagerViewModel.IsBusy))
         {
-            OnPropertyChanged(nameof(IsLoadingCatalogue));
             InstallSelectedVersionCommand.NotifyCanExecuteChanged();
+            MoveInstalledPluginUpCommand.NotifyCanExecuteChanged();
+            MoveInstalledPluginDownCommand.NotifyCanExecuteChanged();
+            RefreshCommand.NotifyCanExecuteChanged();
         }
     }
 
     /// <summary>True when no store is configured yet — the grid column is replaced by the "no stores" panel (§1.8).</summary>
     public bool HasNoStores => _manager.Stores.Count == 0;
-
-    /// <summary>True during the first catalogue fetch (stores configured, nothing loaded yet, a browse in flight) — the grid shows the "Loading plugin catalogue…" message instead of an empty state (§1.8).</summary>
-    public bool IsLoadingCatalogue => _manager.IsBusy && !HasNoStores && _manager.AvailablePlugins.Count == 0;
 
     /// <summary>The Discover page's Featured/Recently-added rails only show above the "All plugins" grid when Discover is selected and there is no active search (§1.4).</summary>
     public bool ShowDiscoverRails => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Discover && string.IsNullOrWhiteSpace(SearchText);
@@ -208,12 +207,17 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     /// worth doing.
     /// </para>
     /// </remarks>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MoveInstalledPluginUpAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, -1);
 
     /// <inheritdoc cref="MoveInstalledPluginUpAsync"/>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MoveInstalledPluginDownAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, +1);
+
+    // The dialog's own share of the AC-455 gate, read from the manager so there is one answer rather than two.
+    // Not a public property: nothing binds it, and one that never raises PropertyChanged would be a gate in
+    // name only. The commands that read it are told to reassess in _OnManagerPropertyChanged.
+    private bool CanChangePlugins => _manager.CanChangePlugins;
 
     private Task _MoveWithinGroupAsync(PluginRowViewModel row, int offset)
     {
@@ -275,7 +279,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         if (_manager.Stores.Count > 0)
         {
-            await _manager.BrowseStoresCommand.ExecuteAsync(null);
+            await _manager.BrowseStoresAsync();
         }
     }
 
@@ -346,7 +350,8 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         }
     }
 
-    [RelayCommand]
+    /// <summary>Refetches the catalogue. Closed while the store is working (AC-455): it clears and refills the collection a running install is walking, and its own gate is what makes the button go dead rather than quietly do nothing.</summary>
+    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task RefreshAsync() => LoadAsync();
 
     [RelayCommand]
@@ -374,7 +379,6 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _RebuildSidebarItems();
         _RecomputeFiltered();
         OnPropertyChanged(nameof(HasNoStores));
-        OnPropertyChanged(nameof(IsLoadingCatalogue));
 
         // The Installed list is local, but its headings are not: a catalogue arriving late is what turns "Other"
         // into "Widgets", so the groups have to be re-read when it lands.

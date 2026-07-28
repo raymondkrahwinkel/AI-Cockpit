@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions.Workflows;
+using Cockpit.TestSupport;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
@@ -31,11 +32,9 @@ public class GitWorkflowStepsTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_repo))
-        {
-            Directory.Delete(_repo, recursive: true);
-        }
-
+        // Every one of these tests passed and then failed in teardown on Windows, which reads as six broken git
+        // steps rather than one unremovable directory.
+        TestGitDirectory.Remove(_repo);
         GC.SuppressFinalize(this);
     }
 
