@@ -31,7 +31,7 @@ internal static class AutopilotCeoBrief
             + "for it and emit it now with the plan tool, so I can review it. Ask me anything you need to resolve before I approve.";
     }
 
-    public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced)
+    public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced, string? executableStage = null)
     {
         var goal = string.IsNullOrWhiteSpace(plan.Goal)
             ? "The operator has not stated the goal yet — ask them what this run should achieve."
@@ -59,15 +59,27 @@ internal static class AutopilotCeoBrief
         // deliberately kept out of the planning scope and belong to the run — the CEO validator (AutopilotValidatorBrief)
         // plus the coordinator's automatic stage-advance (AC-202), both during execution. Provider-neutral: it steers on
         // reading vs writing, never on a specific tracker or tool brand. Omitted for a CEO-first run (no source issue).
+        // The start gate (AC-345) only sees the one item the operator clicked. An epic's children come in later, inside
+        // this round, so the same bar is stated here for them — the weaker half of the pair, since it is an instruction
+        // rather than a check, but the alternative is a plan that quietly executes backlog items on their parent's ticket.
+        var childRule = string.IsNullOrWhiteSpace(executableStage)
+            ? "Leave out any child still marked [Brainstorm], and say which ones you left out and why."
+            : $"Take in only the children a person has already marked ready to be worked on (\"{executableStage.Trim()}\"); "
+              + "leave the rest, and any child still marked [Brainstorm], out of the plan and say which ones you left out "
+              + "and why. The item the operator clicked passed that check before this round started, and a child pulled in "
+              + "behind it meets the same bar rather than riding in on its parent.";
+
         var tracker = plan.Source is { } tracked
             ? $$"""
 
                 This run was triggered from {{tracked.Tracker}} {{tracked.IssueId}}, so you may READ the tracker while you
                 plan to inform the plan: open the source issue with the tracker's read tools, and — when it is an epic —
                 pull its child issues (its "parent for" / child links) and fold every sub-item into this one plan, rather
-                than reading only the description. Do NOT move the issue's stage or post notes on it while planning: nothing
-                has been built and the operator has not approved yet, so changing the issue now would be premature. Those
-                updates happen during the run, not here — leave the issue where it is until then.
+                than reading only the description. {{childRule}}
+
+                Do NOT move the issue's stage or post notes on it while planning: nothing has been built and the operator
+                has not approved yet, so changing the issue now would be premature. Those updates happen during the run,
+                not here — leave the issue where it is until then.
 
                 """
             : "\n";

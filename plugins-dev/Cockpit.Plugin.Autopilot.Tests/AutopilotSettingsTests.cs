@@ -148,4 +148,37 @@ public class AutopilotSettingsTests
 
         fired.Should().Be(3);
     }
+
+    [Fact]
+    public void ExecutableStage_UnsetPerTracker_FallsBackToThatTrackersDefault()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        Assert.Equal("Ready", settings.ExecutableStage("youtrack"));
+        Assert.Equal("ready", settings.ExecutableStage("github-issues"));
+        // A tracker Autopilot ships no default for gates on nothing until its operator names a stage — better than
+        // guessing a name and refusing every item on a tracker whose vocabulary we do not know.
+        Assert.Equal(string.Empty, settings.ExecutableStage("jira"));
+    }
+
+    [Fact]
+    public void ExecutableStage_SetBlank_TurnsTheGateOffRatherThanRestoringTheDefault()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.SetExecutableStage("youtrack", string.Empty);
+
+        Assert.Equal(string.Empty, settings.ExecutableStage("youtrack"));
+    }
+
+    [Fact]
+    public void ExecutableStage_IsKeptPerTracker()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.SetExecutableStage("youtrack", "Refined");
+
+        Assert.Equal("Refined", settings.ExecutableStage("youtrack"));
+        Assert.Equal("ready", settings.ExecutableStage("github-issues"));
+    }
 }

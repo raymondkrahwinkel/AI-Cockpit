@@ -211,6 +211,31 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_WithAnExecutableStage_HoldsAnEpicsChildrenToTheSameBarAsItsParent()
+    {
+        // The start gate only sees the item the operator clicked; an epic's children are pulled in later, inside this
+        // round. Without this the plan quietly executes backlog items on their parent's ticket.
+        var plan = AutopilotPlan.Empty(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), goal: "Work the epic");
+
+        var brief = AutopilotCeoBrief.For(plan, executableStage: "Ready");
+
+        Assert.Contains("Take in only the children", brief);
+        Assert.Contains("\"Ready\"", brief);
+        Assert.Contains("[Brainstorm]", brief);
+    }
+
+    [Fact]
+    public void For_WithTheGateOff_StillRefusesToFoldInABrainstormChild()
+    {
+        var plan = AutopilotPlan.Empty(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), goal: "Work the epic");
+
+        var brief = AutopilotCeoBrief.For(plan, executableStage: null);
+
+        Assert.DoesNotContain("Take in only the children", brief);
+        Assert.Contains("[Brainstorm]", brief);
+    }
+
+    [Fact]
     public void For_WithNoProfilesOrIdentity_OmitsTheRosterAndIdentityLine()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");

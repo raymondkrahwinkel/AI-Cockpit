@@ -27,6 +27,26 @@ public class AutopilotRunTests
     }
 
     [Fact]
+    public void FromIntent_ReadsTheStageTheTrackerReports()
+    {
+        var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string>
+        {
+            ["issue"] = "AC-345",
+            ["stage"] = "Ready",
+        }));
+
+        Assert.Equal("Ready", run.Stage);
+    }
+
+    [Fact]
+    public void FromIntent_WithoutAStage_ReadsAsUnknownRatherThanNull()
+    {
+        // What a tracker plugin older than this Autopilot sends. The start gate refuses on it, so it has to arrive as a
+        // value the gate can judge rather than as null.
+        Assert.Equal(string.Empty, AutopilotRun.FromIntent(Intent(new Dictionary<string, string> { ["issue"] = "AC-345" })).Stage);
+    }
+
+    [Fact]
     public void FromIntent_FallsBackToCallerId_WhenTrackerOmitted()
     {
         var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string> { ["issue"] = "42" }, caller: "github-issues"));

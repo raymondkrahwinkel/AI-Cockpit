@@ -55,7 +55,7 @@ internal sealed class GitHubIssuesClient
             var title = element.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty;
             var htmlUrl = element.TryGetProperty("html_url", out var u) ? u.GetString() ?? string.Empty : string.Empty;
             var body = element.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() : null;
-            issues.Add(new GitHubIssue(number, title, htmlUrl, body, repository));
+            issues.Add(new GitHubIssue(number, title, htmlUrl, body, repository) { Labels = GitHubIssueLabels.Read(element) });
         }
 
         return issues;

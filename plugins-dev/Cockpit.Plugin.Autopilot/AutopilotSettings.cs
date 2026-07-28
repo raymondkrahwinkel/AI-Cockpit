@@ -18,6 +18,19 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string AutonomyModeKey = "autonomyMode";
     private const string CostStrategyKey = "costStrategy";
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
+    private const string ExecutableStagePrefix = "executableStage:";
+
+    /// <summary>
+    /// What "a person has judged this executable" is called on each tracker Autopilot ships with (AC-345) — a stage on
+    /// YouTrack, and on GitHub Issues, which has none, a label. A tracker with no default here gates on nothing until
+    /// the operator names its stage; the settings view offers a box for every installed tracker so that is a choice
+    /// rather than a gap.
+    /// </summary>
+    private static readonly Dictionary<string, string> DefaultExecutableStages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["youtrack"] = "Ready",
+        ["github-issues"] = "ready",
+    };
 
     /// <summary>
     /// The CLI permission mode a self-driving run starts in (AC-152). Default <c>acceptEdits</c>, not <c>bypassPermissions</c>
@@ -84,6 +97,27 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public int MaxConcurrentRuns(string? projectId = null) => Math.Max(1, _ReadValue(projectId, MaxConcurrentRunsKey, 1));
 
     public void SetMaxConcurrentRuns(int max, string? projectId = null) => _Write(projectId, MaxConcurrentRunsKey, Math.Max(1, max));
+
+    /// <summary>
+    /// The stage on <paramref name="trackerId"/> that means "a person judged this executable" — what the start gate
+    /// keys on (AC-345). Unset falls back to that tracker's default (<c>Ready</c> on YouTrack, the <c>ready</c> label on
+    /// GitHub Issues); stored blank means the operator turned the gate off for that tracker, and is honoured as such.
+    /// Global only, unlike the settings around it: the gate belongs to the tracker's own vocabulary, which does not
+    /// change per project, and a per-project level nothing reads would be a promise this class could not keep.
+    /// </summary>
+    public string ExecutableStage(string trackerId) =>
+        _ReadString(null, _ExecutableStageKey(trackerId))
+        ?? DefaultExecutableStages.GetValueOrDefault(trackerId)
+        ?? string.Empty;
+
+    public void SetExecutableStage(string trackerId, string? stage) =>
+        _Write(null, _ExecutableStageKey(trackerId), stage ?? string.Empty);
+
+    /// <summary>The tracker ids Autopilot ships a default executable stage for, so a settings view can offer them even
+    /// when their plugin is not installed on this machine.</summary>
+    public static IReadOnlyCollection<string> TrackersWithADefaultStage => DefaultExecutableStages.Keys;
+
+    private static string _ExecutableStageKey(string trackerId) => ExecutableStagePrefix + trackerId.ToLowerInvariant();
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 
