@@ -19,11 +19,9 @@ public class GitHeadLocatorTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_repo))
-        {
-            Directory.Delete(_repo, recursive: true);
-        }
-
+        // Green today only because this fixture never commits, so the repository holds no read-only objects yet.
+        // The day it grows a commit it fails exactly the way the workflow-steps fixture did.
+        TemporaryGitRepository.Delete(_repo);
         GC.SuppressFinalize(this);
     }
 

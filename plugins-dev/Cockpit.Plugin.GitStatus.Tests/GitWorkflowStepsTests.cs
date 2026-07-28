@@ -31,23 +31,9 @@ public class GitWorkflowStepsTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_repo))
-        {
-            // git writes its objects and packs read-only, and Windows refuses to delete a read-only file — so
-            // every one of these tests passed and then failed in teardown, which reads as six broken git steps.
-            // Unix ignores the attribute here because the directory's own write permission is what decides.
-            foreach (var file in Directory.EnumerateFiles(_repo, "*", SearchOption.AllDirectories))
-            {
-                var attributes = File.GetAttributes(file);
-                if (attributes.HasFlag(FileAttributes.ReadOnly))
-                {
-                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
-                }
-            }
-
-            Directory.Delete(_repo, recursive: true);
-        }
-
+        // Every one of these tests passed and then failed in teardown on Windows, which reads as six broken git
+        // steps rather than one unremovable directory.
+        TemporaryGitRepository.Delete(_repo);
         GC.SuppressFinalize(this);
     }
 

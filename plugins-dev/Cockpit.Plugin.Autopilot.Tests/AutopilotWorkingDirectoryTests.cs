@@ -38,6 +38,18 @@ public class AutopilotWorkingDirectoryTests
         AutopilotWorkingDirectory.Resolve(_Context(null), null).Should().Be(Directory.GetCurrentDirectory());
     }
 
+    [Fact]
+    public void Resolve_AnswersAnAbsolutePath_EvenWhenItWasGivenARelativeOne()
+    {
+        // The normalising is the point of this method, not a detail of it: the git-status check, the worktree and
+        // the confinement each resolve what comes out, and a relative path would let them resolve against different
+        // working directories. Nothing held that — dropping the Path.GetFullPath left all 231 tests green.
+        var resolved = AutopilotWorkingDirectory.Resolve(_Context(null), Path.Combine(".", "a", "..", "b"));
+
+        Path.IsPathFullyQualified(resolved).Should().BeTrue();
+        resolved.Should().Be(Path.Combine(Directory.GetCurrentDirectory(), "b"));
+    }
+
     private static IWorkspaceContext _Context(string? activeSessionDirectory)
     {
         var sessions = Substitute.For<ICockpitSessionObserver>();

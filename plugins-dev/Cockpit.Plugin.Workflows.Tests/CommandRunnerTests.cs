@@ -12,6 +12,16 @@ namespace Cockpit.Plugin.Workflows.Tests;
 /// </summary>
 public class CommandRunnerTests
 {
+    // CommandRunner hands the line to cmd.exe on Windows and /bin/sh elsewhere, so a test that writes one shell's
+    // syntax is testing one platform. cmd does not read ';' as a separator: "echo it broke >&2; exit 3" is a single
+    // echo there, the step succeeds, and the test reads as a runner that ignores exit codes. These are the same two
+    // commands in each shell's own words.
+    private static string FailsWithMessageOnStderr => OperatingSystem.IsWindows()
+        ? "echo it broke 1>&2 & exit 3"
+        : "echo it broke >&2; exit 3";
+
+    private static string PrintsTheWorkingDirectory => OperatingSystem.IsWindows() ? "cd" : "pwd";
+
     [Fact]
     public async Task WhatTheCommandPrints_BecomesTheDataTheNextStepGets()
     {
@@ -22,16 +32,6 @@ public class CommandRunnerTests
         outcome.Output.Should().Be("hello from the flow");
         outcome.Items.Single().Json["output"]!.ToString().Should().Be("hello from the flow");
     }
-
-    // CommandRunner hands the line to cmd.exe on Windows and /bin/sh elsewhere, so a test that writes one shell's
-    // syntax is testing one platform. cmd does not read ';' as a separator: "echo it broke >&2; exit 3" is a single
-    // echo there, the step succeeds, and the test reads as a runner that ignores exit codes. These are the same two
-    // commands in each shell's own words.
-    private static string FailsWithMessageOnStderr => OperatingSystem.IsWindows()
-        ? "echo it broke 1>&2 & exit 3"
-        : "echo it broke >&2; exit 3";
-
-    private static string PrintsTheWorkingDirectory => OperatingSystem.IsWindows() ? "cd" : "pwd";
 
     [Fact]
     public async Task ACommandThatFails_FailsTheStep_AndSaysWhy()
@@ -68,9 +68,10 @@ public class CommandRunnerTests
     [Fact]
     public async Task TheCommandRunsWhereItWasTold()
     {
-        // A directory of its own rather than the temp root: "contains tmp" happened to hold on Linux and says
-        // nothing about being told where to run, and on Windows the temp path is spelled Temp anyway. A folder
-        // this test just made can only appear in the output if the command ran inside it.
+        // A directory of its own rather than the temp root. "Contains tmp" did catch a runner that ignored the
+        // setting outright — the test binary's own directory has no "tmp" in it — but it holds for any path under
+        // /tmp, and on Windows the temp path is spelled Temp. A folder this test just made, carrying a GUID, can
+        // only end the output if the command ran in that one.
         var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"cockpit-workflows-{Guid.NewGuid():n}"));
         try
         {
