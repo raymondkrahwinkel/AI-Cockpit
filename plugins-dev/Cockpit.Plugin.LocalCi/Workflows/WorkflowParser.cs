@@ -32,6 +32,13 @@ internal static class WorkflowParser
             return WorkflowParseResult.Failed(path, "This file does not look like a workflow: it has no top-level mapping.");
         }
 
+        if (stream.Documents.Count > 1)
+        {
+            // Reading only the first would drop the rest without a word — the same silent loss the job and step
+            // shape checks below exist to prevent.
+            return WorkflowParseResult.Failed(path, "This file holds more than one YAML document, and only one workflow can be read from it.");
+        }
+
         if (_Child(root, "jobs") is not { } jobsNode)
         {
             return WorkflowParseResult.Failed(path, "This file has no jobs: block, so there is nothing to run.");
@@ -48,11 +55,12 @@ internal static class WorkflowParser
         }
 
         var name = _Scalar(root, "name") ?? Path.GetFileName(path);
+        var keys = root.Children.Keys.OfType<YamlScalarNode>().Select(key => key.Value ?? string.Empty).ToList();
         var parsed = jobs.Children
             .Select(entry => _ReadJob(((YamlScalarNode)entry.Key).Value!, entry.Value))
             .ToList();
 
-        return WorkflowParseResult.Parsed(new WorkflowDocument(path, name, parsed));
+        return WorkflowParseResult.Parsed(new WorkflowDocument(path, name, keys, parsed));
     }
 
     /// <summary>The shapes the reader below assumes, checked once so that reading itself has no unreadable cases.</summary>

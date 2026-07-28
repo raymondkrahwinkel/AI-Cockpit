@@ -356,6 +356,81 @@ public class LocalRunClassifierTests
     }
 
     [Fact]
+    public void WorkflowLevelDefaults_RefuseEveryJobInTheFile()
+    {
+        // The setting sits above the job and changes what its run steps do. Reporting the job as runnable would be
+        // reading only the half of the file the job is written in.
+        var verdicts = _Classify("""
+            name: CI
+            defaults:
+              run:
+                shell: pwsh
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: dotnet build
+            """);
+
+        var verdict = Assert.Single(verdicts);
+        Assert.False(verdict.CanRunLocally);
+        Assert.Contains("defaults for every run step", verdict.Reason);
+    }
+
+    [Fact]
+    public void UnknownWorkflowLevelKey_RefusesToo()
+    {
+        var verdict = _ClassifyOne("""
+            some-future-key: true
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: dotnet build
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Equal("the workflow uses \"some-future-key\", which this check does not understand", verdict.Reason);
+    }
+
+    [Theory]
+    [InlineData("ubuntu-latest-4-cores")]
+    [InlineData("ubuntu-24.04-arm")]
+    [InlineData("ubuntu-our-own-box")]
+    public void RunnerLabelThatOnlyLooksLikeAStandardLinuxOne_IsRefused(string label)
+    {
+        // A larger runner, an arm image and a self-hosted box someone named after ubuntu all start with the same
+        // seven characters and none of them is the runner this check means.
+        var verdict = _ClassifyOne($"""
+            jobs:
+              build:
+                runs-on: {label}
+                steps:
+                  - run: dotnet build
+            """);
+
+        Assert.False(verdict.CanRunLocally);
+        Assert.Contains(label, verdict.Reason);
+    }
+
+    [Theory]
+    [InlineData("ubuntu-latest")]
+    [InlineData("ubuntu-24.04")]
+    [InlineData("ubuntu-22.04")]
+    public void StandardLinuxRunners_AreAccepted(string label)
+    {
+        var verdict = _ClassifyOne($"""
+            jobs:
+              build:
+                runs-on: {label}
+                steps:
+                  - run: dotnet build
+            """);
+
+        Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    [Fact]
     public void MatrixWinsOverTheOtherProblems()
     {
         // Two problems, one reported — and always the same one, so a reason can be asserted at all.
@@ -373,10 +448,12 @@ public class LocalRunClassifierTests
         Assert.Equal("it uses a matrix, so it is several runs rather than one", verdict.Reason);
     }
 
-    private static JobVerdict _ClassifyOne(string yaml)
+    private static JobVerdict _ClassifyOne(string yaml) => Assert.Single(_Classify(yaml));
+
+    private static IReadOnlyList<JobVerdict> _Classify(string yaml)
     {
         var parsed = WorkflowParser.Parse("test.yml", yaml);
         Assert.Null(parsed.Error);
-        return Assert.Single(LocalRunClassifier.Classify(parsed.Document!));
+        return LocalRunClassifier.Classify(parsed.Document!);
     }
 }

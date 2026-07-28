@@ -77,8 +77,34 @@ internal static class LocalRunClassifier
             + "it, so a local result would not mean the same thing",
     };
 
-    public static IReadOnlyList<JobVerdict> Classify(WorkflowDocument document) =>
-        document.Jobs.Select(job => _ClassifyJob(document, job)).ToList();
+    /// <summary>
+    /// Top-level keys that hold for the whole file and change nothing about running one job here. <c>defaults</c> is
+    /// deliberately absent: it sets the shell and working directory of every run step in the file, which is exactly
+    /// the kind of thing that decides whether a job does what it looks like it does.
+    /// </summary>
+    private static readonly HashSet<string> UnderstoodWorkflowKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "name", "run-name", "on", "jobs", "permissions", "concurrency", "env",
+    };
+
+    public static IReadOnlyList<JobVerdict> Classify(WorkflowDocument document)
+    {
+        // A file-level problem is every job's problem: it would be misleading to report one job as runnable when the
+        // setting that would change how it runs sits above it.
+        var workflowReason = _WorkflowReason(document);
+        return document.Jobs
+            .Select(job => workflowReason is null
+                ? _ClassifyJob(document, job)
+                : JobVerdict.Cannot(document, job, workflowReason))
+            .ToList();
+    }
+
+    private static string? _WorkflowReason(WorkflowDocument document) => document.Keys
+        .Where(key => !UnderstoodWorkflowKeys.Contains(key))
+        .Select(key => key.Equals("defaults", StringComparison.OrdinalIgnoreCase)
+            ? "the workflow sets defaults for every run step in the file, which this check has not taken into account"
+            : $"the workflow uses \"{key}\", which this check does not understand")
+        .FirstOrDefault();
 
     private static JobVerdict _ClassifyJob(WorkflowDocument document, WorkflowJob job)
     {
@@ -182,6 +208,15 @@ internal static class LocalRunClassifier
     private static string? _FirstRefused(IReadOnlyList<string> keys, Dictionary<string, string> refused) =>
         keys.Select(key => refused.GetValueOrDefault(key)).FirstOrDefault(reason => reason is not null);
 
-    /// <summary>act runs Linux images; anything else — windows, macos, a self-hosted label — is not ours to assume.</summary>
-    private static bool _IsLinuxLabel(string label) => label.StartsWith("ubuntu-", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// The GitHub-hosted Linux runners, by name rather than by an <c>ubuntu-</c> prefix. A prefix would also match a
+    /// larger runner (<c>ubuntu-latest-4-cores</c>), an arm image, and any self-hosted label someone chose to start
+    /// with the word — none of which is the standard runner this check means when it says a job can run here.
+    /// </summary>
+    private static readonly HashSet<string> LinuxRunnerLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ubuntu-latest", "ubuntu-24.04", "ubuntu-22.04", "ubuntu-20.04",
+    };
+
+    private static bool _IsLinuxLabel(string label) => LinuxRunnerLabels.Contains(label);
 }

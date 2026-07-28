@@ -5,7 +5,9 @@ namespace Cockpit.Plugin.LocalCi.Workflows;
 /// actually carry, not an interpretation of them. The classification is a separate step, so anything this model
 /// does not name survives as a key the classifier can refuse rather than as something silently dropped.
 /// </summary>
-internal sealed record WorkflowDocument(string Path, string Name, IReadOnlyList<WorkflowJob> Jobs);
+/// <param name="Keys">The file's own top-level keys. Kept for the same reason a job's are: a setting that applies to
+/// every job in the file decides as much about whether they can run as anything written inside them.</param>
+internal sealed record WorkflowDocument(string Path, string Name, IReadOnlyList<string> Keys, IReadOnlyList<WorkflowJob> Jobs);
 
 /// <param name="Keys">Every key written under this job, in file order — including ones this plugin has no meaning for.</param>
 /// <param name="StrategyKeys">The keys under <c>strategy</c>, empty when there is none. Kept rather than reduced to a

@@ -86,6 +86,31 @@ public class WorkflowParserTests
     }
 
     [Fact]
+    public void MoreThanOneYamlDocument_IsReportedInsteadOfSilentlyReadingTheFirst()
+    {
+        var result = WorkflowParser.Parse("two.yml", """
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+            ---
+            jobs:
+              other:
+                runs-on: self-hosted
+            """);
+
+        Assert.False(result.IsParsed);
+        Assert.Contains("more than one YAML document", result.Error);
+    }
+
+    [Fact]
+    public void TopLevelKeysAreKept()
+    {
+        var result = WorkflowParser.Parse("ci.yml", "name: CI\non:\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n");
+
+        Assert.Equal(["name", "on", "jobs"], result.Document!.Keys);
+    }
+
+    [Fact]
     public void StepThatIsNotAMapping_IsReportedInsteadOfReadAsAnEmptyStep()
     {
         // Same class as the non-scalar job name: an unreadable shape must be reported, not turned into a step with
