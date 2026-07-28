@@ -55,6 +55,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
   nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
   yet, or the server may not be mounted for it — so it says that rather than picking a cause.
+- added: agents on the same desk can now send each other a message. An agent can notify another session it can see,
+  with a short label and a body, and collect what was sent to it — so "I have the parser, leave it alone" is
+  something one session can actually say to another instead of the two of them finding out by colliding. Messages
+  wait until the receiving agent asks for them: nothing is interrupted, and a message on its own makes nothing
+  happen. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
+  as someone else, cannot send to a session on another desk, and cannot send to itself. What arrives is marked as
+  what it is — a note from another agent, not an instruction from you — and every attempt, delivered or refused, is
+  written to an append-only log next to your settings that nothing in the app can erase.
+
 - added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
   having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
   in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
