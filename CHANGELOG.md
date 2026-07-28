@@ -653,6 +653,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **Update all** in the plugin store offered to restart the cockpit as soon as the *first* plugin of the batch
+  was done, while the rest were still downloading. Taking it up there restarted the app mid-batch, and the plugins
+  that had not had their turn were silently left on their old version — with a banner that had just said the update
+  was finished. The restart is now held back until the whole batch is over.
+
+- fixed: the Install button in the plugin store stayed live during an install, so a second click started a second
+  download of the same plugin over the top of the first. It is now out of reach until the one that is running has
+  finished.
+
+- fixed: installing a plugin, or updating all of them, showed almost nothing while it happened — a line of text in
+  the footer and a search box that stopped responding. The store now covers its catalogue while it works and says
+  what it is doing: which plugin is being installed, and for **Update all**, how far through the batch it is. The
+  footer line keeps working as before. There is no percentage for a single plugin, and deliberately so: the download
+  arrives in one piece, so a bar claiming progress within it would be inventing it.
+
 - fixed: the MCP servers dialog could put its Cancel and Save buttons out of reach, so a server you had just
   configured could not be saved. It happened whenever the dialog had something to tell you — the notice naming the
   servers it hid because the cockpit already runs one by that name — because that notice shared its space with the
