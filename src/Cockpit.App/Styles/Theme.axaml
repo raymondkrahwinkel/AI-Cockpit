@@ -641,6 +641,63 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
+    <!-- RadioButton: the CheckBox story one control along — it kept Avalonia's system accent (#0078d7). It gets
+         a template of its own because Fluent's builds no named parts to reach into, and the parts are Ring and
+         Dot rather than Fluent's OuterEllipse/CheckGlyph because Fluent's rules are still loaded and match by
+         name: one of them fades OuterEllipse to Opacity 0 on :checked, which rendered a picked button as a dot
+         with no ring while every colour was correct. -->
+    <Style Selector="RadioButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Ellipse Name="Ring" Width="18" Height="18" Margin="0,0,8,0"
+                             VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitPanelBgBrush}"
+                             Stroke="{StaticResource CockpitHairlineBrush}"
+                             StrokeThickness="1"/>
+                    <!-- Same margin as the ring, so the dot centres on the ring rather than on the cell. -->
+                    <Ellipse Name="Dot" Width="8" Height="8" Margin="0,0,8,0"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitTextOnAccentBrush}"
+                             IsVisible="False"/>
+                    <ContentPresenter Grid.Column="1"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      VerticalAlignment="Center"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Dot">
+        <Setter Property="IsVisible" Value="True"/>
+    </Style>
+    <Style Selector="RadioButton:focus-visible /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Dot">
+        <Setter Property="Fill" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
     <!-- Switch: a setting that is on or off, drawn as a track the knob slides along rather than as a box
          you tick. Applied by class, not to every CheckBox: a list of options you pick from is a set of
          checkboxes and stays one — a switch says "this is running now", which is a different sentence.
