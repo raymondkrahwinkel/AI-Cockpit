@@ -62,6 +62,9 @@
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
+    <!-- In-app updates (AC-108): the updater implementations live beside GitHubUpdateService in this project.
+         Kept on the same pinned version as Cockpit.App — see the note there for why both declare it. -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>

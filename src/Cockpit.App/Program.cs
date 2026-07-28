@@ -15,6 +15,7 @@ using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Velopack;
 
 namespace Cockpit.App;
 
@@ -33,6 +34,21 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Installing, updating and uninstalling all re-run this executable with arguments Velopack owns, and this
+        // call is what handles them and ends the process (AC-385). It is deliberately the first statement in Main:
+        // anything placed above it runs during every one of those passes, in a window nobody sees — a second
+        // cockpit claiming the single-instance lock mid-update, plugins being installed by an installer, a log
+        // being truncated.
+        //
+        // SetAutoApplyOnStartup(false) because Velopack's default is to apply a downloaded update during this very
+        // call and restart, which is the silent auto-update this project deliberately does not do: applying is an
+        // action the operator takes. It also protects the headless children this same executable is re-run as (the
+        // calibration and dictation workers below): with the default left on, a staged package would have turned
+        // every one of those spawns into an update-and-exit instead of the measurement it was asked for.
+        //
+        // On an ordinary launch this still reads the installation on disk — it is not a no-op — and then returns.
+        VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
+
         // Headless calibration child (AC-68): a measurement of one Whisper backend, spawned by the running cockpit
         // because Whisper.net loads its native runtime once per process. This must be the very first thing Main
         // does — before the single-instance guard (which would refuse a second cockpit), before Avalonia, plugins

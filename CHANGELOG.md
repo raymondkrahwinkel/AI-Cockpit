@@ -82,6 +82,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: a YouTrack project that calls its status field `Kanban State` has its status read like any other. The issue
   list already knew that name; the read behind it did not, so those projects showed no status at all.
 
+- added: the Updates tab now says when this copy of AI-Cockpit cannot replace itself. Not every copy can: one
+  unpacked from the tarball, run from a checkout, or installed by your distribution has no installer behind it to
+  hand the new version to, and the honest answer is a sentence and the release page rather than a button that would
+  quietly do nothing. A copy that was installed normally says nothing new — it simply does not show the line.
+
+  Groundwork for in-app updates: the update machinery is now in place and asked, at startup, what kind of copy it is
+  running as. Fetching and installing a newer build still comes later.
+
 - added: an MCP server that wants a header of its own now works. Some do not take `Authorization: Bearer` at all —
   they want `X-Api-Key`, or a scheme other than Bearer — and until now there was no way to configure that, not even
   by pasting the value in by hand. An HTTP server in the MCP servers dialog has a small list of custom headers you

@@ -46,6 +46,13 @@
          are fixed in-tree there — a ProjectReference below. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
+    <!-- In-app updates (AC-108). Referenced here as well as in Cockpit.Infrastructure because Program.Main
+         calls VelopackApp directly: installing, updating and uninstalling all re-run this executable with
+         arguments Velopack itself handles, and that hook has to be the first thing Main does. Leaning on the
+         transitive reference would make a direct API call depend on another project's dependency list.
+         Pinned rather than floating: the version here is the one the release pipeline installs `vpk` at, and
+         the two are a matched pair — the tool writes the feed this library reads. -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>

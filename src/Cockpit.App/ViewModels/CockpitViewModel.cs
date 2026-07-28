@@ -798,6 +798,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public bool CanCheckForUpdates => _updates is not null;
 
+    /// <summary>
+    /// Whether this copy can fetch a newer build over itself (AC-385) — true only for one the updater installed.
+    /// Unpacked from the tarball, run from a checkout, or installed by a distribution's package manager, and the
+    /// answer is no: the cockpit can still say that a newer build exists, but replacing this one is somebody
+    /// else's job. Fixed for the lifetime of the process; see the constructor.
+    /// </summary>
+    public bool CanUpdateItself { get; }
+
     public bool HasUpdate => UpdateUrl.Length > 0;
 
     /// <summary>
@@ -2327,6 +2335,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IBackupService? backupService = null,
         IUpdateService? updateService = null,
         IUpdateSettingsStore? updateSettingsStore = null,
+        IUpdateSupportProbe? updateSupportProbe = null,
         IWorkflowTemplateLibrary? workflowTemplateLibrary = null,
         ISecretProtectionService? secretProtection = null,
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
@@ -2385,6 +2394,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _updates = updateService;
         _updateSettingsStore = updateSettingsStore;
+
+        // Asked once, here: whether this copy was installed by the updater is settled before the process started
+        // and cannot change while it runs. A probe that was not supplied — the design-time view model, a test that
+        // does not care — reads as not packaged, which is the answer that offers less rather than more.
+        CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
