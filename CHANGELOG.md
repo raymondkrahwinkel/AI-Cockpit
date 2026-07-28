@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the product icons now exist as a square set that can actually be used as an app icon and a favicon. The two
+  files that came out of the logo sheet were separate renders — different canvases, a W drawn at different
+  proportions in each — so neither was square and the pair did not read as one mark in two colours. They now share
+  one geometry down to the pixel: lay the blue one over the teal one and only the colour differs. Each comes as a
+  1024 master, a ladder from 16 to 512, and a `.ico`, in `brand/`.
+
+  Two blemishes left over from cutting the icons out of that sheet are gone with them: a thin line above the W and
+  a loose speck off to the right, both of which you would have seen once the mark was drawn large.
+
+  The icon on the cockpit's own window is unchanged — it is drawn separately, from the same mark, and still shows
+  those two blemishes. Moving it onto this set is a step of its own.
+
 - added: every release and nightly now carries an installer and a portable build that an in-app update will be able
   to read — `AI-Cockpit-win-stable-Setup.exe`, `AI-Cockpit-linux-nightly-Portable.zip` and so on, with the platform
   and the channel in the name. They sit next to the downloads that were already there, which keep working exactly as
