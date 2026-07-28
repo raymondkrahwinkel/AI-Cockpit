@@ -5,6 +5,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.App;
@@ -204,9 +205,9 @@ internal static class Screenshotter
         };
 
         var server = viewModel.Servers[0];
-        server.Transport = Cockpit.Core.Mcp.McpTransport.Http;
+        server.Transport = McpTransport.Http;
         server.Url = "https://mcp.example.com/mcp";
-        server.Auth = Cockpit.Core.Mcp.McpServerAuth.OAuth;
+        server.Auth = McpServerAuth.OAuth;
         server.OAuthAuthority = "https://login.example.com";
         server.Headers.Add(new McpHeaderRowViewModel("X-Api-Key", "a-value"));
         server.Headers.Add(new McpHeaderRowViewModel("X-Tenant", "cockpit"));

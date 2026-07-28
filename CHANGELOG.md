@@ -619,11 +619,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - fixed: the MCP servers dialog could put its Cancel and Save buttons out of reach, so a server you had just
   configured could not be saved. It happened whenever the dialog had something to tell you — the notice naming the
   servers it hid because the cockpit already runs one by that name — because that notice shared its space with the
-  buttons and took as much width as its text wanted. On a window that cannot grow, the buttons were pushed past the
-  right edge and the Remove button was squeezed to nothing, which left the notice itself cut off mid-word as the
-  only thing you could see. The notice now wraps within the room that is left over and the buttons keep theirs, so
-  neither the length of the message, the sign-in method a server uses, nor the number of custom headers you add can
-  move them. The window can also be resized now, like the other dialogs that hold as much as this one does.
+  buttons and took as much width as its text wanted, pushing them off the edge and leaving the half-finished notice
+  as the only thing still visible. The notice now wraps into the room that is left over and the buttons keep theirs,
+  so neither the length of the message, the sign-in method a server uses, nor the number of custom headers you add
+  can move them. The window can be resized now as well, since what it holds grows with the servers you add.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"

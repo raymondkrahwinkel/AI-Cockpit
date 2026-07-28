@@ -17,10 +17,8 @@
     </Design.DataContext>
 
     <!-- The footer is docked and the form scrolls under it, so neither the auth mode nor the number of custom
-         headers can move the buttons: measured, the form asks for 870px in a 337px viewport and the footer stays
-         where it is. The window is resizable all the same (AC-427) — it was the only content-bearing dialog here
-         locked, and every other one that grows with data (the project editor, the stores) opens at a size and
-         lets the operator take more. The minimums are the point below which the two columns stop being usable. -->
+         headers can move the buttons. The window is no longer locked either: what it holds grows with the number
+         of servers and headers, and the minimums are where its two columns stop being usable. -->
     <DockPanel>
 
         <!-- AC-427: the status line is the only thing here whose width comes from data — a hidden-server notice
