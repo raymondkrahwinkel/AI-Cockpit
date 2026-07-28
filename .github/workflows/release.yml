@@ -248,18 +248,45 @@ jobs:
         with:
           name: release-notes
 
-      # A downloaded macOS .dmg is ad-hoc signed, so Gatekeeper quarantines it ("is damaged and can't be
-      # opened"). The fix is one command, and the release page is where a macOS downloader actually is — so
-      # append the note to the curated body rather than leaving it only in the README.
-      - name: Append the macOS quarantine note
+      # Every platform ships something unsigned, and each one refuses it differently — Gatekeeper quarantines,
+      # SmartScreen warns, an AppImage arrives without its executable bit. None of that is a fault the downloader
+      # can diagnose from the message they get, and the release page is where they actually are, so it is answered
+      # here rather than only in the README (AC-389).
+      #
+      # Written with a quoted heredoc: the body contains backticks and quotes, and nothing in it is meant to be
+      # expanded by the shell.
+      - name: Append what each platform needs on first run
         shell: bash
         run: |
-          {
-            echo
-            echo "---"
-            echo
-            echo "**macOS — \"is damaged and can't be opened\":** the download is ad-hoc signed, not notarized, so Gatekeeper quarantines it. After dragging it onto /Applications, clear the flag once with \`xattr -cr /Applications/AI-Cockpit.app\`, then open it normally."
-          } >> release-notes.md
+          cat >> release-notes.md <<'NOTES'
+
+          ---
+
+          ### Installing this
+
+          Nothing here is code-signed. That is a deliberate, documented state, not a warning about this particular
+          build — but each platform says so in its own way, and none of them explain what to do next.
+
+          **Windows.** `AI-Cockpit-win-stable-Setup.exe` installs the cockpit and is the one that can update itself
+          from now on. SmartScreen will say the publisher is unknown: choose **More info → Run anyway**. If you would
+          rather not install anything, `AI-Cockpit-win-stable-Portable.zip` is the same build as a folder you unpack
+          and run — but a portable copy cannot update itself, and it will tell you so instead of pretending.
+
+          > **If you installed an earlier version with `ai-cockpit-…-win-x64-setup.exe`, read this once.** That
+          > installer put the cockpit in `Program Files`; the new one installs per-user, and it does not adopt the old
+          > location. The two are separate installations, so run the new Setup once and then remove the old entry from
+          > **Settings → Apps** — otherwise you keep a copy that will never update and can still be launched by
+          > accident. Nothing of yours moves: settings, plugins, projects and logs live in `%APPDATA%\Cockpit`,
+          > beside neither installation, and both find them there.
+
+          **macOS.** The download is ad-hoc signed, not notarized, so Gatekeeper quarantines it and reports that it
+          "is damaged and can't be opened". It is not damaged. After dragging it onto /Applications, clear the flag
+          once with `xattr -cr /Applications/AI-Cockpit.app`, then open it normally.
+
+          **Linux.** The AppImage arrives without its executable bit — `chmod +x AI-Cockpit-*.AppImage`, then run it.
+          It mounts itself with FUSE; on a distribution that ships only fuse3, either install `libfuse2` or run it
+          with `--appimage-extract-and-run`.
+          NOTES
 
       - uses: softprops/action-gh-release@v2
         with:
