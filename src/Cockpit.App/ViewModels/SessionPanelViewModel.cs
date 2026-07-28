@@ -28,6 +28,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public string PaneId { get; } = Guid.NewGuid().ToString("n");
 
+    /// <summary>
+    /// Whether messages other agents address to this pane reach it on their own, carried by its next outgoing turn
+    /// (AC-394), or whether it only ever sees them by calling <c>read_inbox</c> itself. Reported per pane by
+    /// <c>list_agents</c>, so a sender can tell which of the two it is talking to.
+    /// <para>
+    /// False on the base, and overridden by the one kind of pane that can actually do it, rather than the other way
+    /// round. A pane kind added later inherits "no passive delivery" — which is the direction that is safe to be
+    /// wrong in: a sender told a message will not arrive by itself goes and makes sure it does, while one told it
+    /// will, wrongly, does nothing and never finds out. The claim is only worth making by a pane that implements it.
+    /// </para>
+    /// </summary>
+    public virtual bool DeliversInboxAtTurnStart => false;
+
     /// <summary>Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
     private string _title = "Session";

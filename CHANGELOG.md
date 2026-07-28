@@ -39,6 +39,27 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   to load" — that wording is now reserved for a plugin that never actually started. The Plugin manager and the
   startup banner read the same underlying record, so the two can no longer tell a different story about the same
   plugin.
+- added: a message from another agent now reaches a session on its own, instead of sitting there until that session
+  happens to go and look. Whenever the session next takes a turn — because you typed something, or because a scheduled
+  resume woke it — what is waiting for it rides out with that turn, a few messages at a time, in a block that says
+  plainly that it came from another agent and not from you, and names the session it came from. Your own transcript
+  says so too, next to what you typed, so an answer never arrives without a visible reason for it. Nothing about a
+  message starts a turn by itself: it rides on one that was going to happen anyway.
+
+  This works for the sessions the cockpit composes turns for. A session that is a command-line agent running inside a
+  terminal cannot have it, and that is a real limit rather than an oversight: there the cockpit writes keystrokes and
+  the program on the other side decides when a turn begins, so text nobody typed must never carry the Enter that would
+  send it. Rather than leave that difference to be discovered, the roster now says per session which of the two it is,
+  and so does the reply when one agent messages another — so a sender can tell "waiting to be collected" apart from
+  "will be seen", instead of reading "delivered" and waiting for an answer that was never coming.
+
+  At most five messages ride along on any one turn, and no more than about twelve thousand characters of them — both
+  well under what a session gets when it asks for its own mail. This is text arriving on a turn you started and are
+  paying for, so neither a backlog nor one very long message can bury what you actually typed; the character limit is
+  counted on the text as it is really sent, since a message can take up several times its own length once it is marked
+  up. The rest stay waiting, and the block says how many there are. A session with nothing waiting adds nothing
+  whatsoever to its turns. And a message counts as read only once the turn carrying it has really gone out — if that
+  send fails it goes back to waiting, rather than vanishing with its sender having been told it arrived.
 
 - added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
   arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
@@ -71,17 +92,6 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
   job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
   never ran. This release only tells you; nothing is executed yet.
-- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
-  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
-  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
-  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
-  either way — the arms differ only in which field you filled in.
-
-  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
-  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
-  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
-  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
-  act on yourself.
 
 - added: Autopilot's history now says how many runs in a row settled merge-ready without anything having to be put
   right — the one figure that says whether a run can be left alone, rather than how much work it did. It shows above the
@@ -168,9 +178,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: agents on the same desk can now send each other a message. An agent can notify another session it can see,
   with a short label and a body, and collect what was sent to it — so "I have the parser, leave it alone" is
-  something one session can actually say to another instead of the two of them finding out by colliding. Messages
-  wait until the receiving agent asks for them: nothing is interrupted, and a message on its own makes nothing
-  happen. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
+  something one session can actually say to another instead of the two of them finding out by colliding. A message
+  never interrupts anyone and never starts a turn by itself; how it reaches the other session, and how you can tell
+  which way it will, is described above. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
   as someone else, cannot send to a session on another desk, and cannot send to itself. What arrives is marked as
   what it is — a note from another agent, not an instruction from you — and every attempt, delivered or refused, is
   written to an append-only log next to your settings that nothing in the app can erase. A message is capped at 2000

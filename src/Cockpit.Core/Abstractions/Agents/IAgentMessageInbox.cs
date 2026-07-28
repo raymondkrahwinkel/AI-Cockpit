@@ -86,8 +86,11 @@ public interface IAgentMessageInbox
     /// Puts a message from <paramref name="fromPaneId"/> in <paramref name="toPaneId"/>'s inbox, minting its id and
     /// timestamp. When an identical message (same sender, recipient, kind and body) is still waiting unread, no
     /// second copy is added and the waiting one comes back instead — a retried or repeated notify does not fill a
-    /// recipient's inbox with the same sentence. Callers must have already established that the two panes may talk;
-    /// this does not check, and cannot.
+    /// recipient's inbox with the same sentence. A message that is in flight for a turn
+    /// (<see cref="TakeForDelivery"/>) counts as still unread for both that check and the per-pane cap: it has not
+    /// reached the recipient yet, so treating it as gone would let the same sentence through twice and let a sender
+    /// past the cap by timing. Callers must have already established that the two panes may talk; this does not
+    /// check, and cannot.
     /// </summary>
     AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body);
 
@@ -110,6 +113,40 @@ public interface IAgentMessageInbox
     AgentInboxBatch Drain(string paneId, int limit);
 
     /// <summary>
+    /// Takes up to <paramref name="limit"/> of <paramref name="paneId"/>'s waiting messages the way
+    /// <see cref="Drain"/> does, but holds them <em>in flight</em> rather than dropping them: they stop being
+    /// waiting — so a second call, and a concurrent <see cref="Drain"/>, cannot hand out the same message again —
+    /// and stay held until the caller says which way it went, with <see cref="ConfirmDelivered"/> or
+    /// <see cref="ReturnUndelivered"/>.
+    /// <para>
+    /// This exists because turn-start delivery (AC-394) reads the inbox <em>before</em> the thing that carries the
+    /// messages exists. A drain is a handover, and handing over is the last thing that happens to a message: if the
+    /// send that was going to carry them then fails, a drained batch is gone, the recipient never saw it, and the
+    /// sender was told it arrived. That is the one failure the whole line is built to avoid, so the read had to be
+    /// splittable into "taken" and "arrived". <c>read_inbox</c> keeps using <see cref="Drain"/>, where the two are
+    /// genuinely the same moment: the messages are in the tool result the agent is already reading.
+    /// </para>
+    /// </summary>
+    /// <param name="paneId">The pane whose inbox to take from — always the transport-verified pane, never one an agent named.</param>
+    /// <param name="limit">The most messages to take now. Must be positive; anything else takes nothing and reports everything as still waiting.</param>
+    AgentInboxBatch TakeForDelivery(string paneId, int limit);
+
+    /// <summary>
+    /// Says the messages <see cref="TakeForDelivery"/> handed over did reach <paramref name="paneId"/>, so they are
+    /// dropped for good. Ids that are not in flight for this pane are ignored — a confirmation that arrives twice
+    /// says the same thing the second time.
+    /// </summary>
+    void ConfirmDelivered(string paneId, IReadOnlyList<string> messageIds);
+
+    /// <summary>
+    /// Says the messages <see cref="TakeForDelivery"/> handed over did <em>not</em> reach <paramref name="paneId"/>
+    /// after all, so they go back to waiting — at the front, keeping their original order, because they are older
+    /// than anything that arrived while they were in flight and a message must not lose its place by having been
+    /// attempted. Ids that are not in flight for this pane are ignored.
+    /// </summary>
+    void ReturnUndelivered(string paneId, IReadOnlyList<string> messageIds);
+
+    /// <summary>
     /// Takes one message back out of <paramref name="toPaneId"/>'s inbox, by the id
     /// <see cref="Deliver"/> minted for it. For the caller that has just delivered a message and then found the
     /// delivery should not have stood after all — the recipient's session ended in the window between the workspace
@@ -117,14 +154,20 @@ public interface IAgentMessageInbox
     /// Narrower than <see cref="Forget"/> on purpose: the recipient's other mail was delivered by other senders on
     /// their own merits and is not this caller's to drop.
     /// </summary>
-    /// <returns>True when the message was still waiting and has been removed; false when it was not there — already drained, or already retracted.</returns>
+    /// <returns>
+    /// True when the message was still waiting and has been removed; false when it was not there — already drained,
+    /// already retracted, or in flight for a turn (<see cref="TakeForDelivery"/>), which is past the point where
+    /// pulling it back would mean anything: the send that carries it is already under way.
+    /// </returns>
     bool Retract(string toPaneId, string messageId);
 
     /// <summary>
     /// Drops <paramref name="paneId"/>'s inbox unread — for a pane whose session has ended, so undelivered messages
-    /// to a session that no longer exists stop being held for the life of the app. Idempotent; a pane with no inbox
-    /// is a no-op. Messages this pane <em>sent</em> are not touched: they belong to their recipients, who are still
-    /// live and can still read them.
+    /// to a session that no longer exists stop being held for the life of the app. Anything in flight for that pane
+    /// (<see cref="TakeForDelivery"/>) goes with it: the turn it was riding on belonged to the session that just
+    /// ended, so a later <see cref="ReturnUndelivered"/> must not be able to resurrect an inbox under a pane id
+    /// nothing answers to. Idempotent; a pane with no inbox is a no-op. Messages this pane <em>sent</em> are not
+    /// touched: they belong to their recipients, who are still live and can still read them.
     /// </summary>
     void Forget(string paneId);
 }
