@@ -50,15 +50,16 @@ public static class DependencyInjection
             typeof(Terminal.TerminalMcpTools),
             () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
 
-        // cockpit-agents (AC-391): the foundation of an agent-to-agent communication line — for now, one tool,
-        // list_agents, so a session can see the other agents sharing its workspace. A tickable server rather than
-        // AlwaysMounted, like cockpit-verify/cockpit-worktrees, not forced on the way cockpit-session's status line
-        // is — that one the header itself depends on, so it is kept off the checklist entirely. "Tickable" cuts
-        // both ways, though: for a session/profile with no explicit MCP selection (the common case) this is on by
-        // default and the checklist is where an operator opts back out; but a profile that has ever saved an
-        // explicit selection (McpServerRegistryFilter.ApplySessionSelection) — including an empty one — is read as
-        // a deliberate choice, and cockpit-agents is silently not mounted there unless that profile names it.
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools)));
+        // cockpit-agents (AC-391, AC-392): the agent-to-agent communication line — list_agents to see who else is on
+        // your desk, notify/read_inbox to send them a message and collect your own. AlwaysMounted, like
+        // cockpit-session and unlike cockpit-verify/cockpit-worktrees, because this one is now a delivery route
+        // rather than a capability each session weighs up on its own: while it was tickable, a profile that had ever
+        // saved an explicit MCP selection (McpServerRegistryFilter.ApplySessionSelection) — including an empty one —
+        // silently did not get it, and a message line that is absent for some of the sessions on a desk is not a
+        // line. The sender is told its message was delivered and the recipient has no tool to read it with, which is
+        // worse than not having the feature. The cost is the tool definitions in every session's context; the
+        // alternative is a route whose reliability depends on a checkbox nobody remembers ticking.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
 
         AddDiagnostics(services);
         AddNotifications(services);

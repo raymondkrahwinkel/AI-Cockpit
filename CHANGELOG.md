@@ -55,6 +55,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
   nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
   yet, or the server may not be mounted for it — so it says that rather than picking a cause.
+
+- added: agents on the same desk can now send each other a message. An agent can notify another session it can see,
+  with a short label and a body, and collect what was sent to it — so "I have the parser, leave it alone" is
+  something one session can actually say to another instead of the two of them finding out by colliding. Messages
+  wait until the receiving agent asks for them: nothing is interrupted, and a message on its own makes nothing
+  happen. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
+  as someone else, cannot send to a session on another desk, and cannot send to itself. What arrives is marked as
+  what it is — a note from another agent, not an instruction from you — and every attempt, delivered or refused, is
+  written to an append-only log next to your settings that nothing in the app can erase. A message is capped at 2000
+  characters and stripped of the terminal escape codes that could otherwise repaint or overwrite what the cockpit
+  printed around it, and no session hands over more than 25 messages at a time — so a chatty or hostile neighbour
+  cannot spend a session's whole context window, or its memory, on mail it never asked for.
+
 - added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
   having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
   in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
@@ -670,6 +683,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: radio buttons — the two that choose between a remote store and a local folder — drew in the system blue
   instead of the cockpit's accent. The two colours are close enough that it passed an eyeball test, and nothing
   connected them: the day the accent moves, that control would have stayed behind.
+
+- fixed: the trails the cockpit keeps beside your settings — what you approved, what was delegated, what agents sent
+  each other, what each session spent — are now created readable only by your own account. On Linux and macOS they
+  were created at whatever the system default allowed, which on a stock Fedora means any account on the machine could
+  read them, and those files hold the commands you approved and the prompts your agents were given.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"
