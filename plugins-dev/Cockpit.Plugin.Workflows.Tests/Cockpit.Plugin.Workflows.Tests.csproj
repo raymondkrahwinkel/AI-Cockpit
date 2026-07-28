@@ -40,6 +40,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.Workflows\Cockpit.Plugin.Workflows.csproj" />
+    <!-- ThemePalette.Describe and RepositoryPaths, shared with the host's own theme-palette baseline (AC-338). -->
+    <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

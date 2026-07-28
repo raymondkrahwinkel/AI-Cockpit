@@ -161,9 +161,10 @@ internal static class ScreenshotSelectionScene
                 // "Window" begins with the key that picks a window, and typing it must not.
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
-                // Both notes sit clear of the control panel, and the first one has to be said out loud: at 0.32 it
-                // landed under the panel, so the press belonged to the panel, no note opened, and the string that
-                // followed ran as shortcuts until Enter took the shot and closed the surface.
+                // Both notes sit clear of the control panel. The first one has to be said out loud: at 0.32 it
+                // pressed inside the panel, so the press belonged to the panel and no note opened — after which
+                // the string ran as shortcuts and Enter took the shot and closed the surface out from under the
+                // second note. Measured, not guessed: a press there is refused however many have come before it.
                 _Note(surface, new Point(width * 0.58, height * 0.42), "Window is empty here");
                 _Note(surface, new Point(width * 0.58, height * 0.70), "expected 12, got 7");
                 break;
@@ -185,9 +186,11 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
                 // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
-                // panel, so a band begun under it is a band that never gets drawn at all. Which is what 0.305 had
-                // become — the panel moved and this line did not, so this scene had been rendering one band over
-                // the terminal and none over the document, showing exactly the half that proves nothing.
+                // panel, so a band begun under it is a band that never gets drawn at all. 0.305 cleared it at the
+                // 1440x900 the view tests use and did not at the 1100x760 a render defaults to — these positions
+                // are fractions of the window and the panel is a fixed size, so the same fraction lands in a
+                // different place on it. This scene had been rendering one band, over the terminal, for that
+                // reason: the half that proves the tool works, and not the half that proves it stays readable.
                 _Drag(surface, new Point(width * 0.56, height * 0.42), new Point(width * 0.90, height * 0.465));
                 _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
@@ -209,10 +212,16 @@ internal static class ScreenshotSelectionScene
 
     /// <summary>
     /// How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
-    /// a press that lands somewhere it is not wanted is simply lost — and the scene then renders perfectly well,
-    /// one mark short, looking like a tool that works. Both scenes this caught had been doing that since the
-    /// panels moved (AC-374/375) while these positions did not: the highlighter had lost the band that proves it
-    /// stays readable over a document, and the note scene had lost both notes and taken the shot instead.
+    /// a press that lands somewhere it is not wanted is simply lost, and the scene then renders perfectly well and
+    /// one mark short — looking like a tool that works. Two scenes were doing exactly that at the size a render
+    /// defaults to: the note scene pressed its first note inside the control panel, so no note opened, the text
+    /// that followed ran as shortcuts and Enter took the shot; and the highlighter lost the band over the
+    /// document, leaving the one over the terminal.
+    /// <para>
+    /// Both went unseen because the view tests stage at 1440x900 and a render defaults to 1100x760, and every
+    /// position here is a fraction of the window while the panel it has to miss is a fixed size. So this is
+    /// checked against the surface that was actually staged, rather than reasoned about from the numbers.
+    /// </para>
     /// </summary>
     private static readonly Dictionary<string, int> StagedMarks = new(StringComparer.Ordinal)
     {

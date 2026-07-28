@@ -151,7 +151,9 @@ public class ScreenshotSelectionSceneTests
     public void TheWashShowsOverThePage_WithoutSwallowingTheTextUnderIt() =>
         _Staged(ScreenshotSelectionScene.Highlight, surface =>
         {
-            var band = _SampleInside(surface, 0.60, 0.307, 0.88, 0.345, step: 1);
+            // Inside the band, which sits lower than it used to: the scene moved it clear of the control panel,
+            // which it missed at this size and not at the one a render defaults to.
+            var band = _SampleInside(surface, 0.60, 0.424, 0.88, 0.462, step: 1);
 
             band.Lightest.Should().BeLessThan(
                 240, "the page under the band took the colour, so the band can be seen at all");

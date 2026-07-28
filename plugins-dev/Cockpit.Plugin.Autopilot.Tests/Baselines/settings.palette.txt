@@ -1,0 +1,20 @@
+# colours — the theme token holding each value, or off-palette when none does
+#66000000  off-palette
+#99FFFFFF  off-palette
+#CCFFFFFF  off-palette
+#FF000000  off-palette
+#FF0C0E12  CockpitSecondaryBgColor
+#FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
+#FF1A1D24  CockpitPanelBgColor
+#FF1F1F1F  off-palette
+#FF20242C  CockpitHairlineSoftColor
+#FF2A2F39  CockpitHairlineColor
+#FF656C78  CockpitTextFaintColor
+#FF949AA5  CockpitTextSecondaryColor
+#FFE8EAEF  CockpitTextPrimaryColor
+#FFFFFFFF  CockpitTextOnAccentColor
+
+# corner radii
+0,0,0,0
+3,3,3,3
+9,9,9,9
