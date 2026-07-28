@@ -4,6 +4,7 @@ using Cockpit.Core.Updates;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Updates;
 using Microsoft.Extensions.DependencyInjection;
+using Velopack;
 
 namespace Cockpit.Core.Tests.Updates;
 
@@ -30,6 +31,16 @@ public class VelopackBootstrapTests
     [Fact]
     public void TheVelopackHook_IsTheFirstStatementInMain()
     {
+        Assert.Equal(TheHook, _FirstStatementInMain());
+    }
+
+    /// <summary>
+    /// The first line of <c>Main</c> that is not blank and not a comment. Read from the source because the property
+    /// being pinned is <em>position</em>, and by the time the assembly is loaded nothing says which statement came
+    /// first.
+    /// </summary>
+    private static string? _FirstStatementInMain()
+    {
         var lines = File.ReadAllLines(_ProgramPath());
 
         var main = Array.FindIndex(lines, line => line.Contains("public static void Main(", StringComparison.Ordinal));
@@ -38,11 +49,9 @@ public class VelopackBootstrapTests
         var opening = Array.FindIndex(lines, main, line => line.Trim() == "{");
         Assert.True(opening > main, "no opening brace found after Main's signature");
 
-        var firstStatement = lines.Skip(opening + 1)
+        return lines.Skip(opening + 1)
             .Select(line => line.Trim())
             .FirstOrDefault(line => line.Length > 0 && !line.StartsWith("//", StringComparison.Ordinal));
-
-        Assert.Equal(TheHook, firstStatement);
     }
 
     /// <summary>
@@ -81,8 +90,35 @@ public class VelopackBootstrapTests
     [Fact]
     public void TheVelopackHook_DoesNotApplyAnUpdateOnItsOwn()
     {
-        Assert.Contains("SetAutoApplyOnStartup(false)", TheHook, StringComparison.Ordinal);
-        Assert.Contains(TheHook, File.ReadAllText(_ProgramPath()), StringComparison.Ordinal);
+        Assert.Contains("SetAutoApplyOnStartup(false)", _FirstStatementInMain(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The rule that decides it, with both readings handed in — the only place it can be asked, because Velopack's
+    /// locator is a process-wide singleton a test has no public way to stand up. Written as a table because the
+    /// interesting case is the one the short circuit hides: a locator that exists and reports no installed version.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void TheReading_IsInstalledOnlyWithALocatorThatNamesAVersion(bool locatorIsSet, bool hasVersion, bool expected)
+    {
+        var version = hasVersion ? new SemanticVersion(1, 2, 3) : null;
+
+        Assert.Equal(expected, VelopackUpdateSupportProbe.IsInstalledCopy(locatorIsSet, () => version));
+    }
+
+    /// <summary>
+    /// Without a locator the version is never asked for — reading it is exactly what throws, so the order of the
+    /// two halves is the guard rather than a tidiness.
+    /// </summary>
+    [Fact]
+    public void TheReading_WithoutALocator_DoesNotReachForTheVersion()
+    {
+        Assert.False(VelopackUpdateSupportProbe.IsInstalledCopy(
+            locatorIsSet: false,
+            static () => throw new InvalidOperationException("the version was read without a locator")));
     }
 
     [Fact]

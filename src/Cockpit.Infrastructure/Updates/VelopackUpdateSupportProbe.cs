@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Updates;
+using Velopack;
 using Velopack.Locators;
 
 namespace Cockpit.Infrastructure.Updates;
@@ -31,7 +32,20 @@ internal sealed class VelopackUpdateSupportProbe : IUpdateSupportProbe, ISinglet
     /// visible from here — and a guard nothing can see is a guard nobody keeps.
     /// </summary>
     internal static bool IsInstalledCopy() =>
-        VelopackLocator.IsCurrentSet && VelopackLocator.Current.CurrentlyInstalledVersion is not null;
+        IsInstalledCopy(VelopackLocator.IsCurrentSet, static () => VelopackLocator.Current.CurrentlyInstalledVersion);
+
+    /// <summary>
+    /// The rule, with both readings handed in. Velopack's locator is a process-wide singleton with no public way to
+    /// stand one up, so a test cannot reach the branch where one exists — and that branch holds the only line that
+    /// tells an installed copy from an uninstalled one. Splitting it out this far leaves exactly one unreachable
+    /// line above, which does no deciding.
+    /// <para>
+    /// The short circuit is load-bearing rather than tidy: <see cref="VelopackLocator.Current"/> throws when unset,
+    /// so reading the version before checking for a locator would turn an ordinary state into an exception.
+    /// </para>
+    /// </summary>
+    internal static bool IsInstalledCopy(bool locatorIsSet, Func<SemanticVersion?> installedVersion) =>
+        locatorIsSet && installedVersion() is not null;
 
     /// <summary>
     /// The decision, with the reading of the environment handed in so a test can supply one that fails.
