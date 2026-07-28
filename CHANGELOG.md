@@ -870,6 +870,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the lock screen and an empty Sessions workspace still stood in for the brand with a tile carrying the
+  letters "AI". Both now show the same mark the title bar and the About dialog carry.
+
 - fixed: the working copy a delegated task is editing in is no longer treated as abandoned. A task you hand to
   another profile runs without a tab of its own, and the cockpit counted "which sessions are running" from the tabs
   alone — so a git worktree such a task made for itself looked like one whose owner had gone. Its row in the
