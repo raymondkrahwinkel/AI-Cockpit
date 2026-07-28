@@ -237,8 +237,11 @@ internal static class Screenshotter
     // The store while it is working (AC-420): a single install, whose bar has no fraction to draw and runs
     // indeterminate, and a batch update, whose bar is fed by the same counter the status line is. NeedsRestart
     // is on in both because that is the state that was reported — "Update all" raises it after the first plugin
-    // of the batch, so the footer offers a restart while the rest are still downloading. The offer has to be
-    // visibly out of reach here, which is the whole point of the scene.
+    // of the batch, so the footer offers a restart while the rest are still downloading.
+    //
+    // What this scene does *not* show is the restart gate. It is built on the design-time view model, which has
+    // no restart service, so its restart button is dead here whatever IsBusy says. The gate is held by
+    // PluginStoreBusyGateTests, which builds a manager that can actually restart.
     private static PluginStoreDialog _PluginStoreBusy(double? percent, string status)
     {
         var viewModel = _PluginStoreViewModel();

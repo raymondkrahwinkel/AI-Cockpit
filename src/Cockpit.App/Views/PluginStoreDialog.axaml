@@ -444,12 +444,16 @@
                  determinate over the batch's plugin count, indeterminate for a single install, where there is
                  no honest fraction to draw — the download buffers whole, so there is no byte progress to tap.
 
-                 A last child spanning all three columns rather than a wrapper around the Grid: it has to cover
-                 the detail pane too, whose install button is the one that used to re-enter. The footer stays
-                 uncovered on purpose — its status line has to remain readable — so "Restart the cockpit now"
-                 down there is held off by its command instead (PluginManagerViewModel.CanRestart), which is
-                 also what keeps it unreachable from anywhere else. -->
-            <Border Grid.Column="0" Grid.ColumnSpan="3" IsVisible="{Binding Manager.IsBusy}"
+                 A last child spanning all three columns rather than a wrapper around the Grid: declared last
+                 so it draws over its siblings, and spanning so it reaches the detail pane as well. The footer
+                 stays uncovered on purpose — its status line has to remain readable.
+
+                 The cover is not the gate. It stops a pointer and nothing else: a control underneath keeps
+                 its focus, so Tab and a space bar still reach it. Everything that must not run while work is
+                 in flight is held off by its own command (CanRestart, CanInstallFromStore, CanInstallFromZip,
+                 CanInstallSelectedVersion), which is also what keeps it unreachable from anywhere else. -->
+            <Border x:Name="BusyOverlay" Grid.Column="0" Grid.ColumnSpan="3"
+                    IsVisible="{Binding Manager.IsBusy}"
                     Background="{StaticResource CockpitScrimBrush}">
                 <Border Width="380" Padding="20,18" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{StaticResource CockpitPanelBgBrush}"

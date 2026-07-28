@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.Plugins;
@@ -50,6 +51,12 @@ public class PluginStoreBusyGateTests
         }
     });
 
+    /// <summary>
+    /// Every button that can start an install, whichever command it goes through — the catalogue cards and the
+    /// detail pane's primary action (<c>InstallFromStoreCommand</c>), its version picker
+    /// (<c>InstallSelectedVersionCommand</c>) and the Installed view's zip install (<c>InstallFromZipCommand</c>).
+    /// They all reach the same installer and the same folder move, so a gate on one of them is not a gate.
+    /// </summary>
     [Fact]
     public void EveryInstallButton_GoesDead_WhileAnInstallRuns() => HeadlessAvalonia.Run(() =>
     {
@@ -57,21 +64,67 @@ public class PluginStoreBusyGateTests
         try
         {
             var manager = _Manager(window);
+            var dialog = Assert.IsType<PluginStoreDialogViewModel>(window.DataContext);
             window.UpdateLayout();
 
+            var starters = new ICommand[]
+            {
+                manager.InstallFromStoreCommand,
+                manager.InstallFromZipCommand,
+                dialog.InstallSelectedVersionCommand,
+            };
             var installButtons = window.GetVisualDescendants()
                 .OfType<Button>()
-                .Where(button => ReferenceEquals(button.Command, manager.InstallFromStoreCommand))
+                .Where(button => button.Command is { } command && starters.Contains(command))
                 .ToList();
 
-            // The detail pane's button plus one per catalogue card, and at least one of them live — otherwise
-            // the assertion below would hold on a screen with nothing to press.
+            // One per catalogue card, the detail pane's two, and the Installed view's zip install — and at
+            // least one of them live, otherwise the assertion below would hold on a screen with nothing to
+            // press. The count is asserted so a button that stops binding its command is noticed here rather
+            // than quietly dropping out of the sweep.
+            Assert.Equal(13, installButtons.Count);
             Assert.Contains(installButtons, button => button.IsEffectivelyEnabled);
 
             manager.IsBusy = true;
             window.UpdateLayout();
 
             Assert.DoesNotContain(installButtons, button => button.IsEffectivelyEnabled);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>
+    /// The overlay has to actually cover what it is drawn over. Asserting that its progress bar is visible says
+    /// nothing about that — an overlay shrunk to one column, or pushed behind its siblings, leaves the bar
+    /// exactly where it was — so this asserts the two things "covers" means: it spans every sibling's box, and
+    /// it is drawn after them.
+    /// </summary>
+    [Fact]
+    public void TheBusyOverlay_SpansItsSiblings_AndIsDrawnOverThem() => HeadlessAvalonia.Run(() =>
+    {
+        var window = Screenshotter.ShowScene("plugin-store");
+        try
+        {
+            _Manager(window).IsBusy = true;
+            window.UpdateLayout();
+
+            var overlay = window.GetControl<Border>("BusyOverlay");
+            var content = Assert.IsType<Grid>(overlay.Parent);
+            var covered = content.Children.Where(child => !ReferenceEquals(child, overlay) && child.IsVisible).ToList();
+
+            // The sidebar, the catalogue and the detail pane — all three, or the column it misses stays live.
+            Assert.Equal(3, covered.Count);
+            foreach (var sibling in covered)
+            {
+                Assert.True(overlay.Bounds.Contains(sibling.Bounds), $"the overlay leaves {sibling.GetType().Name} at {sibling.Bounds} uncovered");
+            }
+
+            // Siblings in a Grid paint in declaration order unless ZIndex says otherwise, so both have to hold.
+            Assert.Same(content.Children[^1], overlay);
+            Assert.DoesNotContain(covered, sibling => sibling.ZIndex > overlay.ZIndex);
         }
         finally
         {

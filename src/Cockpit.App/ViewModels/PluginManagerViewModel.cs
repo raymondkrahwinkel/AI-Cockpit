@@ -108,17 +108,20 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private double _busyProgressValue;
 
-    // A restart and a second install are both unreachable while work is in flight (AC-420), and both are
-    // gated by their command's CanExecute — which is what a bound Button consults, so the affordance goes
-    // dead rather than only looking dead. The install button in the detail pane and on each catalogue card
-    // binds IsEnabled to the row's own CanTakePrimaryAction, which knows nothing about a running install:
-    // without this, a second click re-entered InstallFromStoreAsync into a second download and a second
-    // Directory.Move onto the same target folder.
+    // A restart and a fresh install are both unreachable while work is in flight (AC-420), gated by their
+    // command's CanExecute — which is what a bound Button consults, so the affordance goes dead rather than
+    // only looking dead.
+    //
+    // What this gate is *not* for: a second click of the install button while its own install runs.
+    // AsyncRelayCommand already refuses to re-enter itself (measured: with this gate neutralised, CanExecute
+    // is still false for the duration), so the ticket's account of that failure was wrong. What was missing
+    // is gating *across* commands — the toolkit's guard is per command, so an install stayed startable while
+    // Update all or a version install was running, and those do reach the same download and folder move.
     partial void OnIsBusyChanged(bool value)
     {
-        OnPropertyChanged(nameof(CanRestart));
         RestartNowCommand.NotifyCanExecuteChanged();
         InstallFromStoreCommand.NotifyCanExecuteChanged();
+        InstallFromZipCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -262,7 +265,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    /// <summary>Whether a zip install can be started — it reaches the same installer as a store install, so it waits its turn (AC-420).</summary>
+    public bool CanInstallFromZip => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanInstallFromZip))]
     private async Task InstallFromZipAsync()
     {
         if (_dialogService is null || _installer is null)
@@ -528,6 +534,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        // Said before the fetch, not only after it (AC-420): the busy overlay shows StatusMessage, and this
+        // method raises it — including for a plain Refresh — so without a line of its own the overlay would
+        // sit there repeating whatever the last install said while it is actually reloading the catalogue.
+        StatusMessage = "Loading the plugin catalogue…";
         AvailablePlugins.Clear();
         AvailableTemplates.Clear();
         try
