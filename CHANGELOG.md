@@ -493,6 +493,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the model list offered when you start a Claude session names a family rather than a release — "Opus", not
+  "Opus 4.8". The value behind it is the CLI's own alias, which follows whatever that alias resolves to today, so a
+  label carrying a version number could only ever go stale while the session it started ran on something else. The
+  field stays free text, so a specific model or snapshot can still be pinned by typing it.
+
+- changed: **Fable** can be picked from that list. It was reachable before only by typing it in by hand.
+
+- changed: scroll bars follow the theme. The track, the thumb and the square where two bars meet were still drawn in
+  the greys the underlying toolkit ships with, on nearly every scrollable surface in the app. The thumb sits several
+  steps lighter than the groove it slides on, so it stays visible rather than merely correct.
+
 - changed: the plugins are painted in the same colours as the rest of the cockpit. The repaint reached the app but
   not the plugins that draw their own surfaces, so several were still finished in the old orange: the prompt
   palette's search spark, the thin progress line above an issue list, the stripe down a workflow step. Buttons,
@@ -615,6 +626,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: in the New session dialog, a plugin's option label ran over the control beside it — "Permission mode" came
+  out cut off and sitting on top of its own dropdown. The label column now sizes to the longest label the plugin
+  declared instead of to a width chosen for a shorter one, and the rows still line up as a single column. A plugin
+  that writes a sentence for a label gets an ellipsis and the full text on hover, rather than squeezing its own
+  control off the row.
+
+- fixed: radio buttons — the two that choose between a remote store and a local folder — drew in the system blue
+  instead of the cockpit's accent. The two colours are close enough that it passed an eyeball test, and nothing
+  connected them: the day the accent moves, that control would have stayed behind.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"
