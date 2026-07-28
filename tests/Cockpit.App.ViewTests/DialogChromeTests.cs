@@ -1,9 +1,12 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.ViewTests;
 
@@ -126,19 +129,48 @@ public class DialogChromeTests
     });
 
     [Fact]
-    public void TheAppWindowsBar_StaysOneCompactLine() => HeadlessAvalonia.Run(() =>
+    public void TheAppWindowsBar_NamesTheProductOnce_OnOneCompactLine() => HeadlessAvalonia.Run(() =>
     {
         // The app window itself needs the running app's services to build its panes, so the bar is measured on a
         // bare window given the same chrome — which is the whole point of the chrome being shared.
         var window = new Window { Width = 600, Height = 200 };
-        CockpitWindowChrome.Apply(window, "AI-Cockpit", titleBar: CockpitTitleBar.Window);
+        CockpitWindowChrome.Apply(window, "a title from the caller", titleBar: CockpitTitleBar.Window);
         window.Show();
         window.UpdateLayout();
 
+        // The app's own window is not named by whoever applied the chrome: it carries the product's name (AC-430),
+        // and it carries it once — the bar is the single place in the main window the name is stated.
+        var name = Assert.Single(_VisibleTextBlocks(window), block => block.Inlines is { Count: > 0 });
+        var runs = name.Inlines!.Cast<Run>().ToList();
+        Assert.Equal(CockpitProduct.DisplayName, string.Concat(runs.Select(run => run.Text)));
+        Assert.DoesNotContain(_VisibleTextBlocks(window), block => block.Text == "a title from the caller");
+
         // Smaller than a dialog's heading, and with no room asked for an explanation under it: what matters on the
         // app window is the cockpit below the bar.
-        var name = Assert.Single(_VisibleTextBlocks(window), block => block.Text == "AI-Cockpit");
         Assert.Equal(15.5d, name.FontSize);
+
+        // The product's half steps back and the maker's half does not — the mockup's `Wispslate <span>Cockpit</span>`.
+        // The first run sets no colour of its own and inherits the bar's, which is the point: only one of the two
+        // is tinted, so asking whether the second is the faint brush and the first is not says exactly that.
+        Application.Current!.TryFindResource("CockpitTextFaintBrush", out var faint);
+        Assert.Same(faint, runs[1].Foreground);
+        Assert.NotSame(faint, runs[0].Foreground);
+    });
+
+    [Fact]
+    public void TheAppWindowsBar_CarriesTheMark_WithoutDeformingIt() => HeadlessAvalonia.Run(() =>
+    {
+        var window = new Window { Width = 600, Height = 200 };
+        CockpitWindowChrome.Apply(window, titleBar: CockpitTitleBar.Window);
+        window.Show();
+        window.UpdateLayout();
+
+        // The mark is wider than it is tall (AC-430 acceptance 4: no stretched icon anywhere). Only its height is
+        // set, so the width the layout gives it has to follow the bitmap's own aspect rather than a square.
+        var mark = Assert.Single(window.GetVisualDescendants().OfType<Image>());
+        Assert.NotNull(mark.Source);
+        var aspect = mark.Source!.Size.Width / mark.Source.Size.Height;
+        Assert.Equal(mark.Bounds.Height * aspect, mark.Bounds.Width, 1);
     });
 
     [Fact]

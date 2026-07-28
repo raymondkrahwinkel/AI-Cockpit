@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
+        xmlns:config="using:Cockpit.Core.Configuration"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -10,7 +11,7 @@
         Icon="/Assets/AppIcon.ico"
         Width="1280" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Title="AI-Cockpit">
+        Title="{x:Static config:CockpitProduct.DisplayName}">
 
     <Design.DataContext>
         <!-- This only sets the DataContext for the previewer in an IDE,

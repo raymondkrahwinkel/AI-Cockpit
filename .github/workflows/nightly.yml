@@ -219,7 +219,7 @@ jobs:
           # ${EXTRA[@]+"${EXTRA[@]}"}: bash 3.2 on the macOS runners treats an empty array expansion as unbound.
           vpk pack ${EXTRA[@]+"${EXTRA[@]}"} \
             --packId AI-Cockpit \
-            --packTitle "AI Cockpit" \
+            --packTitle "Wispslate Cockpit" \
             --packAuthors "Raymond Krahwinkel" \
             --packVersion "$VERSION" \
             --packDir "publish/$RID" \

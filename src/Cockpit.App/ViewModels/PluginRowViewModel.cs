@@ -1,3 +1,4 @@
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
@@ -51,7 +52,9 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",
         PluginLoadDecision.AbstractionsMajorMismatch => "Incompatible — built for another contract version",
-        PluginLoadDecision.HostTooOld => $"Needs a newer AI-Cockpit (version {discovered.Manifest.MinHostVersion} or later)",
+        // Named in full here, unlike the rest of the running text: the sentence carries two version numbers'
+        // worth of ambiguity otherwise — the reader cannot tell whether it is the plugin's version or the host's.
+        PluginLoadDecision.HostTooOld => $"Needs {CockpitProduct.DisplayName} {discovered.Manifest.MinHostVersion} or later",
         _ => string.Empty,
     };
 

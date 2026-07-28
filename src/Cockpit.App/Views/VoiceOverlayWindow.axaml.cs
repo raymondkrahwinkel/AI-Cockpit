@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.Views;
 
@@ -21,6 +22,10 @@ public partial class VoiceOverlayWindow : Window
     public VoiceOverlayWindow()
     {
         InitializeComponent();
+        // Set here rather than in the markup because it is the product's name plus a word: nobody reads this one
+        // (the pill has no decorations and stays out of the taskbar), but a window that names the app should not
+        // be the one place a rename has to remember to visit.
+        Title = $"{CockpitProduct.DisplayName} voice overlay";
         Opened += _OnOpened;
         // Re-centre once the window actually has a size. On the very first show the pre-show/Opened calls run
         // before SizeToContent has measured the pill, so Bounds is still 0 and the maths lands it in the wrong

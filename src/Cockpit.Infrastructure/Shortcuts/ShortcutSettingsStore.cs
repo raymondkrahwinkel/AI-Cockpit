@@ -48,8 +48,25 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
             }
         }
 
-        return _MigrateSessionSwitchOffArrowKeys(settings);
+        return _MigrateZoomOffCtrlB(_MigrateSessionSwitchOffArrowKeys(settings));
     }
+
+    /// <summary>
+    /// Toggle zoom used to default to Ctrl+B. One modifier is not enough to survive a focused terminal — and a
+    /// zoomed pane is exactly when the terminal has focus — so the default moved to a two-modifier chord that
+    /// passes the gate (AC-401). Any other saved gesture is left alone.
+    /// <para>
+    /// It matches on the value, not on when it was written, and it runs on every load — so it cannot tell the old
+    /// default apart from a Ctrl+B the operator deliberately chose, and will take that one too, every start. That
+    /// is the same shape as <see cref="_MigrateSessionSwitchOffArrowKeys"/> and accepted here for the same
+    /// practical reason: a one-shot would need a marker in the config, and Ctrl+B for zoom is a gesture that does
+    /// not work where zoom is used. Anyone who wants the old key back has every other free gesture.
+    /// </para>
+    /// </summary>
+    private static ShortcutSettings _MigrateZoomOffCtrlB(ShortcutSettings settings) =>
+        settings.Gestures.TryGetValue(ShortcutAction.ToggleZoom, out var zoom) && zoom == "Ctrl+B"
+            ? settings.With(ShortcutAction.ToggleZoom, ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom))
+            : settings;
 
     /// <summary>
     /// The session switch used to default to Ctrl+Up / Ctrl+Down; those are now the spatial pane-focus gestures

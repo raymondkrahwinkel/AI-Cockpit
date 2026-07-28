@@ -7,7 +7,7 @@ name: Publish plugin to store
 #
 # The one thing it refuses to do is publish a plugin the current host cannot run: a plugin whose
 # minHostVersion is newer than any published app (release or nightly) would install and then be refused with
-# "Needs a newer AI-Cockpit", so the gate below blocks it and tells you to ship the app/nightly first. That
+# "Needs a newer cockpit", so the gate below blocks it and tells you to ship the app/nightly first. That
 # check is the actual point — it moves "will this even work yet?" out of the operator's head and into the
 # pipeline. minHostVersion is only as honest as the discipline of bumping it when a plugin starts needing a
 # new host API; the gate assumes you do.

@@ -13,7 +13,20 @@ public sealed record ShortcutDescriptor(ShortcutAction Action, string Label, str
 /// geometric direction. Ctrl+Shift+Up/Down steps the session list, Ctrl+Shift+Left/Right steps the workspace
 /// tabs. All three navigation gestures use two modifiers on purpose: a two-modifier gesture fires even while
 /// the operator is typing in the embedded terminal, so the plain Ctrl+Left/Right is left to the shell for its
-/// word-wise movement.
+/// word-wise movement. Ctrl+Shift+M (toggle zoom) joins that group for the same reason and needs it most: a
+/// zoomed pane is precisely the moment the terminal has focus, so a one-modifier gesture would reach the
+/// shell instead — which is where the old Ctrl+B default went (tmux prefix, readline backward-char).
+/// </para>
+/// <para>
+/// Two modifiers is a precedence rule, not a safety one: such a gesture is taken before a focused text box
+/// sees it too. That rules out two tempting chords for zoom. Ctrl+Shift+Z reads best (tmux zooms with z) but
+/// is the platform's second Redo chord, so it would eat Redo in the prompt field. And Ctrl+Alt+&lt;letter&gt; is
+/// unavailable for any letter: AltGr is reported as Ctrl+Alt on Windows and Linux, so Ctrl+Alt+Z is how an
+/// ISO-layout operator types a character (æ on US-International, « on Dutch) — see the AltGr handling in
+/// <c>Exclr8.Terminal.TerminalControl.OnKeyDown</c>. The existing Ctrl+Alt+arrows escape that only because
+/// arrows produce no character. M is for maximise: no platform gesture, no other default, no plugin shortcut,
+/// and no AltGr chord either, since it carries no Alt. The shell would read Ctrl+M as a carriage return, but
+/// nobody presses a chord to send Enter — and it never gets there, since this gesture is taken above the terminal.
 /// </para>
 /// </summary>
 public static class ShortcutCatalog
@@ -31,7 +44,7 @@ public static class ShortcutCatalog
         new(ShortcutAction.PluginStore, "Plugin store", "Ctrl+P"),
         new(ShortcutAction.Options, "Options", "Ctrl+O"),
         new(ShortcutAction.About, "About", ""),
-        new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
+        new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+Shift+M"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
         new(ShortcutAction.FocusPaneLeft, "Focus pane left", "Ctrl+Alt+Left"),
         new(ShortcutAction.FocusPaneRight, "Focus pane right", "Ctrl+Alt+Right"),
@@ -53,10 +66,12 @@ public static class ShortcutCatalog
     /// <summary>
     /// The navigation actions that stay live while the operator types in the embedded terminal — switching
     /// session or workspace, creating, and duplicating are exactly what you reach for while driving a running
-    /// TUI (Raymond's call). They remain gated in a text box (where an arrow gesture is caret navigation),
-    /// while the dialog-opening actions stay gated over the terminal so single-key shell bindings (Ctrl+R
-    /// reverse-search, …) reach the shell. Note: with Ctrl+N/Ctrl+D active here, they shadow the shell's
-    /// next-history/EOF, and the workspace switch shadows whatever the terminal would do with
+    /// TUI (Raymond's call). This flag alone leaves them gated in a text box (where an arrow gesture is caret
+    /// navigation), though it only decides that for the one-modifier members: the session and workspace
+    /// switches carry two modifiers, and the dispatch gate takes such a gesture ahead of a focused text box
+    /// regardless of this list. The dialog-opening actions stay gated over the terminal so single-key shell
+    /// bindings (Ctrl+R reverse-search, …) reach the shell. Note: with Ctrl+N/Ctrl+D active here, they shadow
+    /// the shell's next-history/EOF, and the workspace switch shadows whatever the terminal would do with
     /// Ctrl+Shift+arrow (word selection, in some emulators) — the same deliberate trade.
     /// </summary>
     public static bool StaysActiveInTerminal(ShortcutAction action) =>

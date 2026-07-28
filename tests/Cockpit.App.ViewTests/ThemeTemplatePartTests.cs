@@ -40,6 +40,7 @@ public partial class ThemeTemplatePartTests
         ["CheckBox.Switch"] = () =>
             (new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = true }, host => host),
         ["ComboBox"] = () => (new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 }, host => host),
+        ["RadioButton"] = () => (new RadioButton { Content = "x", IsChecked = true }, host => host),
         ["TextBox"] = () => (new TextBox { Text = "x" }, host => host),
         ["ListBox.subnav ListBoxItem"] = () => (
             new ListBox { Classes = { "subnav" }, ItemsSource = new[] { "a" }, SelectedIndex = 0 },

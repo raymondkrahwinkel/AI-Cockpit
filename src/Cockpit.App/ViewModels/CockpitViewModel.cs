@@ -3001,7 +3001,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
         ToastHost.Add(
-            $"AI-Cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
+            $"The cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
             ToastSeverity.Warning,
             actionLabel: null,
             onAction: null);
@@ -3122,13 +3122,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _Megabytes(session.MemoryBytes),
                 _Share(session.MemoryBytes, usage.MemoryBytes)))
             .Append(new ResourceRowViewModel(
-                "AI-Cockpit itself",
+                // A label in a column of names, so it is capitalised like one — and it is not the product's name,
+                // because this list is in the main window and the title bar is where that gets stated.
+                "The cockpit itself",
                 "the app, its windows and its transcripts",
                 _Megabytes(usage.Parts.OwnBytes),
                 _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))
             .Concat(usage.Parts.Children.Select(child => new ResourceRowViewModel(
                 child.Name,
-                "a tool server AI-Cockpit started",
+                "a tool server the cockpit started",
                 _Megabytes(child.MemoryBytes),
                 _Share(child.MemoryBytes, usage.MemoryBytes))));
 
@@ -3450,7 +3452,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             BackupStatus = "Restoring…";
             await backups.RestoreAsync(archivePath, options);
 
-            BackupStatus = "Restored. Restarting AI-Cockpit to read it.";
+            BackupStatus = "Restored. Restarting the cockpit to read it.";
             _appRestart?.Restart();
         }
         catch (Exception exception)

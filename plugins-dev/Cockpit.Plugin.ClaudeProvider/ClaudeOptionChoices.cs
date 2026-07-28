@@ -24,11 +24,14 @@ internal static class ClaudeOptionChoices
 
     // The CLI's own aliases, offered as free-text suggestions so a specific model or snapshot can still be pinned; the
     // CLI resolves the alias to the current model itself, so this list needs no per-release upkeep.
-    public static readonly IReadOnlyList<string> ModelSuggestions = ["opus", "sonnet", "haiku"];
+    public static readonly IReadOnlyList<string> ModelSuggestions = ["fable", "opus", "sonnet", "haiku"];
 
+    // A label names the family, never a release: the value stays an alias the CLI re-points at will, so "Opus 4.8"
+    // would keep claiming a release the dropdown no longer launches (AC-418).
     public static readonly IReadOnlyDictionary<string, string> ModelLabels = new Dictionary<string, string>
     {
-        ["opus"] = "Opus 4.8",
+        ["fable"] = "Fable",
+        ["opus"] = "Opus",
         ["sonnet"] = "Sonnet",
         ["haiku"] = "Haiku",
     };

@@ -137,6 +137,13 @@
                  Claude-TTY surface; the same family the TTY panel renders with. -->
             <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
 
+            <!-- Fluent's own scroll-bar keys, redefined because the values sit inside its template at Template
+                 priority, where a style setter of ours cannot reach them (AC-405). The groove keeps one colour
+                 whether or not the pointer is over it; the thumb is the part that answers. -->
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{StaticResource CockpitInsetBgColor}"/>
+            <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{StaticResource CockpitInsetBgColor}"/>
+
         </ResourceDictionary>
     </Styles.Resources>
 
@@ -608,6 +615,21 @@
         <Setter Property="BorderThickness" Value="0"/>
     </Style>
 
+    <!-- ScrollBar: the theme never claimed one, so every scrollable surface kept Fluent's greys. Only the thumb
+         is reachable from here — the track and the corner take their colour inside Fluent's template, at
+         Template priority, above a style setter, so they are redefined as resource keys in Styles.Resources.
+         The thumb sits several steps lighter than its groove: theme-correct and invisible is the way to get
+         this wrong. -->
+    <Style Selector="ScrollBar /template/ Thumb">
+        <Setter Property="Background" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb:pointerover">
+        <Setter Property="Background" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb:pressed">
+        <Setter Property="Background" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
     <!-- CheckBox: the box follows CockpitAccentColor. Until now it drew with Avalonia's *system* accent —
          they happen to coincide since the theme moved onto blue (AC-334), but nothing connects them, so a
          change to the token would have quietly left every tick behind on the old colour. -->
@@ -638,6 +660,63 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>
     </Style>
     <Style Selector="CheckBox:disabled">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
+    <!-- RadioButton: the CheckBox story one control along — it kept Avalonia's system accent (#0078d7). It gets
+         a template of its own because Fluent's builds no named parts to reach into, and the parts are Ring and
+         Dot rather than Fluent's OuterEllipse/CheckGlyph because Fluent's rules are still loaded and match by
+         name: one of them fades OuterEllipse to Opacity 0 on :checked, which rendered a picked button as a dot
+         with no ring while every colour was correct. -->
+    <Style Selector="RadioButton">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Ellipse Name="Ring" Width="18" Height="18" Margin="0,0,8,0"
+                             VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitPanelBgBrush}"
+                             Stroke="{StaticResource CockpitHairlineBrush}"
+                             StrokeThickness="1"/>
+                    <!-- Same margin as the ring, so the dot centres on the ring rather than on the cell. -->
+                    <Ellipse Name="Dot" Width="8" Height="8" Margin="0,0,8,0"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Fill="{StaticResource CockpitTextOnAccentBrush}"
+                             IsVisible="False"/>
+                    <ContentPresenter Grid.Column="1"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      VerticalAlignment="Center"/>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="RadioButton:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked:pointerover /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:checked /template/ Ellipse#Dot">
+        <Setter Property="IsVisible" Value="True"/>
+    </Style>
+    <Style Selector="RadioButton:focus-visible /template/ Ellipse#Ring">
+        <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Ring">
+        <Setter Property="Fill" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitHairlineSoftBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled /template/ Ellipse#Dot">
+        <Setter Property="Fill" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="RadioButton:disabled">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 

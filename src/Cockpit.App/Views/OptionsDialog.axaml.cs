@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.Views;
 
@@ -70,7 +71,7 @@ public partial class OptionsDialog : Window
         {
             DataContext = new PasswordDialogViewModel(
                 "Encrypt your credentials",
-                "Your API keys and tokens are encrypted in cockpit.json, and AI-Cockpit asks for this password "
+                "Your API keys and tokens are encrypted in cockpit.json, and the cockpit asks for this password "
                 + "every time it starts.\n\n"
                 + "If you forget it, nobody can decrypt them — not you, not us. The only way back is to clear the "
                 + "credentials and type them in again; your profiles, sessions, layout and shortcuts survive that. "
@@ -95,7 +96,7 @@ public partial class OptionsDialog : Window
         {
             DataContext = new ConfirmationDialogViewModel(
                 "Turn off encryption",
-                "Your API keys and tokens go back to being readable in cockpit.json, and AI-Cockpit will start "
+                "Your API keys and tokens go back to being readable in cockpit.json, and the cockpit will start "
                 + "without asking for a password. Nothing is lost — this is the exact reverse of turning it on.",
                 "Turn it off"),
         };
@@ -149,7 +150,9 @@ public partial class OptionsDialog : Window
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Back up AI-Cockpit",
+            // The one string here that names the app: this dialog is the OS's, drawn among windows from every
+            // other program, where "back up the cockpit" says nothing about whose backup it is.
+            Title = $"Back up {CockpitProduct.DisplayName}",
             SuggestedFileName = $"cockpit-backup-{DateTime.Now:yyyy-MM-dd}.zip",
             DefaultExtension = "zip",
             FileTypeChoices = [new FilePickerFileType("Cockpit backup") { Patterns = ["*.zip"] }],
