@@ -8,8 +8,11 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The three ways the sign-in surface got its own identity wrong (AC-355), each found by review rather than by a
-/// green suite: a dialog that would not open, a withdrawal that withdrew nothing, and a badge outliving its reason.
+/// What the sign-in surface got wrong about a server's identity (AC-355), each case found by review rather than by a
+/// green suite. They share one root: a token is filed under a name the operator may retype, and the row kept trying
+/// to work out which name that was. Five review rounds moved that guess rather than removing it — a dialog that would
+/// not open, a withdrawal that withdrew nothing, a token filed under a placeholder — until the guess was taken away
+/// instead, by only offering the actions while the row and the store agree on the name.
 /// </summary>
 public class McpAuthStatusRegressionTests
 {
@@ -22,7 +25,7 @@ public class McpAuthStatusRegressionTests
     };
 
     [Fact]
-    public async Task SignOut_AfterRenamingWithoutSaving_WithdrawsUnderTheNameTheStoreKnows()
+    public async Task SignOut_EvenIfDrivenPastItsGate_ActsUnderTheNameTheStoreKnows()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
@@ -30,11 +33,33 @@ public class McpAuthStatusRegressionTests
         await editable.RefreshAuthStateAsync();
 
         editable.Name = "depot-renamed";
+        Assert.False(editable.SignOutCommand.CanExecute(null));
+
+        // The gate is what the operator meets, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute — so
+        // the body has to hold the line on its own. Withdrawing under the newly typed name removed nothing while
+        // reporting the access as gone; the bearer stayed in cockpit.json behind a reassuring badge.
         await editable.SignOutCommand.ExecuteAsync(null);
 
-        // A token is filed under the server's name. Withdrawing under the newly typed one removed nothing while
-        // telling the operator their access was gone — the bearer stayed in cockpit.json behind a reassuring badge.
         await coordinator.Received().SignOutAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ARowStoredWithATrailingSpace_StillOffersItsSignIn()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
+
+        // A hand-edited config, or one an older build wrote before saving started trimming. Comparing the stored name
+        // untrimmed against the typed one meant the gate could never open, and the reason shown blamed a rename that
+        // never happened — the last untrimmed name comparison in a family the rest of this ticket already trimmed.
+        var editable = new EditableMcpServerViewModel(_OAuthServer("depot "), coordinator);
+
+        Assert.True(editable.IsSignInAvailable);
+        Assert.Empty(editable.SignInUnavailableReason);
+        await editable.RefreshAuthStateAsync();
+        await coordinator.Received().GetStateAsync(
             Arg.Is<McpServerConfig>(server => server.Name == "depot"),
             Arg.Any<CancellationToken>());
     }

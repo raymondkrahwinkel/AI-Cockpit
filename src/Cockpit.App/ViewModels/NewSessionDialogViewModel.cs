@@ -679,15 +679,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        // Paired by position, not by name. The rows were just built from this same list in this same order, and two
-        // servers are allowed to share a name — "Add server" twice leaves two called "new server", and nothing on the
-        // way to the store objects. Keying on the name turned that into an exception on the way into the dialog,
-        // which meant the dialog did not open at all.
-        // Snapshot the rows before the first await. Pairing is by position — the rows were built from this same list
-        // in this same order — but the loop awaits per server, and a project switch rebuilds the collection without
-        // waiting for this to finish. Reading the live collection after a rebuild would write one list's status onto
-        // another list's row: a sign-in badge on the wrong server, silently, in the feature whose whole job is a
-        // badge that tells the truth. Writing to rows nobody is looking at any more is the harmless outcome.
+        // Paired by position: the rows were built from this same list in this same order, and two servers may share a
+        // name — keying on it threw on the way into the dialog, so the dialog did not open at all.
+        // Snapshotted before the first await, because the loop awaits per server while a project switch rebuilds the
+        // collection without waiting. Reading it live would write one list's status onto another list's row — a
+        // sign-in badge on the wrong server, silently. Writing to rows nobody looks at any more is the harmless end.
         var rows = McpServers.ToList();
         for (var index = 0; index < offered.Count && index < rows.Count; index++)
         {

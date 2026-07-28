@@ -11,10 +11,10 @@ namespace Cockpit.App.ViewModels;
 /// (#26). Args are edited as one-per-line text; transport/auth are enum selections that drive which
 /// fields the dialog shows. <see cref="ToConfig"/> turns the edits back into a config on save.
 /// <para>
-/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They act on
-/// <see cref="_AuthTarget"/>: the URL and auth as currently typed, so fixing a wrong authority and then signing in
-/// authorizes against what is on screen — under the name the token is filed by, which is the stored one for a saved
-/// row, and for a new one the typed name until a sign-in pins it.
+/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They
+/// authorize against the URL and auth as currently typed — fixing a wrong authority and then signing in uses what is
+/// on screen — but always under the name this server is stored as, and they are offered only while the two agree
+/// (<see cref="IsSignInAvailable"/>).
 /// </para>
 /// </summary>
 public partial class EditableMcpServerViewModel : ViewModelBase
@@ -22,11 +22,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
     /// <summary>
-    /// The name this server is already stored under, or <see langword="null"/> for a row that has never been saved.
-    /// A token is keyed by server name, so signing in or out has to use the name the store knows — doing it against
-    /// a renamed-but-unsaved row withdrew nothing while telling the operator their access was gone. A row that is
-    /// not in the store yet has no such name, and pinning it to the placeholder it was created with would file the
-    /// token under a name the operator is about to replace: for those, the typed name is the one that will be saved.
+    /// The name this server is stored under, or <see langword="null"/> for a row that has never been saved. A token
+    /// is keyed by server name, so this is the only name a sign-in or a withdrawal may act on — and a row with no
+    /// stored name has no token to act on at all, which is why both are withheld there rather than aimed at a guess.
+    /// Trimmed, because that is what a save writes: an entry a hand-edit or an older build left with a trailing space
+    /// would otherwise never match the typed name and the row would refuse both buttons for good.
     /// </summary>
     private readonly string? _storedUnderName;
 
@@ -207,7 +207,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     public EditableMcpServerViewModel(McpServerConfig server, IMcpOAuthCoordinator? oauthCoordinator = null, bool isPersisted = true)
     {
         _oauthCoordinator = oauthCoordinator;
-        _storedUnderName = isPersisted ? server.Name : null;
+        _storedUnderName = isPersisted ? server.Name.Trim() : null;
         _name = server.Name;
         _transport = server.Transport;
         _command = server.Command ?? string.Empty;
@@ -227,15 +227,12 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// What a sign-in, sign-out or status read is about: the edits as they stand, under the name the token is filed
-    /// by. The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing
-    /// in should get what they just typed. The name is the one already in the store, or, for a row that has never
-    /// been saved, the typed one, since that is what saving is about to write.
+    /// What a sign-in, sign-out or status read is about: the edits as they stand, under <paramref name="storedName"/>.
+    /// The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing in
+    /// should get what they just typed. The name is passed in rather than read here, so there is nowhere left for it
+    /// to fall back to a guess: every caller has to hold a stored name before it can ask.
     /// </summary>
-    private McpServerConfig _AuthTarget() => ToConfig() with { Name = _storedUnderName ?? Name.Trim() };
-
-    // Only ever called while IsSignInAvailable, so the name above is the stored one. The fallback stands for the
-    // design-time row, which has no coordinator to call anyway.
+    private McpServerConfig _AuthTarget(string storedName) => ToConfig() with { Name = storedName };
 
     /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
     public McpServerConfig ToConfig() => new()
@@ -266,19 +263,20 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     /// <summary>
     /// Reads the stored auth state for this server (AC-355) — no network, no browser, so this is cheap enough to
-    /// run for every row when the dialog opens. A no-op without a coordinator (design-time) or for a server that
-    /// is not OAuth (<see cref="ShowAuthStatus"/> then stays false and nothing is shown).
+    /// run for every row when the dialog opens. A no-op without a coordinator (design-time), for a server that is
+    /// not OAuth, or for a row with no stored name: nothing can be filed under a name the store does not have, so
+    /// there is no standing to report and <see cref="ShowAuthStatus"/> stays false.
     /// </summary>
     public async Task RefreshAuthStateAsync(CancellationToken cancellationToken = default)
     {
-        if (_oauthCoordinator is null || !IsOAuthAuth)
+        if (_oauthCoordinator is null || !IsOAuthAuth || _storedUnderName is not { } storedName)
         {
             return;
         }
 
         try
         {
-            AuthState = await _oauthCoordinator.GetStateAsync(_AuthTarget(), cancellationToken).ConfigureAwait(true);
+            AuthState = await _oauthCoordinator.GetStateAsync(_AuthTarget(storedName), cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -315,14 +313,15 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     /// <summary>
     /// The operator's own "log me in" act (AC-355) — the one call site anywhere that asks interactively, and so the
-    /// only one allowed to open a browser. Runs against <see cref="_AuthTarget"/> — the URL/authority as typed — and
-    /// on success pins the name the token was filed under, so later edits to the name box cannot make the row look
-    /// somewhere else for it.
+    /// only one allowed to open a browser. Authorizes against the URL/authority as typed, filed under the name this
+    /// server is stored as.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()
     {
-        if (_oauthCoordinator is null)
+        // The command is gated on IsSignInAvailable, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute —
+        // so the stored name is required here too rather than assumed.
+        if (_oauthCoordinator is null || _storedUnderName is not { } storedName)
         {
             return;
         }
@@ -331,7 +330,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(), interactive: true).ConfigureAwait(true);
+            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(storedName), interactive: true).ConfigureAwait(true);
             AuthState = access.State;
             if (access.State != McpAuthState.Authorized)
             {
@@ -356,7 +355,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanSignOut))]
     private async Task SignOutAsync()
     {
-        if (_oauthCoordinator is null)
+        // The command is gated on IsSignInAvailable, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute —
+        // so the stored name is required here too rather than assumed.
+        if (_oauthCoordinator is null || _storedUnderName is not { } storedName)
         {
             return;
         }
@@ -365,7 +366,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var config = _AuthTarget();
+            var config = _AuthTarget(storedName);
             await _oauthCoordinator.SignOutAsync(config).ConfigureAwait(true);
             AuthState = await _oauthCoordinator.GetStateAsync(config).ConfigureAwait(true);
         }
