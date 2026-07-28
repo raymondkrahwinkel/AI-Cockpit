@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the product icons now exist as a square set that can actually be used as an app icon and a favicon. The two
+  files that came out of the logo sheet were separate renders — different canvases, a W drawn at different
+  proportions in each — so neither was square and the pair did not read as one mark in two colours. They now share
+  one geometry down to the pixel: lay the blue one over the teal one and only the colour differs. Each comes as a
+  1024 master, a ladder from 16 to 512, and a `.ico`, in `brand/`.
+
+  Two blemishes left over from cutting the icons out of that sheet are gone with them: a thin line above the W and
+  a loose speck off to the right, both of which you would have seen once the mark was drawn large.
+
+  The icon on the cockpit's own window is unchanged — it is drawn separately, from the same mark, and still shows
+  those two blemishes. Moving it onto this set is a step of its own.
+
 - added: every release and nightly now carries an installer and a portable build that an in-app update will be able
   to read — `AI-Cockpit-win-stable-Setup.exe`, `AI-Cockpit-linux-nightly-Portable.zip` and so on, with the platform
   and the channel in the name. They sit next to the downloads that were already there, which keep working exactly as
@@ -55,6 +67,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
   nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
   yet, or the server may not be mounted for it — so it says that rather than picking a cause.
+
+- added: agents on the same desk can now send each other a message. An agent can notify another session it can see,
+  with a short label and a body, and collect what was sent to it — so "I have the parser, leave it alone" is
+  something one session can actually say to another instead of the two of them finding out by colliding. Messages
+  wait until the receiving agent asks for them: nothing is interrupted, and a message on its own makes nothing
+  happen. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
+  as someone else, cannot send to a session on another desk, and cannot send to itself. What arrives is marked as
+  what it is — a note from another agent, not an instruction from you — and every attempt, delivered or refused, is
+  written to an append-only log next to your settings that nothing in the app can erase. A message is capped at 2000
+  characters and stripped of the terminal escape codes that could otherwise repaint or overwrite what the cockpit
+  printed around it, and no session hands over more than 25 messages at a time — so a chatty or hostile neighbour
+  cannot spend a session's whole context window, or its memory, on mail it never asked for.
+
 - added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
   having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
   in the list, with a button for each, and one for withdrawing the access again — which removes the token from the
@@ -653,6 +678,28 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: text boxes and dropdowns went back to the stock Fluent palette the moment you hovered or typed in them —
+  a focused input turned black and grew a two-pixel ring, and a hovered picker took on a translucent dark fill,
+  none of which are colours this theme uses. Hovering and focusing now leave a field's own fill and border alone.
+  The most visible symptom was the Insert prompt search bar, which asks for no box at all and was drawn as one
+  anyway.
+
+- fixed: the flow name in the workflow editor answers to the pointer and to focus again. It is a text box you can
+  type in rather than a label, and it had no way of saying so once the fix above took away the stock highlight it
+  had been borrowing — so it now carries a border of its own that stays invisible until you reach for it. The
+  toolbar it sits in is two pixels taller for that, and no longer changes height when you click into the name.
+
+- fixed: the bottom row of a terminal pane could be drawn where the pane had no room to show it, so a session's
+  last line was simply absent — and nothing said so. A task list that ends one entry early looks like a task list
+  that ended. The terminal deliberately keeps its row count steady through the small height changes the surrounding
+  chrome makes, instead of resizing the session every time a border thickens by a pixel; but it held steady in both
+  directions, so a pane that had just become a fraction too short kept a row it no longer had the height to draw.
+  It now only ever holds a row count the pane can actually show: growing into new space is still damped, losing
+  space takes effect immediately.
+
+  Zoomed all the way out, where a row of text is shorter than the margin being held steady, that margin now gives
+  way to the row — otherwise the terminal would stop growing into space that opened up and leave a strip of the
+  pane permanently unused.
 - fixed: **Update all** in the plugin store offered to restart the cockpit as soon as the *first* plugin of the batch
   was done, while the rest were still downloading. Taking it up there restarted the app mid-batch, and the plugins
   that had not had their turn were silently left on their old version — with a banner that had just said the update
@@ -693,6 +740,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: radio buttons — the two that choose between a remote store and a local folder — drew in the system blue
   instead of the cockpit's accent. The two colours are close enough that it passed an eyeball test, and nothing
   connected them: the day the accent moves, that control would have stayed behind.
+
+- fixed: the trails the cockpit keeps beside your settings — what you approved, what was delegated, what agents sent
+  each other, what each session spent — are now created readable only by your own account. On Linux and macOS they
+  were created at whatever the system default allowed, which on a stock Fedora means any account on the machine could
+  read them, and those files hold the commands you approved and the prompts your agents were given.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"

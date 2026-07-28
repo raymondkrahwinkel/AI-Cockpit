@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Cockpit.Infrastructure.Formatting;
 
 namespace Cockpit.Infrastructure.Auditing;
 
@@ -13,8 +14,9 @@ namespace Cockpit.Infrastructure.Auditing;
 /// which is the whole point of a trail a plugin (or an agent through it) cannot clear.
 /// <para>
 /// Extracted so the two trails share one implementation of the parts that must never drift (AC-59): the
-/// never-throws append, the JSON-per-line parse that skips a half-written or hand-edited line rather than losing
-/// the whole trail, and the surrogate-safe trim. A derived log supplies only what actually differs — its file
+/// never-throws append, the owner-only file it appends to (a trail holds whatever the recorded action's free text held,
+/// so it is not a file to leave at the umask — see <see cref="_AppendPrivateAsync"/>), the JSON-per-line parse that
+/// skips a half-written or hand-edited line rather than losing the whole trail, and the surrogate-safe trim. A derived log supplies only what actually differs — its file
 /// path, a human name for the warning, and how one entry is trimmed before it is written. The public
 /// <see cref="RecordAsync"/>/<see cref="ReadRecentAsync"/> match the audit-log interfaces' shape, so a derived
 /// class satisfies its interface simply by inheriting them.
@@ -60,7 +62,7 @@ internal abstract class JsonlAuditLog<T>
             }
 
             var line = JsonSerializer.Serialize(PrepareForWrite(entry), SerializerOptions);
-            await File.AppendAllTextAsync(_logFilePath, line + Environment.NewLine, cancellationToken).ConfigureAwait(false);
+            await _AppendPrivateAsync(line + Environment.NewLine, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -91,6 +93,51 @@ internal abstract class JsonlAuditLog<T>
             _logger.LogWarning(ex, "Could not read the {LogName} audit log at {Path}.", LogName, _logFilePath);
             return [];
         }
+    }
+
+    /// <summary>
+    /// Appends <paramref name="line"/>, creating the file owner-only if it is not there yet.
+    /// <para>
+    /// The permission matters because a trail is a record of what was said and done: the consent trail keeps the command
+    /// an operator approved, the delegation trail the prompt a sub-agent was given, the agent-notify trail (AC-392) the
+    /// text one agent sent another — free text that nothing stops from containing a token, a path or a customer's name.
+    /// <c>File.AppendAllText</c> creates at the process umask, which on a stock Fedora is world-readable, and that is
+    /// exactly the default <see cref="Configuration.CockpitConfigPath"/> exists to stop every writer of a sensitive file
+    /// from re-inventing. <see cref="FileMode.Append"/> with a create mode is used rather than that class's
+    /// <c>CreatePrivateFile</c>, because that one truncates: on an append-only trail, a create that could truncate is the
+    /// one thing this file may never do. The mode only applies when the file is created — an existing trail keeps its
+    /// permissions, and is not silently loosened or tightened underneath a reader tailing it.
+    /// </para>
+    /// <para>
+    /// The containing directory is created but deliberately not restricted here. It is the state root, which
+    /// <see cref="Configuration.CockpitConfigPath"/> already makes owner-only when it writes the config next to this —
+    /// and a derived log pointed at a shared directory (a test's temp folder) must not chmod that directory on the way
+    /// past. On Windows there is no create mode to set: the protection there is the per-user profile directory the state
+    /// root sits in, which is the same answer <see cref="Configuration.CockpitConfigPath"/> gives.
+    /// </para>
+    /// <para>
+    /// <see cref="FileShare.Read"/>, matching what <c>File.AppendAllText</c> allowed before this: a second process
+    /// appending at the same moment is turned away with an <see cref="IOException"/>, which the caller logs and moves
+    /// past. That is the outcome to want here — a line lost with a warning beats two writers interleaving inside one
+    /// line, which is how an append-only trail acquires an entry that belongs to neither of them.
+    /// </para>
+    /// </summary>
+    private async Task _AppendPrivateAsync(string line, CancellationToken cancellationToken)
+    {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.Append,
+            Access = FileAccess.Write,
+            Share = FileShare.Read,
+        };
+
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        await using var stream = new FileStream(_logFilePath, options);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(line), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -195,18 +242,9 @@ internal abstract class JsonlAuditLog<T>
 
     /// <summary>
     /// Trims <paramref name="text"/> to <paramref name="maxLength"/> characters plus an ellipsis — the trail is for
-    /// recognising an action later, not for keeping a full copy of it. Surrogate-safe (C5): an astral character (an
-    /// emoji in a command, say) straddling the limit is not cut through, which would otherwise leave a lone
-    /// surrogate that is persisted as U+FFFD.
+    /// recognising an action later, not for keeping a full copy of it. The surrogate-safe cut itself lives in
+    /// <see cref="BoundedText"/>, shared with the other places the cockpit bounds agent-authored free text, so the rule
+    /// has one implementation rather than one per caller that needs it.
     /// </summary>
-    protected static string TrimText(string text, int maxLength)
-    {
-        if (text.Length <= maxLength)
-        {
-            return text;
-        }
-
-        var cut = char.IsHighSurrogate(text[maxLength - 1]) ? maxLength - 1 : maxLength;
-        return text[..cut] + "…";
-    }
+    protected static string TrimText(string text, int maxLength) => BoundedText.Trim(text, maxLength);
 }

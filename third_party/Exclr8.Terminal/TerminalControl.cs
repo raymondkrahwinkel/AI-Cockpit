@@ -1081,6 +1081,14 @@ public class TerminalControl : Control, IDisposable
         _lastRevision = _buffer.Revision;
     }
 
+    /// <summary>Height of one character cell, in device-independent pixels.
+    /// Measured from the font, so it is fractional. With
+    /// <see cref="Buffer"/>'s row count this is what says whether a reported
+    /// row actually fits inside <see cref="Visual.Bounds"/> — the control
+    /// clips to those bounds, so a row past them is drawn and never
+    /// seen.</summary>
+    public double CellHeight => _renderer.CellHeight;
+
     // Minimum grid size we'll honour. Anything smaller is almost
     // certainly a transient layout pass (e.g. mid-reparent after a
     // MoveCell) — resizing to those dimensions would shove live-screen
@@ -1100,8 +1108,21 @@ public class TerminalControl : Control, IDisposable
     /// on Windows + cmd.exe collapses cursor-traversed-but-unwritten
     /// rows (the blanks from `echo.`) because the console screen
     /// buffer can't distinguish them from default-padding rows.
-    /// 3 px covers both 1 px and 2 px chrome flips comfortably.</summary>
-    private const double GridBoundaryDeadbandPx = 3.0;
+    /// <para>Held on the growing side only (see
+    /// <see cref="ApplyBoundaryHysteresis"/>), which is what sets the
+    /// size: the grid then steps up at boundary + deadband and back
+    /// down at the boundary, so the band has to span a whole wobble
+    /// where a two-sided one only had to cover half of it. 6 px clears
+    /// the 2 px-per-side chrome flip above — 4 px of travel — and
+    /// absorbs more travel than the 3 px two-sided band it replaced.
+    /// Capped at half a cell, which on the column axis is always the
+    /// smaller of the two: a cell there is about half as wide as it is
+    /// tall, so the cap rules and this number never does.</para>
+    /// <para>While damped the pane carries a row it does not fill —
+    /// the two-sided band did the same — and this adds up to 6 px of
+    /// strip beneath it. Unused space, not a row drawn out of
+    /// sight.</para></summary>
+    private const double GridBoundaryDeadbandPx = 6.0;
 
     private void RecomputeGrid()
     {
@@ -1150,13 +1171,19 @@ public class TerminalControl : Control, IDisposable
         // pass straight through.
         if (Math.Abs(proposed - current) != 1) return proposed;
 
-        // The boundary that the proposed value sits just past.
-        // Going from current 80 cols to proposed 79: boundary is
-        // 80 * cellWidth (we crossed below it). Proposed 81: boundary
-        // is 81 * cellWidth (we crossed above it). Pick whichever
-        // applies via Math.Max.
-        double boundary = Math.Max(proposed, current) * cellSize;
-        return Math.Abs(bounds - boundary) < GridBoundaryDeadbandPx ? current : proposed;
+        // Shrinking is never damped. The control clips to its bounds, so
+        // holding a grid the box has outgrown puts a cell where nothing
+        // can draw it: the pty is told about a row the operator never
+        // sees, and a list that ends one entry early looks like a list
+        // that ended (AC-421).
+        if (proposed < current) return proposed;
+
+        // Growing is, and it carries the deadband alone as a result. The
+        // band is capped below one cell so that growth stays reachable at
+        // all: at a small enough font a band wider than the cell it guards
+        // would hold every grid for ever.
+        double band = Math.Min(GridBoundaryDeadbandPx, cellSize / 2);
+        return bounds - proposed * cellSize < band ? current : proposed;
     }
 
     private void ApplyPendingResize()

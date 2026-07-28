@@ -17,7 +17,7 @@ public class WorkflowMcpToolsTests
     [Fact]
     public void Create_ThenList_Describe_SetActive_Delete_RoundTrips()
     {
-        var storage = new _InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
         var host = Substitute.For<ICockpitHost>();
         host.WorkflowSteps.Returns([]);
         var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), host);
@@ -53,7 +53,7 @@ public class WorkflowMcpToolsTests
     [Fact]
     public async Task Run_IsRefusedWhileDisarmed_AndRunsOnceArmed()
     {
-        var storage = new _InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
         var host = Substitute.For<ICockpitHost>();
         host.WorkflowSteps.Returns([]);
         var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), host);
@@ -79,7 +79,7 @@ public class WorkflowMcpToolsTests
     [Fact]
     public void Create_WithAnUnknownStepType_IsRefused_NamingTheOffendingType()
     {
-        var storage = new _InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
         var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), Substitute.For<ICockpitHost>());
 
         var result = _Json(tools.CreateWorkflow("Bad", steps_json: """[{"typeId":"cockpit.not-a-real-step"}]""", connections_json: null));
@@ -91,7 +91,7 @@ public class WorkflowMcpToolsTests
     [Fact]
     public void Create_WithADangerousStep_IsRefused_AndArmingOneIsToo()
     {
-        var storage = new _InMemoryStorage();
+        var storage = new InMemoryPluginStorage();
         var host = Substitute.For<ICockpitHost>();
         host.WorkflowSteps.Returns([]);
         var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), host);
@@ -118,13 +118,4 @@ public class WorkflowMcpToolsTests
     }
 
     private static JsonElement _Json(string json) => JsonSerializer.Deserialize<JsonElement>(json);
-
-    private sealed class _InMemoryStorage : IPluginStorage
-    {
-        private readonly Dictionary<string, string> _values = [];
-
-        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? JsonSerializer.Deserialize<T>(value) : default;
-
-        public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
-    }
 }
