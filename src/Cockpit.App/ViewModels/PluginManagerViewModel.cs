@@ -306,8 +306,12 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         // Raised only now, not around the picker: the operator choosing a file is their time, and covering the
         // dialog behind a busy overlay while a file picker is open would be covering nothing that is working.
-        // From here on it is the same installer a store install uses, so it counts as the store working — which
-        // is what stops a store install from being started on top of it, and this one on top of a store install.
+        //
+        // ⚠️ That leaves a hole this change does not close (AC-456). The picker hangs off MainWindow while this
+        // dialog is its own modal, so the store stays clickable while it is open: a store install started in
+        // that window is running by the time the picker returns, and this raises the count on top of it —
+        // two installers in the same folder. Closing it needs a decision about where the store is held, not
+        // another guard here; three attempts at a guard have each moved the gap somewhere else.
         _EnterBusy();
         try
         {

@@ -42,10 +42,11 @@ public class PluginManagerViewModelBusyGateTests
     /// <summary>
     /// The zip install holds the store while it runs, so it is not a way in behind the other gates. It used to
     /// raise nothing at all: no overlay, and every other install route still open on top of it — the gate on it
-    /// only closed the other direction, which moved the defect rather than removing it.
+    /// only closed the other direction. Scoped to what this measures: the window *after* the file picker. The
+    /// picker window itself is still open (AC-456).
     /// </summary>
     [Fact]
-    public async Task ARunningZipInstall_HoldsTheStore_SoNothingElseCanStartOnTopOfIt()
+    public async Task ARunningZipInstall_OnceItIsPastThePicker_HoldsTheStore()
     {
         var installer = Substitute.For<IPluginInstaller>();
         var dialogService = Substitute.For<ISessionDialogService>();

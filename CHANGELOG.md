@@ -661,8 +661,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a second plugin install could be started while one was already running — from the version picker in the
   detail panel, or from Install from zip, or from the catalogue on top of a zip install that was showing no sign
   of itself at all. They reach the same unpacking step, so two of them could unpack over each other into the same
-  folder. Every way of starting an install now waits for the one in flight, and a zip install raises the same
-  overlay as the rest instead of running invisibly.
+  folder. Those routes now wait for the install in flight, and a zip install shows the same overlay as the rest
+  instead of running invisibly. One way in is still open and is being dealt with separately: starting an install
+  from the catalogue while the Install-from-zip file picker is sitting open.
 
   Underneath that, the "the store is working" signal used to be cleared by whichever step finished first. Every
   install ends by reloading the catalogue, and that reload cleared the signal while the install around it was
