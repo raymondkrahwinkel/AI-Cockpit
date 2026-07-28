@@ -500,7 +500,13 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>
+    <!-- Fluent's own ComboBox theme re-claims Background on this part while the pointer is over it, behind a
+         pseudo-class — a priority the plain rule above cannot reach. Measured on a plain picker and on
+         ComboBox.Compact: without this both fell back to Fluent's #99000000 on hover. Focus reclaims nothing
+         here, so there is nothing to hold on to in that state. Focus is declared after hover for the same
+         reason as the input below: clicking a picker makes both true, and the later rule wins. -->
     <Style Selector="ComboBox:pointerover /template/ Border#Background">
+        <Setter Property="Background" Value="{TemplateBinding Background}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
     </Style>
     <Style Selector="ComboBox:focus /template/ Border#Background">
@@ -576,14 +582,30 @@
     <Style Selector="TextBox /template/ TextBlock#PART_Placeholder">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
-    <!-- Focused input: cockpit accent border instead of the default Fluent-blue focus ring (L10). -->
-    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
-    </Style>
+    <!-- Fluent's own TextBox theme re-claims Background (hover, focus) and BorderThickness (focus) on this
+         part behind a pseudo-class, which outranks the template binding that carries the control's own value
+         through — so naming BorderBrush alone left a field asking for no fill and no border drawn with both
+         (the Insert prompt search bar and the command palette's query box, AC-425). Handing the control's
+         value back keeps that field bare and an ordinary one on its own style. Focus comes second because
+         both states name the same element and the later rule wins: the other way round, clicking into a
+         field looked exactly like hovering it. This edge only exists for a field that asks for a border at
+         all: one with BorderThickness="0" has nothing to draw here and gets no state marker. That suits a
+         field that is the only input on its surface and takes focus when it opens, and not one sitting in a
+         toolbar — which is why the flow-name field asks for a transparent border rather than none. -->
     <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{TemplateBinding Background}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
     </Style>
-    <!-- Read-only fields recede, for the same reason a disabled picker does. -->
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{TemplateBinding Background}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderThickness" Value="{TemplateBinding BorderThickness}"/>
+    </Style>
+    <!-- A disabled field recedes, for the same reason a disabled picker does. This matches :disabled only —
+         IsEnabled="False" — not IsReadOnly, which carries no pseudo-class here and is untouched by this rule.
+         Unlike pointerover/focus above, Fluent's own :disabled rule for this part does not touch BorderThickness
+         (measured: a TextBox with a local BorderThickness="0" still shows 0 while disabled), so there is nothing
+         here to lose. -->
     <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineSoftBrush}"/>

@@ -289,6 +289,169 @@ public class ThemeControlStateTests
         Assert.Equal(picker.Padding, box.Padding);
     });
 
+    [Fact]
+    public void AnInput_KeepsTheFillAndBorderItAskedFor_AcrossHoverAndFocus() => HeadlessAvalonia.Run(() =>
+    {
+        // Naming a real part is not enough to own it. Fluent's own TextBox theme names PART_BorderElement in these
+        // same states, and a setter behind a pseudo-class outranks the template binding that carries the control's
+        // own value through — so a state this theme leaves unclaimed goes back to Fluent's palette no matter what
+        // the control asked for. The Prompt Library's quick-pick search field asks for no fill and no border and
+        // was drawn boxed and ringed for exactly that reason: only BorderBrush had been claimed here (AC-425).
+        var marker = Color.FromRgb(11, 22, 33);
+        var box = new TextBox { Text = "x", Background = new SolidColorBrush(marker), BorderThickness = new Thickness(3) };
+        using var host = _Shown(box);
+
+        var border = _Part<Border>(box, "PART_BorderElement");
+
+        // Untouched, the part already reflects the control: nothing has claimed it yet.
+        Assert.Equal(marker, _ColourOf(border.Background));
+        Assert.Equal(new Thickness(3), border.BorderThickness);
+
+        // Hovered, through a real pointer move rather than a pseudo-class set by hand.
+        host.Window.MouseMove(box.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+        Assert.True(box.IsPointerOver, "the hover half of this test only means something while the pointer is on it");
+        Assert.Equal(marker, _ColourOf(border.Background));
+
+        // Focus is measured with the pointer taken off. Leaving it on makes the test look thorough and prove half
+        // as much: hover and focus name the same element, so hover — declared first here — would answer for both
+        // and the focus rules could be deleted with this still green.
+        host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
+        box.Focus();
+        host.Window.UpdateLayout();
+        Assert.False(box.IsPointerOver, "focus has to be read on its own, or hover answers for it");
+        Assert.True(box.IsFocused, "and only while the box actually holds focus");
+        Assert.Equal(marker, _ColourOf(border.Background));
+        Assert.Equal(new Thickness(3), border.BorderThickness);
+
+        // And what reached the frame, for the reason the radio button's ring has the same pair: a brush is what the
+        // control was told to paint with. Sampled at the right-hand end, clear of the 3px border and of the glyph.
+        var fill = border.TranslatePoint(new Point(border.Bounds.Width - 10, border.Bounds.Height / 2), host.Window) ?? default;
+        Assert.Equal(_Channels(marker), _Channels(_PaintedAt(host.Window, fill)));
+    });
+
+    [Fact]
+    public void AnInput_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => HeadlessAvalonia.Run(() =>
+    {
+        // Clicking into a field leaves the pointer on it, so hover and focus are both live and both name this
+        // element. Handing the control's own fill and border back removed the two things that used to tell those
+        // states apart (Fluent turned a focused field black and thickened its border), which leaves the accent
+        // edge as the only thing this default TextBox (a real border, asked for at rest) has left to draw the
+        // difference with — and that edge is lost unless focus is declared after hover.
+        var box = new TextBox { Text = "x" };
+        using var host = _Shown(box);
+
+        host.Window.MouseMove(box.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        box.Focus();
+        host.Window.UpdateLayout();
+
+        Assert.True(box is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
+        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+    });
+
+    [Fact]
+    public void AnInput_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => HeadlessAvalonia.Run(() =>
+    {
+        // The guard above only proves hover+focus draws the accent edge. Nothing proved hover alone draws its own,
+        // different colour — a theme rule that answered hover with the accent too would leave that test green while
+        // a merely-hovered field looked exactly like a focused one, the same defect this fix removed, the other way
+        // round.
+        var box = new TextBox { Text = "x" };
+        using var host = _Shown(box);
+
+        host.Window.MouseMove(box.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+
+        Assert.True(box is { IsPointerOver: true, IsFocused: false }, "this is about hover without focus");
+        Assert.Equal(_Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+    });
+
+    [Fact]
+    public void APicker_StillShowsItIsFocused_WhenThePointerIsRestingOnIt() => HeadlessAvalonia.Run(() =>
+    {
+        // The input's problem one control along, and the one this theme has now been caught by twice: hover and
+        // focus name the same element at the same priority, so the later rule answers for both while you are
+        // clicking. The order is right; nothing was holding it there until this.
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = _Shown(picker);
+
+        host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        picker.Focus();
+        host.Window.UpdateLayout();
+
+        Assert.True(picker is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
+        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+    });
+
+    [Fact]
+    public void APicker_KeepsTheFillItAskedFor_WhileHovered() => HeadlessAvalonia.Run(() =>
+    {
+        // The same defect one control along. Only hover: measured against Fluent's ComboBox theme, focus is not a
+        // state it reclaims this part in, so a rule of ours for it would set a value nothing was competing for.
+        var marker = Color.FromRgb(44, 55, 66);
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0, Background = new SolidColorBrush(marker) };
+        using var host = _Shown(picker);
+
+        var border = _Part<Border>(picker, "Background");
+
+        Assert.Equal(marker, _ColourOf(border.Background));
+
+        host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+        Assert.True(picker.IsPointerOver, "the test only means something while the pointer is on the picker");
+        Assert.Equal(marker, _ColourOf(border.Background));
+    });
+
+    [Fact]
+    public void APicker_ShowsOnlyHover_WhenThePointerIsOnItButItIsNotFocused() => HeadlessAvalonia.Run(() =>
+    {
+        // The mirror of the TextBox guard above, one control along: a picker's BorderBrush comes from the same
+        // pointerover/focus pair on Border#Background, and nothing else pinned that hover and focus draw two
+        // different colours there rather than the same one.
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = _Shown(picker);
+
+        host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+
+        Assert.True(picker is { IsPointerOver: true, IsFocused: false }, "this is about hover without focus");
+        Assert.Equal(_Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+    });
+
+    [Fact]
+    public void APicker_ShowsFocus_WhenItIsFocusedButThePointerIsNotOnIt() => HeadlessAvalonia.Run(() =>
+    {
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = _Shown(picker);
+
+        host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
+        picker.Focus();
+        host.Window.UpdateLayout();
+
+        Assert.False(picker.IsPointerOver, "focus has to be read on its own, or hover answers for it");
+        Assert.True(picker.IsFocused, "and only while the picker actually holds focus");
+        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+    });
+
+    [Fact]
+    public void ACompactPicker_KeepsTheFillItsOwnStyleGives_WhileHovered() => HeadlessAvalonia.Run(() =>
+    {
+        // The session bar's pickers get their fill from a style setter (ComboBox.Compact) rather than an instance
+        // value — the reclaim above is a TemplateBinding, which reads whatever Background resolves to regardless
+        // of where it came from, so this is not a second priority path to prove. What it does cover: drop
+        // ComboBox.Compact's own Background setter and this is the one test that goes red, since the plain-picker
+        // test above sets Background as an instance value instead.
+        var picker = new ComboBox { Classes = { "Compact" }, ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = _Shown(picker);
+
+        var border = _Part<Border>(picker, "Background");
+
+        host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+        Assert.True(picker.IsPointerOver, "the test only means something while the pointer is on the picker");
+        Assert.Equal(_Token("CockpitSecondaryBgColor"), _ColourOf(border.Background));
+    });
+
     /// <summary>The colour a brush paints, and a readable failure when it is not a plain colour at all.</summary>
     private static Color _ColourOf(IBrush? brush) =>
         brush is ISolidColorBrush solid
