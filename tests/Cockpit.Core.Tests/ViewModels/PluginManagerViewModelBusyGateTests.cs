@@ -94,19 +94,18 @@ public class PluginManagerViewModelBusyGateTests
             manager.AvailablePlugins.Add(row);
         }
 
-        var progress = new List<(int Done, int Total, bool Determinate)>();
-        _Downloads(storeClient, () => progress.Add((manager.BusyStepsCompleted, manager.BusyStepCount, manager.HasBusyProgress)));
+        var progress = new List<(long Percent, bool Indeterminate)>();
+        _Downloads(storeClient, () => progress.Add(((long)Math.Round(manager.BusyProgressValue), manager.BusyProgressIndeterminate)));
         _StagesTheUpdate(installer);
 
         await manager.UpdateAllCommand.ExecuteAsync(null);
 
-        Assert.Equal([(0, 3, true), (1, 3, true), (2, 3, true)], progress);
-        // Cleared afterwards: the next single install has one step and no fraction to draw, and a bar left at
-        // 3 of 3 would be showing the previous job's progress behind it.
+        Assert.Equal([(0L, false), (33L, false), (67L, false)], progress);
+        // Back to indeterminate afterwards: the next single install has no fraction to draw, and a bar left at
+        // 100% would be showing the previous job's progress behind it.
         Assert.False(manager.IsBusy);
-        Assert.False(manager.HasBusyProgress);
-        Assert.Equal(0, manager.BusyStepCount);
-        Assert.Equal(0, manager.BusyStepsCompleted);
+        Assert.True(manager.BusyProgressIndeterminate);
+        Assert.Equal(0, manager.BusyProgressValue);
     }
 
     /// <summary>
@@ -136,7 +135,7 @@ public class PluginManagerViewModelBusyGateTests
 
         Assert.Equal(2, attempt);
         Assert.False(manager.IsBusy);
-        Assert.False(manager.HasBusyProgress);
+        Assert.True(manager.BusyProgressIndeterminate);
         Assert.True(manager.RestartNowCommand.CanExecute(null));
     }
 
@@ -151,13 +150,13 @@ public class PluginManagerViewModelBusyGateTests
         var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>());
         var row = _UpdatableRow("github-issues", "GitHub Issues");
 
-        var midInstall = new List<(bool Busy, bool Determinate)>();
-        _Downloads(storeClient, () => midInstall.Add((manager.IsBusy, manager.HasBusyProgress)));
+        var midInstall = new List<(bool Busy, bool Indeterminate)>();
+        _Downloads(storeClient, () => midInstall.Add((manager.IsBusy, manager.BusyProgressIndeterminate)));
         _StagesTheUpdate(installer);
 
         await manager.InstallFromStoreCommand.ExecuteAsync(row);
 
-        Assert.Equal([(true, false)], midInstall);
+        Assert.Equal([(true, true)], midInstall);
         Assert.False(manager.IsBusy);
     }
 

@@ -68,8 +68,8 @@ internal static class Screenshotter
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
-        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(stepCount: 0, stepsCompleted: 0, "Downloading 'GitHub Issues' v1.8.0…"),
-        ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(stepCount: 6, stepsCompleted: 2, "Updating 'Git status' (3 of 6)…"),
+        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(percent: null, "Downloading 'GitHub Issues' v1.8.0…"),
+        ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(percent: 200.0 / 6, "Updating 'Git status' (3 of 6)…"),
         ["manage-stores"] = (_, _) => _ManageStores(),
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
@@ -239,12 +239,12 @@ internal static class Screenshotter
     // is on in both because that is the state that was reported — "Update all" raises it after the first plugin
     // of the batch, so the footer offers a restart while the rest are still downloading. The offer has to be
     // visibly out of reach here, which is the whole point of the scene.
-    private static PluginStoreDialog _PluginStoreBusy(int stepCount, int stepsCompleted, string status)
+    private static PluginStoreDialog _PluginStoreBusy(double? percent, string status)
     {
         var viewModel = _PluginStoreViewModel();
         viewModel.Manager.StatusMessage = status;
-        viewModel.Manager.BusyStepCount = stepCount;
-        viewModel.Manager.BusyStepsCompleted = stepsCompleted;
+        viewModel.Manager.BusyProgressIndeterminate = percent is null;
+        viewModel.Manager.BusyProgressValue = percent ?? 0;
         viewModel.Manager.NeedsRestart = true;
         viewModel.Manager.IsBusy = true;
 

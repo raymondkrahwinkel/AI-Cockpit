@@ -97,21 +97,16 @@ public partial class PluginManagerViewModel : ViewModelBase
     private bool _isBusy;
 
     /// <summary>
-    /// How many items of the running batch have finished, and how many it has in all (AC-420) — the same
-    /// count "Update all" already writes into <see cref="StatusMessage"/>, as numbers, so the busy overlay
-    /// can draw a determinate bar next to it. A count of 0 means there is no honest fraction to draw — a
-    /// single install is one step — and the overlay runs indeterminate.
+    /// The busy overlay's bar (AC-420), in the shape the calibration overlay already uses: indeterminate
+    /// until there is an honest fraction to draw, and a 0..100 value once there is. A single install is one
+    /// step and has no fraction — the download arrives in one piece — so only "Update all" leaves it, fed by
+    /// the same counter it already writes into <see cref="StatusMessage"/>.
     /// </summary>
     [ObservableProperty]
-    private int _busyStepsCompleted;
+    private bool _busyProgressIndeterminate = true;
 
     [ObservableProperty]
-    private int _busyStepCount;
-
-    /// <summary>Whether the busy overlay has a real fraction to show, rather than only "something is happening".</summary>
-    public bool HasBusyProgress => BusyStepCount > 0;
-
-    partial void OnBusyStepCountChanged(int value) => OnPropertyChanged(nameof(HasBusyProgress));
+    private double _busyProgressValue;
 
     // A restart and a second install are both unreachable while work is in flight (AC-420), and both are
     // gated by their command's CanExecute — which is what a bound Button consults, so the affordance goes
@@ -861,8 +856,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         IsBusy = true;
-        BusyStepsCompleted = 0;
-        BusyStepCount = updates.Count;
+        BusyProgressValue = 0;
+        BusyProgressIndeterminate = false;
         try
         {
             var updated = 0;
@@ -885,7 +880,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
                 // Counted whether it worked or not: the bar tracks how far through the batch we are, and a
                 // failed plugin is behind us too. Whether it installed is what `updated` answers.
-                BusyStepsCompleted = i + 1;
+                BusyProgressValue = (i + 1) * 100.0 / updates.Count;
             }
 
             await BrowseStoresAsync();
@@ -897,10 +892,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
-            // Cleared here rather than only on the next batch: a single install that follows has one step and
-            // no fraction to show, and a stale "10 of 10" behind its overlay would be a bar for other work.
-            BusyStepCount = 0;
-            BusyStepsCompleted = 0;
+            // Back to indeterminate here rather than only on the next batch: a single install that follows has
+            // no fraction to show, and a bar left at 100% behind its overlay would be showing other work.
+            BusyProgressIndeterminate = true;
+            BusyProgressValue = 0;
             OnPropertyChanged(nameof(HasAvailableUpdates));
             OnPropertyChanged(nameof(AvailableUpdateCount));
         }

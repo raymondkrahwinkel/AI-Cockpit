@@ -99,13 +99,12 @@ public class PluginStoreBusyGateTests
             Assert.True(bar.IsIndeterminate, "a single install has one step and no fraction to draw");
 
             // The batch case: the same counter the footer's status line is written from.
-            manager.BusyStepCount = 6;
-            manager.BusyStepsCompleted = 2;
+            manager.BusyProgressIndeterminate = false;
+            manager.BusyProgressValue = 200.0 / 6;
             window.UpdateLayout();
 
             Assert.False(bar.IsIndeterminate);
-            Assert.Equal(6, bar.Maximum);
-            Assert.Equal(2, bar.Value);
+            Assert.Equal(33, Math.Round(bar.Value));
 
             manager.IsBusy = false;
             window.UpdateLayout();

@@ -458,10 +458,9 @@
                     <StackPanel Spacing="12">
                         <TextBlock Text="{Binding Manager.StatusMessage}" TextWrapping="Wrap" FontSize="12.5"
                                    Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
-                        <ProgressBar Height="3" CornerRadius="2" Minimum="0"
-                                     Maximum="{Binding Manager.BusyStepCount}"
-                                     Value="{Binding Manager.BusyStepsCompleted}"
-                                     IsIndeterminate="{Binding !Manager.HasBusyProgress}"
+                        <ProgressBar Minimum="0" Maximum="100" Height="6"
+                                     IsIndeterminate="{Binding Manager.BusyProgressIndeterminate}"
+                                     Value="{Binding Manager.BusyProgressValue}"
                                      Foreground="{StaticResource CockpitAccentBrush}"/>
                     </StackPanel>
                 </Border>
