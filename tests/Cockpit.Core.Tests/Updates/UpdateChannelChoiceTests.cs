@@ -87,6 +87,59 @@ public class UpdateChannelChoiceTests : IDisposable
     }
 
     /// <summary>
+    /// The other half, and the one that actually lost data: the operator touches the *startup* box while the file is
+    /// still being read. The channel they chose on an earlier run has not been read back yet, so a save that went
+    /// ahead would write "nobody chose" over it — erasing a decision this ticket calls permanent, without anyone
+    /// having gone near the channel control.
+    /// </summary>
+    [Fact]
+    public async Task TouchingTheStartupSettingWhileLoading_DoesNotEraseAChannelChosenEarlier()
+    {
+        var opened = new TaskCompletionSource();
+        var store = Substitute.For<IUpdateSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            await opened.Task;
+            return new UpdateSettings(Channel: UpdateChannel.Nightly);
+        });
+
+        var vm = UpdateTestCockpit.Build(Updates("0.8.0"), store);
+        var initialising = vm.InitialiseUpdatesAsync();
+
+        vm.CheckForUpdatesOnStartup = false;
+        opened.SetResult();
+        await initialising;
+
+        await store.Received().SaveAsync(
+            Arg.Is<UpdateSettings>(s => s.Channel == UpdateChannel.Nightly && !s.CheckOnStartup),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>And the mirror of it: choosing a channel mid-load must not discard the stored startup preference.</summary>
+    [Fact]
+    public async Task TouchingTheChannelWhileLoading_DoesNotEraseTheStoredStartupPreference()
+    {
+        var opened = new TaskCompletionSource();
+        var store = Substitute.For<IUpdateSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            await opened.Task;
+            return new UpdateSettings(CheckOnStartup: false);
+        });
+
+        var vm = UpdateTestCockpit.Build(Updates("0.8.0"), store);
+        var initialising = vm.InitialiseUpdatesAsync();
+
+        vm.IncludeNightlyBuilds = true;
+        opened.SetResult();
+        await initialising;
+
+        await store.Received().SaveAsync(
+            Arg.Is<UpdateSettings>(s => s.Channel == UpdateChannel.Nightly && !s.CheckOnStartup),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Reading the settings must not look like using them. This is the shape the old code had — the control was filled
     /// from disk and the fill wrote straight back — which is how every installation ended up with a stored channel
     /// nobody had picked.

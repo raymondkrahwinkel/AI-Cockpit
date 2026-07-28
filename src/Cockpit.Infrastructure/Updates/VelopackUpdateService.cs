@@ -114,9 +114,26 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
     /// The feed for one channel. <c>prerelease</c> is what lets the nightly be seen at all — the workflow publishes it
     /// as a GitHub pre-release — and withholding it on stable is the first of the two things keeping a stable install
     /// away from nightlies. The second is the channel name, which the check builds.
+    /// <para>
+    /// The <see cref="AccessToken"/> being empty is load-bearing, not an omission (AC-462). GitHub's release listing
+    /// is documented as "Information about published releases are available to everyone. Only users with push access
+    /// will receive listings for draft releases" — so asking anonymously is what keeps a half-finished draft from
+    /// counting as an update. The cockpit used to drop drafts itself; Velopack cannot, because the model it reads a
+    /// release into has no draft field to drop them by. Filtering on an empty publication date instead was considered
+    /// and rejected: GitHub's schema marks that field nullable outright and nowhere ties it to draft status, so the
+    /// rule would rest on undocumented behaviour with "silently skip a real release" as its failure.
+    /// </para>
     /// </summary>
     internal static IUpdateSource Source(UpdateChannel channel) =>
-        new GithubSource(RepositoryUrl, null, prerelease: channel == UpdateChannel.Nightly);
+        new GithubSource(RepositoryUrl, AccessToken, prerelease: channel == UpdateChannel.Nightly);
+
+    /// <summary>
+    /// Deliberately none — see <see cref="Source"/>. Named rather than passed inline so a test can hold it to that,
+    /// because the day this stops being null is the day drafts become update candidates again, and the reason to
+    /// change it (the anonymous API allows sixty requests an hour per address, shared by everyone behind it) has
+    /// nothing to do with drafts and would not bring them to mind.
+    /// </summary>
+    internal static string? AccessToken => null;
 
     private static AppRelease _ToRelease(VelopackAsset release, UpdateChannel channel)
     {

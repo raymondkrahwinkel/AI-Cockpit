@@ -542,7 +542,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   actually running, and a nightly looks for nightlies.
 
   Picking a channel yourself still wins, and now it sticks: once you touch that setting it is your decision and the
-  build no longer overrides it. Changing anything else in the Updates tab leaves the channel alone.
+  build no longer overrides it. Changing anything else in the Updates tab leaves the channel alone — including in the
+  first moments after startup, while the settings file is still being read.
 
   **One-time note if you have been running the cockpit already.** The old setting wrote a channel back on every start
   whether or not you had ever chosen one, so a stored value proved nothing about what you wanted — and treating it as

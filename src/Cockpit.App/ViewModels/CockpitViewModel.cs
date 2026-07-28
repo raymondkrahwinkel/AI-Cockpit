@@ -801,10 +801,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _loadingUpdateSettings;
 
     /// <summary>
-    /// True once the operator has changed either update setting. Both go through one save, so this is set in one
-    /// place — and it is what tells a load that finished afterwards not to overwrite a decision already on disk.
+    /// Which of the two update settings the operator has decided for. Kept apart rather than as one "touched" flag:
+    /// they are stored together but chosen separately, and one flag for both means changing either one claims the
+    /// other as well.
     /// </summary>
-    private bool _updateSettingsTouched;
+    private bool _startupChoiceMade;
+    private bool _channelChoiceMade;
+
+    /// <summary>
+    /// Whether the stored update settings have been read and applied, and whether the operator changed something
+    /// before that happened. Two plain flags rather than awaiting the read: both this and the read run on the UI
+    /// thread, and awaiting the same task from two places says nothing about which of them resumes first — a save
+    /// that woke up first would still be writing settings it had not learned yet.
+    /// </summary>
+    private bool _updateSettingsRead;
+    private bool _updateSettingsSavePending;
 
     // How often the background re-check for a newer build runs while the cockpit is open (AC-188) — the startup look
     // is a single shot, this catches a release cut hours after the window opened.
@@ -3221,15 +3232,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var settings = await store.LoadAsync();
 
             // Reading the file waits out anything holding it, for up to a couple of seconds, and the Updates tab is
-            // reachable while it does. Whatever the operator changed in that window went to disk already; applying
-            // what was read before it would overwrite their choice in memory and snap the control back under their
-            // hand — the "a channel you touched is permanent" promise, broken by the load that came after it.
-            if (!_updateSettingsTouched)
+            // reachable while it does. A control the operator changed in that window is theirs and keeps their value;
+            // every other one takes what was read. Per control rather than all-or-nothing: they touched one setting,
+            // not the section, and treating the whole section as spoken for is how touching the startup box came to
+            // discard a channel chosen on an earlier run.
+            _loadingUpdateSettings = true;
+            try
             {
-                _loadingUpdateSettings = true;
-                try
+                if (!_startupChoiceMade)
                 {
                     CheckForUpdatesOnStartup = settings.CheckOnStartup;
+                }
+
+                if (!_channelChoiceMade)
+                {
                     _chosenChannel = settings.Channel;
 
                     // Nobody has chosen, so the build decides (AC-387). Defaulting to stable instead is how a nightly
@@ -3237,10 +3253,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     // downgrade, presented as an upgrade.
                     IncludeNightlyBuilds = (_chosenChannel ?? BuildChannel.FromVersion(version)) == UpdateChannel.Nightly;
                 }
-                finally
-                {
-                    _loadingUpdateSettings = false;
-                }
+            }
+            finally
+            {
+                _loadingUpdateSettings = false;
+            }
+
+            _updateSettingsRead = true;
+
+            // A change the operator made while this was reading was held back rather than written — it would have
+            // persisted a channel not yet read, erasing an earlier choice. Now that both halves are known, it goes.
+            if (_updateSettingsSavePending)
+            {
+                _updateSettingsSavePending = false;
+                _SaveUpdateSettings();
             }
         }
 
@@ -3425,7 +3451,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Saves the startup preference without touching the channel: a cockpit that recorded a channel choice because
     // somebody ticked an unrelated box would have exactly the drift AC-387 removes, arriving by the side door.
-    partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();
+    partial void OnCheckForUpdatesOnStartupChanged(bool value)
+    {
+        if (_loadingUpdateSettings)
+        {
+            return;
+        }
+
+        _startupChoiceMade = true;
+        _SaveUpdateSettings();
+    }
 
     /// <summary>
     /// Touching the channel is the choice (AC-387). From here on it is the operator's and it wins over what the build
@@ -3438,20 +3473,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        _channelChoiceMade = true;
         _chosenChannel = _Stream;
         _SaveUpdateSettings();
     }
 
+    /// <summary>
+    /// Writes both settings — but never before the stored ones have been read. A save that went first would persist a
+    /// channel this cockpit has not learned yet, writing "nobody chose" over a choice made on an earlier run and
+    /// erasing it. Held back instead, and performed by <see cref="InitialiseUpdatesAsync"/> the moment both halves
+    /// are known.
+    /// </summary>
     private void _SaveUpdateSettings()
     {
-        if (_loadingUpdateSettings)
+        if (_updateSettingsStore is not { } store)
         {
             return;
         }
 
-        _updateSettingsTouched = true;
+        if (!_updateSettingsRead)
+        {
+            _updateSettingsSavePending = true;
+            return;
+        }
 
-        _ = _updateSettingsStore?.SaveAsync(new UpdateSettings(CheckForUpdatesOnStartup, _chosenChannel));
+        _ = store.SaveAsync(new UpdateSettings(CheckForUpdatesOnStartup, _chosenChannel));
     }
 
     /// <summary>

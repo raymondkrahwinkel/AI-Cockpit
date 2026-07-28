@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Updates;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -137,14 +138,23 @@ public class VelopackUpdateServiceTests : IDisposable
         Assert.Null(result.Release);
     }
 
-    /// <summary>The same, for a feed that answers too slowly to be waited on rather than one that answers wrongly.</summary>
+    /// <summary>
+    /// The same, for a feed that answers too slowly to be waited on rather than one that answers wrongly. The elapsed
+    /// time is asserted too: without it the check could be ignoring the patience it was handed and waiting out its own
+    /// ten-second constant, and every assertion here would still hold — slowly.
+    /// </summary>
     [Fact]
-    public async Task AFeedThatNeverAnswers_GivesUp_AndNeverSaysYouAreUpToDate()
+    public async Task AFeedThatNeverAnswers_GivesUpAfterThePatienceItWasGiven_AndNeverSaysYouAreUpToDate()
     {
+        var started = Stopwatch.StartNew();
+
         var result = await Check(UpdateChannel.Stable, new Feed { Hangs = true }, patience: TimeSpan.FromMilliseconds(50));
+
+        started.Stop();
 
         Assert.NotNull(result.Failure);
         Assert.Null(result.Release);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"gave up after {started.Elapsed}, which is the built-in wait rather than the one it was given");
     }
 
     /// <summary>
@@ -175,6 +185,17 @@ public class VelopackUpdateServiceTests : IDisposable
     [InlineData(UpdateChannel.Nightly, true)]
     public void TheSource_AsksForPreReleasesOnlyOnTheNightlyChannel(UpdateChannel channel, bool expected) =>
         Assert.Equal(expected, Assert.IsType<GithubSource>(VelopackUpdateService.Source(channel)).Prerelease);
+
+    /// <summary>
+    /// The feed is read anonymously, and that is what keeps drafts out of it (AC-462): GitHub lists draft releases
+    /// only to callers with push access. The cockpit used to drop drafts itself and cannot any more — the release
+    /// model Velopack reads into carries no draft field — so this is the whole of the protection, and it is one
+    /// argument away from being gone. Pinned here because the reason someone would add a token is the rate limit,
+    /// which gives no hint that drafts are riding on the answer.
+    /// </summary>
+    [Fact]
+    public void TheFeedIsReadAnonymously_WhichIsWhatKeepsDraftReleasesOutOfIt() =>
+        Assert.Null(VelopackUpdateService.AccessToken);
 
     private Task<UpdateCheckResult> Check(
         UpdateChannel channel,
