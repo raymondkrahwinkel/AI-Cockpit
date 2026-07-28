@@ -40,6 +40,8 @@
          does not reference the plugin's types (ReferenceOutputAssembly=false); only this test project reaches for the
          app, and only to render the plugin's own workspace body the way an operator would actually see it. -->
     <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
+    <!-- ThemePalette.Describe and RepositoryPaths, shared with the host's own theme-palette baseline (AC-338). -->
+    <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

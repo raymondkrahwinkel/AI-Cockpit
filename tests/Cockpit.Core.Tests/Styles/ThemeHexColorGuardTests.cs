@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Cockpit.TestSupport;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Styles;
@@ -380,24 +381,8 @@ public partial class ThemeHexColorGuardTests
         Path.GetRelativePath(repositoryRoot, file).Replace(Path.DirectorySeparatorChar, '/');
 
     /// <summary>
-    /// The repository this test belongs to: the first folder above the test output holding both trees the rule
-    /// covers. Both are required, so a partial checkout fails loudly instead of quietly scanning half of it.
+    /// The repository this test belongs to. Shared with the theme baseline in the view tests, which reads the same
+    /// tree from a different assembly — the second copy was written and then removed the same day.
     /// </summary>
-    private static string _LocateRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, "src"))
-                && Directory.Exists(Path.Combine(directory.FullName, "plugins-dev")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException(
-            "No folder above the test output holds both src/ and plugins-dev/ — this test reads the repo it belongs to.");
-    }
+    private static string _LocateRepositoryRoot() => RepositoryPaths.Root;
 }

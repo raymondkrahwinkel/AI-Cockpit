@@ -24,15 +24,7 @@ internal static class Screenshotter
     {
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
 
-        var window = BuildScene(scene, width, height);
-        window.Show();
-
-        // The selection surface's modes are states an operator drives it into, not windows that open in them, so
-        // the scene reaches them here — after the window is up and has a size to measure positions against.
-        if (window is ScreenshotSelectionWindow surface)
-        {
-            ScreenshotSelectionScene.Stage(surface, scene);
-        }
+        var window = ShowScene(scene, width, height);
 
         var frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("Headless renderer produced no frame to capture.");
@@ -54,45 +46,87 @@ internal static class Screenshotter
     }
 
     /// <summary>
-    /// The window a scene name asks for, built and sized but not shown. Its own step so the table below can be
+    /// The window each scene name asks for. A table rather than a switch so the set of names can be read off it:
+    /// anything that has to cover every screen — the theme baseline (AC-338) above all — would otherwise be
+    /// working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
+    /// </summary>
+    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
+    {
+        ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
+        ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
+        ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
+        ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
+        ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        ["verify-runners"] = (_, _) => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
+        ["verify-runners-edit"] = (_, _) => _VerifyRunnersEditing(),
+        ["new-session"] = (_, _) => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
+        // The project editor and the projects window, both of which show a project's own information rows
+        // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
+        ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
+        ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
+        ["plugin-store"] = (_, _) => _PluginStore(),
+        ["manage-stores"] = (_, _) => _ManageStores(),
+        ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
+        ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
+        ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
+        // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
+        // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
+        // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
+        ["terminal"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
+        ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
+        ["toolbar-actions"] = (_, _) => _ToolbarActions(),
+    };
+
+    /// <summary>
+    /// Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
+    /// its names with the scene because its modes are states the surface is driven into after it is shown, not
+    /// windows that open in them, so the name means nothing until then.
+    /// </summary>
+    internal static IReadOnlyList<string> SceneNames { get; } = [.. Scenes.Keys, .. ScreenshotSelectionScene.Names];
+
+    /// <summary>
+    /// The window a scene asks for, on screen and in the state the name describes. Its own step so that anything
+    /// looking at a scene — a render here, the theme baseline in the view tests — reaches it by the same route,
+    /// rather than a second copy that can drift out of step with this one.
+    /// </summary>
+    internal static Window ShowScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
+    {
+        var window = BuildScene(scene, width, height);
+        window.Show();
+
+        // The selection surface's modes are states an operator drives it into, not windows that open in them, so
+        // the scene reaches them here — after the window is up and has a size to measure positions against.
+        if (window is ScreenshotSelectionWindow surface)
+        {
+            ScreenshotSelectionScene.Stage(surface, scene);
+        }
+
+        return window;
+    }
+
+    /// <summary>
+    /// The window a scene name asks for, built and sized but not shown. Its own step so the table above can be
     /// held to a test — a scene that stopped building was otherwise found by whoever next asked for a render,
-    /// which on this surface has meant finding it after it shipped.
+    /// which on this surface has meant finding it after it shipped. An unknown name falls back to the main
+    /// window, so a render never fails on a typo — the tests are what hold the names.
     /// </summary>
     internal static Window BuildScene(string? scene, int width = DefaultWindowWidth, int height = DefaultWindowHeight)
     {
-        Window window = scene switch
+        Window window;
+        if (scene is not null && Scenes.TryGetValue(scene, out var build))
         {
-            "about" => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
-            "single-instance" => new SingleInstanceNoticeDialog(),
-            "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
-            "shortcuts" => _OptionsOnTab("Shortcuts"),
-            "debug" => _OptionsOnTab("Debug"),
-            "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
-            "verify-runners" => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
-            "verify-runners-edit" => _VerifyRunnersEditing(),
-            "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
-            // The project editor and the projects window, both of which show a project's own information rows
-            // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
-            "project-editor" => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
-            "projects" => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
-            "plugin-store" => _PluginStore(),
-            "manage-stores" => _ManageStores(),
-            "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
-            "set-status" => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
-            "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
-            "tty" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
-            // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
-            // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
-            // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
-            "terminal" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
-            "plugin-update-badge" => _PluginUpdateBadge(),
-            "toolbar-actions" => _ToolbarActions(),
-            // The selection surface, one scene per mode (AC-357). Their names live with the scene rather than
-            // here because the mode is something the surface is driven into after it is shown, not a window that
-            // opens in it — so the name means nothing until then.
-            _ when ScreenshotSelectionScene.Covers(scene) => ScreenshotSelectionScene.Build(scene, width, height),
-            _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
-        };
+            window = build(width, height);
+        }
+        else if (ScreenshotSelectionScene.Covers(scene))
+        {
+            window = ScreenshotSelectionScene.Build(scene, width, height);
+        }
+        else
+        {
+            window = new MainWindow { DataContext = new ViewModels.CockpitViewModel() };
+        }
 
         // A SizeToContent dialog measures itself; only the main window takes the requested size.
         if (window is MainWindow)
@@ -261,6 +295,11 @@ internal static class Screenshotter
     private static AppBuilder BuildHeadlessAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UseSkia()
+            // The app's own font, for the same reason it takes the app's own fonts options: a render is only
+            // worth looking at if it is of this program. Without it the harness measured text in whatever the
+            // machine happened to offer, which is also how the same window came out with a scroll bar here and
+            // none on CI.
+            .WithInterFont()
             .With(Program.CockpitFontOptions())
             .UseHeadless(new AvaloniaHeadlessPlatformOptions
             {

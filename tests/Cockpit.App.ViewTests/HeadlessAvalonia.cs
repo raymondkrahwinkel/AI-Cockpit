@@ -45,6 +45,10 @@ public sealed class HeadlessAvalonia : IDisposable
                 AppBuilder.Configure<Cockpit.App.App>()
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                     .UseSkia()
+                    // The app ships Inter and asks for it at startup; a harness that leaves it out measures text
+                    // in whatever font the machine happens to offer. That is not this program, and it is what
+                    // made the same window come out with a scroll bar here and without one on CI.
+                    .WithInterFont()
                     .SetupWithoutStarting();
 
                 ready.Set();
@@ -64,6 +68,12 @@ public sealed class HeadlessAvalonia : IDisposable
 
     /// <summary>Runs a test body on the thread Avalonia belongs to, and hands its failure back to the test.</summary>
     public static void Run(Action body) => Dispatcher.UIThread.Invoke(body);
+
+    /// <summary>
+    /// The same, for a body that produces something the assertions need. Without it the result has to be caught in
+    /// a captured local, which starts life null and has to be forgiven for it.
+    /// </summary>
+    public static T Run<T>(Func<T> body) => Dispatcher.UIThread.Invoke(body);
 
     /// <summary>
     /// The same, for a body that awaits. Needed by anything that has to let the dispatcher keep running while it

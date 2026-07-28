@@ -15,6 +15,9 @@
     <!-- LoopbackHttpServer runs on Kestrel. Declared here rather than leaned on transitively, because the
          plugin test projects reference no ASP.NET of their own. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- ThemePalette walks a rendered visual tree. Avalonia only — no headless platform and no Skia: this reads
+         a tree that its caller has already shown, and each caller brings the runtime it shows it with. -->
+    <PackageReference Include="Avalonia" Version="12.0.5" />
   </ItemGroup>
 
 </Project>

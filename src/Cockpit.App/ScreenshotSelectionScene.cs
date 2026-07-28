@@ -1,6 +1,9 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.VisualTree;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -80,10 +83,15 @@ internal static class ScreenshotSelectionScene
     /// </summary>
     private const int CaptureScale = 2;
 
+    /// <summary>
+    /// This surface's scene names. One list rather than a name test written out a second time, so a mode that is
+    /// added here cannot be missing from whatever walks the scenes — the theme baseline (AC-338) reads it.
+    /// </summary>
+    public static IReadOnlyList<string> Names { get; } =
+        [Idle, Region, WindowPick, Redaction, Marks, Arrow, Highlight, Stroke, Text, TwoDisplays];
+
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
-    public static bool Covers(string? scene) =>
-        scene is Idle or Region or WindowPick or Redaction or Marks or Arrow or Highlight or Stroke or Text
-            or TwoDisplays;
+    public static bool Covers(string? scene) => scene is not null && Names.Contains(scene);
 
     /// <summary>
     /// The surface over a stand-in desktop, sized to the run's own window size. Every mode builds the same
@@ -155,7 +163,10 @@ internal static class ScreenshotSelectionScene
                 // "Window" begins with the key that picks a window, and typing it must not.
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.T, RawInputModifiers.None);
-                _Note(surface, new Point(width * 0.58, height * 0.32), "Window is empty here");
+                // The first note is placed off the panel rather than at a fraction. At 0.32 it pressed inside the
+                // panel, so the press belonged to the panel and no note opened — after which the string ran as
+                // shortcuts and Enter took the shot and closed the surface out from under the second note.
+                _Note(surface, new Point(width * 0.58, _ClearOfTheControls(surface, height * 0.42)), "Window is empty here");
                 _Note(surface, new Point(width * 0.58, height * 0.70), "expected 12, got 7");
                 break;
 
@@ -176,8 +187,12 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.10, height * 0.10), new Point(width * 0.94, height * 0.90));
                 surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
                 // Taken from a line low enough to clear the control panel: a press on the panel belongs to the
-                // panel, so a band begun under it is a band that never gets drawn at all.
-                _Drag(surface, new Point(width * 0.56, height * 0.305), new Point(width * 0.90, height * 0.35));
+                // panel, so a band begun under it is a band that never gets drawn at all. 0.305 cleared it at the
+                // 1440x900 the view tests use and did not at the 1100x760 a render defaults to, so this one is
+                // measured off the panel too: the scene had been rendering one band, over the terminal, which is
+                // the half that shows the tool works and not the half that shows it stays readable.
+                var band = _ClearOfTheControls(surface, height * 0.42);
+                _Drag(surface, new Point(width * 0.56, band), new Point(width * 0.90, band + (height * 0.045)));
                 _Drag(surface, new Point(width * 0.56, height * 0.625), new Point(width * 0.90, height * 0.675));
                 break;
 
@@ -192,6 +207,78 @@ internal static class ScreenshotSelectionScene
                 _Drag(surface, new Point(width * 0.58, height * 0.62), new Point(width * 0.80, height * 0.67));
                 break;
         }
+
+        _AssertStaged(surface, scene);
+    }
+
+    /// <summary>
+    /// How many marks each scene's staging has to leave behind. Everything above is driven through the pointer, so
+    /// a press that lands somewhere it is not wanted is simply lost, and the scene then renders perfectly well and
+    /// one mark short — looking like a tool that works. Two scenes were doing exactly that at the size a render
+    /// defaults to: the note scene pressed its first note inside the control panel, so no note opened, the text
+    /// that followed ran as shortcuts and Enter took the shot; and the highlighter lost the band over the
+    /// document, leaving the one over the terminal.
+    /// <para>
+    /// Both went unseen because the view tests stage at 1440x900 and a render defaults to 1100x760, and every
+    /// position here is a fraction of the window while the panel it has to miss is a fixed size. So this is
+    /// checked against the surface that was actually staged, rather than reasoned about from the numbers.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<string, int> StagedMarks = new(StringComparer.Ordinal)
+    {
+        [Marks] = 2,
+        [Arrow] = 2,
+        [Highlight] = 2,
+        [Stroke] = 2,
+        [Redaction] = 2,
+        [Text] = 2,
+    };
+
+    private static void _AssertStaged(ScreenshotSelectionWindow surface, string? scene)
+    {
+        if (scene is null || !StagedMarks.TryGetValue(scene, out var expected))
+        {
+            return;
+        }
+
+        var selection = surface.DataContext as ScreenshotSelectionViewModel
+            ?? throw new InvalidOperationException($"The '{scene}' surface has no selection to have staged onto.");
+
+        if (selection.Marks.Count != expected)
+        {
+            throw new InvalidOperationException(
+                $"Scene '{scene}' staged {selection.Marks.Count} of its {expected} marks. A press that lands on the "
+                + "control panel belongs to the panel, so a mark begun under it is never drawn — check the positions "
+                + "against where the panels rest now.");
+        }
+    }
+
+    /// <summary>
+    /// A y far enough down to be clear of the control panel, whatever size the surface came up at. Every position
+    /// in a scene is a fraction of the window and the panel is a fixed size, so a fraction that misses it at one
+    /// size lands inside it at another — which is how two scenes came to stage marks that were never drawn, and
+    /// why this is measured off the panel rather than tuned until the default size looked right.
+    /// </summary>
+    private static double _ClearOfTheControls(ScreenshotSelectionWindow surface, double preferred)
+    {
+        // The panels are placed once the surface has a region to place them against, and their bounds are whatever
+        // the last layout pass left — which, straight after a drag, is not yet this one.
+        surface.UpdateLayout();
+
+        // Both of them: the mark tools sit in a second panel stacked under the first, and measuring only the top
+        // one left the note scene still pressing into a panel below 840x630. Whichever reaches lowest is the one
+        // a press has to clear, and taking the lowest keeps that true if either panel grows.
+        var lowest = surface.GetVisualDescendants()
+            .OfType<Border>()
+            .Where(border => border.Name is "Controls" or "MarkControls")
+            .Select(border => border.TranslatePoint(new Point(0, border.Bounds.Height), surface)?.Y)
+            .Where(bottom => bottom is not null)
+            .DefaultIfEmpty(null)
+            .Max();
+
+        // A margin, because a press exactly on the seam belongs to whichever of the two the hit test reaches
+        // first, and that is not something a scene should be deciding by a pixel.
+        return lowest is null ? preferred : Math.Max(preferred, lowest.Value + 12);
     }
 
     /// <summary>
