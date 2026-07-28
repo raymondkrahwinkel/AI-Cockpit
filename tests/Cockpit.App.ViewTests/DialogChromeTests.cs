@@ -144,19 +144,28 @@ public class DialogChromeTests
     private const double LineSpacing = 1;
     private const double CaptionButtonHeight = 26;
 
+    // What the bar comes to at those values, against the 63px and 97px it used to. A change here is either the
+    // header growing back or the bundled font moving under us; both are worth being stopped for.
+    private const double BarWithAName = 44;
+    private const double BarWithANameAndALine = 59;
+
     [Theory]
-    [InlineData(null)]
-    [InlineData("What is this session working on?")]
-    public void TheChrome_GivesItsHeadingExactlyTheRoomThisTicketChose(string? subtitle) => HeadlessAvalonia.Run(() =>
+    [InlineData(null, BarWithAName)]
+    [InlineData("What is this session working on?", BarWithANameAndALine)]
+    public void TheChrome_GivesItsHeadingExactlyTheRoomThisTicketChose(string? subtitle, double barHeight) => HeadlessAvalonia.Run(() =>
     {
         // AC-426: the bar ran to 63px for a name alone and 97px with its explanation — on a short dialog like Set
-        // status, two fifths of the window before its first control. Five values came down to fix that, so five
-        // values are what this holds, each against the geometry the chrome actually lays out.
+        // status, two fifths of the window before its first control. The values that brought it down are held here
+        // one by one, against the geometry the chrome actually lays out.
         //
-        // Every one is asserted on its own rather than through one derived total. A total is the cheaper test and
-        // the worse one: two earlier versions of this guard each held a single difference, and each let something
-        // it was supposed to watch move freely underneath — first the line spacing, then the horizontal padding.
-        // Sums hide the terms they are made of.
+        // Each on its own rather than through a derived total. A total is the cheaper test and the worse one:
+        // earlier versions of this guard held a single difference, and each let something they were meant to watch
+        // move freely underneath — the line spacing, then the horizontal padding. Sums hide their own terms.
+        //
+        // The bar's own height leads, because it is the thing the ticket was about and the only figure no relative
+        // measurement can hold: anything that inflates a line inflates the heading with it, so every difference
+        // below stays true while the bar grows. It is an exact number and safe to be one — the harness bundles
+        // Inter (HeadlessAvalonia), so the text metric is not the machine's, and CI measures the same figure.
         var window = new Window { Width = 600, Height = 400 };
         CockpitWindowChrome.Apply(window, "Set status", subtitle);
         window.Show();
@@ -165,8 +174,11 @@ public class DialogChromeTests
         var band = _Band(window);
         var heading = _Heading(band);
         var lines = heading.Children.OfType<TextBlock>().ToList();
+        var captionColumn = _CaptionColumn(band);
 
+        Assert.Equal(barHeight, band.Bounds.Height, 1);
         Assert.Equal(SidePadding, heading.Bounds.Left, 1);
+        Assert.Equal(SidePadding, captionColumn.Bounds.Left - heading.Bounds.Right, 1);
         Assert.Equal(VerticalPadding, heading.Bounds.Top, 1);
         Assert.Equal(VerticalPadding + Seam, band.Bounds.Height - heading.Bounds.Bottom, 1);
         Assert.Equal(LineSpacing * (lines.Count - 1), heading.Bounds.Height - lines.Sum(line => line.Bounds.Height), 1);
@@ -191,14 +203,14 @@ public class DialogChromeTests
     public void TheSubtitle_RunsToItsBoundAndStopsThere() => HeadlessAvalonia.Run(() =>
     {
         // The sister of ATitleFullOfNewlines_DoesNotGrowTheBar. SubtitleMaxLines calls itself "bounded rather than
-        // trusted" and nothing held it to that. Held from both ends on purpose: a bound only checked from above is
-        // satisfied by every value below it too, so clamping the explanation to one line — losing two lines of it
-        // mid-word — would read as a pass.
-        var oneLine = _BarHeight("Settings", "one");
+        // trusted" and nothing held it to that. Held from both ends, and from below by the line just under the
+        // bound rather than by any shorter one: a lower end that only rules out a single line still lets the bound
+        // slip from three to two, losing an explanation's last line mid-word with the suite green.
+        var justUnder = _BarHeight("Settings", "one\ntwo");
         var atTheBound = _BarHeight("Settings", "one\ntwo\nthree");
         var wellPast = _BarHeight("Settings", string.Join("\n", Enumerable.Repeat("padding", 40)));
 
-        Assert.True(atTheBound > oneLine, $"a three-line explanation is no taller than a one-line one ({atTheBound})");
+        Assert.True(atTheBound > justUnder, $"a three-line explanation is no taller than a two-line one ({atTheBound})");
         Assert.Equal(atTheBound, wellPast, 1);
     });
 
@@ -216,10 +228,8 @@ public class DialogChromeTests
         // The column and the heading are siblings in the bar, so their Bounds share an origin; the button's own
         // Bounds are relative to the column that carries the margin, and would read 0 either way.
         var band = _Band(window);
-        var captionColumn = band.GetVisualDescendants().OfType<StackPanel>()
-            .First(panel => panel.Children.OfType<Button>().Any());
 
-        Assert.Equal(_Heading(band).Bounds.Top, captionColumn.Bounds.Top, 1);
+        Assert.Equal(_Heading(band).Bounds.Top, _CaptionColumn(band).Bounds.Top, 1);
     });
 
     // The title bar, which a dialog's footer is indistinguishable from by colour alone — it stands on the same
@@ -230,7 +240,11 @@ public class DialogChromeTests
         window.GetVisualDescendants().OfType<Border>().First(border =>
             border.Background is ISolidColorBrush brush && brush.Color == _Colour("CockpitChromeBgColor"));
 
+    // Close is added after the gear, minimize and maximize, so it is last under every combination of them.
     private static Button _CloseButton(Border band) => band.GetVisualDescendants().OfType<Button>().Last();
+
+    private static StackPanel _CaptionColumn(Border band) =>
+        band.GetVisualDescendants().OfType<StackPanel>().First(panel => panel.Children.OfType<Button>().Any());
 
     // The heading is the one panel in the band whose own children are the text; the caption column's children are
     // buttons, so a glyph inside a button cannot be counted as a line of the heading.
