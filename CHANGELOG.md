@@ -686,6 +686,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
+  which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your
+  sessions spent were created with whatever the system's default permissions said — on a stock Fedora, that means
+  world-readable. They hold free text, so a command you approved or a prompt you sent could name a token, a path or
+  a customer, and the value of such a record is exactly that nobody else can read it.
+
+  New trails are created readable and writable by you alone. The trails already on disk are put right the next time
+  the cockpit starts, so a machine that has been running it for a while does not stay open and does not need you to
+  run `chmod` on our behalf. Only the cockpit's own trails are touched — a file it did not write keeps whatever
+  permissions you gave it. On Windows this changes nothing: there are no permission bits of this kind, and the
+  per-user application-data folder is the boundary that does the same job.
+
 - fixed: a sign-in on an OAuth-protected MCP server no longer tells you to check a browser window that was never
   opened. When the server's own discovery went wrong, the cockpit stopped before it knew where to send you — and
   then reported it as a browser you had failed to finish with. The three ways a sign-in can stop now read

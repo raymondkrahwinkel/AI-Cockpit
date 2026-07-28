@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Infrastructure.Auditing;
-using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -18,7 +17,7 @@ internal sealed class DelegationAuditLog : JsonlAuditLog<DelegationAuditEntry>, 
     private const int MaxPromptLength = 300;
 
     public DelegationAuditLog(ILogger<DelegationAuditLog> logger)
-        : base(_DefaultPath(), logger)
+        : base(AuditTrailFiles.InStateRoot(AuditTrailFiles.Delegation), logger)
     {
     }
 
@@ -36,7 +35,4 @@ internal sealed class DelegationAuditLog : JsonlAuditLog<DelegationAuditEntry>, 
         entry.Prompt is { } prompt
             ? entry with { Prompt = TrimText(prompt, MaxPromptLength) }
             : entry;
-
-    private static string _DefaultPath() =>
-        Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default) ?? string.Empty, "delegation-audit.jsonl");
 }
