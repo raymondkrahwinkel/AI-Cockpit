@@ -51,6 +51,7 @@ internal static class AutopilotCeoBrief
         var roster = _Roster(profiles);
         var costGuidance = _CostGuidance(costStrategy);
         var executionFit = _ExecutionFit();
+        var reviewVerification = _ReviewVerification();
 
         // Read/write split for a source-triggered run (AC-212). While planning the CEO gets the tracker's READ tools —
         // it may open the source issue and, for an epic, pull its "parent for" child issues (AC-217) to plan them as one
@@ -123,6 +124,8 @@ internal static class AutopilotCeoBrief
             default; only drop one when the operator says this run does not need it (a docs-only or plainly trivial
             change).
 
+            {{reviewVerification}}
+
             Preflight — resolve every open question now, with the operator, before they approve. Once approved the run is
             autonomous: no human is at the keyboard, and a step's agent that hits an unanswered decision mid-build has to
             stop and ask, which strands the run. So this planning round is your one chance to ask. Surface every ambiguity
@@ -191,6 +194,29 @@ internal static class AutopilotCeoBrief
         even a light model builds it rather than "analysing" it — a vague or open-ended brief ("look at X", "review the
         repo", "consider whether…") is exactly what makes a worker chat and analyse instead of writing code. A sharper
         brief lets a cheaper model succeed: clear instructions and the cheapest-adequate model reinforce each other.
+        """;
+
+    // What each review round is worth verifying (AC-433). A gate reviews, its findings get fixed, and it reviews again
+    // until a round finds nothing — but in the first pilot every one of those rounds rebuilt the whole solution from
+    // scratch and ran the entire suite, for both gates, while only the last round of each carried a verdict. A round
+    // that ends in fixes is answering "does the fix work"; an incremental build and the tests around the change answer
+    // that. The round that ends clean is what the verdict means, so that one stays whole — in the same pilot three of
+    // the security gate's round-2 findings were regressions on its own round-1 fixes, which is what a full final round
+    // is for. Paired with a reporting duty on purpose: with the scope unreported, a cheaper round and a quietly
+    // weakened gate look the same from outside. Project-neutral like the rest of this brief — it names no build tool.
+    private static string _ReviewVerification() =>
+        """
+        Verification cost per review round. A review gate reviews, its findings get fixed, and it reviews again until a
+        round finds nothing — only that last round carries the verdict, so say that in each gate's brief and split the
+        cost with it. A round that ends with findings verifies narrowly: build incrementally and run the tests covering
+        the changed area, enough to show the fix works and broke nothing around it. The round that ends clean verifies
+        fully: build the whole project from scratch with warnings treated as errors, and run the complete test suite.
+        Nothing comes off that last round — it is what gives the verdict its meaning, and a fix from an earlier round
+        that broke something outside its own test selection is caught exactly there.
+
+        Make that checkable rather than assumed: have every round report what it actually built and ran, and put the
+        same in the gate's acceptance, so a gate passes only when its final round verified the whole project and its
+        report says so. With the scope unreported, a cheaper round and a quietly weakened gate are indistinguishable.
         """;
 
     // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is cost-aware.

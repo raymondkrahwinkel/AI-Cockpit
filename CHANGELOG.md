@@ -552,6 +552,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: an Autopilot review gate no longer rebuilds and retests everything on every pass over the diff. While it is
+  still finding things it builds incrementally and runs the tests around the change, which is enough to show a fix
+  works; the round that finds nothing keeps the whole-project build with warnings as errors and the complete test
+  suite, because that is the round whose verdict decides whether the work may merge. In the first measured run that
+  was eight full build-and-test cycles for one item where two carried a verdict.
+
+  Nothing is taken on trust: each round says what it actually built and ran, and a gate passes only once its final
+  round has verified the whole project and its report says so. A round that skipped something outside its own test
+  selection is caught by that last full round.
+
 - changed: the release page now tells you what your own machine is about to do about an unsigned download, for all
   three platforms rather than only macOS. Windows SmartScreen calls the publisher unknown, a downloaded AppImage has
   no executable bit, and Gatekeeper reports a perfectly good app as damaged — each refusal looks like a broken

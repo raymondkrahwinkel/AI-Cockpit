@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Cockpit.Plugins.Abstractions.Profiles;
 using FluentAssertions;
 
@@ -236,6 +237,57 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_SplitsAReviewGatesVerification_NarrowWhileFixing_FullOnTheRoundThatFindsNothing()
+    {
+        // AC-433: the expensive half is tied to the round that carries the verdict, and only to that one. Both halves
+        // have to be stated — a brief that only says "verify narrowly" weakens the gate, and one that only says "verify
+        // fully" is what the pilot already did eight times per item.
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
+
+        Assert.Contains("only that last round carries the verdict", brief);
+        Assert.Contains("A round that ends with findings verifies narrowly", brief);
+        Assert.Contains("build incrementally and run the tests covering the changed area", brief);
+        Assert.Contains("The round that ends clean verifies fully", brief);
+        Assert.Contains("build the whole project from scratch with warnings treated as errors", brief);
+        Assert.Contains("run the complete test suite", brief);
+    }
+
+    [Fact]
+    public void For_MakesTheRoundsScopeReported_AndPartOfTheGatesAcceptance_SoAFullRoundIsCheckedNotAssumed()
+    {
+        // The reporting duty is the half that stops this from being indistinguishable from quietly weakening the gate:
+        // the scope goes into the acceptance, which is what the CEO validator judges the finished step against.
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
+
+        Assert.Contains("have every round report what it actually built and ran", brief);
+        Assert.Contains("in the gate's acceptance", brief);
+        Assert.Contains("a gate passes only when its final round verified the whole project", brief);
+    }
+
+    [Fact]
+    public void For_PutsTheVerificationSplitWithTheGates_Unconditionally_AndNamesNoBuildTool()
+    {
+        // It belongs to the gate instruction, so it has to read after it rather than float elsewhere in the brief; and
+        // like every other instruction here it holds for any project, so it prescribes no build tool.
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = _Unwrapped(AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.CostFirst));
+
+        var gates = brief.IndexOf("Standard gates for a run that changes code", StringComparison.Ordinal);
+        var verification = brief.IndexOf("Verification cost per review round", StringComparison.Ordinal);
+        Assert.True(gates >= 0 && verification > gates, $"gates at {gates}, verification at {verification}");
+
+        Assert.DoesNotContain("dotnet", brief);
+        Assert.DoesNotContain("msbuild", brief);
+        Assert.DoesNotContain("npm", brief);
+        Assert.DoesNotContain("gradle", brief);
+    }
+
+    [Fact]
     public void For_WithNoProfilesOrIdentity_OmitsTheRosterAndIdentityLine()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
@@ -247,4 +299,9 @@ public class AutopilotCeoBriefTests
         // The cost guidance is unconditional — it stands even with no roster passed.
         brief.Should().Contain("lean cheap");
     }
+
+    // The brief is a wrapped raw string literal, so a sentence in it is broken by a newline and indentation wherever it
+    // happened to reach the margin. Collapsing runs of whitespace lets a test assert what the brief says without also
+    // pinning how it is laid out — re-wrapping a paragraph is not a behaviour change and must not turn a test red.
+    private static string _Unwrapped(string brief) => Regex.Replace(brief, @"\s+", " ");
 }
