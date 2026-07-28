@@ -247,8 +247,17 @@ internal sealed class AgentsMcpTools(
             // Only a message this call actually created is retracted — a deduplicated one belongs to an earlier
             // delivery that stood on its own, and Forget is deliberately not used, because the recipient's other mail
             // came from other senders and is not this caller's to drop.
+            //
+            // A snapshot that does not come back at all is deliberately not treated as the recipient having left. It is
+            // derived from the caller's own pane, so a null answer is a statement about the caller: the sender's session
+            // ended mid-call. Taking a message away from a recipient that is, as far as anything here knows, still live
+            // and still able to read it would be losing mail on the strength of something that happened to the sender —
+            // and if the recipient has gone too, its own Forget is what clears the inbox, exactly as for any other
+            // unread mail. Only a snapshot that comes back and does not hold the recipient is evidence about the
+            // recipient.
             if (delivery.Outcome == AgentMessageDeliveryOutcome.Delivered
-                && !await _IsStillOnTheDeskAsync(caller, addressee).ConfigureAwait(false))
+                && await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is { } afterDelivery
+                && !_IsOnTheDesk(afterDelivery, addressee))
             {
                 // What is reported is what the retraction actually found. A message that is no longer there was either
                 // cleared by the closing pane's own Forget or drained by the recipient in the instant before it closed,
@@ -349,15 +358,6 @@ internal sealed class AgentsMcpTools(
 
     private static bool _IsOnTheDesk(WorkspaceAgentSnapshot snapshot, string paneId) =>
         snapshot.Panes.Any(pane => string.Equals(pane.PaneId, paneId, StringComparison.Ordinal));
-
-    /// <summary>
-    /// Asks the gateway again whether <paramref name="paneId"/> is still on <paramref name="caller"/>'s desk. Deliberately
-    /// re-derived from the caller's own pane, exactly as the first check was: "is the recipient still reachable" has to
-    /// mean the same thing the second time, or the re-check would be a different, weaker question.
-    /// </summary>
-    private async Task<bool> _IsStillOnTheDeskAsync(string caller, string paneId) =>
-        await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is { } snapshot
-        && _IsOnTheDesk(snapshot, paneId);
 
     /// <summary>Records the refusal on the append-only trail and returns it in the same <c>{ok:false,error}</c> shape every tool here refuses with — a tool result, never an MCP protocol error.</summary>
     private async Task<string> _RefuseNotifyAsync(

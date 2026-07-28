@@ -836,6 +836,36 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     /// <summary>
+    /// The re-check after the delivery is derived from the <em>sender's</em> pane, so a gateway that can no longer place
+    /// the sender is saying something about the sender — its session ended mid-call — and nothing at all about the
+    /// recipient. Reading that as "the recipient left" would take a delivered message away from a pane that is still
+    /// live and still able to read it, on the strength of something that happened to somebody else. The delivery stands,
+    /// and if the recipient has gone too, its own Forget is what clears the inbox.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WhenTheSendersOwnSessionEndsAfterTheDelivery_LeavesTheMessageWaitingForTheRecipient()
+    {
+        var desk = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+        ]);
+
+        // The first look places the sender; by the second it cannot be placed at all — which is what a sender whose
+        // session has just ended looks like, and is not evidence that pane-b went anywhere.
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
+            Task.FromResult<WorkspaceAgentSnapshot?>(desk),
+            Task.FromResult<WorkspaceAgentSnapshot?>(null));
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync("pane-b", "handover", "the branch is pushed"));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.Equal("the branch is pushed", Assert.Single(_Waiting("pane-b")).Body);
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.Accepted, entry.Outcome);
+    }
+
+    /// <summary>
     /// One read hands over a bounded batch, because the batch is a tool result in the recipient's own context: without a
     /// cap, neighbours on the same desk decide how much of that context — and of its operator's money — the recipient
     /// spends collecting mail. The rest stays put and the reply says how much, so the tail is collectable rather than
