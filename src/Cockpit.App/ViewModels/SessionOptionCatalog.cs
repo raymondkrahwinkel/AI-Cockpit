@@ -28,8 +28,11 @@ public static class SessionOptionCatalog
     public static IReadOnlyList<PermissionModeOption> LivePermissionModes { get; } =
         AllPermissionModes.Where(mode => mode.Value != BypassPermissionModeValue).ToArray();
 
+    // A label names the family, never a release: the value is an alias the CLI re-points at will, so a label like
+    // "Opus 4.8" would keep claiming a release the field no longer launches (AC-418).
     public static IReadOnlyList<ModelOption> Models { get; } =
     [
+        new("Fable", "fable"),
         new("Opus", "opus"),
         new("Sonnet", "sonnet"),
         new("Haiku", "haiku"),
@@ -71,8 +74,9 @@ public static class SessionOptionCatalog
     /// <summary>App-default mode (Ask permissions) used when a profile carries no defaults.</summary>
     public static PermissionModeOption DefaultPermissionMode { get; } = AllPermissionModes[0];
 
-    /// <summary>App-default model (Sonnet) used when a profile carries no defaults.</summary>
-    public static ModelOption DefaultModel { get; } = Models[1];
+    /// <summary>App-default model (Sonnet) used when a profile carries no defaults; looked up by value, so adding a
+    /// model to <see cref="Models"/> cannot silently move the default the way a positional index would.</summary>
+    public static ModelOption DefaultModel { get; } = Models.First(model => model.Value == "sonnet");
 
     /// <summary>App-default effort (Medium) used when a profile carries no defaults.</summary>
     public static EffortOption DefaultEffort { get; } = Efforts[1];
