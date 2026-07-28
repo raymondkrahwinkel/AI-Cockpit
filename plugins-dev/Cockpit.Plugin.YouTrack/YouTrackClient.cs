@@ -368,29 +368,9 @@ internal sealed class YouTrackClient
         return fallbackProjectTag ?? string.Empty;
     }
 
-    // "State" (most projects) or "Stage" (e.g. EJ, per the YouTrack skill) — the first matching custom field's value name.
-    private static string? _ExtractState(JsonElement element)
-    {
-        if (!element.TryGetProperty("customFields", out var fields) || fields.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        foreach (var field in fields.EnumerateArray())
-        {
-            var name = field.TryGetProperty("name", out var nameProperty) ? nameProperty.GetString() : null;
-            if (name is not ("State" or "Stage"))
-            {
-                continue;
-            }
-
-            if (field.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Object
-                && value.TryGetProperty("name", out var valueName) && valueName.ValueKind == JsonValueKind.String)
-            {
-                return valueName.GetString();
-            }
-        }
-
-        return null;
-    }
+    // Through the field parser rather than a second rule of its own: which custom field is the status ("State" here,
+    // "Stage" there, "Kanban State" on a third board, in that order of preference) is decided in one place, so the grid
+    // and Autopilot's start gate can never disagree about what stage an issue is on.
+    private static string? _ExtractState(JsonElement element) =>
+        element.TryGetProperty("customFields", out var fields) ? YouTrackFieldParser.ParseStateName(fields) : null;
 }

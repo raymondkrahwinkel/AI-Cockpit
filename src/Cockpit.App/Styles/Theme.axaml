@@ -47,6 +47,16 @@
             <Color x:Key="CockpitTextOnAccentColor">#ffffff</Color>
             <SolidColorBrush x:Key="CockpitTextOnAccentBrush" Color="{StaticResource CockpitTextOnAccentColor}"/>
 
+            <!-- Text and glyphs on a *status* fill — a "needs you" badge, a "the CEO is working…" band, the number
+                 inside a step's dot. The status colours are bright by design (they have to catch the eye across a
+                 grid), so the white that answers the accent is unreadable on them: 1.55:1 on the cyan, 2.03:1 on the
+                 amber. This is the other end — the app's own near-black, which clears 10.6:1 on busy, 9.2:1 on
+                 waiting and 6.6:1 on done. Not CockpitWindowBgColor, which happens to be the same value today:
+                 naming it after the window would tie an ink to a surface, and the next repaint moves those two for
+                 different reasons. -->
+            <Color x:Key="CockpitTextOnStatusColor">#0f1116</Color>
+            <SolidColorBrush x:Key="CockpitTextOnStatusBrush" Color="{StaticResource CockpitTextOnStatusColor}"/>
+
             <!-- Accent at 16% (#29 alpha) — the fill behind a selected row in an open dropdown. A solid accent
                  there would make the list read as one loud band; tinted, the row is picked out without the
                  text on it having to fight the fill. -->

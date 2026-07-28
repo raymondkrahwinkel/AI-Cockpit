@@ -266,7 +266,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 4, 0, 0),
             Child = promptScroll,
@@ -327,7 +327,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
         };
 
@@ -568,33 +568,36 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     private static string _IdentityOf(GitHubIssue issue) => $"{issue.Repository}#{issue.Number}";
 
+    // Border.tag — the theme's shape for a label that classifies the thing beside it, rather than one more
+    // hand-written copy of that same shape.
     private Control _BuildChip(string text) => new Border
     {
-        Background = _Brush("CockpitSecondaryBgBrush"),
-        BorderBrush = _Brush("CockpitHairlineBrush"),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(4),
-        Padding = new Thickness(7, 2),
+        Classes = { "tag" },
         Margin = new Thickness(0, 0, 6, 0),
-        Child = new TextBlock { Text = text, FontSize = 11 },
+        Child = new TextBlock { Text = text },
     };
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
     // title and body as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(GitHubIssue issue)
-    {
-        var data = new Dictionary<string, string>
-        {
-            ["tracker"] = "github-issues",
-            ["issue"] = _IdentityOf(issue),
-            ["title"] = issue.Title,
-            ["description"] = issue.Body ?? string.Empty,
-            ["repository"] = issue.Repository,
-            ["url"] = issue.Url,
-        };
+    private async Task _PlanInAutopilotAsync(GitHubIssue issue) =>
+        await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _IdentityOf(issue)));
 
-        await _host.SendIntent("autopilot", "plan", data);
-    }
+    /// <summary>
+    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
+    /// </summary>
+    internal static Dictionary<string, string> PlanIntentPayload(GitHubIssue issue, string identity) => new()
+    {
+        ["tracker"] = "github-issues",
+        ["issue"] = identity,
+        ["title"] = issue.Title,
+        ["description"] = issue.Body ?? string.Empty,
+        ["repository"] = issue.Repository,
+        ["url"] = issue.Url,
+        // GitHub has no stage column, so its labels are what the start gate reads — one per line, because a label may
+        // contain a comma but never a newline. Sent raw; the gate does the judging.
+        ["stage"] = string.Join("\n", issue.Labels),
+    };
 
     private string _RenderPrompt(GitHubIssue issue)
     {
@@ -754,6 +757,12 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

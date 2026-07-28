@@ -40,6 +40,34 @@ internal static class YouTrackFieldParser
         return new YouTrackIssueFields(null, _NullIfAbsent(assignee, AssigneeFieldName));
     }
 
+    /// <summary>
+    /// The name of the state an issue stands on, from its <c>customFields</c> array — the same "which field is the
+    /// status" rule <see cref="Parse"/> applies, over an already-parsed element. Null when the array holds no status
+    /// field, or one with no value set. Autopilot's start gate reads this, so answering it by a different rule than
+    /// the workflow actions use would let the two disagree about what stage an issue is on.
+    /// </summary>
+    public static string? ParseStateName(JsonElement customFields)
+    {
+        if (customFields.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var fields = customFields.EnumerateArray().ToList();
+        foreach (var name in StateFieldNames)
+        {
+            var match = fields.FirstOrDefault(field => string.Equals(_Name(field), name, StringComparison.Ordinal));
+            if (match.ValueKind == JsonValueKind.Object
+                && match.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Object
+                && value.TryGetProperty("name", out var valueName) && valueName.ValueKind == JsonValueKind.String)
+            {
+                return valueName.GetString();
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The transitions a workflow allows from where the issue stands now, from a state-machine field's own response.</summary>
     public static IReadOnlyList<YouTrackStateEvent> ParsePossibleEvents(string fieldJson)
     {

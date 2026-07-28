@@ -87,10 +87,10 @@ internal sealed class NodeDialog : Border
             Margin = new Thickness(40),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
-            Background = _Brush("CockpitSecondaryBgBrush") ?? new SolidColorBrush(Color.Parse("#1E1E24")),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitSecondaryBgBrush", "#0c0e12"),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = _Radius("CockpitPanelRadius", 12),
             Child = new DockPanel { Children = { _Docked(header, Dock.Top), panes } },
         };
 
@@ -321,10 +321,10 @@ internal sealed class NodeDialog : Border
 
     private static Control _Json(JsonObject item, bool faint) => new Border
     {
-        Background = _Brush("CockpitPanelBgBrush"),
-        BorderBrush = _Brush("CockpitHairlineBrush"),
+        Background = _Brush("CockpitPanelBgBrush", "#1a1d24"),
+        BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
         BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(6),
+        CornerRadius = _Radius("CockpitControlRadius", 9),
         Padding = new Thickness(12, 10),
         Opacity = faint ? 0.6 : 1,
         Child = new SelectableTextBlock
@@ -498,7 +498,7 @@ internal sealed class NodeDialog : Border
 
         return new Border
         {
-            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             BorderThickness = new Thickness(0, 1, 1, 0),
             Child = new DockPanel
             {
@@ -533,6 +533,19 @@ internal sealed class NodeDialog : Border
         return control;
     }
 
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 }

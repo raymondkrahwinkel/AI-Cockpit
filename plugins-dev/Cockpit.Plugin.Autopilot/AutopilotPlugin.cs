@@ -71,6 +71,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // pane-scoping and live-only gating; the CEO validator session is given this endpoint, the step agents are not.
         _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
+        // The issues a refusal has already been written onto, so clicking a backlog item twice does not leave the same
+        // paragraph twice. Lives for the app's lifetime — a comment is only worth writing once per issue per session.
+        var commented = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // The CEO-flow trigger (AC-174): a tracker's "Plan in Autopilot" hands the item to the CEO planning round with
         // its source to draft from.
         host.RegisterIntentHandler("plan", async intent =>
@@ -80,6 +84,14 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             if (!_RequireCeoProfile(host, settings))
             {
                 return new Dictionary<string, string> { ["status"] = "no-ceo-profile", ["issue"] = run.IssueId };
+            }
+
+            // The stage gate (AC-345), ahead of the CEO's own scoping judgement: what the tracker says beats what the
+            // ticket text claims about itself.
+            if (AutopilotReadyGate.Decide(run.Title, run.Stage, settings.ExecutableStage(run.Tracker)) is { IsAllowed: false } refusal)
+            {
+                await _RefuseAsync(host, intent, run, refusal.Reason, commented);
+                return new Dictionary<string, string> { ["status"] = "not-ready", ["issue"] = run.IssueId };
             }
 
             // Refused while a run is already live (BeginPlanning returns false) so a second trigger cannot overwrite it;
@@ -128,5 +140,44 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             "Open settings",
             () => _ = host.ShowSettingsAsync());
         return false;
+    }
+
+    // A refused start says so twice: to the operator who pressed the button, and on the issue itself, so the reason
+    // survives the toast and is there for whoever next looks at the item.
+    //
+    // Only the tracker plugin that owns the issue gets that second half. The intent's payload names its own tracker and
+    // issue id, and any installed plugin may send an intent — without this check, "refuse and comment" would hand every
+    // plugin a way to write arbitrary text onto arbitrary issues with the operator's token, which is a capability
+    // Autopilot did not have before. The host stamps the caller, so the two are compared and a mismatch gets the toast
+    // only. Writing is also once per issue, and best-effort: a tracker that is down or read-only costs the note, never
+    // the refusal, which already stands.
+    private static async Task _RefuseAsync(ICockpitHost host, PluginIntent intent, AutopilotRun run, string reason, HashSet<string> commented)
+    {
+        host.ShowToast(reason, PluginToastSeverity.Warning, "Open settings", () => _ = host.ShowSettingsAsync());
+
+        if (string.IsNullOrWhiteSpace(run.IssueId) || !string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!commented.Add($"{run.Tracker}/{run.IssueId}"))
+        {
+            return;
+        }
+
+        var provider = host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = await provider.PostCommentAsync(run.IssueId, reason);
+        }
+        catch (Exception)
+        {
+            // Fail-soft, as the run coordinator's tracker writes are.
+        }
     }
 }

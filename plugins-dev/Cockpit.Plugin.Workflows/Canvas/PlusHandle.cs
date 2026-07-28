@@ -26,8 +26,8 @@ internal sealed class PlusHandle : Border
         Width = Size;
         Height = Size;
         CornerRadius = new CornerRadius(Size / 2);
-        Background = _Brush("CockpitPanelBgBrush") ?? new SolidColorBrush(Color.Parse("#2A2A31"));
-        BorderBrush = _Brush("CockpitHairlineBrush");
+        Background = _Brush("CockpitPanelBgBrush", "#1a1d24");
+        BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39");
         BorderThickness = new Thickness(1);
         Cursor = new Cursor(StandardCursorType.Hand);
 
@@ -42,8 +42,8 @@ internal sealed class PlusHandle : Border
 
         ToolTip.SetTip(this, "Click to add the next step — or drag from here onto a step to connect them");
 
-        PointerEntered += (_, _) => BorderBrush = _Brush("CockpitAccentBrush") ?? Brushes.Orange;
-        PointerExited += (_, _) => BorderBrush = _Brush("CockpitHairlineBrush");
+        PointerEntered += (_, _) => BorderBrush = _Brush("CockpitAccentBrush", "#3b82f6");
+        PointerExited += (_, _) => BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39");
         PointerPressed += (_, e) =>
         {
             Pressed?.Invoke(this, e);
@@ -56,6 +56,13 @@ internal sealed class PlusHandle : Border
     /// <summary>The handle was pressed — the canvas starts a wire and captures the pointer; a release without a drag is a click.</summary>
     public event EventHandler<PointerPressedEventArgs>? Pressed;
 
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

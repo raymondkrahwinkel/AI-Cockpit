@@ -35,8 +35,8 @@ internal sealed class NodePicker : Border
     public NodePicker()
     {
         Width = 290;
-        Background = _Brush("CockpitSecondaryBgBrush") ?? new SolidColorBrush(Color.Parse("#1E1E24"));
-        BorderBrush = _Brush("CockpitHairlineBrush");
+        Background = _Brush("CockpitSecondaryBgBrush", "#0c0e12");
+        BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39");
         BorderThickness = new Thickness(1, 0, 0, 0);
 
         _search = new TextBox { PlaceholderText = "Search steps…", Margin = new Thickness(12, 8, 12, 8) };
@@ -192,7 +192,7 @@ internal sealed class NodePicker : Border
         var row = new Border
         {
             Background = Brushes.Transparent,
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Padding = new Thickness(8, 6),
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = new StackPanel
@@ -255,8 +255,21 @@ internal sealed class NodePicker : Border
         ? new MaterialIcon { Kind = kind, Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center }
         : new TextBlock { Text = type.Icon, FontSize = 18, VerticalAlignment = VerticalAlignment.Center };
 
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }
 
 /// <summary>What the picker produced: the chosen type, and the way out it should be wired to (when a + was clicked first).</summary>

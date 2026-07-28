@@ -95,7 +95,7 @@ internal sealed class ClusterRowControl : UserControl
                 Text = "⚠ This context authenticates with an exec credential plugin — connecting runs an external command. Only use a kubeconfig you trust.",
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = Brushes.Orange,
+                Foreground = _Brush("CockpitStatusWaitingBrush", "#E0A33E"),
             });
         }
 
@@ -195,4 +195,14 @@ internal sealed class ClusterRowControl : UserControl
             .ToList();
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+    /// <summary>
+    /// The host's theme brush, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Application"/> (designer, headless test) and is held equal to its token by the repository's theme
+    /// guard. The exec-auth warning used to be drawn in <c>Brushes.Orange</c>, which is nobody's amber.
+    /// </summary>
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

@@ -35,6 +35,14 @@ public class SessionResumeOfferTests
             DefaultResumePrompt = "continue",
         };
 
+    private static readonly PluginUsageSignal FiveHour =
+        new("five-hour", "5h", PluginUsageSignalKind.Allowance, 90)
+        {
+            Description = "Session (5 hours)",
+            SupportsResume = true,
+            DefaultResumePrompt = "carry on",
+        };
+
     private static readonly PluginUsageSignal Context =
         new("context", "ctx", PluginUsageSignalKind.Fill, 50) { Description = "Context window" };
 
@@ -225,9 +233,86 @@ public class SessionResumeOfferTests
         session.CanOfferResume.Should().BeFalse();
     }
 
-    // The five below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
+    // The nine below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
     // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
     // here would only make that sweep bigger.
+
+    [Fact]
+    public void AnAllowanceThatClimbsToSpentAfterWarning_StillOffersTheResume()
+    {
+        // How an allowance actually reaches 100%: gradually, having warned somewhere on the way up. Measured only
+        // on the reading that crossed the warning line, the offer appeared for a signal whose very first reading
+        // past its line already read 100% — which is to say, in practice, for nobody at all.
+        var (session, _) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 95, returns)]);
+        Assert.False(session.CanOfferResume, "96% still leaves a session that can work");
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+
+        Assert.True(session.CanOfferResume, "the week is spent now, however gradually it got there");
+        Assert.Equal(returns.AddMinutes(1), session.ResumeAt);
+    }
+
+    [Fact]
+    public async Task APromptBeingTypedIntoTheBox_SurvivesTheNextPoll()
+    {
+        // The offer is made once per standing period rather than on every reading over 100%, because the polls
+        // keep coming while the box is open — rewriting the prompt each time would take the words out from under
+        // whoever is typing them.
+        var (session, store) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+
+        session.ResumePrompt = "pick up the migration where you left it";
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+        await session.ScheduleResumeCommand.ExecuteAsync(null);
+
+        Assert.Equal("pick up the migration where you left it", store.Saved[0].Prompt);
+    }
+
+    [Fact]
+    public void AnOfferArrivingAfterTheBarWasDismissed_ComesWithABarToReachItIn()
+    {
+        // Clicking away "Week is 91% used" dismisses a thing worth watching. What arrives later is a different
+        // message — the week is gone, and here is a button about it — and that button lives inside the bar. Left
+        // silenced, the offer exists with nothing on screen to act on it through.
+        var (session, _) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 91, returns)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
+
+        Assert.True(session.CanOfferResume);
+        Assert.True(session.HasUsageWarning, "an offer behind a hidden bar is not an offer");
+        Assert.Contains("Week is 100% used", session.UsageWarning);
+    }
+
+    [Fact]
+    public async Task TwoSpentAllowances_DoNotTradeTheOfferBackAndForth()
+    {
+        // There is one prompt box and one moment on the bar. With both a session and a week fully spent, each poll
+        // used to hand the offer from one to the other and rewrite the box with the other's default — so anything
+        // typed into it was gone by the next reading, without a keystroke from anyone.
+        var (session, store) = Build();
+        var returns = DateTimeOffset.Now.AddHours(6);
+        PluginUsageReading[] bothSpent =
+        [
+            new("five-hour", 100, returns),
+            new("weekly", 100, returns),
+        ];
+        session.ApplyUsage([FiveHour, Weekly], bothSpent);
+
+        session.ResumePrompt = "my carefully typed instruction";
+        session.ApplyUsage([FiveHour, Weekly], bothSpent);
+
+        Assert.Equal("my carefully typed instruction", session.ResumePrompt);
+
+        await session.ScheduleResumeCommand.ExecuteAsync(null);
+        Assert.Equal("my carefully typed instruction", store.Saved[0].Prompt);
+    }
 
     [Fact]
     public void AnAllowanceThatRollsOver_TakesItsOfferWithIt()

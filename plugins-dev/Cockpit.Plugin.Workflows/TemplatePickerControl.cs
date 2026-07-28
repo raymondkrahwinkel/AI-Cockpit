@@ -147,7 +147,7 @@ internal sealed class TemplatePickerControl : UserControl
         var card = new Border
         {
             Padding = new Thickness(12, 10),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             BorderThickness = new Thickness(1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
@@ -159,6 +159,12 @@ internal sealed class TemplatePickerControl : UserControl
 
         return card;
     }
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

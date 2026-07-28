@@ -99,12 +99,12 @@ internal sealed class TranscriptSearchDialogControl : UserControl
 
     private Control _HitCard(TranscriptSearchHit hit)
     {
+        // Border.tag for the shape; the accent stays here, set on the label itself, because the colour is the part
+        // that says which side of the conversation this hit came from.
         var rolePill = new Border
         {
-            Background = _Brush("CockpitPanelBgBrush"),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(5, 1),
-            Child = new TextBlock { Text = hit.Role, FontSize = 10, Foreground = _Brush("CockpitAccentBrush") },
+            Classes = { "tag" },
+            Child = new TextBlock { Text = hit.Role, Foreground = _Brush("CockpitAccentBrush") },
         };
 
         var header = new StackPanel
@@ -185,7 +185,7 @@ internal sealed class TranscriptSearchDialogControl : UserControl
             Background = _Brush("CockpitSecondaryBgBrush"),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = _Radius("CockpitControlRadius", 9),
             Margin = new Thickness(0, 0, 0, 8),
             Padding = new Thickness(12),
             Child = new StackPanel
@@ -310,6 +310,12 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
             ? font
             : new FontFamily("Cascadia Mono, Consolas, monospace");
+
+    /// <summary>The host's geometry token, so a plugin's box rounds like the app's other boxes.</summary>
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

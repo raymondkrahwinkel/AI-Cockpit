@@ -326,20 +326,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private double? _contextThreshold;
 
-    // Which signals are currently over their threshold, so the bar is raised on the crossing rather than on every
-    // poll. A figure that drops back is forgotten, and crossing again says so again — the reset is real, because a
-    // compaction genuinely empties the window and the next fill is news.
-    private readonly HashSet<string> _announced = [];
+    // Which signals are currently over their threshold and what each of them has to say, oldest crossing first.
+    // Membership is what makes the bar rise on the crossing rather than on every poll: a figure that drops back is
+    // forgotten, and crossing again says so again — the reset is real, because a compaction genuinely empties the
+    // window and the next fill is news. Keeping each sentence rather than only the keys is what lets the bar fall
+    // back to a warning that is still true when the one in front of it goes quiet; one string for every signal
+    // meant the covered one was lost for good, since its own crossing had already been spent.
+    private readonly List<(string Key, string Text)> _standing = [];
 
-    // Which signal put the text that is on screen there, and which one the standing offer belongs to. One warning
-    // string is shared by every signal, so without a key a context bar going quiet would wipe a live "Week is 95%
-    // used". Two keys rather than one because they drift apart: a later crossing overwrites the words while the
-    // earlier signal's offer is still standing, and that offer belongs to its own allowance, not to the sentence.
-    // The offer's own sentence is kept with it, because the banner is only on screen while there is something to
-    // read — an offer whose words were overwritten would otherwise become unreachable the moment they cleared.
+    // Which signals the operator has taken down by hand — dismissed, or acted on by scheduling the resume they
+    // offered. Separate from _standing because both are true at once: the figure is still over its threshold, and
+    // the bar is not to speak of it again until it has been away and come back. Without this, taking one warning
+    // down would hand the bar straight to whatever it was covering, which reads as the dismiss not having worked.
+    private readonly HashSet<string> _silenced = [];
+
+    // Which signal put the text that is on screen there, and which one the standing offer belongs to. Two keys
+    // rather than one because they drift apart: a later crossing overwrites the words while the earlier signal's
+    // offer is still standing, and that offer belongs to its own allowance, not to the sentence above it.
     private string? _warnedSignal;
     private string? _offeredSignal;
-    private string _offeredWarning = string.Empty;
 
     /// <summary>
     /// What the session bar says about a signal that has passed the point its provider called worth mentioning
@@ -362,13 +367,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
 
-    /// <summary>Dismisses the current warning; the same signal stays quiet until it drops back and crosses again.</summary>
+    /// <summary>Dismisses the bar; what it could say stays quiet until each of those figures drops back and crosses again.</summary>
     [RelayCommand]
-    private void DismissUsageWarning()
-    {
-        UsageWarning = string.Empty;
-        _warnedSignal = null;
-    }
+    private void DismissUsageWarning() => _SilenceTheBar();
 
     /// <summary>
     /// Where this signal warns for this session (AC-233): what the operator set for the profile, else for the
@@ -392,22 +393,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // Back under: forget it, so the next crossing is announced rather than swallowed as already-said, and
             // take down what this signal still has on screen. Left standing, a warning outlives its own subject —
             // the context empties on a /clear and the bar goes on saying it is half full until someone clicks a
-            // notice about a window that no longer exists away by hand. Another signal's warning is not ours to
-            // clear: it is still true.
-            _announced.Remove(signal.Key);
+            // notice about a window that no longer exists away by hand. Being away also lifts the silence, so a
+            // signal that comes back is news again rather than staying muted for the life of the session.
+            _standing.RemoveAll(standing => standing.Key == signal.Key);
+            _silenced.Remove(signal.Key);
 
             if (_warnedSignal == signal.Key)
             {
-                // Another allowance's offer is still there to take, and the only thing that puts its buttons on
-                // screen is there being words to show — so hand the banner back to the offer rather than emptying
-                // it and stranding a resume the operator can still act on. Only while it is still takeable: once
-                // one is waiting there are no buttons left to reach, and the old sentence would put a decision
-                // already made back on screen with nothing but a Dismiss under it. Nor after a manual dismiss —
-                // _warnedSignal is null by then, so a banner clicked away does not return on someone else's account.
-                var stranded = _offeredSignal is { } offered && offered != signal.Key && CanOfferResume;
-
-                UsageWarning = stranded ? _offeredWarning : string.Empty;
-                _warnedSignal = stranded ? _offeredSignal : null;
+                _ShowWhatIsStillWorthSaying();
             }
 
             if (_offeredSignal == signal.Key)
@@ -418,17 +411,30 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        if (!_announced.Add(signal.Key))
-        {
-            return;
-        }
-
         var name = string.IsNullOrWhiteSpace(signal.Description) ? signal.Label : signal.Description;
         var used = Math.Round(reading.UsedPercent, MidpointRounding.AwayFromZero);
         var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+        var says = $"{name} is {used:0}% used{returns}.";
 
-        UsageWarning = $"{name} is {used:0}% used{returns}.";
-        _warnedSignal = signal.Key;
+        var already = _standing.FindIndex(standing => standing.Key == signal.Key);
+        if (already >= 0)
+        {
+            // Still over its line, so its crossing has been spent and the bar does not go back up — a bar that
+            // returns at 91%, 92%, 93% is noise. What it would say is kept current all the same: a figure that
+            // climbs while another warning covers it must not come back afterwards understating itself.
+            _standing[already] = (signal.Key, says);
+
+            if (_warnedSignal == signal.Key)
+            {
+                UsageWarning = says;
+            }
+        }
+        else
+        {
+            _standing.Add((signal.Key, says));
+            UsageWarning = says;
+            _warnedSignal = signal.Key;
+        }
 
         // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
         // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
@@ -437,7 +443,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         //
         // Only an allowance can carry it at all: a context window empties on a compaction rather than at a
         // moment, so there is no reset to time a resume to however full it gets.
-        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
+        // Measured on every reading, not only on the one that crossed the warning threshold: an allowance climbs to
+        // spent, it does not usually arrive there. Gated on the first crossing, the offer only ever appeared for a
+        // signal whose very first reading past its line already read 100% — so in practice it appeared for nobody.
+        // One offer at a time, whichever allowance was spent first: there is one prompt box and one moment on the
+        // bar, so a second spent allowance must not take them over. Keyed on there being no offer rather than on
+        // this signal not holding it — two allowances at 100% would otherwise hand it back and forth on every
+        // poll, rewriting the prompt under whoever is typing into it. When the one holding it rolls over the
+        // offer is withdrawn, and the other can take its turn.
+        if (_offeredSignal is null
+            && signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
             && used >= 100
             && reading.ResetsAt is { } moment)
         {
@@ -448,8 +463,51 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             ResumePrompt = signal.DefaultResumePrompt ?? string.Empty;
             ResumeReason = $"{name} is {used:0}% used";
             _offeredSignal = signal.Key;
-            _offeredWarning = UsageWarning;
+
+            // An offer is not the warning that was dismissed. "Keep an eye on this" is what got clicked away; this
+            // is the allowance actually being gone, and the buttons that act on it live inside the bar — so being
+            // silenced at 91% must not leave the offer sitting behind a hidden banner where nothing can reach it.
+            // Dismissing again covers this message too, which is the operator's call to make a second time.
+            _silenced.Remove(signal.Key);
+            _ShowWhatIsStillWorthSaying();
         }
+    }
+
+    // Hands the bar to whichever signal is still over its threshold and has not been taken down, most recent
+    // crossing first — the same rule that decides what is shown in the first place, so a bar clearing cannot
+    // quietly promote an older warning over a newer one. Nothing left to say means an empty bar, which also takes
+    // any resume offer's buttons off screen with it; that is why the offer's own signal being still standing is
+    // what keeps it reachable, rather than anything the offer does for itself.
+    private void _ShowWhatIsStillWorthSaying()
+    {
+        for (var i = _standing.Count - 1; i >= 0; i--)
+        {
+            if (_silenced.Contains(_standing[i].Key))
+            {
+                continue;
+            }
+
+            (_warnedSignal, UsageWarning) = _standing[i];
+            return;
+        }
+
+        UsageWarning = string.Empty;
+        _warnedSignal = null;
+    }
+
+    // Takes the bar down as a whole, which is what the operator asked for whether they dismissed it or acted on
+    // the resume it offered: everything it could currently say goes quiet until it has been away and come back.
+    // Silencing only the sentence on screen would hand the bar straight to the one behind it, which reads as the
+    // click not having worked.
+    private void _SilenceTheBar()
+    {
+        foreach (var (key, _) in _standing)
+        {
+            _silenced.Add(key);
+        }
+
+        UsageWarning = string.Empty;
+        _warnedSignal = null;
     }
 
     // Withdraws the offer to pick this session up later. A resume that is already waiting is deliberately left
@@ -461,7 +519,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         ResumePrompt = string.Empty;
         ResumeReason = string.Empty;
         _offeredSignal = null;
-        _offeredWarning = string.Empty;
     }
 
     /// <summary>
@@ -572,8 +629,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         // The pending line follows from the scheduler saying so, not from this command assuming it worked.
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, moment, prompt, ResumeReason));
 
-        UsageWarning = string.Empty;
-        _warnedSignal = null;
+        _SilenceTheBar();
     }
 
     /// <summary>
@@ -606,8 +662,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, chosen.Moment, chosen.Prompt, ResumeReason));
 
-        UsageWarning = string.Empty;
-        _warnedSignal = null;
+        _SilenceTheBar();
     }
 
     /// <summary>Cancels the resume waiting on this session, dropping it from storage rather than only from view.</summary>

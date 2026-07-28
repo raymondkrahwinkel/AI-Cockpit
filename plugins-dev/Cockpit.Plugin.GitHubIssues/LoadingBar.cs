@@ -27,13 +27,19 @@ internal static class LoadingBar
         MinHeight = 2,
         HorizontalAlignment = HorizontalAlignment.Stretch,
         VerticalAlignment = VerticalAlignment.Top,
-        Foreground = Brush("CockpitAccentBrush", Brushes.Coral),
+        Foreground = Brush("CockpitAccentBrush", "#3b82f6"),
         Background = Brushes.Transparent,
         BorderThickness = default,
     };
 
-    private static IBrush Brush(string key, IBrush fallback) =>
+    /// <summary>
+    /// The host's accent, resolved at call time. The fallback hex is only reached with no
+    /// <see cref="Avalonia.Application"/> (designer, headless test) and is held equal to its token by the
+    /// repository's theme guard. It used to be one of the framework's own named colours, a near-enough stand-in
+    /// while the accent was orange and a wrong one the moment it moved to blue (AC-334).
+    /// </summary>
+    private static IBrush Brush(string key, string fallbackHex) =>
         Avalonia.Application.Current?.TryFindResource(key, out var resource) == true && resource is IBrush brush
             ? brush
-            : fallback;
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

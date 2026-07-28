@@ -18,8 +18,16 @@ namespace Cockpit.Core.Tests.Styles;
 /// </para>
 /// <para>
 /// It is a tripwire, not a proof: a hex built from string concatenation, or read from a constant defined elsewhere,
-/// would not be a literal match and would slip past. It scans <c>Cockpit.App</c> and <c>Cockpit.Plugins.Abstractions</c>
-/// only — the two projects AC-334 touched, and the only two a plugin author's own code sits beside.
+/// would not be a literal match and would slip past.
+/// </para>
+/// <para>
+/// It scans <c>Cockpit.App</c>, <c>Cockpit.Plugins.Abstractions</c> <b>and every plugin under <c>plugins-dev/</c></b>
+/// (AC-337). The plugins were outside it until the repaint reached them, and that is exactly where the drift had
+/// collected: fallbacks still holding the pre-AC-334 orange, and one naming a <c>CockpitTextBrush</c> that has never
+/// existed — a lookup that could only ever return its literal. A plugin is an independently published artifact and
+/// keeps its own copy of the tiny <c>_Brush</c> helper rather than sharing one, so this guard matches on the call
+/// <em>shape</em>, not on a shared type. It is a source-tree lint, not a runtime coupling: it reads files, so it
+/// lives once here instead of being copied into ten plugin test projects.
 /// </para>
 /// </summary>
 public partial class ThemeHexColorGuardTests
@@ -29,32 +37,42 @@ public partial class ThemeHexColorGuardTests
     /// (the properties that carry transparency — <c>BoxShadow</c>, a translucent <c>Background</c> — have no brush
     /// type to hang a <c>{StaticResource}</c> on) or a plain black scrim/shadow that is deliberately colour-agnostic
     /// — no theme token means "black", so there is nothing for it to point at. Keyed by the file's path relative to
-    /// <c>src/</c> plus the exact literal, so a second, different literal landing in the same file does not
+    /// the repository root plus the exact literal, so a second, different literal landing in the same file does not
     /// silently inherit this file's allowance.
     /// </summary>
     private static readonly Dictionary<(string Path, string Hex), (int Occurrences, string Reason)> AllowedLiterals =
         new()
         {
-            [("Cockpit.App/Views/CockpitView.axaml", "#263b82f6")] =
+            [("src/Cockpit.App/Views/CockpitView.axaml", "#263b82f6")] =
                 (1, "26-alpha echo of CockpitAccentColor for the update banner tint"),
-            [("Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
+            [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
                 (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
-            [("Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
+            [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
-            [("Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
+            [("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
                 (2, "CC-alpha echo of CockpitWindowBgColor, shared by the migration and calibration blocking overlays"),
-            [("Cockpit.App/Views/VoiceOverlayWindow.axaml", "#F01a1d24")] =
+            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#F01a1d24")] =
                 (1, "F0-alpha echo of CockpitPanelBgColor for the voice pill background"),
-            [("Cockpit.App/Views/VoiceOverlayWindow.axaml", "#1AFFFFFF")] =
+            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#1AFFFFFF")] =
                 (1, "white hairline border at low alpha — colourless, not a theme colour"),
-            [("Cockpit.App/Views/VoiceOverlayWindow.axaml", "#2E3b82f6")] =
+            [("src/Cockpit.App/Views/VoiceOverlayWindow.axaml", "#2E3b82f6")] =
                 (1, "2E-alpha echo of CockpitAccentColor for the listening-dot glow"),
-            [("Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000")] =
+            [("src/Cockpit.App/Views/ScreenshotSelectionWindow.axaml", "#99000000")] =
                 (4, "black screen-dim scrim outside the selection rectangle, not tied to any theme colour"),
-            [("Cockpit.App/Controls/ConsentBanner.axaml", "#66000000")] =
+            [("src/Cockpit.App/Controls/ConsentBanner.axaml", "#66000000")] =
                 (1, "black drop-shadow, not tied to any theme colour"),
-            [("Cockpit.App/Controls/ConsentBannerHost.axaml", "#B3000000")] =
+            [("src/Cockpit.App/Controls/ConsentBannerHost.axaml", "#B3000000")] =
                 (1, "black modal scrim, not tied to any theme colour"),
+            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/NodeDialog.cs", "#B0000000")] =
+                (1, "black modal scrim behind the node dialog, not tied to any theme colour"),
+            // The canvas's two non-accent kind stripes. A categorical palette, like the usage chart's: their only
+            // job is to be told apart from each other and from the trigger's accent. Pointing them at status
+            // tokens would give a decision node a colour this app reads as "blocked" — and the card's border is
+            // already the channel that carries run status, so the two would contradict each other on one card.
+            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#C79A4A")] =
+                (1, "the decision node's kind stripe — a categorical colour, not a status"),
+            [("plugins-dev/Cockpit.Plugin.Workflows/Canvas/WorkflowNodeControl.cs", "#7A8290")] =
+                (1, "the plain step's kind stripe — a neutral slate, deliberately hueless so it cannot be read as a faded accent"),
         };
 
     /// <summary>
@@ -69,30 +87,32 @@ public partial class ThemeHexColorGuardTests
         // stand-in follow a repaint of the very app it exists to be independent of. It is a file of its own so
         // this exemption reaches only code that draws a picture: the scene wiring beside it stays guarded, and
         // that is the file the rest of AC-356 will be editing.
-        "Cockpit.App/StandInDesktop.cs",
+        "src/Cockpit.App/StandInDesktop.cs",
 
         // The inks an operator marks a capture in (AC-375). Same argument one step further along: these do not
         // draw the cockpit either, they draw on a picture that leaves it. A token would make a red arrow already
         // sent to an agent mean whatever the next repaint decides red is. The accent is deliberately not in that
         // file — it is read from the theme at runtime and stays the one colour this app owns.
-        "Cockpit.App/MarkInk.cs",
+        "src/Cockpit.App/MarkInk.cs",
+
+        // The usage chart's three series colours (AC-54). Same argument again: this is a picture, and its palette
+        // has one job — three lines you can tell apart. The file says in so many words why it does not borrow the
+        // theme's status colours: an amber line pointed at CockpitStatusWaitingBrush would read as a warning about
+        // the data rather than as "this is the 5h line". A categorical palette is not a theme colour.
+        "plugins-dev/Cockpit.Plugin.UsageTrend/UsageTrendChartControl.cs",
     };
 
     [Fact]
     public void NoHardcodedColour_OutsideThemeAxaml()
     {
-        var srcDirectory = _LocateRepositoryFolder("src")
-            ?? throw new InvalidOperationException("No src/ directory above the test output — this test reads the repo it belongs to.");
+        var repositoryRoot = _LocateRepositoryRoot();
+        var scannedFiles = _ScannedFiles(repositoryRoot);
 
-        var scannedFiles = _SourceFiles(Path.Combine(srcDirectory, "Cockpit.App"))
-            .Concat(_SourceFiles(Path.Combine(srcDirectory, "Cockpit.Plugins.Abstractions")))
-            .ToList();
-
-        scannedFiles.Should().HaveCountGreaterThan(100,
-            "the two projects together have well over a hundred source files — finding almost none means the walk broke, not that the rule holds");
+        scannedFiles.Should().HaveCountGreaterThan(200,
+            "the host projects and the twenty-odd plugins together have well over two hundred source files — finding almost none means the walk broke, not that the rule holds");
 
         var scannedPaths = scannedFiles
-            .Select(file => Path.GetRelativePath(srcDirectory, file).Replace(Path.DirectorySeparatorChar, '/'))
+            .Select(file => _RepositoryPath(repositoryRoot, file))
             .ToHashSet(StringComparer.Ordinal);
 
         AllowedFiles.Should().BeSubsetOf(scannedPaths,
@@ -101,8 +121,8 @@ public partial class ThemeHexColorGuardTests
         var found = new Dictionary<(string Path, string Hex), int>();
         foreach (var file in scannedFiles)
         {
-            var relativePath = Path.GetRelativePath(srcDirectory, file).Replace(Path.DirectorySeparatorChar, '/');
-            if (relativePath == "Cockpit.App/Styles/Theme.axaml")
+            var relativePath = _RepositoryPath(repositoryRoot, file);
+            if (relativePath == "src/Cockpit.App/Styles/Theme.axaml")
             {
                 continue; // the one file allowed to define the palette itself
             }
@@ -119,10 +139,16 @@ public partial class ThemeHexColorGuardTests
                     var key = (relativePath, hex);
                     found[key] = found.GetValueOrDefault(key) + 1;
                 }
+
+                foreach (Match component in ColorFromComponentsRegex().Matches(line))
+                {
+                    var key = (relativePath, component.Value);
+                    found[key] = found.GetValueOrDefault(key) + 1;
+                }
             }
         }
 
-        found.Should().ContainKey(("Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"),
+        found.Should().ContainKey(("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"),
             "if this known allowed alpha-echo stopped matching, this test would pass for the wrong reason");
 
         var unexpected = found
@@ -146,24 +172,21 @@ public partial class ThemeHexColorGuardTests
     [Fact]
     public void ResolveFallback_MatchesThemeAxamlColorToken()
     {
-        var srcDirectory = _LocateRepositoryFolder("src")
-            ?? throw new InvalidOperationException("No src/ directory above the test output — this test reads the repo it belongs to.");
+        var repositoryRoot = _LocateRepositoryRoot();
 
-        var themeAxamlPath = Path.Combine(srcDirectory, "Cockpit.App", "Styles", "Theme.axaml");
+        var themeAxamlPath = Path.Combine(repositoryRoot, "src", "Cockpit.App", "Styles", "Theme.axaml");
         var themeTokens = _ParseThemeColorTokens(themeAxamlPath);
 
         themeTokens.Should().HaveCountGreaterThan(10,
             "Theme.axaml defines well over a dozen Color tokens — finding almost none means the parse broke, not that the rule holds");
 
-        var scannedFiles = _SourceFiles(Path.Combine(srcDirectory, "Cockpit.App"))
-            .Concat(_SourceFiles(Path.Combine(srcDirectory, "Cockpit.Plugins.Abstractions")))
-            .ToList();
+        var scannedFiles = _ScannedFiles(repositoryRoot);
 
         var callSiteCount = 0;
         var mismatches = new List<string>();
         foreach (var file in scannedFiles)
         {
-            var relativePath = Path.GetRelativePath(srcDirectory, file).Replace(Path.DirectorySeparatorChar, '/');
+            var relativePath = _RepositoryPath(repositoryRoot, file);
             foreach (var line in File.ReadLines(file))
             {
                 foreach (Match call in ResolveCallRegex().Matches(line))
@@ -189,11 +212,11 @@ public partial class ThemeHexColorGuardTests
             }
         }
 
-        callSiteCount.Should().BeGreaterThan(10,
-            "MarkdownView, MicLevelMeter, ProviderConfigStatus and ManagedCliConfigSection together call ThemeBrush.Resolve well over a dozen times — finding almost none means the scan broke, not that the rule holds");
+        callSiteCount.Should().BeGreaterThan(30,
+            "the host's four code-drawn surfaces plus the plugins' own _Brush copies together resolve well over thirty times — finding almost none means the scan broke, not that the rule holds");
 
         mismatches.Should().BeEmpty(
-            "a ThemeBrush.Resolve fallback is dead weight if it silently disagrees with the live token it stands in for");
+            "a fallback is dead weight if it silently disagrees with the live token it stands in for — and a key with no token at all can only ever return its literal");
     }
 
     /// <summary>
@@ -222,6 +245,34 @@ public partial class ThemeHexColorGuardTests
             """var fill = level >= threshold ? ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") : new SolidColorBrush(Color.Parse("#abcdef"));""";
 
         _NonExemptHexMatches(line).Should().Equal("#abcdef");
+    }
+
+    /// <summary>
+    /// A plugin resolves through its own copy of the helper — <c>_Brush("key", "#hex")</c> — because a plugin is an
+    /// independently published artifact and does not share a type with the host for this. The exemption therefore
+    /// matches the call shape, and it has to reach that copy as well as the host's <c>ThemeBrush.Resolve</c>; a
+    /// literal that is not anyone's fallback argument still has to be caught on the same line.
+    /// </summary>
+    [Fact]
+    public void NonExemptHexMatches_ReachesThePluginsOwnBrushHelper()
+    {
+        const string line =
+            """DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", "#5AA576"), DiffLineKind.Hunk => new SolidColorBrush(Color.Parse("#5A9BD4")),""";
+
+        _NonExemptHexMatches(line).Should().Equal("#5A9BD4");
+    }
+
+    /// <summary>
+    /// The mismatch this whole guard exists for, asserted directly rather than only through the repo walk: a key
+    /// that names no token at all reports, instead of passing because there was nothing to compare against. This is
+    /// what session-review's <c>CockpitTextBrush</c> was doing — a lookup that could only ever return its literal.
+    /// </summary>
+    [Fact]
+    public void ResolveCallRegex_MatchesBothHelperShapes()
+    {
+        ResolveCallRegex().Matches("""ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
+        ResolveCallRegex().Matches("""_Brush("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
+        ResolveCallRegex().Matches("""Brush("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
     }
 
     /// <summary>
@@ -273,7 +324,20 @@ public partial class ThemeHexColorGuardTests
     [GeneratedRegex(@"#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{3})\b")]
     private static partial Regex HexColorRegex();
 
-    [GeneratedRegex("""ThemeBrush\.Resolve\(\s*"(?<key>[^"]+)"\s*,\s*"(?<hex>#[0-9A-Fa-f]{3,8})"\s*\)""")]
+    /// <summary>
+    /// The same violation spelled in components rather than in hex: <c>Color.FromRgb(0x1A, 0x12, 0x0E)</c>. Autopilot
+    /// held nine of these — inks mixed for the pre-AC-334 orange, sitting on fills that had since moved — and the
+    /// hex-only rule could not see a single one. There is no sanctioned fallback form here: a fallback is written as
+    /// a hex string, so anything reaching this regex is a hardcoded colour or an exempt picture.
+    /// </summary>
+    [GeneratedRegex(@"Color\.From(?:Rgb|Argb)\s*\([^)]*\)")]
+    private static partial Regex ColorFromComponentsRegex();
+
+    /// <summary>
+    /// Both shapes of the one sanctioned fallback: the host's <c>ThemeBrush.Resolve(key, hex)</c> and the copy a
+    /// plugin keeps for itself, <c>_Brush(key, hex)</c> / <c>Brush(key, hex)</c>.
+    /// </summary>
+    [GeneratedRegex("""(?:ThemeBrush\.Resolve|\b_?Brush)\(\s*"(?<key>[^"]+)"\s*,\s*"(?<hex>#[0-9A-Fa-f]{3,8})"\s*\)""")]
     private static partial Regex ResolveCallRegex();
 
     [GeneratedRegex("""<Color x:Key="(?<key>[^"]+)">(?<hex>#[0-9A-Fa-f]{3,8})</Color>""")]
@@ -288,20 +352,52 @@ public partial class ThemeHexColorGuardTests
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
-    private static string? _LocateRepositoryFolder(string relativePath)
+    /// <summary>
+    /// Everything the palette rule covers: the two host projects AC-334 repainted, plus every plugin AC-337 brought
+    /// in. Test projects are left out — a fixture may well name a colour to assert on one.
+    /// </summary>
+    private static List<string> _ScannedFiles(string repositoryRoot)
+    {
+        var files = _SourceFiles(Path.Combine(repositoryRoot, "src", "Cockpit.App"))
+            .Concat(_SourceFiles(Path.Combine(repositoryRoot, "src", "Cockpit.Plugins.Abstractions")))
+            .ToList();
+
+        var pluginsRoot = Path.Combine(repositoryRoot, "plugins-dev");
+        foreach (var plugin in Directory.EnumerateDirectories(pluginsRoot).Order(StringComparer.Ordinal))
+        {
+            if (Path.GetFileName(plugin).EndsWith(".Tests", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            files.AddRange(_SourceFiles(plugin));
+        }
+
+        return files;
+    }
+
+    private static string _RepositoryPath(string repositoryRoot, string file) =>
+        Path.GetRelativePath(repositoryRoot, file).Replace(Path.DirectorySeparatorChar, '/');
+
+    /// <summary>
+    /// The repository this test belongs to: the first folder above the test output holding both trees the rule
+    /// covers. Both are required, so a partial checkout fails loudly instead of quietly scanning half of it.
+    /// </summary>
+    private static string _LocateRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, relativePath);
-            if (Directory.Exists(candidate))
+            if (Directory.Exists(Path.Combine(directory.FullName, "src"))
+                && Directory.Exists(Path.Combine(directory.FullName, "plugins-dev")))
             {
-                return candidate;
+                return directory.FullName;
             }
 
             directory = directory.Parent;
         }
 
-        return null;
+        throw new InvalidOperationException(
+            "No folder above the test output holds both src/ and plugins-dev/ — this test reads the repo it belongs to.");
     }
 }
