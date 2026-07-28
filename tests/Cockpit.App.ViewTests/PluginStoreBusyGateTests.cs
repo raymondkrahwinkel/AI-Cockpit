@@ -125,6 +125,12 @@ public class PluginStoreBusyGateTests
             // Siblings in a Grid paint in declaration order unless ZIndex says otherwise, so both have to hold.
             Assert.Same(content.Children[^1], overlay);
             Assert.DoesNotContain(covered, sibling => sibling.ZIndex > overlay.ZIndex);
+
+            // And it has to be a cover rather than a pane of glass: a null brush paints nothing and hit-tests
+            // nothing, and IsHitTestVisible=false lets a pointer straight through. Both span, sit last, and
+            // leave the catalogue as reachable as it was.
+            Assert.True(overlay.IsHitTestVisible);
+            Assert.NotNull(overlay.Background);
         }
         finally
         {

@@ -658,10 +658,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   that had not had their turn were silently left on their old version — with a banner that had just said the update
   was finished. The restart is now held back until the whole batch is over.
 
-- fixed: a second plugin install could be started while one was already running, from the version picker in the
-  detail panel or from Install from zip. Both reach the same unpacking step as the install already in flight, so
-  two of them could unpack over the top of each other into the same folder. Everything that starts an install now
-  waits for the one that is running to finish, whichever way it was started.
+- fixed: a second plugin install could be started while one was already running — from the version picker in the
+  detail panel, or from Install from zip, or from the catalogue on top of a zip install that was showing no sign
+  of itself at all. They reach the same unpacking step, so two of them could unpack over each other into the same
+  folder. Every way of starting an install now waits for the one in flight, and a zip install raises the same
+  overlay as the rest instead of running invisibly.
+
+  Underneath that, the "the store is working" signal used to be cleared by whichever step finished first. Every
+  install ends by reloading the catalogue, and that reload cleared the signal while the install around it was
+  still going — which let the restart offer and the install buttons come back mid-install. It now stays raised
+  until the outermost piece of work is done.
 
 - fixed: installing a plugin, or updating all of them, showed almost nothing while it happened — a line of text in
   the footer and a search box that stopped responding. The store now covers its catalogue while it works and says

@@ -9,12 +9,17 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// What the store may not let the operator do while it is working (AC-420). Two affordances stayed live during
-/// an install: the detail pane's install button, which binds only to the row's own <c>CanTakePrimaryAction</c>
-/// and re-entered into a second download onto the same folder, and "Restart the cockpit now", which "Update all"
-/// offers after the *first* plugin of a batch — pressing it there left plugins 2..n silently un-updated behind a
-/// banner saying the update was done.
+/// What the store may not let the operator do while it is working (AC-420). "Restart the cockpit now" is offered
+/// by "Update all" after the *first* plugin of a batch, and pressing it there left plugins 2..n silently
+/// un-updated behind a banner saying the update was done. Alongside it, three routes could each start a second
+/// install on top of a running one — the version picker, Install from zip, and any catalogue install started
+/// while a different command held the store.
 /// </summary>
+/// <remarks>
+/// A button that starts its own command again is not among them: <c>AsyncRelayCommand</c> refuses to re-enter
+/// itself, measured. What was missing is gating <em>across</em> commands, and a busy signal that a nested
+/// operation could not clear while an outer one was still running.
+/// </remarks>
 public class PluginManagerViewModelBusyGateTests
 {
     [Fact]
@@ -27,10 +32,77 @@ public class PluginManagerViewModelBusyGateTests
 
         manager.IsBusy = true;
 
-        // The row itself is unchanged — it is still installable — so a gate that only reads the row (which is
-        // what the button's IsEnabled binding does) says yes here, and a second click starts a second install.
+        // The row itself is unchanged — it is still installable — so the button's IsEnabled binding, which
+        // reads only the row, says yes here. What closes it is the command, and only because the work in
+        // flight might be some other command's.
         Assert.True(row.CanTakePrimaryAction);
         Assert.False(manager.InstallFromStoreCommand.CanExecute(row));
+    }
+
+    /// <summary>
+    /// The zip install holds the store while it runs, so it is not a way in behind the other gates. It used to
+    /// raise nothing at all: no overlay, and every other install route still open on top of it — the gate on it
+    /// only closed the other direction, which moved the defect rather than removing it.
+    /// </summary>
+    [Fact]
+    public async Task ARunningZipInstall_HoldsTheStore_SoNothingElseCanStartOnTopOfIt()
+    {
+        var installer = Substitute.For<IPluginInstaller>();
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.PickPluginZipAsync().Returns(_ => Task.FromResult<string?>(_ZipPath));
+        var manager = _Manager(Substitute.For<IPluginStoreClient>(), installer, Substitute.For<IAppRestartService>(), dialogService);
+
+        var duringTheZipInstall = new List<(bool Busy, bool StoreInstallOpen, bool ZipOpen, bool RestartOnOffer)>();
+        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                duringTheZipInstall.Add((
+                    manager.IsBusy,
+                    manager.InstallFromStoreCommand.CanExecute(_UpdatableRow("github-issues", "GitHub Issues")),
+                    manager.InstallFromZipCommand.CanExecute(null),
+                    manager.RestartNowCommand.CanExecute(null)));
+
+                return Task.FromResult(PluginInstallResult.Success("plugin-folder", "sha", staged: true));
+            });
+
+        await manager.InstallFromZipCommand.ExecuteAsync(null);
+
+        Assert.Equal([(true, false, false, false)], duringTheZipInstall);
+        Assert.False(manager.IsBusy);
+    }
+
+    /// <summary>
+    /// A nested operation may not report the store idle while an outer one is still running. Every install path
+    /// ends by re-browsing the catalogue, and browsing raises the busy signal itself — so with a plain flag the
+    /// browse's own exit cleared it mid-install and re-opened every gate that reads it, the restart included.
+    /// </summary>
+    [Fact]
+    public async Task ANestedBrowse_DoesNotReportTheStoreIdle_WhileAnInstallIsStillRunning()
+    {
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>());
+        manager.Stores.Add(PluginStoreConfig.Remote("https://store.example/index.json"));
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(new PluginStoreFetchResult(false, "unreachable", null, null)));
+
+        // Observed from inside the install, after a full browse has come and gone underneath it.
+        var whileInstalling = new List<(bool Busy, bool RestartOnOffer)>();
+        storeClient
+            .DownloadZipAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                await manager.BrowseStoresCommand.ExecuteAsync(null);
+                whileInstalling.Add((manager.IsBusy, manager.RestartNowCommand.CanExecute(null)));
+
+                return new PluginStoreDownloadResult(true, null, _ZipPath);
+            });
+        _StagesTheUpdate(installer);
+
+        await manager.InstallFromStoreCommand.ExecuteAsync(_UpdatableRow("github-issues", "GitHub Issues"));
+
+        Assert.Equal([(true, false)], whileInstalling);
+        Assert.False(manager.IsBusy, "and it does come down once the outermost operation is done");
     }
 
     /// <summary>
@@ -194,7 +266,11 @@ public class PluginManagerViewModelBusyGateTests
             .InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(PluginInstallResult.Success("plugin-folder", "sha256-of-the-new-bytes", staged: true)));
 
-    private static PluginManagerViewModel _Manager(IPluginStoreClient storeClient, IPluginInstaller installer, IAppRestartService restartService)
+    private static PluginManagerViewModel _Manager(
+        IPluginStoreClient storeClient,
+        IPluginInstaller installer,
+        IAppRestartService restartService,
+        ISessionDialogService? dialogService = null)
     {
         var registrationStore = Substitute.For<IPluginRegistrationStore>();
         registrationStore
@@ -205,7 +281,7 @@ public class PluginManagerViewModelBusyGateTests
             registrationStore,
             installer,
             new PluginBootstrap(),
-            Substitute.For<ISessionDialogService>(),
+            dialogService ?? Substitute.For<ISessionDialogService>(),
             Substitute.For<IPluginStoreConfigStore>(),
             storeClient,
             new Dictionary<string, PluginSettingsRegistration>(),

@@ -108,6 +108,28 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private double _busyProgressValue;
 
+    // "The store is working" is a depth, not a flag (AC-420). These scopes nest: every install path ends by
+    // re-browsing the catalogue, and a plugin toggle does the same, and BrowseStoresAsync raises the flag
+    // itself. With a plain bool the inner finally reported the store idle while the outer was still
+    // downloading — which re-opened every gate that reads it, the restart offer included, mid-install.
+    // Measured, and the reason a one-line gate on each button was not enough.
+    private int _busyDepth;
+
+    private void _EnterBusy()
+    {
+        _busyDepth++;
+        IsBusy = true;
+    }
+
+    private void _ExitBusy()
+    {
+        _busyDepth = Math.Max(0, _busyDepth - 1);
+        if (_busyDepth == 0)
+        {
+            IsBusy = false;
+        }
+    }
+
     // A restart and a fresh install are both unreachable while work is in flight (AC-420), gated by their
     // command's CanExecute — which is what a bound Button consults, so the affordance goes dead rather than
     // only looking dead.
@@ -282,8 +304,21 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        var result = await _installer.InstallFromZipAsync(zipPath, AbstractionsContract.Version);
-        await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
+        // Raised only now, not around the picker: the operator choosing a file is their time, and covering the
+        // dialog behind a busy overlay while a file picker is open would be covering nothing that is working.
+        // From here on it is the same installer a store install uses, so it counts as the store working — which
+        // is what stops a store install from being started on top of it, and this one on top of a store install.
+        _EnterBusy();
+        try
+        {
+            StatusMessage = $"Installing '{Path.GetFileName(zipPath)}'…";
+            var result = await _installer.InstallFromZipAsync(zipPath, AbstractionsContract.Version);
+            await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
+        }
+        finally
+        {
+            _ExitBusy();
+        }
     }
 
     [RelayCommand]
@@ -533,7 +568,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        _EnterBusy();
         // Said before the fetch, not only after it (AC-420): the busy overlay shows StatusMessage, and this
         // method raises it — including for a plain Refresh — so without a line of its own the overlay would
         // sit there repeating whatever the last install said while it is actually reloading the catalogue.
@@ -634,7 +669,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            _ExitBusy();
         }
     }
 
@@ -676,7 +711,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        _EnterBusy();
         try
         {
             var download = await _storeClient.DownloadTemplateAsync(row.Store, row.Entry.Path, row.Entry.Sha256);
@@ -706,7 +741,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            _ExitBusy();
         }
     }
 
@@ -736,7 +771,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        _EnterBusy();
         try
         {
             await _DownloadAndInstallRowAsync(row);
@@ -749,7 +784,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            _ExitBusy();
             // The catalogue was rebuilt (or cleared) — refresh the "Update all" button's gate and count.
             OnPropertyChanged(nameof(HasAvailableUpdates));
             OnPropertyChanged(nameof(AvailableUpdateCount));
@@ -865,7 +900,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        _EnterBusy();
         BusyProgressValue = 0;
         BusyProgressIndeterminate = false;
         try
@@ -901,7 +936,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            _ExitBusy();
             // Back to indeterminate here rather than only on the next batch: a single install that follows has
             // no fraction to show, and a bar left at 100% behind its overlay would be showing other work.
             BusyProgressIndeterminate = true;
@@ -952,7 +987,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        IsBusy = true;
+        _EnterBusy();
         try
         {
             await _DownloadAndInstallRowAsync(row, version);
@@ -962,7 +997,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
+            _ExitBusy();
         }
     }
 
