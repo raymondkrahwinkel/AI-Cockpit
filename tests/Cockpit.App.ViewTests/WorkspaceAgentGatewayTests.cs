@@ -279,6 +279,54 @@ public class WorkspaceAgentGatewayTests
     }
 
     /// <summary>
+    /// AC-393's entire expiry story: there is no heartbeat and no TTL, so a claim stops standing only because the
+    /// closing pane's teardown drops it. This proves the grid's own close path actually calls
+    /// <see cref="IAgentResourceClaims.Forget"/> — the sibling roster call one line above it has had that proof since
+    /// AC-391, and without this one both new call sites could be deleted with every test still green.
+    /// </summary>
+    [Fact]
+    public void CloseSession_ForgetsThePanesResourceClaims()
+    {
+        var claims = Substitute.For<IAgentResourceClaims>();
+        var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var c = _NewEmbeddingCapableCockpit(agentClaims: claims);
+            var s = new SessionViewModel();
+            c.Sessions.Add(s);
+            return (c, s);
+        });
+
+        Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
+
+        claims.Received(1).Forget(session.PaneId);
+    }
+
+    /// <summary>
+    /// The embedded half of the same wiring, which for the roster was the half that had no test at all until it was
+    /// caught in review. An embedded session ends through <c>_TeardownEmbeddedSessionAsync</c> — a workspace closing,
+    /// <see cref="Plugins.Abstractions.Workspaces.IEmbeddedSession.CloseAsync"/>, or the session ending itself — and
+    /// nothing else funnels through there.
+    /// </summary>
+    [Fact]
+    public void CloseEmbeddedSession_ForgetsThePanesResourceClaims()
+    {
+        var claims = Substitute.For<IAgentResourceClaims>();
+        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var c = _NewEmbeddingCapableCockpit(agentClaims: claims);
+            var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
+            c.Sessions.Add(grid);
+
+            var e = c.Embed("plugin-desk", new EmbeddedSessionRequest());
+            return (c, e);
+        });
+
+        Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
+
+        claims.Received(1).Forget(embedded.PaneId);
+    }
+
+    /// <summary>
     /// MF-1 (review round 2): <see cref="WorkspaceAgentGateway.GetWorkspaceSnapshotAsync"/> marshals onto the UI
     /// thread only when the caller is not already on it — but every other test above calls in from inside
     /// <see cref="Dispatcher.UIThread.Invoke(System.Action)"/>, so <c>CheckAccess()</c> is always true there and the
@@ -361,7 +409,9 @@ public class WorkspaceAgentGatewayTests
     // profile store): substitutes for everything else, since these tests only exercise session placement, not any
     // of these stores' own behaviour. Mirrors Cockpit.Core.Tests.Voice.TestCockpit, which cannot be referenced
     // from this test project (a different assembly).
-    private static CockpitViewModel _NewEmbeddingCapableCockpit(IWorkspaceAgentCoordinator? agentCoordinator = null)
+    private static CockpitViewModel _NewEmbeddingCapableCockpit(
+        IWorkspaceAgentCoordinator? agentCoordinator = null,
+        IAgentResourceClaims? agentClaims = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -390,6 +440,7 @@ public class WorkspaceAgentGatewayTests
             voiceSettingsStore,
             terminalSettingsStore,
             sessionProfileStore: Substitute.For<ISessionProfileStore>(),
-            agentCoordinator: agentCoordinator);
+            agentCoordinator: agentCoordinator,
+            agentClaims: agentClaims);
     }
 }

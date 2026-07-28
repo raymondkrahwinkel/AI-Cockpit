@@ -65,18 +65,19 @@ internal sealed class AgentResourceClaims : IAgentResourceClaims, ISingletonServ
     {
         lock (_lock)
         {
-            if (_Standing(resource, workspacePaneIds) is not { } standing)
+            // The caller's own claim is looked for before anyone else's. With one claim per resource per desk the two
+            // lookups find the same entry; they only come apart in the window Claim's docs describe, where a desk can
+            // show two claims on one name — and there an agent must still be able to give up what it holds rather than
+            // be told, about its own claim, that somebody else has it.
+            if (_Standing(resource, workspacePaneIds, ownedBy: paneId) is { } mine)
             {
-                return new AgentReleaseResult(AgentReleaseOutcome.NotClaimed, null);
+                _claims.Remove(mine);
+                return new AgentReleaseResult(AgentReleaseOutcome.Released, mine);
             }
 
-            if (!string.Equals(standing.OwnerPaneId, paneId, StringComparison.Ordinal))
-            {
-                return new AgentReleaseResult(AgentReleaseOutcome.HeldByAnother, standing);
-            }
-
-            _claims.Remove(standing);
-            return new AgentReleaseResult(AgentReleaseOutcome.Released, standing);
+            return _Standing(resource, workspacePaneIds) is { } theirs
+                ? new AgentReleaseResult(AgentReleaseOutcome.HeldByAnother, theirs)
+                : new AgentReleaseResult(AgentReleaseOutcome.NotClaimed, null);
         }
     }
 
@@ -98,12 +99,15 @@ internal sealed class AgentResourceClaims : IAgentResourceClaims, ISingletonServ
     }
 
     /// <summary>
-    /// The claim on <paramref name="resource"/> that the caller's desk can see, or null when that desk holds none.
-    /// Resources are compared ordinally — the agents choose the string, and a host that case-folded or normalised
-    /// paths here would be guessing which of "a branch", "a worktree path" and "a file" it had been handed.
+    /// The claim on <paramref name="resource"/> that the caller's desk can see — narrowed to one holder when
+    /// <paramref name="ownedBy"/> is given — or null when that desk holds none. Resources and pane ids are both
+    /// compared ordinally: the agents choose the resource string, and a host that case-folded or normalised paths
+    /// here would be guessing which of "a branch", "a worktree path" and "a file" it had been handed, while a pane id
+    /// is a host-minted identifier where two spellings are two panes.
     /// </summary>
-    private AgentResourceClaim? _Standing(string resource, IReadOnlySet<string> workspacePaneIds) =>
+    private AgentResourceClaim? _Standing(string resource, IReadOnlySet<string> workspacePaneIds, string? ownedBy = null) =>
         _claims.FirstOrDefault(claim =>
             string.Equals(claim.Resource, resource, StringComparison.Ordinal)
-            && workspacePaneIds.Contains(claim.OwnerPaneId));
+            && workspacePaneIds.Contains(claim.OwnerPaneId)
+            && (ownedBy is null || string.Equals(claim.OwnerPaneId, ownedBy, StringComparison.Ordinal)));
 }

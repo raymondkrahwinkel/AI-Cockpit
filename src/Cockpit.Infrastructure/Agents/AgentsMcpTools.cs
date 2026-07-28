@@ -405,6 +405,28 @@ internal sealed class AgentsMcpTools(
             coordinator.Enroll(caller);
 
             var result = claims.Claim(caller, wanted, _Desk(snapshot));
+
+            // The same window NotifyAsync closes on its own delivery, and here it is the caller's own session that can
+            // end in it: the gateway call marshals onto the UI thread, which is also where a closing pane runs the
+            // Forget that drops its claims. A claim written after that Forget is owned by a pane no desk holds any
+            // more, so nothing can ever list, match, release or forget it again — it is permanent, invisible to every
+            // agent and to the operator, and phase 1 has no expiry sweeping up behind it. Re-asking closes that rather
+            // than narrowing it: this second look is on the UI thread too, so either the caller is already gone and
+            // what it just wrote is taken back here, or it is still live and the Forget yet to run will clear it.
+            // A snapshot that does not come back is evidence about the caller, because it is derived from the caller's
+            // own pane — which is the pane in question. Forget rather than a narrower retraction for the same reason:
+            // if that pane has gone, everything it holds should have gone with it.
+            if (result.Outcome == AgentClaimOutcome.Claimed
+                && await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is null)
+            {
+                claims.Forget(caller);
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"Your session ended while '{wanted}' was being claimed, so the claim was taken back rather than left standing under a pane nothing can reach.",
+                });
+            }
+
             var now = DateTimeOffset.UtcNow;
             return result switch
             {
@@ -413,6 +435,9 @@ internal sealed class AgentsMcpTools(
                     ok = true,
                     resource = taken.Resource,
                     claimedAtUtc = taken.ClaimedAtUtc,
+                    // Zero on a fresh claim, and carried anyway so that both ok:true branches — and every other reply
+                    // that names a claim — have one shape an agent can parse without a missing-field case.
+                    heldForSeconds = HeldForSeconds(taken.ClaimedAtUtc, now),
                     // False here and true below, so a caller that retried after a dropped reply can tell "I have it
                     // now" from "I already had it" without the two looking like the same fresh claim.
                     alreadyHeld = false,
@@ -436,11 +461,15 @@ internal sealed class AgentsMcpTools(
                     claimedAtUtc = theirs.ClaimedAtUtc,
                     heldForSeconds = HeldForSeconds(theirs.ClaimedAtUtc, now),
                 }),
-                _ => _Serialize(new
+                { Outcome: AgentClaimOutcome.TooManyClaims } => _Serialize(new
                 {
                     ok = false,
                     error = $"You already hold the most claims one session may hold ({AgentResourceClaims.MaxClaimsPerPane}), so this one was not taken. Release what you have finished with — a claim you no longer need is one your neighbours are still working around.",
                 }),
+                // Spelt out rather than folded into the arm above: a result the store cannot produce today would
+                // otherwise be reported to the agent as the cap being full, which is a confident answer to a question
+                // nobody asked. Saying that the outcome was not understood is the honest one.
+                _ => _Serialize(new { ok = false, error = "The cockpit could not make sense of the outcome of this claim, so nothing is being reported about it." }),
             };
         }
         catch (Exception exception)
@@ -488,11 +517,14 @@ internal sealed class AgentsMcpTools(
                     resource = theirs.Resource,
                     heldBy = theirs.OwnerPaneId,
                 }),
-                _ => _Serialize(new
+                { Outcome: AgentReleaseOutcome.NotClaimed } => _Serialize(new
                 {
                     ok = false,
                     error = $"Nothing on your desk holds '{wanted}', so there was nothing to release. Check the spelling against list_claims — a resource is matched character for character.",
                 }),
+                // Same reason as in claim: a result this does not recognise must not be reported as the one refusal
+                // that happens to be last in the list.
+                _ => _Serialize(new { ok = false, error = "The cockpit could not make sense of the outcome of this release, so nothing is being reported about it." }),
             };
         }
         catch (Exception exception)

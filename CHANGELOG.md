@@ -38,8 +38,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   claimed also shows on each session's row when an agent lists who else is on the tab.
 
   It signals, it does not lock. Nothing stops an agent from working on a claimed resource, and nothing needs cleaning
-  up afterwards: a claim is only its holder's to release, and everything a session holds is dropped the moment it
-  closes, including when it crashed without releasing. Resources are matched exactly as written, so agents have to
+  up afterwards: a claim is only its holder's to release, and everything a session holds is dropped when that session
+  closes — including whatever the agent never got round to releasing. Resources are matched exactly as written, so agents have to
   agree on the spelling — the same worktree written two ways is two claims. Claims stay inside one tab: a session on
   another tab neither sees them nor is blocked by them, which also means two agents on different tabs reaching for the
   same folder still do not see each other.

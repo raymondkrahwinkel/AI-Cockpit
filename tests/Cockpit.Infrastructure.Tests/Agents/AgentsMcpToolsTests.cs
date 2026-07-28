@@ -67,6 +67,11 @@ public sealed class AgentsMcpToolsTests : IDisposable
     /// </summary>
     private IReadOnlyList<AgentMessage> _Waiting(string paneId) => _inbox.Drain(paneId, int.MaxValue).Messages;
 
+    /// <summary>What one pane holds, straight from the claim store — the desk is a set of one, because a claim is
+    /// visible to any desk its owner is on and this asks about the owner rather than about a desk.</summary>
+    private IReadOnlyList<AgentResourceClaim> _Held(string paneId) =>
+        _claims.List(new HashSet<string>(StringComparer.Ordinal) { paneId });
+
     private JsonArray _ReadInboxAs(string paneId)
     {
         McpRequestContext.Set(paneId);
@@ -987,7 +992,49 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var neighbour = agents.First(agent => agent!["paneId"]!.GetValue<string>() == "pane-b")!["claims"]!.AsArray();
         var held = Assert.Single(neighbour)!;
         Assert.Equal("/repo/worktree-b", held["resource"]!.GetValue<string>());
-        Assert.True(held["heldForSeconds"]!.GetValue<long>() >= 0);
+        // The age is carried on the row; what the arithmetic behind it does is pinned separately, on controlled
+        // timestamps, by HeldForSeconds_ReportsTheAgeInWholeSeconds_AndNeverANegativeOne — a bound assertion here
+        // would only restate that a claim made microseconds ago is nearly zero.
+        Assert.NotNull(held["heldForSeconds"]);
+        Assert.Equal(held["claimedAtUtc"]!.GetValue<DateTimeOffset>(), _Held("pane-b").Single().ClaimedAtUtc);
+    }
+
+    /// <summary>
+    /// The window between the workspace lookup and the store write, on the caller's own side. The gateway call
+    /// marshals onto the UI thread, which is where a closing pane drops its claims — so a claim written after that
+    /// would be owned by a pane no desk holds, and nothing could list, match, release or forget it again. There is no
+    /// expiry in phase 1 to sweep it up, so the write is taken back instead.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WhenTheCallersOwnSessionEndsDuringTheCall_TakesTheClaimBackRatherThanLeavingItStranded()
+    {
+        var desk = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+        // Live when the desk is resolved, gone by the time the claim has been written.
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
+            Task.FromResult<WorkspaceAgentSnapshot?>(desk),
+            Task.FromResult<WorkspaceAgentSnapshot?>(null));
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Empty(_Held("pane-a"));
+    }
+
+    /// <summary>
+    /// The counterpart of the test above: a caller that is still there keeps what it took. Without this, taking every
+    /// claim back would satisfy the retraction test just as well.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WhenTheCallerIsStillThereAfterTheWrite_KeepsTheClaim()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.Equal("/repo/worktree-a", Assert.Single(_Held("pane-a")).Resource);
     }
 
     /// <summary>AC2 — a claim is only its holder's to give up, and the refusal says whose it is.</summary>
@@ -1190,6 +1237,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = _Json(await _CallAsync(tool));
 
         Assert.False(json["ok"]!.GetValue<bool>());
+        // The refusal has to be the one that names the reason, not whatever an unguarded null produced on its way
+        // into the catch — an ok:false carrying "Object reference not set to an instance of an object" satisfies the
+        // line above just as well and tells the agent nothing.
+        Assert.Contains("workspace", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 
     /// <summary>An unexpected failure comes back as a tool result the agent can read, never as a broken transport.</summary>

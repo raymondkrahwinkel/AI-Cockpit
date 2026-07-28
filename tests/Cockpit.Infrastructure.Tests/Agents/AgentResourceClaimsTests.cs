@@ -95,22 +95,22 @@ public sealed class AgentResourceClaimsTests
     }
 
     /// <summary>
-    /// The cap bounds host memory, so it counts everything the pane holds — including claims taken while it was on a
-    /// desk it is no longer part of, which are invisible to the current caller but still occupy memory.
+    /// The cap is per pane, not per store: one agent filling its own allowance must not stop the agent at the next
+    /// desk over — or one looping session would lock the whole cockpit out of claiming anything.
     /// </summary>
     [Fact]
-    public void Claim_CountsTowardsTheCapEvenWhenTheClaimIsNotVisibleFromTheCurrentDesk()
+    public void Claim_WhenOnePaneHasFilledItsAllowance_ANeighbourCanStillClaim()
     {
         var claims = new AgentResourceClaims();
+        var desk = _Desk("pane-1", "pane-2");
         for (var i = 0; i < AgentResourceClaims.MaxClaimsPerPane; i++)
         {
-            claims.Claim("pane-1", $"/repo/worktree-{i}", _Desk("pane-1"));
+            claims.Claim("pane-1", $"/repo/worktree-{i}", desk);
         }
 
-        // A desk that no longer holds pane-1 sees none of those claims, but they are still pane-1's.
-        var elsewhere = claims.Claim("pane-1", "/repo/elsewhere", _Desk("pane-2"));
+        var neighbour = claims.Claim("pane-2", "/repo/its-own-thing", desk);
 
-        Assert.Equal(AgentClaimOutcome.TooManyClaims, elsewhere.Outcome);
+        Assert.Equal(AgentClaimOutcome.Claimed, neighbour.Outcome);
     }
 
     [Fact]
@@ -167,6 +167,65 @@ public sealed class AgentResourceClaimsTests
 
         Assert.Equal(AgentReleaseOutcome.NotClaimed, fromTheOtherDesk.Outcome);
         Assert.Single(claims.List(_Desk("pane-x")));
+    }
+
+    /// <summary>
+    /// A release must take the caller's own claim and no other. Two desks holding the same resource name is the
+    /// ordinary case (they never see each other), so a release that matched on the resource name alone would reach
+    /// across the boundary and drop a claim belonging to an agent on another desk — silently, and while that agent is
+    /// still working behind it.
+    /// </summary>
+    [Fact]
+    public void Release_TakesOnlyTheCallersOwnClaim_NotTheSameNameHeldOnAnotherDesk()
+    {
+        var claims = new AgentResourceClaims();
+        claims.Claim("pane-x", "/repo/worktree-a", _Desk("pane-x"));
+        claims.Claim("pane-y", "/repo/worktree-a", _Desk("pane-y"));
+
+        var released = claims.Release("pane-y", "/repo/worktree-a", _Desk("pane-y"));
+
+        Assert.Equal(AgentReleaseOutcome.Released, released.Outcome);
+        Assert.Equal("pane-x", Assert.Single(claims.List(_Desk("pane-x"))).OwnerPaneId);
+    }
+
+    /// <summary>
+    /// The one case a desk can show two claims on one name — a pane that joined after the claiming caller's desk set
+    /// was taken, claiming the same thing in that window. The newer holder must still be able to give up what it
+    /// holds; being told, about its own claim, that somebody else has it would leave it permanently unreleasable.
+    /// </summary>
+    [Fact]
+    public void Release_WhenTheDeskShowsTwoClaimsOnOneName_GivesUpTheCallersOwnRatherThanRefusing()
+    {
+        var claims = new AgentResourceClaims();
+        // Taken on two desks that could not see each other, then released from a desk that now holds both panes —
+        // and the neighbour's claim is the older one, so a lookup that ignores the caller would find it first.
+        claims.Claim("pane-1", "/repo/worktree-a", _Desk("pane-1"));
+        claims.Claim("pane-2", "/repo/worktree-a", _Desk("pane-2"));
+        var joined = _Desk("pane-1", "pane-2");
+
+        var released = claims.Release("pane-2", "/repo/worktree-a", joined);
+
+        Assert.Equal(AgentReleaseOutcome.Released, released.Outcome);
+        Assert.Equal("pane-2", released.Claim?.OwnerPaneId);
+        Assert.Equal("pane-1", Assert.Single(claims.List(joined)).OwnerPaneId);
+    }
+
+    /// <summary>
+    /// Pane ids are host-minted identifiers, so two spellings are two panes and never one — the ordinal comparison is
+    /// what keeps an agent from releasing or inheriting a claim by presenting a differently-cased id.
+    /// </summary>
+    [Fact]
+    public void PaneIdsAreComparedOrdinally_SoADifferentlyCasedIdIsADifferentPane()
+    {
+        var claims = new AgentResourceClaims();
+        var desk = _Desk("pane-1", "PANE-1");
+        claims.Claim("pane-1", "/repo/worktree-a", desk);
+
+        var release = claims.Release("PANE-1", "/repo/worktree-a", desk);
+        claims.Forget("PANE-1");
+
+        Assert.Equal(AgentReleaseOutcome.HeldByAnother, release.Outcome);
+        Assert.Equal("pane-1", Assert.Single(claims.List(desk)).OwnerPaneId);
     }
 
     /// <summary>

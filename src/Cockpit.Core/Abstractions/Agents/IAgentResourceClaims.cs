@@ -45,9 +45,13 @@ public enum AgentReleaseOutcome
     HeldByAnother,
 }
 
-/// <summary>The result of a release attempt: what happened, and — when it was somebody else's — whose.</summary>
+/// <summary>The result of a release attempt: what happened, and which claim it happened to.</summary>
 /// <param name="Outcome">Released, nothing there to release, or held by a neighbour.</param>
-/// <param name="Claim">The claim that blocked the release on <see cref="AgentReleaseOutcome.HeldByAnother"/>, so the caller can be told who to ask; null otherwise.</param>
+/// <param name="Claim">
+/// The claim the outcome is about — the one just given up on <see cref="AgentReleaseOutcome.Released"/> (so the caller
+/// can be told how long it had held it), and the neighbour's on <see cref="AgentReleaseOutcome.HeldByAnother"/> (so it
+/// can be told who to ask). Null only on <see cref="AgentReleaseOutcome.NotClaimed"/>, where there is no claim to name.
+/// </param>
 public sealed record AgentReleaseResult(AgentReleaseOutcome Outcome, AgentResourceClaim? Claim);
 
 /// <summary>
@@ -101,13 +105,22 @@ public interface IAgentResourceClaims
     /// </summary>
     /// <param name="paneId">The claiming pane — always the transport-verified caller.</param>
     /// <param name="resource">What is being claimed, already normalised and bounded by the caller.</param>
-    /// <param name="workspacePaneIds">The panes that share the caller's desk, from the host's own answer to that question. Claims held by anyone outside this set are not visible to this call.</param>
+    /// <param name="workspacePaneIds">
+    /// The panes that share the caller's desk, from the host's own answer to that question — and therefore always
+    /// including <paramref name="paneId"/> itself. Claims held by anyone outside this set are not visible to this call.
+    /// Because the set is resolved before the lock is taken, one claim per resource per desk is what this upholds and
+    /// not an invariant it can guarantee: a pane that joined the desk after the set was taken, and claimed the same
+    /// name in that window, leaves two claims on it that are both visible afterwards. The caller with the newer of the
+    /// two can still release it (<see cref="Release"/> looks for the caller's own first), and the window is the same
+    /// one the caller closes by re-checking after the write.
+    /// </param>
     AgentClaimResult Claim(string paneId, string resource, IReadOnlySet<string> workspacePaneIds);
 
     /// <summary>
     /// Gives up <paramref name="paneId"/>'s claim on <paramref name="resource"/>. Only the holder may: a release that
     /// any neighbour could call is a claim that guarantees nothing, since the agent that is mid-rebase would find its
-    /// warning to the others quietly gone.
+    /// warning to the others quietly gone. The caller's own claim is looked for first, so an agent can always give up
+    /// what it holds even in the one case where a desk could show two claims on one name (see <see cref="Claim"/>).
     /// </summary>
     /// <param name="paneId">The releasing pane — always the transport-verified caller.</param>
     /// <param name="resource">The resource to give up, matched exactly against what was claimed.</param>
