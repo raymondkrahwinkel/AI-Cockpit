@@ -39,6 +39,9 @@ internal sealed class TtySessionProviderResolver(
                 configJson,
                 services.GetService<IMcpServerCatalog>(),
                 services.GetService<IMcpOAuthCoordinator>(),
-                services.GetService<ILogger<PluginTtySessionProviderAdapter>>())
+                services.GetService<ILogger<PluginTtySessionProviderAdapter>>(),
+                // AC-408: absent in a unit test that wires only the registry, in which case the provider simply
+                // gets no ReportConversationId callback (same GetService reasoning as the catalog/coordinator above).
+                services.GetService<Core.Sessions.ISessionConversationSink>())
             : null;
 }

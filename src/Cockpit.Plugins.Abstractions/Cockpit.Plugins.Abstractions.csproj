@@ -229,7 +229,14 @@
          instead of trusting the CEO's prose about it, before that child enters an executed plan. An existing
          provider (or test fake) that does not implement it keeps compiling and simply reports nothing to check
          against. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.34.0</Version>
+    <!-- 1.35.0 (AC-408): added PluginConversationId/PluginConversationIdState (the three-state id a provider reports
+         once it knows its conversation, or says it has none) plus IPluginSessionDriver.Conversation — a default
+         property derived from the existing SessionId, so every already-compiled SDK driver reports correctly with no
+         change — and PluginTtyLaunchContext.ReportConversationId, an init-only callback a TTY provider invokes to push
+         the same fact up the route that has no event stream of its own. Both the property and the callback are
+         additions with safe defaults (Unknown-derived-from-SessionId; null callback an already-compiled plugin simply
+         never calls). Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.35.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

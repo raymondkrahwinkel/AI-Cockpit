@@ -25,7 +25,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
-        _EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// How recently a sub-agent transcript must have been written to still count as running. Generous on purpose:
@@ -282,7 +282,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var match = _EnumerateTranscripts(configDir)
+            var match = EnumerateTranscripts(configDir)
                 .Where(path => !knownTranscriptsAtLaunch.Contains(path))
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();
@@ -297,8 +297,13 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         return null;
     }
 
-    /// <summary>Every <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl</c> transcript currently on disk (session-id subfolders holding tool-results/subagents are skipped — only the flat transcript files count).</summary>
-    private static IEnumerable<string> _EnumerateTranscripts(string configDir)
+    /// <summary>
+    /// Every <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl</c> transcript currently on disk (session-id subfolders
+    /// holding tool-results/subagents are skipped — only the flat transcript files count). Internal so
+    /// <see cref="ClaudeTtyProvider"/> shares the one definition of what counts as a transcript; the policy for
+    /// picking one out of several is deliberately not shared, because the two callers need opposite answers.
+    /// </summary>
+    internal static IEnumerable<string> EnumerateTranscripts(string configDir)
     {
         var projectsDir = Path.Combine(configDir, "projects");
         if (!Directory.Exists(projectsDir))

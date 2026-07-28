@@ -44,6 +44,11 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
 
     public PluginTtyLaunchSpec BuildLaunch(PluginTtyLaunchContext context)
     {
+        // Codex writes its own thread state under ~/.codex/sessions, but reading a thread id back out of it
+        // reliably has not been investigated for AC-408 — guessing at an on-disk format and being wrong is worse
+        // than an honest Unsupported, so this TTY route reports that until the format is actually confirmed.
+        context.ReportConversationId?.Invoke(PluginConversationId.Unsupported);
+
         var config = _DeserializeConfig(context.ConfigJson);
         // A cockpit-managed install (AC-20), if present, is preferred over PATH.
         var executablePath = CliExecutableLocator.Resolve(string.IsNullOrWhiteSpace(config.Command) ? "codex" : config.Command, managedResolver);

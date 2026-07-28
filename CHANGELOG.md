@@ -32,6 +32,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a provider can now tell the cockpit which conversation a session is actually running under. On its own
+  this changes nothing you can see — nothing is stored and nothing is reopened yet — but it closes the gap that
+  made bringing a session back impossible: the cockpit could always ask a provider to pick up a named
+  conversation, and had no way to learn that name in the first place unless you went and picked one out of the
+  conversation search by hand. It works the same whether the cockpit drives the provider itself or the provider
+  is a command-line agent running in a terminal, where the conversation has to be recognised rather than
+  announced. A provider that has nothing you could return to now says so plainly instead of handing over an id
+  that would fail the moment you used it — Gemini and GitHub Models keep a session's history only for as long as
+  it is running, and admit it. On a terminal session the cockpit reports the conversation once, at startup, and
+  stays quiet when it cannot tell two sessions' conversations apart: several agents can share one provider
+  directory, and a confident guess there would be the wrong conversation attached to the wrong tab. Plugin
+  authors: `IPluginSessionDriver.Conversation` falls back to the `SessionId` you already report, so a provider
+  that is already built needs no change; a terminal provider receives a `ReportConversationId` callback on its
+  launch context.
 - added: an agent session sharing a tab with others can now agree to be woken, and a neighbour with something that
   cannot wait can ask for it. Waking is off for every session until that session turns it on for itself, and nothing
   a sender does can override that — the agreement is the permission. When it is on, a message a neighbour marks

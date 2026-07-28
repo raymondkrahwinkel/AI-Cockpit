@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -141,8 +141,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var mcpServers = await _ResolveMcpServersAsync(selection, projectId, cancellationToken).ConfigureAwait(false);
 
         // AC-165: what the plugins give this session, resolved from the pane it is starting in so a contribution
-        // can depend on the project that pane belongs to.
+        // can depend on the project that pane belongs to. AC-408: kept on the field too, so the event loop below
+        // knows which pane to report a later conversation-id change against.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var pane) ? pane : null;
+        _paneId = paneId;
         var contributed = sessionResources is null
             ? SessionResources.Empty
             : await sessionResources.ResolveAsync(paneId, cancellationToken).ConfigureAwait(false);
@@ -466,12 +468,42 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     private sealed record MintedToken(string PaneId, string Token);
 
+    // AC-408: the pane this session's conversation id is reported against, set once in StartAsync. Null when the
+    // launch carried no pane id (a unit test wiring none), in which case there is nowhere to report to and
+    // _ReportConversationIfChanged stays a no-op.
+    private string? _paneId;
+
+    // The last value handed to conversationSink, so a provider whose SessionId never changes (almost every one)
+    // does not turn every single session event into a sink call — only a genuine change does (AC-408).
+    private PluginConversationId? _lastReportedConversation;
+
     private async IAsyncEnumerable<SessionEvent> _AdaptEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var pluginEvent in inner.Events.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
+            _ReportConversationIfChanged();
             yield return _Adapt(pluginEvent);
         }
+    }
+
+    // Read off inner.Conversation (rather than the raw event's SessionId) so a driver that overrides Conversation
+    // to Unsupported (AC-408 — an HTTP driver with its own in-memory history) is honoured here too, not just on
+    // the SDK route's SessionId passthrough.
+    private void _ReportConversationIfChanged()
+    {
+        if (conversationSink is null || _paneId is not { Length: > 0 } paneId)
+        {
+            return;
+        }
+
+        var conversation = inner.Conversation;
+        if (conversation == _lastReportedConversation)
+        {
+            return;
+        }
+
+        _lastReportedConversation = conversation;
+        conversationSink.Report(paneId, conversation.ToCore());
     }
 
     private static SessionEvent _Adapt(PluginSessionEvent pluginEvent) => pluginEvent switch

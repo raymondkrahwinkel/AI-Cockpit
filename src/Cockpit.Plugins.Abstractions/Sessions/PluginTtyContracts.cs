@@ -54,6 +54,9 @@ public sealed record PluginTtyLaunchContext(
     /// whether it applies; the provider only appends it. Init-only, so an already-compiled plugin ignores it.
     /// </summary>
     public string? DelegationSystemPrompt { get; init; }
+
+    /// <summary>Called whenever the provider learns this session's conversation id, and again when it changes (AC-408).</summary>
+    public Action<PluginConversationId>? ReportConversationId { get; init; }
 }
 
 /// <summary>Pick up an earlier conversation: the most recent one, or a specific one by the id the CLI gave it.</summary>

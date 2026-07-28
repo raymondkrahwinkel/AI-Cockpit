@@ -17,6 +17,19 @@ public interface IPluginSessionDriver : IAsyncDisposable
     string? SessionId { get; }
 
     /// <summary>
+    /// The provider's conversation id as a three-state fact rather than a bare nullable string (AC-408): <see
+    /// cref="PluginConversationIdState.Unknown"/> before <see cref="SessionId"/> is set, <see
+    /// cref="PluginConversationIdState.Known"/> once it is, and <see cref="PluginConversationIdState.Unsupported"/>
+    /// for a driver that accepts a resume target but cannot actually resume (its own in-memory history, not a
+    /// server-side conversation) — overriding this default is how such a driver says so honestly instead of
+    /// leaving the host to infer resumability from a session id that merely happens to exist. A default property
+    /// derived straight from <see cref="SessionId"/>, so every already-compiled plugin driver reports correctly
+    /// without change.
+    /// </summary>
+    PluginConversationId Conversation =>
+        SessionId is { Length: > 0 } id ? PluginConversationId.Known(id) : PluginConversationId.Unknown;
+
+    /// <summary>
     /// The OS process this session runs in, when the provider spawns one (#78, D10) — what the host's resource
     /// meter measures, together with everything that process spawned. The default is <see langword="null"/>: a
     /// provider that is an HTTP call rather than a local process has nothing to weigh, and a value the host would

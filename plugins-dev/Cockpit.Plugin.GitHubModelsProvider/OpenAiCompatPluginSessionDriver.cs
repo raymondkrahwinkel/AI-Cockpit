@@ -24,6 +24,12 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     public string? SessionId => _sessionId;
 
+    // This driver accepts resumeSessionId (the StartAsync overload below) but ignores it — it keeps its own
+    // in-memory history rather than a server-side conversation (see the comment there), so the id in SessionId
+    // is not actually resumable. Unsupported says that honestly instead of the default Known(SessionId) implying
+    // a resume that would silently start a fresh chat with no history (AC-408).
+    public PluginConversationId Conversation => PluginConversationId.Unsupported;
+
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
