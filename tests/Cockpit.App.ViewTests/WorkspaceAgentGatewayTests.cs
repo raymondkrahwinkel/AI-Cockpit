@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -51,7 +52,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), sessionA, sessionB);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(deskA.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(deskA.PaneId).GetAwaiter().GetResult());
 
         Assert.NotNull(snapshot);
         Assert.Equal("desk-a", snapshot!.WorkspaceId);
@@ -74,7 +75,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), a, b);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(sessionA.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(sessionA.PaneId).GetAwaiter().GetResult());
 
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot!.Panes.Count);
@@ -87,7 +88,7 @@ public class WorkspaceAgentGatewayTests
     {
         var gateway = Dispatcher.UIThread.Invoke(() => new WorkspaceAgentGateway(new CockpitViewModel()));
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot("no-such-pane"));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync("no-such-pane").GetAwaiter().GetResult());
 
         Assert.Null(snapshot);
     }
@@ -120,7 +121,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), a, b, elsewhere, firstSessionsWorkspace.Id);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(unstampedA.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(unstampedA.PaneId).GetAwaiter().GetResult());
 
         Assert.NotNull(snapshot);
         Assert.Equal(firstSessionsWorkspaceId, snapshot!.WorkspaceId);
@@ -143,7 +144,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), agent, terminal);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(agentSession.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(agentSession.PaneId).GetAwaiter().GetResult());
 
         Assert.NotNull(snapshot);
         Assert.Single(snapshot!.Panes);
@@ -168,7 +169,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), terminal);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(terminal.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(terminal.PaneId).GetAwaiter().GetResult());
 
         Assert.Null(snapshot);
     }
@@ -196,7 +197,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), session);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(unstamped.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(unstamped.PaneId).GetAwaiter().GetResult());
 
         Assert.Null(snapshot);
     }
@@ -221,7 +222,7 @@ public class WorkspaceAgentGatewayTests
             return (new WorkspaceAgentGateway(cockpit), grid, embedded.PaneId);
         });
 
-        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshot(gridSession.PaneId));
+        var snapshot = Dispatcher.UIThread.Invoke(() => gateway.GetWorkspaceSnapshotAsync(gridSession.PaneId).GetAwaiter().GetResult());
 
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot!.Panes.Count);
@@ -249,6 +250,101 @@ public class WorkspaceAgentGatewayTests
         Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
 
         coordinator.Received(1).Forget(session.PaneId);
+    }
+
+    /// <summary>
+    /// S-2 (review round 2): <see cref="CloseSession_ForgetsThePaneFromTheAgentCoordinator"/> above proves the
+    /// grid's own close path; the embedded half of that same wiring — <c>CockpitViewModel._TeardownEmbeddedSessionAsync</c>,
+    /// which every embedded-session end path (a workspace closing, <see cref="Plugins.Abstractions.Workspaces.IEmbeddedSession.CloseAsync"/>,
+    /// the session ending itself) funnels through — had no test covering it at all. Removing that call still left
+    /// every other test in this suite green.
+    /// </summary>
+    [Fact]
+    public void CloseEmbeddedSession_ForgetsThePaneFromTheAgentCoordinator()
+    {
+        var coordinator = Substitute.For<IWorkspaceAgentCoordinator>();
+        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var c = _NewEmbeddingCapableCockpit(coordinator);
+            var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
+            c.Sessions.Add(grid);
+
+            var e = c.Embed("plugin-desk", new EmbeddedSessionRequest());
+            return (c, e);
+        });
+
+        Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
+
+        coordinator.Received(1).Forget(embedded.PaneId);
+    }
+
+    /// <summary>
+    /// MF-1 (review round 2): <see cref="WorkspaceAgentGateway.GetWorkspaceSnapshotAsync"/> marshals onto the UI
+    /// thread only when the caller is not already on it — but every other test above calls in from inside
+    /// <see cref="Dispatcher.UIThread.Invoke(System.Action)"/>, so <c>CheckAccess()</c> is always true there and the
+    /// marshal branch never actually runs. An MCP tool call lands on its own request thread instead, racing the UI
+    /// thread's own mutation of <see cref="CockpitViewModel.Sessions"/> — an
+    /// <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>, which is not thread-safe. This
+    /// reproduces exactly that: real background threads (never through <c>Dispatcher.UIThread.Invoke</c>) read the
+    /// snapshot continuously for as long as the UI thread is busy adding and removing sibling sessions, and neither
+    /// side may ever see an exception — without the marshal, this fails fast with
+    /// <see cref="InvalidOperationException"/> ("Collection was modified").
+    /// </summary>
+    [Fact]
+    public async Task GetWorkspaceSnapshotAsync_CalledFromBackgroundThreadsWhileTheUiThreadChurnsSessions_NeverThrows()
+    {
+        var (gateway, cockpit, callerPaneId) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var vm = new CockpitViewModel();
+            var caller = new SessionViewModel { WorkspaceId = "desk-a" };
+            vm.Sessions.Add(caller);
+            return (new WorkspaceAgentGateway(vm), vm, caller.PaneId);
+        });
+
+        var stop = 0;
+        var readerExceptions = new ConcurrentQueue<Exception>();
+
+        // Real background threads — never through Dispatcher.UIThread.Invoke — the same calling convention an MCP
+        // tool's own request thread uses. They hammer the gateway for as long as the UI-thread churn below runs.
+        var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        {
+            while (Volatile.Read(ref stop) == 0)
+            {
+                try
+                {
+                    gateway.GetWorkspaceSnapshotAsync(callerPaneId).GetAwaiter().GetResult();
+                }
+                catch (Exception exception)
+                {
+                    readerExceptions.Enqueue(exception);
+                    return;
+                }
+            }
+        })).ToArray();
+
+        // The UI thread itself churns: adding and removing a sibling session on a tight loop. Bounded by an
+        // iteration count rather than a sleep, so the test is not "hoping" a timing window lines up — 20,000
+        // iterations of Add+Remove reliably keeps the UI thread busy long enough, on any machine this runs on, for
+        // the readers above to be hammering it concurrently the entire time.
+        try
+        {
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                for (var i = 0; i < 20_000; i++)
+                {
+                    var sibling = new SessionViewModel { WorkspaceId = "desk-a" };
+                    cockpit.Sessions.Add(sibling);
+                    cockpit.Sessions.Remove(sibling);
+                }
+            });
+        }
+        finally
+        {
+            Volatile.Write(ref stop, 1);
+            await Task.WhenAll(readers).WaitAsync(TimeSpan.FromSeconds(30));
+        }
+
+        Assert.Empty(readerExceptions);
     }
 
     // A CockpitViewModel wired enough for Embed(...) to work (it refuses outright without a session factory and a

@@ -8,7 +8,12 @@ namespace Cockpit.Core.Abstractions.Agents;
 public sealed record WorkspaceAgentPane(string PaneId, string Name, string? Profile, string Statusline);
 
 /// <summary>A caller's workspace as the agent coordination line sees it: which workspace it is, and every AI-session pane sharing it (the caller included).</summary>
-/// <param name="WorkspaceId">The workspace's stable id — what the coordinator partitions its roster by.</param>
+/// <param name="WorkspaceId">
+/// The workspace this caller's own pane resolved to. This is the boundary <see cref="IWorkspaceAgentGateway"/> itself
+/// enforces — only panes sharing it are ever included in <paramref name="Panes"/> — not something
+/// <see cref="IWorkspaceAgentCoordinator"/>'s roster partitions by; that roster is keyed on pane id alone and does
+/// not know which workspace a pane is in at all.
+/// </param>
 /// <param name="Panes">Every AI-session pane in this workspace, in no particular order.</param>
 public sealed record WorkspaceAgentSnapshot(string WorkspaceId, IReadOnlyList<WorkspaceAgentPane> Panes);
 
@@ -34,5 +39,5 @@ public interface IWorkspaceAgentGateway
     /// exists to fall back to) — reporting an invented empty workspace there would describe a desk that does not
     /// exist.
     /// </summary>
-    WorkspaceAgentSnapshot? GetWorkspaceSnapshot(string paneId);
+    Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId);
 }

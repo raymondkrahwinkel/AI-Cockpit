@@ -27,7 +27,7 @@ internal sealed class AgentsMcpTools(IWorkspaceAgentGateway workspaces, IWorkspa
 
     [McpServerTool(Name = "list_agents")]
     [Description("Lists the other agent sessions sharing your workspace — the tab/desk the operator put you on — so you can see who else is working alongside you. Each entry has the pane id, its name, the profile it runs under, and its statusline (whatever it last set with cockpit-session__set_status). A pane the workspace holds but that has never called a cockpit-agents tool shows enrolled=false with a short note instead of being left off the list — silently missing is worse than visibly not-yet-checked-in. Calling this also enrolls you on the roster, so the next agent to call it sees you. Claims and a wake opt-in are reserved fields for later — empty for now. It runs for the session you call it from — you do not name one.")]
-    public string ListAgents()
+    public async Task<string> ListAgentsAsync()
     {
         try
         {
@@ -39,7 +39,7 @@ internal sealed class AgentsMcpTools(IWorkspaceAgentGateway workspaces, IWorkspa
                 return _Serialize(new { ok = false, error = "This request could not be attributed to a session." });
             }
 
-            if (workspaces.GetWorkspaceSnapshot(caller) is not { } snapshot)
+            if (await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is not { } snapshot)
             {
                 return _Serialize(new { ok = false, error = "This session is not one the cockpit can place in a workspace — list_agents works on an interactive agent session sharing a desk with others." });
             }

@@ -25,15 +25,20 @@ namespace Cockpit.App.Services;
 /// <para>
 /// <see cref="CockpitViewModel.Sessions"/> is an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>
 /// that only ever mutates on the UI thread, but an MCP tool call lands on the endpoint's own request thread — the
-/// same hazard <see cref="Plugins.PluginSessionObserver.GetCurrentTurnImages"/> guards against, and the same fix:
-/// every read of the live collections is marshalled onto the UI thread (inline when already on it, so a caller that
-/// is already there — a unit test, say — never pays for a redundant dispatch).
+/// same hazard <see cref="Plugins.PluginSessionObserver.GetCurrentTurnImages"/> guards against, and the same
+/// destination (marshal onto the UI thread; inline when already on it, so a caller that is already there — a unit
+/// test, say — never pays for a redundant dispatch), but not the same mechanism: like <see cref="SessionLabelSink"/>,
+/// this awaits <c>Dispatcher.UIThread.InvokeAsync</c> rather than blocking on <c>Dispatcher.UIThread.Invoke</c> —
+/// the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
+/// tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
 /// </para>
 /// </summary>
 internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit) : IWorkspaceAgentGateway, ISingletonService
 {
-    public WorkspaceAgentSnapshot? GetWorkspaceSnapshot(string paneId) =>
-        Dispatcher.UIThread.CheckAccess() ? _GetWorkspaceSnapshot(paneId) : Dispatcher.UIThread.Invoke(() => _GetWorkspaceSnapshot(paneId));
+    public Task<WorkspaceAgentSnapshot?> GetWorkspaceSnapshotAsync(string paneId) =>
+        Dispatcher.UIThread.CheckAccess()
+            ? Task.FromResult(_GetWorkspaceSnapshot(paneId))
+            : Dispatcher.UIThread.InvokeAsync(() => _GetWorkspaceSnapshot(paneId)).GetTask();
 
     private WorkspaceAgentSnapshot? _GetWorkspaceSnapshot(string paneId)
     {

@@ -29,30 +29,30 @@ public sealed class AgentsMcpToolsTests : IDisposable
     public void Dispose() => McpRequestContext.Set(null);
 
     [Fact]
-    public void ListAgents_WithNoVerifiedPane_Refuses()
+    public async Task ListAgents_WithNoVerifiedPane_Refuses()
     {
         // No McpRequestContext.Set at all — the shared-app-key path (McpAuthMiddleware sets null identity), and
         // what the in-process tool loop looks like before AC-89 issued it a per-session token. There is no
         // argument to fall back to reading instead: the tool takes none.
         McpRequestContext.Set(null);
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         Assert.False(json!["ok"]!.GetValue<bool>());
-        _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshot(default!);
+        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
     }
 
     [Fact]
-    public void ListAgents_ReturnsThePanesOfTheCallersOwnWorkspace_WithNameProfileAndStatus()
+    public async Task ListAgents_ReturnsThePanesOfTheCallersOwnWorkspace_WithNameProfileAndStatus()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
             new WorkspaceAgentPane("pane-1", "AC-13", "claude-code", "reviewing the diff"),
             new WorkspaceAgentPane("pane-2", "Session 2", "gpt-5", string.Empty),
         ]);
-        _gateway.GetWorkspaceSnapshot("pane-1").Returns(snapshot);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         Assert.Equal("ws-1", json["workspaceId"]!.GetValue<string>());
@@ -65,37 +65,37 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     [Fact]
-    public void ListAgents_NeverSeesAnotherWorkspace_OnlyQueriesTheVerifiedCallersOwnPane()
+    public async Task ListAgents_NeverSeesAnotherWorkspace_OnlyQueriesTheVerifiedCallersOwnPane()
     {
         // Two workspaces, each with its own gateway snapshot. The transport verifies the caller as pane-x; only
         // that pane id may ever reach the gateway, whatever else might be true of the process (there is no
         // argument the tool could read a different one from — it takes none).
         var workspaceX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty)]);
         var workspaceY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty)]);
-        _gateway.GetWorkspaceSnapshot("pane-x").Returns(workspaceX);
-        _gateway.GetWorkspaceSnapshot("pane-y").Returns(workspaceY);
+        _gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceX));
+        _gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(workspaceY));
         McpRequestContext.Set("pane-x");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         Assert.Equal("ws-x", json!["workspaceId"]!.GetValue<string>());
         var agents = json["agents"]!.AsArray();
         Assert.Single(agents);
         Assert.Equal("pane-x", agents[0]!["paneId"]!.GetValue<string>());
-        _gateway.DidNotReceive().GetWorkspaceSnapshot("pane-y");
+        _ = _gateway.DidNotReceive().GetWorkspaceSnapshotAsync("pane-y");
     }
 
     [Fact]
-    public void ListAgents_APaneThatNeverCalledIn_AppearsAsAVisibleGap_NotAsAbsence()
+    public async Task ListAgents_APaneThatNeverCalledIn_AppearsAsAVisibleGap_NotAsAbsence()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
             new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty),
             new WorkspaceAgentPane("pane-2", "Silent", null, string.Empty),
         ]);
-        _gateway.GetWorkspaceSnapshot("pane-1").Returns(snapshot);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         var agents = json!["agents"]!.AsArray();
         // The caller enrolls itself just by calling.
@@ -109,52 +109,52 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     [Fact]
-    public void ListAgents_EnrollsTheVerifiedCaller()
+    public async Task ListAgents_EnrollsTheVerifiedCaller()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [
             new WorkspaceAgentPane("verified-pane", "Verified", null, string.Empty),
             new WorkspaceAgentPane("other-pane", "Other", null, string.Empty),
         ]);
-        _gateway.GetWorkspaceSnapshot("verified-pane").Returns(snapshot);
+        _gateway.GetWorkspaceSnapshotAsync("verified-pane").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("verified-pane");
 
-        _Tools().ListAgents();
+        await _Tools().ListAgentsAsync();
 
         Assert.True(_coordinator.IsEnrolled("verified-pane"));
         Assert.False(_coordinator.IsEnrolled("other-pane"));
     }
 
     [Fact]
-    public void ListAgents_WithNoAttributableSession_Refuses()
+    public async Task ListAgents_WithNoAttributableSession_Refuses()
     {
-        _gateway.GetWorkspaceSnapshot(Arg.Any<string>()).Returns((WorkspaceAgentSnapshot?)null);
+        _gateway.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns(Task.FromResult<WorkspaceAgentSnapshot?>(null));
         McpRequestContext.Set("ghost-pane");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         Assert.False(json!["ok"]!.GetValue<bool>());
     }
 
     [Fact]
-    public void ListAgents_WhenTheGatewayThrows_ReturnsOkFalse_NotAProtocolError()
+    public async Task ListAgents_WhenTheGatewayThrows_ReturnsOkFalse_NotAProtocolError()
     {
-        _gateway.GetWorkspaceSnapshot(Arg.Any<string>()).Returns(_ => throw new InvalidOperationException("boom"));
+        _gateway.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns<WorkspaceAgentSnapshot?>(_ => throw new InvalidOperationException("boom"));
         McpRequestContext.Set("pane-1");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.False(string.IsNullOrEmpty(json["error"]!.GetValue<string>()));
     }
 
     [Fact]
-    public void ListAgents_ReservesEmptyPlaceholdersForClaimsAndWakeOptIn()
+    public async Task ListAgents_ReservesEmptyPlaceholdersForClaimsAndWakeOptIn()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty)]);
-        _gateway.GetWorkspaceSnapshot("pane-1").Returns(snapshot);
+        _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
         McpRequestContext.Set("pane-1");
 
-        var json = JsonNode.Parse(_Tools().ListAgents());
+        var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
 
         var self = json!["agents"]!.AsArray()[0]!;
         Assert.Empty(self["claims"]!.AsArray());
