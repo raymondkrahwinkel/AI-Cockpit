@@ -7,11 +7,16 @@
         x:Class="Cockpit.App.Views.PluginConsentDialog"
         x:DataType="vm:PluginConsentInfo"
         Title="Enable plugin?"
-        Width="460" SizeToContent="Height"
+        Width="460" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
-    <!-- AC-428: Cancel and Enable are docked and what is above them scrolls. They used to be the last children
+    <!-- AC-428: not resizable, like every other prompt here (password, confirmation, schedule, set-status) — it
+         is a question with two answers. It was the one dialog that both measured itself and could be dragged,
+         so it alone kept a ceiling it could be resized against: the clamp caps a self-measuring window because
+         there is no size to shrink instead. Its body scrolls, so the cap costs it nothing.
+
+         Cancel and Enable are docked and what is above them scrolls. They used to be the last children
          of a StackPanel that sized the window, so the install path — which is a real folder on a real machine
          and can be any length — decided where the buttons ended up, and a capped window put them past the
          bottom edge. This is a consent prompt: the two answers are the one thing that may never be off-screen. -->

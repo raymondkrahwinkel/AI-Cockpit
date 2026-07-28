@@ -24,8 +24,10 @@ namespace Cockpit.App.ViewTests;
 /// something. These report what they covered instead.
 /// </para>
 /// <para>
-/// <b>Dialogs only.</b> The main window's status bar has the same shape — a long session status pushes an icon
-/// past the right edge — and is recorded rather than quietly folded in.
+/// <b>Dialogs only</b>, and the main window was checked rather than assumed: stressing each of the 45 texts it
+/// lays out outside a scroller, one at a time, moves nothing operable past an edge, and neither does a session
+/// status long enough to fill this comment. Its status bar carries counts, not free text. Only stressing all
+/// forty-five at once — which no data can do — produces an offender, so there is nothing here to guard.
 /// </para>
 /// </summary>
 [Collection("avalonia")]
