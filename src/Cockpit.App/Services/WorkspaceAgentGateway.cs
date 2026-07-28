@@ -28,7 +28,8 @@ namespace Cockpit.App.Services;
 /// same hazard <see cref="Plugins.PluginSessionObserver.GetCurrentTurnImages"/> guards against, and the same
 /// destination (marshal onto the UI thread; inline when already on it, so a caller that is already there — a unit
 /// test, say — never pays for a redundant dispatch), but not the same mechanism: like <see cref="SessionLabelSink"/>,
-/// this awaits <c>Dispatcher.UIThread.InvokeAsync</c> rather than blocking on <c>Dispatcher.UIThread.Invoke</c> —
+/// this hands back the awaitable from <c>Dispatcher.UIThread.InvokeAsync</c> for the caller to await, rather than
+/// blocking on <c>Dispatcher.UIThread.Invoke</c> —
 /// the caller here is a Kestrel request thread, and blocking it with no timeout is the wrong shape for a seam later
 /// tickets (notify/inbox, claims, delivery, wake, budget, inspector) all land on top of.
 /// </para>

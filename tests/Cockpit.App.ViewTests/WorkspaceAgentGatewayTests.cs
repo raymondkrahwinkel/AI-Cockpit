@@ -286,9 +286,18 @@ public class WorkspaceAgentGatewayTests
     /// thread's own mutation of <see cref="CockpitViewModel.Sessions"/> — an
     /// <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>, which is not thread-safe. This
     /// reproduces exactly that: real background threads (never through <c>Dispatcher.UIThread.Invoke</c>) read the
-    /// snapshot continuously for as long as the UI thread is busy adding and removing sibling sessions, and neither
-    /// side may ever see an exception — without the marshal, this fails fast with
+    /// snapshot while the UI thread adds and removes sibling sessions. Without the marshal it fails fast with
     /// <see cref="InvalidOperationException"/> ("Collection was modified").
+    /// <para>
+    /// Read this as a guard whose whole signal is in the <em>red</em> direction. A green run here does not show that
+    /// concurrent reads were survived, because with the marshal in place there are none to survive: the churn below
+    /// occupies the dispatcher for its entire run, so each reader's <c>InvokeAsync</c> queues behind it and only
+    /// completes once the churn is over. That is the fix working — serialising the reads is exactly what it is for —
+    /// but it means green is satisfied trivially. The test earns its place by going red the moment the marshal is
+    /// removed, because an unmarshalled reader touches the collection on its own thread mid-mutation. Anyone changing
+    /// the marshalling should re-run this with the change reverted and confirm it still fails; green alone proves
+    /// nothing about this seam.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GetWorkspaceSnapshotAsync_CalledFromBackgroundThreadsWhileTheUiThreadChurnsSessions_NeverThrows()
@@ -305,7 +314,8 @@ public class WorkspaceAgentGatewayTests
         var readerExceptions = new ConcurrentQueue<Exception>();
 
         // Real background threads — never through Dispatcher.UIThread.Invoke — the same calling convention an MCP
-        // tool's own request thread uses. They hammer the gateway for as long as the UI-thread churn below runs.
+        // tool's own request thread uses. With the marshal in place these queue behind the churn rather than running
+        // alongside it; with it removed they read the collection directly, which is what makes the mutation fail.
         var readers = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
         {
             while (Volatile.Read(ref stop) == 0)
@@ -324,8 +334,8 @@ public class WorkspaceAgentGatewayTests
 
         // The UI thread itself churns: adding and removing a sibling session on a tight loop. Bounded by an
         // iteration count rather than a sleep, so the test is not "hoping" a timing window lines up — 20,000
-        // iterations of Add+Remove reliably keeps the UI thread busy long enough, on any machine this runs on, for
-        // the readers above to be hammering it concurrently the entire time.
+        // iterations of Add+Remove keep the collection in motion long enough that an unmarshalled reader is
+        // overwhelmingly likely to land mid-mutation on any machine this runs on.
         try
         {
             Dispatcher.UIThread.Invoke(() =>

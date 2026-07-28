@@ -135,10 +135,18 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.False(json!["ok"]!.GetValue<bool>());
     }
 
-    [Fact]
-    public async Task ListAgents_WhenTheGatewayThrows_ReturnsOkFalse_NotAProtocolError()
+    /// <summary>
+    /// The two ways an asynchronous gateway can fail are not the same shape, and only one of them existed before
+    /// this seam became a <see cref="Task"/>: it can throw before it ever returns a task, or hand back a task that
+    /// is already faulted or cancelled. The cancelled one is not hypothetical — it is what a dispatch onto a
+    /// shutting-down UI thread produces, so it is the shape most likely to reach a real operator. All of them must
+    /// come back as a tool result the agent can read, never as a broken transport.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(GatewayFailures))]
+    public async Task ListAgents_WhenTheGatewayFails_ReturnsOkFalse_NotAProtocolError(Func<Task<WorkspaceAgentSnapshot?>> failure)
     {
-        _gateway.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns<WorkspaceAgentSnapshot?>(_ => throw new InvalidOperationException("boom"));
+        _gateway.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns(_ => failure());
         McpRequestContext.Set("pane-1");
 
         var json = JsonNode.Parse(await _Tools().ListAgentsAsync());
@@ -146,6 +154,16 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.False(json!["ok"]!.GetValue<bool>());
         Assert.False(string.IsNullOrEmpty(json["error"]!.GetValue<string>()));
     }
+
+    public static TheoryData<Func<Task<WorkspaceAgentSnapshot?>>> GatewayFailures() => new()
+    {
+        // Throws before it ever hands back a task — the only shape that existed while this seam was synchronous.
+        () => throw new InvalidOperationException("boom"),
+        // Hands back an already-faulted task: what an exception inside the dispatched delegate becomes.
+        () => Task.FromException<WorkspaceAgentSnapshot?>(new InvalidOperationException("async boom")),
+        // Hands back a cancelled task: what a dispatch onto a UI thread that is shutting down produces.
+        () => Task.FromCanceled<WorkspaceAgentSnapshot?>(new CancellationToken(canceled: true)),
+    };
 
     [Fact]
     public async Task ListAgents_ReservesEmptyPlaceholdersForClaimsAndWakeOptIn()
