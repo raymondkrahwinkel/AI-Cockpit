@@ -61,6 +61,7 @@ public class CockpitHostShowToastTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            new PluginDiagnostics());
     }
 }

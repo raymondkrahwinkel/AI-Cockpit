@@ -24,7 +24,8 @@ public class CockpitHostIntentTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            new PluginDiagnostics());
 
     private static ServiceProvider SharedRegistry() =>
         new ServiceCollection().AddSingleton<IPluginIntentRegistry>(new PluginIntentRegistry()).BuildServiceProvider();

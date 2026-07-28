@@ -365,7 +365,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 Plugins.Add(new PluginRowViewModel(
                     plugin,
                     _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false,
-                    _diagnostics?.ForFolder(plugin.FolderId)?.Error,
+                    _diagnostics?.AllForFolder(plugin.FolderId),
                     registrations.TryGetValue(plugin.FolderId, out var menuRegistration) && menuRegistration.HiddenInMenu));
             }
 

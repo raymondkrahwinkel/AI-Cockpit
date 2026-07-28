@@ -308,6 +308,10 @@ public partial class App : Application
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
         var sessionObserver = new PluginSessionObserver(cockpit);
 
+        // The same singleton the startup banner (CockpitViewModel) and the Plugin manager read (#184) — a
+        // contribution failure recorded here reaches both without a second source of truth to keep in sync.
+        var diagnostics = Program.Services.GetRequiredService<PluginDiagnostics>();
+
         pluginManager.Initialize(discovered => new CockpitHost(
             discovered.FolderId,
             discovered.Manifest.Name,
@@ -317,6 +321,7 @@ public partial class App : Application
             _CreatePluginStorage(discovered, registrationStore, secretFieldStore),
             dialogHost,
             sessionObserver,
+            diagnostics,
             // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
             // handing them to the host lets a dashboard export drop them too, which is the third place a
             // declared secret has to be honoured.

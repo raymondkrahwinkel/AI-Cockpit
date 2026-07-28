@@ -120,7 +120,8 @@ public class CockpitHostCreateMarkdownViewTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            new PluginDiagnostics());
 
     /// <summary>An older host: implements only what the contract required before <c>CreateMarkdownView</c> existed.</summary>
     public abstract class HostWithoutMarkdownRendering : ICockpitHost

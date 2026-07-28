@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Plugin manager now tells you, per plugin, whether it actually loaded, its last error, and whether
+  its MCP server contribution is still standing — three separate facts instead of one vague status line. A
+  contribution that fails after a plugin has already started (its MCP server registration, say) is caught and
+  attributed to that plugin instead of vanishing on a background task, and it no longer gets reported as "failed
+  to load" — that wording is now reserved for a plugin that never actually started. The Plugin manager and the
+  startup banner read the same underlying record, so the two can no longer tell a different story about the same
+  plugin.
+
 - added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
   arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
   own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put

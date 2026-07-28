@@ -427,22 +427,55 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPendingApprovals;
 
-    /// <summary>Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes. Errors (a plugin that did not load) and warnings (one that loaded but is flagged, e.g. built against a newer SDK) read differently, since the operator can do different things about them.</summary>
+    /// <summary>
+    /// Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes,
+    /// and again on every later <see cref="PluginDiagnostics.Changed"/> (#184) — a contribution such as
+    /// <see cref="CockpitHost.AddMcpServer"/> can fail after that point, and the banner must not go on
+    /// reflecting only the snapshot from startup while the Plugin manager moves on. Errors (a plugin that did
+    /// not load), warnings (one that loaded but is flagged, e.g. built against a newer SDK) and a contribution
+    /// failing after load read as three different facts, since the operator can do something different about
+    /// each.
+    /// </summary>
     public void RefreshPluginFailures()
     {
         var issues = _pluginDiagnostics?.Failures ?? [];
-        var errors = issues.Where(issue => issue.Severity == PluginIssueSeverity.Error).ToList();
-        var warnings = issues.Where(issue => issue.Severity == PluginIssueSeverity.Warning).ToList();
+        var activationIssues = issues.Where(issue => PluginDiagnostics.ActivationPhases.Contains(issue.Phase) || issue.Phase == "compatibility").ToList();
+        var errors = activationIssues.Where(issue => issue.Severity == PluginIssueSeverity.Error).ToList();
+        var warnings = activationIssues.Where(issue => issue.Severity == PluginIssueSeverity.Warning).ToList();
 
-        HasPluginFailures = issues.Count > 0;
-        PluginFailureBanner = (errors.Count, warnings.Count) switch
+        // A contribution recorded after Initialize (e.g. a failed AddMcpServer upsert) is not "failed to load" —
+        // the plugin is running, one thing it registered is not. Grouped to one (its latest) per folder, since a
+        // folder that also has an activation issue would otherwise count twice for the same plugin.
+        var contributionFailures = issues
+            .Where(issue => !PluginDiagnostics.ActivationPhases.Contains(issue.Phase) && issue.Phase != "compatibility")
+            .GroupBy(issue => issue.FolderId, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .ToList();
+
+        HasPluginFailures = activationIssues.Count > 0 || contributionFailures.Count > 0;
+
+        var loadPart = (errors.Count, warnings.Count) switch
         {
-            (0, 0) => string.Empty,
-            (1, 0) => $"A plugin failed to load: {errors[0].DisplayName}. See the Plugin store → Installed for details.",
-            (> 1, 0) => $"{errors.Count} plugins failed to load. See the Plugin store → Installed for details.",
-            (0, 1) => $"A plugin may be incompatible with this app: {warnings[0].DisplayName}. See the Plugin store → Installed for details.",
-            (0, _) => $"{warnings.Count} plugins may be incompatible with this app. See the Plugin store → Installed for details.",
-            _ => $"{errors.Count} plugins failed to load and {warnings.Count} may be incompatible. See the Plugin store → Installed for details.",
+            (0, 0) => null,
+            (1, 0) => $"a plugin failed to load: {errors[0].DisplayName}",
+            (> 1, 0) => $"{errors.Count} plugins failed to load",
+            (0, 1) => $"a plugin may be incompatible with this app: {warnings[0].DisplayName}",
+            (0, _) => $"{warnings.Count} plugins may be incompatible with this app",
+            _ => $"{errors.Count} plugins failed to load and {warnings.Count} may be incompatible",
+        };
+        var contributionPart = contributionFailures.Count switch
+        {
+            0 => null,
+            1 => $"a plugin's contribution failed after it loaded: {contributionFailures[0].DisplayName}",
+            _ => $"{contributionFailures.Count} plugins had a contribution fail after loading",
+        };
+
+        PluginFailureBanner = (loadPart, contributionPart) switch
+        {
+            (null, null) => string.Empty,
+            ({ } load, null) => $"{_Capitalize(load)}. See the Plugin store → Installed for details.",
+            (null, { } contribution) => $"{_Capitalize(contribution)}. See the Plugin store → Installed for details.",
+            ({ } load, { } contribution) => $"{_Capitalize(load)}, and {contribution}. See the Plugin store → Installed for details.",
         };
 
         var pending = _pluginDiagnostics?.PendingApprovals ?? [];
@@ -459,6 +492,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // yet at this point, called as this is right after plugin phase-2 completes.
         Plugins.SeedPendingApprovalCount(pending.Count);
     }
+
+    private static string _Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     [RelayCommand]
     private void DismissPluginFailures() => HasPluginFailures = false;
@@ -2497,6 +2532,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 && pluginDiagnostics is not null
             ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService, workflowTemplateLibrary)
             : new PluginManagerViewModel();
+        // #184: a contribution can fail after the phase-2 pass that first calls RefreshPluginFailures (e.g. a
+        // plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the
+        // banner would keep reporting the state at startup while the Plugin manager moved on, the exact
+        // divergence the ticket rules out. Subscribed after Plugins above is assigned: RefreshPluginFailures
+        // dereferences it, and a Record arriving on the UI thread runs the handler synchronously.
+        if (_pluginDiagnostics is not null)
+        {
+            _pluginDiagnostics.Changed += () => _OnUiThread(RefreshPluginFailures);
+        }
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
         _sessionProfileStore = sessionProfileStore;

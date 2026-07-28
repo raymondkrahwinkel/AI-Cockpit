@@ -106,7 +106,8 @@ public class PluginSettingsAccessTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             dialogHost ?? Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            new PluginDiagnostics());
 
     /// <summary>An older host: implements only what the contract required before a plugin could open its own settings.</summary>
     public abstract class HostWithoutSettingsAccess : ICockpitHost

@@ -163,7 +163,39 @@ public class CockpitHostAddMcpServerTests
         servers[0].ApiKey.Should().Be("token-2");
     }
 
-    private static CockpitHost _BuildHost(IMcpServerStore store)
+    [Fact]
+    public async Task AddMcpServer_WhenTheStoreThrows_RecordsARuntimeFailureAttributedToThePluginAndDoesNotThrow()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns<Task<IReadOnlyList<McpServerConfig>>>(_ => throw new InvalidOperationException("disk is full"));
+        var diagnostics = new PluginDiagnostics();
+        var host = _BuildHost(store, diagnostics);
+
+        await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123"));
+
+        var failure = diagnostics.ForFolder("youtrack");
+        Assert.NotNull(failure);
+        Assert.Equal("mcp-server", failure!.Phase);
+        Assert.Equal("disk is full", failure.Error);
+    }
+
+    [Fact]
+    public async Task RemoveMcpServer_WhenTheStoreThrows_RecordsARuntimeFailureAttributedToThePluginAndDoesNotThrow()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns<Task<IReadOnlyList<McpServerConfig>>>(_ => throw new InvalidOperationException("disk is full"));
+        var diagnostics = new PluginDiagnostics();
+        var host = _BuildHost(store, diagnostics);
+
+        await host.RemoveMcpServer("YouTrack: Prod");
+
+        var failure = diagnostics.ForFolder("youtrack");
+        Assert.NotNull(failure);
+        Assert.Equal("mcp-server", failure!.Phase);
+        Assert.Equal("disk is full", failure.Error);
+    }
+
+    private static CockpitHost _BuildHost(IMcpServerStore store, PluginDiagnostics? diagnostics = null)
     {
         var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
         return new CockpitHost(
@@ -174,6 +206,7 @@ public class CockpitHostAddMcpServerTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             Substitute.For<IPluginDialogHost>(),
-            NullCockpitSessionObserver.Instance);
+            NullCockpitSessionObserver.Instance,
+            diagnostics ?? new PluginDiagnostics());
     }
 }
