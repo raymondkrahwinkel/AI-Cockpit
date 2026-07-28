@@ -36,4 +36,13 @@ internal interface IAutopilotPrPublisher
     /// Never throws; the result carries what landed and any error.
     /// </summary>
     Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stages and commits any leftover uncommitted work in <paramref name="worktreePath"/> under <paramref name="message"/>
+    /// — the same leftover-work safety commit <see cref="PublishAsync"/> makes before it pushes (AC-434: a review-gate
+    /// step forks its own throwaway copy of the run worktree to read, and a fork only carries committed history — this
+    /// is what makes sure it is not reviewing a stale diff). A clean tree means nothing to commit, not an error. Never
+    /// throws; returns false only when a real commit attempt failed.
+    /// </summary>
+    Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default);
 }

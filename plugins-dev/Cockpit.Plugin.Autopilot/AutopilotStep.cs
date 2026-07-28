@@ -88,4 +88,12 @@ internal sealed record AutopilotStep(
     /// <summary>This step re-targeted at a profile (and its model), the operator's edit during the planning round.</summary>
     public AutopilotStep WithProfile(string profileLabel, string? model) =>
         this with { ProfileLabel = profileLabel, Model = model };
+
+    /// <summary>
+    /// Marks this step a review gate the CEO plans alongside its sibling gates rather than strictly one after another
+    /// (AC-434) — the driver runs every pending step carrying this flag concurrently, each reading its own throwaway
+    /// copy of the run's worktree, and inserts one shared fix step to apply whatever they find before they re-verify.
+    /// False (the default) for an ordinary step, which the driver still runs one at a time exactly as before.
+    /// </summary>
+    public bool IsReviewGate { get; init; }
 }

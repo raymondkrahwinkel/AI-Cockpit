@@ -405,6 +405,23 @@ internal sealed class AutopilotPlanController
     public void NoteStep(string stepId, string note) =>
         _MutateStep(stepId, step => step.WithNote(note));
 
+    /// <summary>Appends a new step to the running plan (AC-434) — how a review group's shared fix pass joins the
+    /// pipeline the operator already sees, without the CEO having planned it up front. A no-op before a plan exists.</summary>
+    public void InsertStep(AutopilotStep step)
+    {
+        lock (_lock)
+        {
+            if (_plan is not { } plan)
+            {
+                return;
+            }
+
+            _plan = plan.WithSteps([.. plan.Steps, step]);
+        }
+
+        _Raise();
+    }
+
     private void _SetStepStatus(string stepId, AutopilotStepStatus status) =>
         _MutateStep(stepId, step => step.WithStatus(status));
 

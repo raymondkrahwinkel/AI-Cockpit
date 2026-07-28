@@ -86,6 +86,42 @@ internal sealed record AutopilotPlan(
     /// <summary>The next step still to run, or null when every step has settled — how the run picks what to start next.</summary>
     public AutopilotStep? NextPending => Steps.FirstOrDefault(step => step.Status == AutopilotStepStatus.Pending);
 
+    /// <summary>
+    /// The next unit of pending work (AC-434): the run of review-gate steps starting at, and contiguous with,
+    /// <see cref="NextPending"/> in plan order — so the driver runs a code-review/security-review pair concurrently
+    /// instead of one after another, but a review gate elsewhere in the plan is never pulled forward past an
+    /// unfinished ordinary step (or a settled one) sitting between them. Just <see cref="NextPending"/> alone for an
+    /// ordinary step. Empty once every step has settled.
+    /// </summary>
+    public IReadOnlyList<AutopilotStep> NextPendingGroup
+    {
+        get
+        {
+            if (NextPending is not { } next)
+            {
+                return [];
+            }
+
+            if (!next.IsReviewGate)
+            {
+                return [next];
+            }
+
+            var group = new List<AutopilotStep>();
+            foreach (var step in Steps.SkipWhile(candidate => candidate.Id != next.Id))
+            {
+                if (!step.IsReviewGate || step.Status != AutopilotStepStatus.Pending)
+                {
+                    break;
+                }
+
+                group.Add(step);
+            }
+
+            return group;
+        }
+    }
+
     /// <summary>Replaces the step sharing <paramref name="step"/>'s id, returning a new plan — a single living-artifact edit.</summary>
     public AutopilotPlan WithStep(AutopilotStep step) =>
         this with { Steps = [.. Steps.Select(existing => existing.Id == step.Id ? step : existing)] };
