@@ -6,6 +6,6 @@
   "entryType": "Cockpit.Plugin.LocalCi.LocalCiPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.3.0",
-  "description": "Tells you whether this machine can run a GitHub workflow job locally, before it promises anything. It reports Docker in three states rather than two — missing, installed but the engine is not answering, or ready — checks that the engine runs Linux containers, and says whether the act runtime is on PATH, naming the install command when it is not. It runs nothing itself.",
+  "description": "Tells you whether this machine can run a GitHub workflow job locally, before it promises anything. It reports Docker in three states rather than two — missing, installed but the engine is not answering, or ready — checks that the engine runs Linux containers, and says whether the act runtime is on PATH, naming the install command when it is not. It also reads the project's .github/workflows and says, per job, either that it can run locally or the concrete reason it cannot: a matrix, a runner that is not Linux, artifacts exchanged with another job, or an action that only means something on GitHub. Anything it does not understand it refuses rather than guesses. It runs nothing itself.",
   "author": "Cockpit"
 }

@@ -29,6 +29,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- Reading workflow YAML. A hand-rolled subset parser is exactly the failure this plugin must not have: it
+         guesses silently at a construct it does not know, where a real parser hands over a document tree we can
+         refuse explicitly. Not compile-only — the host carries no YAML parser, so it ships in the plugin folder. -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <ItemGroup>

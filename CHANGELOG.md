@@ -32,6 +32,22 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Local CI plugin that answers, honestly, whether this machine could run your GitHub workflow jobs before
+  anything tries. Its settings page reports Docker in three states rather than two — not installed, installed but the
+  engine is not answering, and ready — because "Docker Desktop is not running" is the usual one and what you do about
+  it is nothing like what you do about a missing install. It also checks the engine runs Linux containers, since a
+  Windows-container engine is perfectly healthy and still cannot run a workflow image, and whether the act runtime is
+  on PATH, naming the command to install it rather than failing at the first run. The cockpit does not ship act: it is
+  a per-platform binary of tens of megabytes that is released far more often than the cockpit, so a bundled copy would
+  be out of date between releases.
+
+  It also reads the project's workflows and says, per job, either that it can run locally or the concrete reason it
+  cannot — it uses a matrix, it needs a macos-latest runner, it exchanges artifacts with another job, it uses an action
+  that only means something on GitHub. Only `actions/checkout` and `actions/setup-dotnet` are treated as free, because
+  the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
+  job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
+  never ran. This release only tells you; nothing is executed yet.
+
 - added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
   file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
   two agents on one working tree find that out before the first edit instead of when it fails to compile. What is

@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.LocalCi;
 /// <summary>
 /// Local CI plugin entry point (AC-448). The floor the rest of the feature stands on: it works out whether this
 /// machine can run a workflow job at all — Docker in three states rather than two, Linux containers, the act
-/// runtime. It runs nothing itself.
+/// runtime — and reads the project's workflows to say which jobs are worth trying. It runs nothing itself.
 /// </summary>
 public sealed class LocalCiPlugin : ICockpitPlugin
 {
@@ -19,7 +19,9 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         Description: "Work out whether this machine can run your GitHub workflow jobs locally, before promising " +
             "anything. Docker is reported in three states — missing, installed but the engine is not answering, " +
             "or ready — and the plugin checks that the engine runs Linux containers and that the act runtime is on " +
-            "PATH, naming the install command when it is not.");
+            "PATH, naming the install command when it is not. It also reads the project's workflows and says, per " +
+            "job, either that it can run locally or the concrete reason it cannot. What it does not understand it " +
+            "refuses rather than guesses.");
 
     private LocalCiRuntime? _runtime;
 
