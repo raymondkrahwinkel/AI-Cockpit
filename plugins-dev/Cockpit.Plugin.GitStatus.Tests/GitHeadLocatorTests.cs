@@ -1,3 +1,4 @@
+using Cockpit.TestSupport;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;

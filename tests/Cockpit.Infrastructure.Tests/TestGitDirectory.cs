@@ -37,7 +37,9 @@ internal static class TestGitDirectory
                 // Swallowed on purpose, and it hides nothing: the delete below is still the gate. A virus scanner
                 // holding one file for a moment would otherwise throw here and fail every test in the calling class
                 // from its Dispose — the exact failure this helper exists to stop, reintroduced one file at a time.
-                // If the attribute genuinely could not be cleared, the delete says so, with the path in the message.
+                // If the attribute genuinely could not be cleared, the delete still fails and says which file —
+                // though only its name: .NET's recursive delete reports the bare entry, not the path to it, which
+                // for a loose git object is a bare sha fragment.
             }
         }
 

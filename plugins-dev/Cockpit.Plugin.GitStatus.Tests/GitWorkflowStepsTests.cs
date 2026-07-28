@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions.Workflows;
+using Cockpit.TestSupport;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
