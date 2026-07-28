@@ -25,6 +25,8 @@ internal sealed class AutopilotPlanController
     private string? _blockReason;
     private string? _pendingQuestion;
     private string? _sessionPaneId;
+    private int _blockadeAnswers;
+    private bool _pullRequestMissing;
 
     /// <summary>The current plan, or null before a planning round has begun.</summary>
     public AutopilotPlan? Plan
@@ -86,6 +88,33 @@ internal sealed class AutopilotPlanController
         }
     }
 
+    /// <summary>How many blockade questions the operator has answered this run (AC-347) — counted, and explicitly not a
+    /// correction (see <see cref="RecordBlockadeAnswer"/>).</summary>
+    public int BlockadeAnswers
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _blockadeAnswers;
+            }
+        }
+    }
+
+    /// <summary>Whether this run reached merge-ready but could not deliver its pull request (AC-347) — a run that leaves
+    /// the surface still needing a human to open its PR by hand is not "settled clean", even though every hard step
+    /// passed. Read under <see cref="_lock"/>, like the other properties.</summary>
+    public bool PullRequestMissing
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pullRequestMissing;
+            }
+        }
+    }
+
     public event EventHandler? Changed;
 
     /// <summary>The step running now, or null when none is — a shortcut over the plan for the surface and the driver.</summary>
@@ -117,6 +146,8 @@ internal sealed class AutopilotPlanController
             _blockReason = null;
             _pendingQuestion = null;
             _sessionPaneId = null;
+            _blockadeAnswers = 0;
+            _pullRequestMissing = false;
         }
 
         _Raise();
@@ -178,13 +209,19 @@ internal sealed class AutopilotPlanController
         _MutateStep(stepId, step => step.WithAttempt().WithStatus(AutopilotStepStatus.Running));
 
     /// <summary>
-    /// Records the CEO's validation of a step's output against its acceptance (AC-174). A pass settles
-    /// the step; a fail sends it back to rework (<see cref="AutopilotStepStatus.Pending"/>) while it still has attempts
-    /// left under <paramref name="maxAttempts"/>, and settles it <see cref="AutopilotStepStatus.Failed"/> once those run
-    /// out — so a rework loop is bounded and never becomes an endless loop. Returns true when the step goes back to
-    /// rework (the driver re-runs it), false when it settled (passed, or gave up after the last attempt).
+    /// Records what a step's execution actually produced (AC-347): <see cref="AutopilotStepOutcome.Passed"/> settles the
+    /// step; <see cref="AutopilotStepOutcome.Rejected"/> — the CEO judged the output against its acceptance and turned
+    /// it down — or <see cref="AutopilotStepOutcome.Faulted"/> — no verdict was ever reached (a crash, a stall, a
+    /// refused session, a dead CEO) — both send it back to rework (<see cref="AutopilotStepStatus.Pending"/>) while it
+    /// still has attempts left under <paramref name="maxAttempts"/>, and settle it
+    /// <see cref="AutopilotStepStatus.Failed"/> once those run out — so a rework loop is bounded and never becomes an
+    /// endless loop. Only a <see cref="AutopilotStepOutcome.Rejected"/> rework counts as a rework
+    /// (<see cref="AutopilotStep.WithRework"/>): a <see cref="AutopilotStepOutcome.Faulted"/> restart is a run restart,
+    /// never a review finding, because nobody judged the work — this is the one place that distinction is recorded, the
+    /// distinction a plain <c>bool</c> could not carry. Returns true when the step goes back to rework (the driver
+    /// re-runs it), false when it settled (passed, or gave up after the last attempt).
     /// </summary>
-    public bool ValidateStep(string stepId, bool passed, int maxAttempts)
+    public bool ValidateStep(string stepId, AutopilotStepOutcome outcome, int maxAttempts)
     {
         AutopilotStep? step;
         lock (_lock)
@@ -197,7 +234,7 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        if (passed)
+        if (outcome == AutopilotStepOutcome.Passed)
         {
             _SetStepStatus(stepId, AutopilotStepStatus.Passed);
             return false;
@@ -209,8 +246,20 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt.
-        _SetStepStatus(stepId, AutopilotStepStatus.Pending);
+        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt. Only a
+        // Rejected outcome (an actual CEO verdict) counts as a rework; a Faulted one (no verdict at all) moves the step
+        // back to Pending too, but without WithRework() — it is a run restart, not a review finding. Each branch is one
+        // mutation that records the status and (for Rejected) the rework together, so a re-entrant read never sees the
+        // rework count bumped without the status having moved (or vice versa).
+        if (outcome == AutopilotStepOutcome.Rejected)
+        {
+            _MutateStep(stepId, target => target.WithRework().WithStatus(AutopilotStepStatus.Pending));
+        }
+        else
+        {
+            _SetStepStatus(stepId, AutopilotStepStatus.Pending);
+        }
+
         return true;
     }
 
@@ -317,6 +366,38 @@ internal sealed class AutopilotPlanController
         lock (_lock)
         {
             _sessionPaneId = paneId;
+        }
+    }
+
+    /// <summary>
+    /// Counts a blockade question the operator answered (AC-347) — a blockade the run itself raised and the operator
+    /// resolved is explicitly <em>not</em> a correction, so it is tracked as its own figure rather than folded into
+    /// <see cref="AutopilotCorrectionKind"/>. Called only from <see cref="AutopilotRunCoordinator.AnswerBlockadeAsync"/> —
+    /// the one place an operator answers a blockade. Deliberately not raised from inside <see cref="ResumeRunning"/>
+    /// itself: that would make any future second caller of <see cref="ResumeRunning"/> silently count too, whether or not
+    /// it was actually an operator answering. Does not raise <see cref="Changed"/> — <see cref="ResumeRunning"/> already
+    /// does, right after this is called.
+    /// </summary>
+    public void RecordBlockadeAnswer()
+    {
+        lock (_lock)
+        {
+            _blockadeAnswers++;
+        }
+    }
+
+    /// <summary>
+    /// Marks that this merge-ready run could not deliver its pull request (AC-347) — no <c>gh</c>, no remote, or
+    /// <c>PublishAsync</c> itself failed. Called only from <see cref="AutopilotRunCoordinator._FinalizeMergeReadyAsync"/>,
+    /// the one place delivery is decided. Does not raise <see cref="Changed"/>: it changes no visible run state (the
+    /// phase stays MergeReady, the operator already sees the finalization's own toast/note) — it is read later, from
+    /// history, once the run has settled.
+    /// </summary>
+    public void RecordPullRequestMissing()
+    {
+        lock (_lock)
+        {
+            _pullRequestMissing = true;
         }
     }
 
