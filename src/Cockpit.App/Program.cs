@@ -107,7 +107,7 @@ sealed class Program
         // happens to be constructed.
         CredentialFileHousekeeping.Run();
 
-        var logPath = Path.Combine(CockpitBuild.StateRoot, "logs", "cockpit.log");
+        var logPath = CockpitBuild.LogPath;
         var services = new ServiceCollection();
 
         // One logger factory shared between the pre-container plugin pass (below) and DI, so both write

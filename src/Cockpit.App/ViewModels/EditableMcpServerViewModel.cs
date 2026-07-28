@@ -334,14 +334,31 @@ public partial class EditableMcpServerViewModel : ViewModelBase
             AuthState = access.State;
             if (access.State != McpAuthState.Authorized)
             {
-                // AcquireAsync only ever answers with a state, never the failure detail (and never a token to
-                // leak, Iron Law #8) — so this stays a fixed, short line rather than any exception text.
-                AuthMessage = "Sign-in did not complete. Check the browser window, then try again.";
+                // AcquireAsync answers with a state and how far the sign-in got, never the failure detail (and never
+                // a token to leak, Iron Law #8) — so these stay fixed lines rather than any exception text. What the
+                // stage buys is that each one is true: a single safe sentence sent the operator to a browser window
+                // on a run where discovery had already refused and no window ever existed (AC-457).
+                AuthMessage = access.SignInStage switch
+                {
+                    McpSignInStage.BrowserRequested => "Cockpit handed the sign-in to your browser, and nothing came back. Try again, or see the log.",
+
+                    // Deliberately not "the server refused": a sign-in that succeeds and issues a credential with
+                    // less life left than the margin lands here too, and on that run nothing refused anything.
+                    McpSignInStage.AuthorizationReturned => "The browser came back, but no usable credential came with it — see the log.",
+
+                    // Anything the stage cannot vouch for lands here, so this wording carries no cause of its own —
+                    // a stage that was never recorded must not be allowed to assert one. The referral holds because
+                    // the coordinator writes a line for every interactive failure, including the quiet ones.
+                    _ => "Sign-in stopped before it reached a browser — see the log.",
+                };
             }
         }
         catch (Exception)
         {
-            AuthMessage = "Sign-in failed. Check the server's URL and OAuth settings, then try again.";
+            // Naming the URL or the OAuth settings as the cause is the same untruth the stages above exist to stop:
+            // what reaches here is whatever escaped the coordinator — a config write that failed, say — and this
+            // path has no stage to speak from and no log line of its own to point at.
+            AuthMessage = "Sign-in failed. Try again.";
         }
         finally
         {

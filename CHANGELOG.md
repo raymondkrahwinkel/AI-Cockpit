@@ -686,6 +686,28 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a sign-in on an OAuth-protected MCP server no longer tells you to check a browser window that was never
+  opened. When the server's own discovery went wrong, the cockpit stopped before it knew where to send you — and
+  then reported it as a browser you had failed to finish with. The three ways a sign-in can stop now read
+  differently: one that never reached a browser at all, one where the cockpit handed the sign-in over and nothing
+  ever came back, and one where the browser did come back but no usable credential came with it — including when
+  you decline the sign-in yourself. None of them shows what actually went wrong, which would risk putting the
+  server's response on screen; each says where to find it.
+
+  Each says only what the cockpit can see. Handing the address to your desktop is the last step it can observe —
+  whether a window then appeared is not something it can know, and it no longer claims to. A sign-in that nothing
+  takes now gives up and says so, instead of waiting indefinitely for a browser that will never answer.
+
+  And the log is findable now. Several places in the cockpit send you to "the log" — a sign-in, a hotkey that could
+  not be registered, a screenshot shortcut that did not take — and none of them, nor anything else in the app, ever
+  said where it is. **System diagnostics** under Options now names the file, next to the crash logs it already
+  listed, so the panel you were already meant to copy from carries the path too.
+
+  The reason itself goes to the log, and the line that carries it has stopped saying the opposite of what happened:
+  a sign-in you started and watched fail was recorded as routine background housekeeping, under a sentence stating
+  the cockpit had not asked you — on the one path where asking is exactly what you did. It is a warning now, and it
+  is written even when the sign-in fails quietly, so the log the message points you at is never empty.
+
 - fixed: text boxes and dropdowns went back to the stock Fluent palette the moment you hovered or typed in them —
   a focused input turned black and grew a two-pixel ring, and a hovered picker took on a translucent dark fill,
   none of which are colours this theme uses. Hovering and focusing now leave a field's own fill and border alone.

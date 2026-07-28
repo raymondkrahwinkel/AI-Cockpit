@@ -37,4 +37,11 @@ public static class CockpitBuild
     public static string StateRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         StateFolder);
+
+    /// <summary>
+    /// The file this build logs to. Resolved here rather than at the point of writing because more than one thing
+    /// now needs to name it: the logger opens it, and the diagnostics report tells the operator where it is — every
+    /// message that says "see the log" is worth only as much as their ability to find it.
+    /// </summary>
+    public static string LogPath => Path.Combine(StateRoot, "logs", "cockpit.log");
 }
