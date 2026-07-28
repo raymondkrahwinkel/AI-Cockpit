@@ -68,4 +68,31 @@ public class AutopilotRunHistoryReplaceTests
 
         Assert.Equal("AC-347", new AutopilotRunHistory(storage).Items[0].Ticket);
     }
+
+    [Fact]
+    public void Replace_MatchesByInstance_NotByContent_WhenTwoRecordsAreValueEqual()
+    {
+        // The XML doc on Replace promises matching "on the record instance, deliberately not on a position" — but the
+        // doc's actual guarantee is instance identity, full stop, not merely "not position". Two distinct instances
+        // that are content-identical (same name/goal/outcome/FinishedAt, and the very same Steps list reference so the
+        // record's own value-equality genuinely holds — a different list reference would already fail Equals on its
+        // own and prove nothing) pin that down. The duplicate is added after the target, so it lands in front of it in
+        // the newest-first list; a value-based (Equals) scan would hit the duplicate first and silently edit the wrong
+        // run — the exact failure the "not on a position" note is guarding against, just one instance-identity step
+        // further than a plain position mix-up.
+        var history = new AutopilotRunHistory(new FakeStorage());
+        var sharedSteps = new List<AutopilotRunStepRecord> { new("Code", AutopilotStepStatus.Passed, string.Empty) };
+        var target = new AutopilotRunRecord("run", "goal", AutopilotPlanPhase.MergeReady, null, "2026-07-28T00:00:00+00:00", sharedSteps);
+        var duplicate = new AutopilotRunRecord("run", "goal", AutopilotPlanPhase.MergeReady, null, "2026-07-28T00:00:00+00:00", sharedSteps);
+        Assert.Equal(target, duplicate); // sanity check: genuinely value-equal, not just superficially similar
+        Assert.NotSame(target, duplicate);
+
+        history.Add(target);
+        history.Add(duplicate); // inserted at the front — the list is now [duplicate, target]
+
+        history.Replace(target, target with { Ticket = "AC-347" });
+
+        Assert.Equal(string.Empty, history.Items[0].Ticket); // duplicate — untouched despite matching target by content
+        Assert.Equal("AC-347", history.Items[1].Ticket); // target — correctly identified by instance
+    }
 }

@@ -35,4 +35,41 @@ internal sealed record AutopilotRunRecord(
     /// remote, or the publish itself failed. Such a run still needs a human to open the PR by hand, so it is never
     /// clean regardless of how its steps were classified; see <see cref="AutopilotRunReliability.RanClean"/>.</summary>
     public bool PullRequestMissing { get; init; }
+
+    /// <summary>
+    /// Captures a settled run's live state into its history record — the write path itself, extracted out of
+    /// <c>AutopilotPlanWorkspaceBody._RecordAndNotify</c> as a pure static factory so the mapping from
+    /// <see cref="AutopilotPlan"/>/<see cref="AutopilotStep"/> to persisted shape is unit-testable without a UI. A
+    /// static factory on the record it builds, rather than a helper on the workspace body, because every input here is
+    /// either plan state or a plain value the caller already snapshotted — nothing UI-shaped is needed to build one.
+    /// <paramref name="finishedAt"/> is a parameter rather than read from <see cref="DateTimeOffset.Now"/> inside this
+    /// method, so the timestamp is deterministic in a test; the caller passes <see cref="DateTimeOffset.Now"/>.
+    /// </summary>
+    public static AutopilotRunRecord Capture(
+        AutopilotPlan plan,
+        AutopilotPlanPhase outcome,
+        string? blockReason,
+        string runId,
+        int blockadeAnswers,
+        bool pullRequestMissing,
+        DateTimeOffset finishedAt) =>
+        new(
+            plan.Name,
+            plan.Goal,
+            outcome,
+            blockReason,
+            finishedAt.ToString("o"),
+            [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note)
+            {
+                Attempts = step.Attempts,
+                Reworks = step.Reworks,
+                Correction = AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks),
+                CorrectionSource = AutopilotCorrectionSource.Automatic,
+            })])
+        {
+            RunId = runId,
+            Ticket = plan.Source?.IssueId ?? string.Empty,
+            BlockadeAnswers = blockadeAnswers,
+            PullRequestMissing = pullRequestMissing,
+        };
 }

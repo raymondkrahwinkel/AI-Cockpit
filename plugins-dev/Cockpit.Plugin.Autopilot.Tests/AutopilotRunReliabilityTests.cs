@@ -57,6 +57,17 @@ public class AutopilotRunReliabilityTests
     }
 
     [Fact]
+    public void RanClean_MergeReady_WithOneCorrectedStepAmongSeveralClean_IsFalse()
+    {
+        // Every existing fixture before this test had exactly one step, so All(...) and Any(...) agreed by accident.
+        // Two steps — one clean, one not — is the only way to tell them apart: All requires every step clean (correct,
+        // false here); Any would already be satisfied by the one clean step and wrongly report true.
+        var record = Record("a", AutopilotPlanPhase.MergeReady, Step(AutopilotCorrectionKind.ReviewFinding), Step());
+
+        Assert.False(AutopilotRunReliability.RanClean(record));
+    }
+
+    [Fact]
     public void Summarize_PullRequestMissing_BreaksTheStreak()
     {
         var records = new[] { Clean("newest"), MergeReadyWithoutPullRequest("second"), Clean("oldest") };

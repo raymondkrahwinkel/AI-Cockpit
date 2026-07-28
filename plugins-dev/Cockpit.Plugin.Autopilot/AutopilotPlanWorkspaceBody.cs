@@ -724,25 +724,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         if (IsSettledOutcome(outcome) && plan is not null)
         {
             _completedRuns++;
-            _history.Add(new AutopilotRunRecord(
-                plan.Name,
-                plan.Goal,
-                outcome,
-                blockReason,
-                DateTimeOffset.Now.ToString("o"),
-                [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note)
-                {
-                    Attempts = step.Attempts,
-                    Reworks = step.Reworks,
-                    Correction = AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks),
-                    CorrectionSource = AutopilotCorrectionSource.Automatic,
-                })])
-            {
-                RunId = runId,
-                Ticket = plan.Source?.IssueId ?? string.Empty,
-                BlockadeAnswers = blockadeAnswers,
-                PullRequestMissing = pullRequestMissing,
-            });
+            _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
             switch (outcome)
