@@ -180,7 +180,8 @@
              under it and its bottom row is cut mid-glyph — with nothing drawn between the two and the same background
              on both sides, that cut row read as colliding with the "Thinking…" indicator eight pixels below it, which
              is what the overlap report described. A boundary makes scrolled-under content read as scrolled-under. The
-             8px that used to be this panel's top margin is now padding under the line, so nothing else moves. -->
+             8px that used to be this panel's top margin is now padding under the line, so nothing below the line
+             moves; the transcript gives up the single pixel the line itself occupies. -->
         <Border DockPanel.Dock="Bottom" Padding="0,8,0,0"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
             <DockPanel LastChildFill="True">
