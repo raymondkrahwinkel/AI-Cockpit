@@ -1,7 +1,9 @@
+using System.Reflection;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Auditing;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Consent;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Auditing;
@@ -98,16 +100,35 @@ public sealed class AuditTrailPermissionTests : IDisposable
     }
 
     [Fact]
-    public void EveryTrailIsNamedInTheListTheRepairWalks()
+    public void RestrictAuditTrails_LeavesASymlinkedTrailAlone()
     {
-        // The repair can only close what it knows about. A trail added past AuditTrailFiles would be created
-        // owner-only and never repaired on the machines that already have it — a gap that reads as covered.
-        var trails = typeof(JsonlAuditLog<>).Assembly
-            .GetTypes()
-            .Where(type => type is { IsAbstract: false, IsGenericTypeDefinition: false } && IsTrail(type))
-            .ToList();
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
 
-        Assert.Equal(AuditTrailFiles.Names.Count, trails.Count);
+        // Changing the mode follows the link, so a link wearing a trail's name would aim this pass at a file the
+        // cockpit never wrote. That file's permissions are the operator's, whichever way they point.
+        var target = Path.Combine(_directory, "somewhere-else.txt");
+        File.WriteAllText(target, "theirs");
+        File.SetUnixFileMode(target, WorldReadable);
+        File.CreateSymbolicLink(Path.Combine(_directory, AuditTrailFiles.Consent), target);
+
+        CredentialFileHousekeeping.RestrictAuditTrails(_directory);
+
+        Assert.Equal(WorldReadable, File.GetUnixFileMode(target));
+    }
+
+    [Fact]
+    public void AuditTrailFiles_Names_CoverEveryTrailTheCockpitWrites()
+    {
+        // The repair can only close what it knows about, and it knows only what AuditTrailFiles names. A trail that
+        // names its own file would be created owner-only and then never repaired on the machines that already have
+        // it — a gap that reads as covered. Asking each trail where it actually writes is the only way to hold the
+        // two sides together; counting them would pass on a list with a name duplicated and one missing.
+        var written = _TrailTypes().Select(_DefaultPathOf).ToHashSet();
+
+        Assert.Equal(AuditTrailFiles.In(CockpitConfigPath.Root).ToHashSet(), written);
     }
 
     public void Dispose()
@@ -118,7 +139,12 @@ public sealed class AuditTrailPermissionTests : IDisposable
         }
     }
 
-    private static bool IsTrail(Type type)
+    private static IEnumerable<Type> _TrailTypes() =>
+        typeof(JsonlAuditLog<>).Assembly
+            .GetTypes()
+            .Where(type => type is { IsAbstract: false, IsGenericTypeDefinition: false } && _IsTrail(type));
+
+    private static bool _IsTrail(Type type)
     {
         for (var current = type.BaseType; current is not null; current = current.BaseType)
         {
@@ -129,6 +155,25 @@ public sealed class AuditTrailPermissionTests : IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Builds a trail the way the container does — through the constructor that takes only a logger, the one that
+    /// decides the default path — and reports where it would write. Constructing writes nothing; the file appears on
+    /// the first record. A trail that no longer offers that shape fails here on purpose: where it writes by default
+    /// is what this test exists to read.
+    /// </summary>
+    private static string _DefaultPathOf(Type type)
+    {
+        var constructor = type.GetConstructor([typeof(ILogger<>).MakeGenericType(type)]);
+        Assert.NotNull(constructor);
+
+        var logger = typeof(NullLogger<>).MakeGenericType(type).GetProperty("Instance")?.GetValue(null);
+        var trail = constructor.Invoke([logger]);
+
+        var filePath = type.GetProperty("FilePath", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(trail);
+
+        return Assert.IsType<string>(filePath);
     }
 
     private static ConsentAuditEntry Entry() =>

@@ -65,7 +65,14 @@ public static class CredentialFileHousekeeping
     {
         foreach (var trail in AuditTrailFiles.In(stateDirectory))
         {
-            CockpitConfigPath.RestrictExistingFile(trail);
+            // A symlink is followed by the mode change, so a link that happens to carry a trail's name would hand
+            // this pass a file somewhere else entirely — one the cockpit never wrote and whose permissions are the
+            // operator's business. The cockpit only ever creates these paths as regular files, so anything else
+            // under the name is not the trail this is here to close.
+            if (new FileInfo(trail) is { Exists: true, LinkTarget: null })
+            {
+                CockpitConfigPath.RestrictExistingFile(trail);
+            }
         }
     }
 
