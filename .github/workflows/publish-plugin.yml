@@ -28,6 +28,7 @@ on:
           - claude-provider
           - cli-agent-provider
           - clock
+          - fan-out
           - gemini-provider
           - github-actions
           - github-issues

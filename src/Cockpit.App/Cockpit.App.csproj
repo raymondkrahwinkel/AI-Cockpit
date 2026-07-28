@@ -113,6 +113,12 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- Fan-out (AC-467): bundled beside Autopilot, the other surface that runs agents in their own worktrees.
+         Where Autopilot drives one run through to a merge-ready PR, this puts several agents on one task at once
+         and tiles them, so the operator picks the take. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.FanOut\Cockpit.Plugin.FanOut.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
          others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
          and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
@@ -193,6 +199,16 @@
         <LogicalName>bundled-plugins/autopilot/plugin.json</LogicalName>
       </EmbeddedResource>
 
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.dll">
+        <LogicalName>bundled-plugins/fan-out/Cockpit.Plugin.FanOut.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.deps.json">
+        <LogicalName>bundled-plugins/fan-out/Cockpit.Plugin.FanOut.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\plugin.json">
+        <LogicalName>bundled-plugins/fan-out/plugin.json</LogicalName>
+      </EmbeddedResource>
+
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll">
         <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.dll</LogicalName>
       </EmbeddedResource>
@@ -225,6 +241,9 @@
       <AutopilotFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.dll;
                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Autopilot.deps.json;
                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Autopilot\plugin.json" />
+      <FanOutFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.dll;
+                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.FanOut.deps.json;
+                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.FanOut\plugin.json" />
       <ClaudeProviderFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json" />
@@ -235,6 +254,7 @@
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-workspace" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(AutopilotFiles)" DestinationFolder="$(OutDir)bundled-plugins\autopilot" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(OutDir)bundled-plugins\fan-out" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
@@ -246,6 +266,8 @@
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(PublishDir)bundled-plugins\clock"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(PublishDir)bundled-plugins\usage-trend"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(FanOutFiles)" DestinationFolder="$(PublishDir)bundled-plugins\fan-out"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(PublishDir)bundled-plugins\claude-provider"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />

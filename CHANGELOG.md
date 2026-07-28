@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
+
 - added: a Local CI plugin that answers, honestly, whether this machine could run your GitHub workflow jobs before
   anything tries. Its settings page reports Docker in three states rather than two — not installed, installed but the
   engine is not answering, and ready — because "Docker Desktop is not running" is the usual one and what you do about
@@ -47,6 +59,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
   job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
   never ran. This release only tells you; nothing is executed yet.
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
 
 - added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
   file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
