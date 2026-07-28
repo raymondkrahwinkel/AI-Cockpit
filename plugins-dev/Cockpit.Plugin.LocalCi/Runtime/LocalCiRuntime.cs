@@ -14,7 +14,10 @@ internal sealed class LocalCiRuntime(ICliRunner runner) : ILocalCiRuntime, IDisp
     internal static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private LocalCiRuntimeStatus? _cached;
+
+    // Volatile because the fast path reads it outside the gate: without it the memory model permits a reader to keep
+    // seeing an answer Invalidate has already dropped.
+    private volatile LocalCiRuntimeStatus? _cached;
 
     public async Task<LocalCiRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {

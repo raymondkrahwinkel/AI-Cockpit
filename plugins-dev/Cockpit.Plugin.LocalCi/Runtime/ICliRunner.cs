@@ -10,9 +10,9 @@ internal interface ICliRunner
 {
     /// <summary>
     /// Starts <paramref name="fileName"/> with <paramref name="arguments"/> as argv (never through a shell) and
-    /// waits at most <paramref name="timeout"/> for it. A tool that is not installed comes back as
-    /// <see cref="CliResult.Started"/> <c>false</c>; one that hangs comes back as <see cref="CliResult.TimedOut"/>.
-    /// Only <paramref name="cancellationToken"/> throws — the failure modes are results, not exceptions.
+    /// waits at most <paramref name="timeout"/> for it. The two outcomes a detection has to tell apart are results
+    /// rather than exceptions: a tool that is not installed comes back as <see cref="CliResult.Started"/> <c>false</c>,
+    /// one that hangs as <see cref="CliResult.TimedOut"/>. Cancelling <paramref name="cancellationToken"/> throws.
     /// </summary>
     Task<CliResult> RunAsync(
         string fileName,
