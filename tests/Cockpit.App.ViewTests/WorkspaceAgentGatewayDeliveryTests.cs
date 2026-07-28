@@ -16,6 +16,7 @@ namespace Cockpit.App.ViewTests;
 /// leave all of them green while telling every sender on the desk the opposite of the truth.
 /// </para>
 /// </summary>
+[Collection("avalonia")]
 public class WorkspaceAgentGatewayDeliveryTests
 {
     [Fact]
