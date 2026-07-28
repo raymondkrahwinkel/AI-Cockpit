@@ -678,6 +678,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the bottom row of a terminal pane could be drawn where the pane had no room to show it, so a session's
+  last line was simply absent — and nothing said so. A task list that ends one entry early looks like a task list
+  that ended. The terminal deliberately keeps its row count steady through the small height changes the surrounding
+  chrome makes, instead of resizing the session every time a border thickens by a pixel; but it held steady in both
+  directions, so a pane that had just become a fraction too short kept a row it no longer had the height to draw.
+  It now only ever holds a row count the pane can actually show: growing into new space is still damped, losing
+  space takes effect immediately.
+
+  Zoomed all the way out, where a row of text is shorter than the margin being held steady, that margin now gives
+  way to the row — otherwise the terminal would stop growing into space that opened up and leave a strip of the
+  pane permanently unused.
+
 - fixed: the MCP servers dialog could put its Cancel and Save buttons out of reach, so a server you had just
   configured could not be saved. It happened whenever the dialog had something to tell you — the notice naming the
   servers it hid because the cockpit already runs one by that name — because that notice shared its space with the
