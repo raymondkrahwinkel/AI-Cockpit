@@ -64,14 +64,66 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    public IReadOnlyList<AgentMessage> Drain(string paneId)
+    public AgentInboxBatch Drain(string paneId, int limit)
     {
         lock (_lock)
         {
-            // Removing the key rather than clearing the list is what makes the drain a handover: the list handed
-            // back is no longer reachable from here, so nothing that arrives afterwards can appear in a result the
-            // caller already has, and an inbox that has been read stops occupying a key at all.
-            return _inboxes.Remove(paneId, out var waiting) ? waiting : [];
+            if (!_inboxes.TryGetValue(paneId, out var waiting))
+            {
+                return new AgentInboxBatch([], 0);
+            }
+
+            if (limit <= 0)
+            {
+                // Nothing handed over, and the caller is told everything is still waiting — a drain that hands over
+                // nothing must not read as an empty inbox.
+                return new AgentInboxBatch([], waiting.Count);
+            }
+
+            var take = Math.Min(limit, waiting.Count);
+
+            // GetRange copies, so the list handed back is no longer reachable from here: nothing that arrives
+            // afterwards can appear in a result the caller already has.
+            var batch = waiting.GetRange(0, take);
+
+            if (take == waiting.Count)
+            {
+                // Removing the key rather than leaving an empty list behind is what keeps a fully drained inbox from
+                // occupying a key at all.
+                _inboxes.Remove(paneId);
+                return new AgentInboxBatch(batch, 0);
+            }
+
+            waiting.RemoveRange(0, take);
+            return new AgentInboxBatch(batch, waiting.Count);
+        }
+    }
+
+    public bool Retract(string toPaneId, string messageId)
+    {
+        lock (_lock)
+        {
+            if (!_inboxes.TryGetValue(toPaneId, out var waiting))
+            {
+                return false;
+            }
+
+            var index = waiting.FindIndex(message => string.Equals(message.Id, messageId, StringComparison.Ordinal));
+            if (index < 0)
+            {
+                return false;
+            }
+
+            waiting.RemoveAt(index);
+            if (waiting.Count == 0)
+            {
+                // The same reason Deliver only creates an inbox once something is going in it: a retracted delivery
+                // must not leave an empty inbox behind under a pane id, which for a pane that has just closed is
+                // exactly the residue the retraction exists to prevent.
+                _inboxes.Remove(toPaneId);
+            }
+
+            return true;
         }
     }
 

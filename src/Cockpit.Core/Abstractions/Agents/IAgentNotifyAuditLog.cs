@@ -38,6 +38,20 @@ public enum AgentNotifyOutcome
     /// <summary>The caller addressed its own pane.</summary>
     RefusedSelf,
 
+    /// <summary>
+    /// The addressee, kind or body was missing, or longer than one message may be. The bound is the recipient's
+    /// protection: the body becomes text in another agent's context, and an unbounded one is both a way to fill host
+    /// memory and a way to spend a neighbour's whole context window.
+    /// </summary>
+    RefusedInvalidContent,
+
+    /// <summary>
+    /// The addressed pane was in the caller's workspace when it was checked, but no longer by the time the message had
+    /// been delivered — its session ended in between. The delivery was taken back rather than left waiting for a pane
+    /// nobody answers to.
+    /// </summary>
+    RefusedRecipientGone,
+
     /// <summary>The recipient already holds the most messages one inbox keeps, and has not drained them.</summary>
     RefusedRecipientInboxFull,
 

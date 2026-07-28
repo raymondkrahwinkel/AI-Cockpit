@@ -22,6 +22,17 @@ namespace Cockpit.Infrastructure.Tests.Agents;
 /// </summary>
 public sealed class AgentsMcpToolsTests : IDisposable
 {
+    // The characters the boundary strips, and the two it keeps, written as code points: a test file about removing
+    // control characters should not itself be a file with control characters pasted into its string literals, where
+    // they are invisible in a diff and a reviewer has to take the author's word for what is being sent.
+    private const char Escape = (char)0x1B;
+    private const char Csi = (char)0x9B;
+    private const char Nul = (char)0x00;
+    private const char Del = (char)0x7F;
+    private const char Cr = (char)0x0D;
+    private const char Lf = (char)0x0A;
+    private const char Tab = (char)0x09;
+
     private readonly IWorkspaceAgentGateway _gateway = Substitute.For<IWorkspaceAgentGateway>();
     private readonly WorkspaceAgentCoordinator _coordinator = new();
     private readonly AgentMessageInbox _inbox = new();
@@ -47,6 +58,13 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
+
+    /// <summary>
+    /// Everything actually waiting for a pane, straight from the store — past <c>read_inbox</c>'s own per-call batch
+    /// limit, so an assertion about what was or was not delivered is not also an assertion about how much one read
+    /// hands over.
+    /// </summary>
+    private IReadOnlyList<AgentMessage> _Waiting(string paneId) => _inbox.Drain(paneId, int.MaxValue).Messages;
 
     private JsonArray _ReadInboxAs(string paneId)
     {
@@ -323,8 +341,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
         await _Tools().NotifyAsync("pane-b", "request", "run the release script now");
 
         // The only pane whose workspace was resolved is the sender's own: nothing was looked up, decided or
-        // started on the recipient's behalf.
-        _ = _gateway.Received(1).GetWorkspaceSnapshotAsync("pane-a");
+        // started on the recipient's behalf. Twice, because the recipient's reachability is re-derived from the
+        // sender's own desk after the delivery (the closing-recipient race) — which is the same question about the
+        // same pane, not a second pane being touched.
+        _ = _gateway.Received(2).GetWorkspaceSnapshotAsync("pane-a");
         _ = _gateway.DidNotReceive().GetWorkspaceSnapshotAsync("pane-b");
         // Sending did not enroll the recipient either — a message cannot make another session act, not even to
         // the extent of announcing it.
@@ -348,7 +368,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         // Nothing was even looked up: with no verified caller there is no pane to resolve a workspace for, so a
         // mutation that fell back to some other value would be caught here rather than passing on ok=false.
         _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
-        Assert.Empty(_inbox.Drain("pane-b"));
+        Assert.Empty(_Waiting("pane-b"));
     }
 
     /// <summary>G2 — the workspace boundary: a pane that is not in the caller's own snapshot cannot be addressed.</summary>
@@ -365,7 +385,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "what are you working on?"));
 
         Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Empty(_inbox.Drain("pane-b"));
+        Assert.Empty(_Waiting("pane-b"));
     }
 
     /// <summary>G3 — no self-trigger: an agent cannot use the line to put text of its own choosing into its own inbox.</summary>
@@ -378,7 +398,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = _Json(await _Tools().NotifyAsync("pane-a", "note", "remember to force-push"));
 
         Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Empty(_inbox.Drain("pane-a"));
+        Assert.Empty(_Waiting("pane-a"));
     }
 
     /// <summary>G4 — dedup: the same unread message sent twice leaves exactly one in the inbox, and the second call reports the first one's id.</summary>
@@ -433,7 +453,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "anyone there?"));
 
         Assert.False(json["ok"]!.GetValue<bool>());
-        Assert.Empty(_inbox.Drain("pane-b"));
+        Assert.Empty(_Waiting("pane-b"));
     }
 
     [Fact]
@@ -526,7 +546,9 @@ public sealed class AgentsMcpToolsTests : IDisposable
     /// the addressee too. On a refused attempt <c>toPaneId</c> is whatever string the agent typed and not a pane id
     /// the host vouches for, so it is sender-controlled free text exactly like the other two. Untrimmed, one notify
     /// puts an arbitrarily long line into an append-only file nothing in the app can erase, and the tail-read has to
-    /// carry that line whole to get past it.
+    /// carry that line whole to get past it. The refusal is now the content bound rather than the workspace check —
+    /// enormous text does not get as far as the desk — but the trail's trim still has to hold, because it is what
+    /// stands between the file and text the boundary check itself reported on.
     /// </summary>
     [Fact]
     public async Task Notify_WithEnormousSenderControlledText_TrimsEveryOneOfThoseFieldsOnTheTrail()
@@ -535,11 +557,10 @@ public sealed class AgentsMcpToolsTests : IDisposable
         McpRequestContext.Set("pane-a");
         var enormous = new string('x', 50_000);
 
-        // Refused (that addressee is not on the desk) — which is the path where toPaneId is unvalidated text.
         await _Tools().NotifyAsync(enormous, enormous, enormous);
 
         var entry = Assert.Single(await _Audit().ReadRecentAsync());
-        Assert.Equal(AgentNotifyOutcome.RefusedNotInWorkspace, entry.Outcome);
+        Assert.Equal(AgentNotifyOutcome.RefusedInvalidContent, entry.Outcome);
         foreach (var field in new[] { entry.ToPaneId, entry.Kind, entry.Body })
         {
             Assert.True(field.Length < 1_000, $"a sender-controlled field was written at {field.Length} characters");
@@ -561,9 +582,264 @@ public sealed class AgentsMcpToolsTests : IDisposable
         var json = _Json(await tools.NotifyAsync("pane-b", "heads-up", "one too many"));
 
         Assert.False(json["ok"]!.GetValue<bool>());
-        var waiting = _ReadInboxAs("pane-b");
+        // Read from the store rather than through read_inbox: what is being asserted is that nothing was evicted, and
+        // one read deliberately hands over only a batch.
+        var waiting = _Waiting("pane-b");
         Assert.Equal(AgentMessageInbox.MaxWaitingPerPane, waiting.Count);
         // The oldest is still there: nothing was evicted to make room for the message that was turned down.
-        Assert.Equal("message 0", waiting[0]!["body"]!.GetValue<string>());
+        Assert.Equal("message 0", waiting[0].Body);
+    }
+
+    // ---- content bounds and sanitising: the body is text that ends up in another agent's context ----
+
+    /// <summary>
+    /// The body and the kind are bounded because they are not only stored: the body becomes text in another session's
+    /// context, and from AC-394 part of its turn. Unbounded, one agent decides how much host memory its neighbour's
+    /// inbox holds and how much of that neighbour's context window it spends. Refused rather than truncated — a message
+    /// silently shortened is a message whose meaning the host changed.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(OverlongArguments))]
+    public async Task Notify_WithAnArgumentPastItsLimit_IsRefusedAndNothingIsDelivered(string toPaneId, string kind, string body)
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync(toPaneId, kind, body));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Empty(_Waiting("pane-b"));
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.RefusedInvalidContent, entry.Outcome);
+    }
+
+    public static TheoryData<string, string, string> OverlongArguments() => new()
+    {
+        { new string('b', AgentMessageContent.MaxPaneIdLength + 1), "question", "hello" },
+        { "pane-b", new string('k', AgentMessageContent.MaxKindLength + 1), "hello" },
+        { "pane-b", "question", new string('x', AgentMessageContent.MaxBodyLength + 1) },
+    };
+
+    /// <summary>
+    /// A message right at each limit still goes: the bound is there to stop abuse, not to make the tool's own documented
+    /// maximum unusable — an off-by-one here would refuse exactly the message the description promises works.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithArgumentsExactlyAtTheirLimits_IsAccepted()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync(
+            "pane-b",
+            new string('k', AgentMessageContent.MaxKindLength),
+            new string('x', AgentMessageContent.MaxBodyLength)));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.Single(_Waiting("pane-b"));
+    }
+
+    /// <summary>
+    /// An empty or missing argument is refused rather than delivered blank. Null is not hypothetical: a non-nullable MCP
+    /// parameter still arrives null when a caller sends an explicit JSON null, and before this was handled that null
+    /// reached the trail's <c>.Length</c>-based trim, whose NullReferenceException the never-throws audit write swallowed
+    /// — a message delivered with no line on the append-only trail, which is exactly what an agent covering its tracks
+    /// would aim for.
+    /// </summary>
+    [Theory]
+    [InlineData(null, "question", "hello")]
+    [InlineData("pane-b", null, "hello")]
+    [InlineData("pane-b", "question", null)]
+    [InlineData("   ", "question", "hello")]
+    [InlineData("pane-b", "  ", "hello")]
+    [InlineData("pane-b", "question", " \t ")]
+    public async Task Notify_WithAMissingOrEmptyArgument_IsRefusedAndStillRecordedOnTheTrail(string? toPaneId, string? kind, string? body)
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync(toPaneId!, kind!, body!));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Empty(_Waiting("pane-b"));
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.RefusedInvalidContent, entry.Outcome);
+        Assert.Equal("pane-a", entry.FromPaneId);
+    }
+
+    /// <summary>
+    /// A body is displayed, written to the trail and eventually replayed into another session, so a sender must not be
+    /// able to smuggle a terminal control sequence through it: an ANSI escape can recolour or overwrite the lines the
+    /// cockpit itself wrote above the message, which is how text becomes a fake prompt. ESC is stripped, so is the C1
+    /// CSI that starts a sequence without it, and so is the bare CR that rewrites the line already printed — while the
+    /// newline and tab an author actually meant survive.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithTerminalControlSequencesInTheBody_DeliversThemStripped_AndSaysSo()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync(
+            "pane-b",
+            $"heads-up{Escape}[31m",
+            "line one" + Cr + Lf + "line two" + Tab + "tabbed" + Escape + "[2J" + Csi + "31mred" + Nul));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.True(json["sanitized"]!.GetValue<bool>());
+
+        var message = Assert.Single(_Waiting("pane-b"));
+        Assert.Equal("heads-up[31m", message.Kind);
+        Assert.Equal("line one" + Lf + "line two" + Tab + "tabbed[2J31mred", message.Body);
+        Assert.DoesNotContain(Escape.ToString(), message.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(Csi.ToString(), message.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(Cr.ToString(), message.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The flag has to mean something: a message that needed nothing removed must not claim it was altered, or a sender
+    /// has no way to tell the one case apart from the other.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithNothingToStrip_ReportsSanitizedFalse()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "who owns the parser?"));
+
+        Assert.False(json["sanitized"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// A body that was nothing but control characters is empty once they are gone, and is refused rather than delivered
+    /// as a blank message the recipient has to spend a turn on. Note what "nothing but" has to mean here: stripping is
+    /// per character, so the ESC of an escape sequence goes and its payload stays as inert text — a body of
+    /// <c>ESC [ 2 J</c> arrives as the four readable characters <c>[2J</c>, which is text and not an empty message.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WithABodyOfNothingButControlCharacters_IsRefused()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", $"{Escape}{Nul}{Del}{Csi}{Cr}"));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Empty(_Waiting("pane-b"));
+    }
+
+    /// <summary>
+    /// What the trail holds is the cleaned text, not the raw argument: an operator reading the JSONL file with <c>cat</c>
+    /// or a tail is looking at a terminal, and a trail that faithfully preserved every escape sequence an agent sent
+    /// would be a way to write to that terminal through the audit log.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WritesTheStrippedTextToTheTrail_NotTheRawArgument()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+
+        await _Tools().NotifyAsync("pane-b", "heads-up", $"before{Escape}[2Jafter");
+
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal("before[2Jafter", entry.Body);
+    }
+
+    // ---- the closing-recipient race, and the batched read ----
+
+    /// <summary>
+    /// The window: the addressee is on the caller's desk when it is checked, and its session ends before the delivery
+    /// lands — so the Forget that empties its inbox has already run. Left alone, that message waits under a pane id no
+    /// session answers to for the life of the app, and the sender was told it arrived. The delivery is taken back and
+    /// the sender told the truth instead.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WhenTheRecipientLeavesTheDeskBetweenTheCheckAndTheDelivery_TakesTheDeliveryBack()
+    {
+        var withBoth = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+        ]);
+        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+
+        // The first look sees pane-b, the second does not: the session closed in between.
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
+            Task.FromResult<WorkspaceAgentSnapshot?>(withBoth),
+            Task.FromResult<WorkspaceAgentSnapshot?>(withoutB));
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().NotifyAsync("pane-b", "heads-up", "the build is red"));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        // Nothing left behind under the closed pane's id — which is the whole point, since nobody will ever drain it.
+        Assert.Empty(_Waiting("pane-b"));
+        var entry = Assert.Single(await _Audit().ReadRecentAsync());
+        Assert.Equal(AgentNotifyOutcome.RefusedRecipientGone, entry.Outcome);
+    }
+
+    /// <summary>
+    /// A deduplicated send is not this call's message to take back: it stood on an earlier delivery that was accepted on
+    /// its own merits. Retracting it because the recipient has since gone would let a late duplicate erase mail the
+    /// recipient may already be about to read.
+    /// </summary>
+    [Fact]
+    public async Task Notify_WhenADuplicateArrivesAfterTheRecipientLeft_LeavesTheWaitingMessageAlone()
+    {
+        var withBoth = new WorkspaceAgentSnapshot("ws-1", [
+            new WorkspaceAgentPane("pane-a", "A", null, string.Empty),
+            new WorkspaceAgentPane("pane-b", "B", null, string.Empty),
+        ]);
+        var withoutB = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-a", "A", null, string.Empty)]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(withBoth));
+        McpRequestContext.Set("pane-a");
+        var tools = _Tools();
+        Assert.True(_Json(await tools.NotifyAsync("pane-b", "question", "still there?"))["ok"]!.GetValue<bool>());
+
+        // From here the second look no longer sees pane-b — but the duplicate lands on the message already waiting.
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(
+            Task.FromResult<WorkspaceAgentSnapshot?>(withBoth),
+            Task.FromResult<WorkspaceAgentSnapshot?>(withoutB));
+
+        var second = _Json(await tools.NotifyAsync("pane-b", "question", "still there?"));
+
+        Assert.True(second["ok"]!.GetValue<bool>());
+        Assert.True(second["deduplicated"]!.GetValue<bool>());
+        Assert.Single(_Waiting("pane-b"));
+    }
+
+    /// <summary>
+    /// One read hands over a bounded batch, because the batch is a tool result in the recipient's own context: without a
+    /// cap, neighbours on the same desk decide how much of that context — and of its operator's money — the recipient
+    /// spends collecting mail. The rest stays put and the reply says how much, so the tail is collectable rather than
+    /// lost.
+    /// </summary>
+    [Fact]
+    public async Task ReadInbox_WithMoreWaitingThanOneReadHandsOver_ReturnsABatchAndSaysHowManyRemain()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        var tools = _Tools();
+        for (var i = 0; i < AgentsMcpTools.MaxMessagesPerRead + 3; i++)
+        {
+            await tools.NotifyAsync("pane-b", "heads-up", $"message {i}");
+        }
+
+        McpRequestContext.Set("pane-b");
+        var first = _Json(tools.ReadInbox());
+
+        Assert.Equal(AgentsMcpTools.MaxMessagesPerRead, first["count"]!.GetValue<int>());
+        Assert.Equal(3, first["remaining"]!.GetValue<int>());
+        Assert.False(string.IsNullOrEmpty(first["more"]!.GetValue<string>()));
+        // The oldest come first, and the next call picks up exactly where this one stopped.
+        Assert.Equal("message 0", first["messages"]!.AsArray()[0]!["body"]!.GetValue<string>());
+
+        var second = _Json(tools.ReadInbox());
+        Assert.Equal(3, second["count"]!.GetValue<int>());
+        Assert.Equal(0, second["remaining"]!.GetValue<int>());
+        Assert.Null(second["more"]);
+        Assert.Equal(
+            $"message {AgentsMcpTools.MaxMessagesPerRead}",
+            second["messages"]!.AsArray()[0]!["body"]!.GetValue<string>());
     }
 }

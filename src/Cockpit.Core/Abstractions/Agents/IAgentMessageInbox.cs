@@ -45,6 +45,18 @@ public enum AgentMessageDeliveryOutcome
 public sealed record AgentMessageDelivery(AgentMessageDeliveryOutcome Outcome, AgentMessage? Message);
 
 /// <summary>
+/// One <see cref="IAgentMessageInbox.Drain"/>'s worth of mail: the messages handed over now, and how many are still
+/// waiting behind them.
+/// </summary>
+/// <param name="Messages">The messages handed to the caller, oldest first. No longer in the inbox — a drain is a handover.</param>
+/// <param name="Remaining">
+/// How many are still waiting after this batch. Non-zero means the drain was capped and the caller should come back
+/// for the rest: the recipient has to be told that, or a bounded batch is indistinguishable from an empty inbox and
+/// the tail is silently never read.
+/// </param>
+public sealed record AgentInboxBatch(IReadOnlyList<AgentMessage> Messages, int Remaining);
+
+/// <summary>
 /// The pending messages agent sessions have addressed to each other (AC-392): what <c>notify</c> writes into and
 /// <c>read_inbox</c> drains. Runtime state for the life of the app — a message is a note between two live sessions,
 /// not something to survive a restart; the durable record of who notified whom is the append-only notify trail
@@ -80,10 +92,33 @@ public interface IAgentMessageInbox
     AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body);
 
     /// <summary>
-    /// Takes everything waiting for <paramref name="paneId"/> and empties its inbox, oldest first. Each message is
-    /// handed out exactly once — a second call returns nothing unless something new arrived in between.
+    /// Takes up to <paramref name="limit"/> of the messages waiting for <paramref name="paneId"/>, oldest first, and
+    /// removes them from its inbox. Each message is handed out exactly once — a second call returns nothing unless
+    /// something new arrived in between, or the batch was capped and there is more behind it
+    /// (<see cref="AgentInboxBatch.Remaining"/>).
+    /// <para>
+    /// Bounded rather than "everything waiting" because the batch becomes one MCP tool result in the recipient's own
+    /// context (AC-392) — and, from AC-394, part of its turn. An inbox at
+    /// <c>MaxWaitingPerPane</c> handed over in one go is hundreds of thousands of tokens: a neighbour on the same desk
+    /// could spend the recipient's whole context window, and its operator's money, without the recipient ever having
+    /// agreed to read that much. The cap is the recipient's protection against its senders, so it is the recipient's
+    /// call — the caller of this method — and not a limit a sender can raise.
+    /// </para>
     /// </summary>
-    IReadOnlyList<AgentMessage> Drain(string paneId);
+    /// <param name="paneId">The pane whose inbox to drain — always the transport-verified caller, never a pane id an agent passed.</param>
+    /// <param name="limit">The most messages to hand over now. Must be positive; anything else hands over nothing and reports everything as still waiting.</param>
+    AgentInboxBatch Drain(string paneId, int limit);
+
+    /// <summary>
+    /// Takes one message back out of <paramref name="toPaneId"/>'s inbox, by the id
+    /// <see cref="Deliver"/> minted for it. For the caller that has just delivered a message and then found the
+    /// delivery should not have stood after all — the recipient's session ended in the window between the workspace
+    /// check and the delivery — so that nothing is left behind under a pane id no session answers to any more.
+    /// Narrower than <see cref="Forget"/> on purpose: the recipient's other mail was delivered by other senders on
+    /// their own merits and is not this caller's to drop.
+    /// </summary>
+    /// <returns>True when the message was still waiting and has been removed; false when it was not there — already drained, or already retracted.</returns>
+    bool Retract(string toPaneId, string messageId);
 
     /// <summary>
     /// Drops <paramref name="paneId"/>'s inbox unread — for a pane whose session has ended, so undelivered messages

@@ -63,7 +63,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   happen. The sender is stamped by the cockpit from the connection the request came in on, so an agent cannot send
   as someone else, cannot send to a session on another desk, and cannot send to itself. What arrives is marked as
   what it is — a note from another agent, not an instruction from you — and every attempt, delivered or refused, is
-  written to an append-only log next to your settings that nothing in the app can erase.
+  written to an append-only log next to your settings that nothing in the app can erase. A message is capped at 2000
+  characters and stripped of the terminal escape codes that could otherwise repaint or overwrite what the cockpit
+  printed around it, and no session hands over more than 25 messages at a time — so a chatty or hostile neighbour
+  cannot spend a session's whole context window, or its memory, on mail it never asked for.
 
 - added: you can see whether you are signed in to an MCP server, and sign in from the servers dialog instead of
   having to start a session first. Each server that uses a browser sign-in now says "signed in" or "sign-in needed"
@@ -625,6 +628,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   "Prompt preview" you open when you want it, rather than taking up half the panel on every issue you click.
 
 ### Fixed
+
+- fixed: the trails the cockpit keeps beside your settings — what you approved, what was delegated, what agents sent
+  each other, what each session spent — are now created readable only by your own account. On Linux and macOS they
+  were created at whatever the system default allowed, which on a stock Fedora means any account on the machine could
+  read them, and those files hold the commands you approved and the prompts your agents were given.
 
 - fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
   full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"

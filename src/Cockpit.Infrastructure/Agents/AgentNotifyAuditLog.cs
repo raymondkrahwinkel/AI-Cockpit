@@ -14,6 +14,18 @@ namespace Cockpit.Infrastructure.Agents;
 /// sending a megabyte. The addressee is one of those three: on a refused attempt <c>ToPaneId</c> is whatever string
 /// the agent passed and not a pane id the host vouches for, so it is no more bounded than the kind or the body.
 /// The sender is not trimmed — it is stamped host-side from the verified pane, or null.
+/// <para>
+/// <strong>What is on disk, and who can read it.</strong> The file sits in the app state root
+/// (<c>%APPDATA%\Cockpit</c>, <c>~/.config/Cockpit</c>) beside <c>cockpit.json</c>, and the base class creates it
+/// owner-only. It holds no credential the cockpit put there, but it does hold up to 300 characters of every message body
+/// an agent sent — free text, so nothing stops an agent from putting a token or a customer's name in one, and the trail
+/// would then keep it. That is the deliberate trade: a record of what one agent told another is worth little if it does
+/// not include what was said, and the answer to "that could be sensitive" is the file's permissions rather than a
+/// redaction the host has no way to perform correctly. The trail also grows without bound, one line per attempt, and
+/// notify is not rate-limited — an agent in a loop can make it large. Accepted for the same reason: an agent that wants
+/// to fill the operator's disk has a shell and does not need this file to do it, and a trail that rotates is a trail
+/// that can be made to forget.
+/// </para>
 /// </summary>
 internal sealed class AgentNotifyAuditLog : JsonlAuditLog<AgentNotifyAuditEntry>, IAgentNotifyAuditLog, ISingletonService
 {
