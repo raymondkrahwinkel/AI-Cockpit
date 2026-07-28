@@ -332,10 +332,14 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
         var stressed = 0;
         foreach (var text in window.GetVisualDescendants().OfType<TextBlock>())
         {
+            // An empty one is stressed rather than skipped, and that is the case this sweep exists for: a status
+            // line is empty until something goes wrong, so a scene renders it blank and skipping blanks means
+            // never measuring the very element whose length is the defect. Skipping them let a mutation of the
+            // profiles dialog's own columns pass — the one this ticket started from.
             if (_Ancestor<ScrollViewer>(text, window) || _Ancestor<Button>(text, window)
                 || _Ancestor<ItemsControl>(text, window)
-                || text.Text is null or "" || literals.Contains(text.Text)
-                || BoundButNeverLong.Contains(text.Text))
+                || (text.Text is { Length: > 0 } rendered
+                    && (literals.Contains(rendered) || BoundButNeverLong.Contains(rendered))))
             {
                 continue;
             }
