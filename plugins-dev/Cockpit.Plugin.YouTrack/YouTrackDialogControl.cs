@@ -874,7 +874,24 @@ internal sealed class YouTrackDialogControl : UserControl
 
         var prefill = new NewSessionPrefill(
             InitialPrompt: PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)),
-            SessionName: issue.IdReadable);
+            SessionName: issue.IdReadable)
+        {
+            // AC-419: the dialog knows the issue, so it can know the project — the cockpit project the operator linked
+            // to this YouTrack project (AC-317) is preselected instead of them picking it by hand every time. The
+            // issue's own project rather than the grid's filter: the filter can be on "All", and it is the issue being
+            // started that decides.
+            //
+            // The link stores only the short name, so two configured instances that each host a project AC are
+            // indistinguishable here. Accepted rather than worked around: YouTrackProjectField.BuildOptionsAsync
+            // already collapses same-named projects across instances into one option, so the stored value is
+            // instance-less by design and there is nothing to match an instance against. The cost of being wrong is
+            // small and visible — a preselected project the operator can see and change before Start.
+            // An "All projects" query on a response without project.shortName leaves the issue with no project at all
+            // (YouTrackClient._ExtractProject), and a link with nothing to match on is not one worth sending.
+            LinkedProject = string.IsNullOrWhiteSpace(issue.Project)
+                ? null
+                : new ProjectLink(YouTrackProjectField.Key, issue.Project),
+        };
 
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
         // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert

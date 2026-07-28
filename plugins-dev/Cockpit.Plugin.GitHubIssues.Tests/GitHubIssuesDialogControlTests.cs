@@ -187,6 +187,49 @@ public class GitHubIssuesDialogControlTests
     });
 
     [Fact]
+    public void NewSession_NamesTheRepositoryTheIssueIsOn_SoTheDialogCanPreselectItsProject() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-419: the dialog already knows which issue it is for, so it can say which cockpit project that issue's
+        // repository is linked to (AC-317) instead of leaving the operator on "No project" every time.
+        //
+        // The issue under test is moved to a second repository. Both fixtures are on octocat/hello-world, so an
+        // assertion on that would hold just as well on a build that read the first row, or the repository filter,
+        // instead of the selection — the test would pass while proving none of what its name says.
+        var elsewhere = Second with { Repository = "octocat/other-repo" };
+        var harness = DialogHarness.Open(First, elsewhere);
+        harness.Select(elsewhere);
+
+        harness.Click("New session");
+
+        var link = harness.Host.LastPrefill?.LinkedProject;
+        var fieldKey = link?.FieldKey;
+        var value = link?.Value;
+        _out.WriteLine($"link={fieldKey ?? "<null>"}={value ?? "<null>"}");
+        harness.Close();
+
+        fieldKey.Should().Be("github.repository", "that is the key the project editor stores the link under");
+        value.Should().Be("octocat/other-repo", "the issue being started decides — not the first row, and not the repository filter");
+    });
+
+    [Fact]
+    public void AnIssueWhoseRepositoryIsUnknown_NamesNoProjectRatherThanAnEmptyOne() => HeadlessAvalonia.Run(() =>
+    {
+        // The same gh response that costs the name its repository has nothing to look a project up by either. A link
+        // carrying an empty value would be a question with no answer in it.
+        var orphan = First with { Repository = string.Empty };
+        var harness = DialogHarness.Open("startup", orphan);
+        harness.Select(orphan);
+
+        harness.Click("New session");
+
+        var link = harness.Host.LastPrefill?.LinkedProject;
+        _out.WriteLine($"link={link?.Value ?? "<null>"}");
+        harness.Close();
+
+        link.Should().BeNull();
+    });
+
+    [Fact]
     public void NewSession_GoesInertWhileItsDialogIsOpen() => HeadlessAvalonia.Run(() =>
     {
         // The new-session dialog is modal to the main window, not to this one, so nothing but this button stops a
