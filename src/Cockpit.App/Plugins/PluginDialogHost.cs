@@ -17,21 +17,22 @@ namespace Cockpit.App.Plugins;
 /// settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and
 /// closes the window on success.
 /// <para>
-/// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and
-/// worked in for minutes, and as a modal it took every running session down with it. One window per title,
-/// so the toolbar button that opened it brings it forward rather than stacking a second copy.
+/// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and worked
+/// in for minutes, and as a modal it took every running session down with it.
+/// </para>
+/// <para>
+/// Unlike the cockpit's own surfaces these are <b>not</b> reduced to one window apiece, because the host has
+/// nothing to identify them by. The only thing it is given is the caption, and a caption is not an identity:
+/// the YouTrack and GitHub-Issues plugins both open "Track an issue in this session", each closed over a
+/// different pane, and Transcript-search puts two different controls behind "Search transcripts" — the
+/// standalone search and the conversation picker that answers the New-session dialog. Folding those together
+/// would link an issue to the wrong session, or hand the picker's caller a window that answers nothing.
 /// </para>
 /// </summary>
 internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
     {
-        if (surfaces.TryActivate(_DialogKey(title)) is { } open)
-        {
-            await open;
-            return;
-        }
-
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out _))
         {
             return;
@@ -39,17 +40,11 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
         window.Content = _WithToasts(createContent(), owner);
         CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
-        await surfaces.ShowAsync(_DialogKey(title), window, owner);
+        await surfaces.ShowAsync(new object(), window, owner);
     }
 
     public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
     {
-        if (surfaces.TryActivate(_SettingsKey(title)) is { } open)
-        {
-            await open;
-            return;
-        }
-
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out var maximum))
         {
             return;
@@ -106,15 +101,8 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
-        await surfaces.ShowAsync(_SettingsKey(title), window, owner);
+        await surfaces.ShowAsync(new object(), window, owner);
     }
-
-    // Keyed on the title, which is what the operator sees and what the plugin passes for the same button every
-    // time. Dialog and settings are keyed apart: a plugin whose settings carry the same title as its dialog would
-    // otherwise get one where it opened the other.
-    private static object _DialogKey(string title) => ("plugin-dialog", title);
-
-    private static object _SettingsKey(string title) => ("plugin-settings", title);
 
     // The cockpit's toasts live on the main window, so a toast raised from inside a plugin's window (a workflow's
     // Notify step, say) appeared nowhere at all when that window covered it. The same overlay goes on top of this

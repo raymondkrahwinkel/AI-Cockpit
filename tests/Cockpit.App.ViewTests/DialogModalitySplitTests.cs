@@ -21,7 +21,7 @@ public sealed partial class DialogModalitySplitTests
         "ShowNewSessionDialogAsync",
         "ShowProjectsDialogAsync",
         "ShowProjectDialogAsync",
-        "ShowManageProfilesAsync",
+        "ShowManageProfilesDialogAsync",
         "ShowMcpServersDialogAsync",
         "ShowVerifyRunnersDialogAsync",
         "ShowPluginStoreDialogAsync",
@@ -37,6 +37,7 @@ public sealed partial class DialogModalitySplitTests
     [
         "_CloneIntoProjectAsync",
         "ShowCloneFromGitUrlAsync",
+        "_ShowManageProfilesOverAsync",
         "ShowScheduleResumeDialogAsync",
         "ShowPluginConsentAsync",
         "ShowCommandPaletteDialogAsync",
@@ -68,6 +69,30 @@ public sealed partial class DialogModalitySplitTests
             Assert.True(OpensModal().IsMatch(body), $"{name} should stay a modal question");
             Assert.False(OpensSurface().IsMatch(body), $"{name} should not open its window as a surface");
         }
+    }
+
+    // A surface that answers something reads its answer when the window closes, and a dialog's own code-behind
+    // subscribes to CloseRequested from OnDataContextChanged — so setting the DataContext first puts the handler
+    // that closes the window ahead of the one that records the answer, and the answer is read before it is
+    // written. It cost a build where Start session and Save both came back as a cancel. There is no type to hang
+    // this on, so it is held here, at the two call sites where the order matters.
+    // The trailing brace is load-bearing: "new NewSessionDialog" on its own also matches the view model built a
+    // few lines earlier, which put the guard in the wrong place — and it caught itself doing it.
+    [Theory]
+    [InlineData("ShowNewSessionDialogAsync", "new NewSessionDialog {")]
+    [InlineData("ShowProjectDialogAsync", "new ProjectDialog {")]
+    public void SessionDialogService_RecordsTheAnswerBeforeTheDialogCanClose(string method, string construction)
+    {
+        var body = _Body(_Members(_Source("src", "Cockpit.App", "Services", "SessionDialogService.cs")), method);
+
+        var subscribes = body.IndexOf("CloseRequested +=", StringComparison.Ordinal);
+        var constructs = body.IndexOf(construction, StringComparison.Ordinal);
+
+        Assert.True(subscribes >= 0, $"{method} no longer records the answer through CloseRequested");
+        Assert.True(constructs >= 0, $"{method} no longer builds its dialog with {construction}");
+        Assert.True(
+            subscribes < constructs,
+            $"{method} must subscribe to CloseRequested before setting the dialog's DataContext, or the answer is read before it is written");
     }
 
     [Fact]

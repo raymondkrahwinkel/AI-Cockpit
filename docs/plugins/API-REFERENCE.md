@@ -148,10 +148,15 @@ panel).
 - **Parameters:** `title` — the section header; `createView` — factory for the section's `Control`.
 
 ### `Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)`
-Opens a **modal dialog** over the main window hosting your content; you own the content control.
+Opens a **window beside the cockpit** hosting your content; you own the content control. It is not modal:
+the operator can keep working in a running session while it is open, and can open a second one — each call
+builds its content afresh, because a title is not enough for the host to tell two of them apart.
 - **Parameters:** `title` — window title; `createContent` — factory for the dialog body; `width`/`height` —
   size in DIPs (defaults 720×560).
-- **Returns:** a `Task` that completes when the dialog closes.
+- **Returns:** a `Task` that completes when the window closes.
+- Because it does not block, do not assume the cockpit is frozen behind it. If your content acts on "the
+current session", capture that session when you open the window rather than reading the selected one later —
+the operator may have moved on.
 - The host provides a themed **DataGrid** app-wide, so your content may use it.
 ```csharp
 await host.ShowDialogAsync("Issues", () => BuildIssuesView(), width: 900, height: 600);

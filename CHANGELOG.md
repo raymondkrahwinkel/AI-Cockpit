@@ -774,6 +774,26 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   permissions you gave it. On Windows this changes nothing: there are no permission bits of this kind, and the
   per-user application-data folder is the boundary that does the same job.
 
+- fixed: an open window no longer stops the rest of the cockpit. Every session and pane lives in the one main
+  window, so anything opened over it — projects, MCP servers, profiles, worktrees, the plugin store, options, a
+  plugin's own issue list or workflow manager — took every running session down with it. An agent asking for
+  permission could not be answered at all, because the place to answer it is a banner in the pane behind the
+  window in front; the only way out was to close what you were working in and lose what you had typed into it.
+
+  Those windows now open beside the cockpit instead of over it. You can read a running session, answer an agent,
+  and go back to the window you left open with everything you had filled in still there. Asking for one of the
+  cockpit's own — projects, options, the plugin store — while it is already open brings that window to the front
+  rather than stacking a copy that would save over the first. A plugin's window is not folded together that way:
+  two of them can carry the same title while showing different things, so each opening gets its own window.
+
+  What stays as it was, deliberately: confirming a removal, typing a password, trusting a plugin before it is
+  installed, and choosing what a restore overwrites. Those are answered in seconds, and none of them may be left
+  half-answered while something else carries on — so they still hold everything until you answer.
+
+  Locking the screen still covers the whole application. The lock holds the main window, and these windows sit
+  beside it rather than inside it, so they are taken off screen while it is up and put back — with their contents
+  — once you have unlocked.
+
 - fixed: a sign-in on an OAuth-protected MCP server no longer tells you to check a browser window that was never
   opened. When the server's own discovery went wrong, the cockpit stopped before it knew where to send you — and
   then reported it as a browser you had failed to finish with. The three ways a sign-in can stop now read

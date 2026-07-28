@@ -17,7 +17,7 @@ namespace Cockpit.Plugins.Abstractions;
 /// What the host offers a plugin during <see cref="ICockpitPlugin.Initialize"/>: the built service
 /// provider, cockpit actions, per-plugin storage, and the contribution points — a settings view (opened
 /// from the plugin manager's gear), a left-menu launcher button and/or an inline left-menu section, and a
-/// helper to open a modal dialog. This facade is the contract's only intended growth surface — new
+/// helper to open a window beside the cockpit. This facade is the contract's only intended growth surface — new
 /// capabilities are added here (as default interface methods) rather than by widening the other interfaces.
 /// </summary>
 public interface ICockpitHost
@@ -214,7 +214,7 @@ public interface ICockpitHost
     /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
     IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
 
-    /// <summary>Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session, and opening it again while it is up brings that window forward rather than making a second one.</summary>
+    /// <summary>Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session while it is open, and can open a second one — every call builds its content afresh.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
     /// <summary>

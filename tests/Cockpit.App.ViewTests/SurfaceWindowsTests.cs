@@ -89,7 +89,7 @@ public sealed class SurfaceWindowsTests
     }
 
     [Fact]
-    public async Task ShowAsync_WithAnAnswer_ReadsItAfterTheWindowClosed()
+    public async Task ShowAsync_WithAnAnswer_ReadsWhatTheSurfaceLeftBehind()
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
@@ -112,6 +112,32 @@ public sealed class SurfaceWindowsTests
     }
 
     [Fact]
+    public async Task ShowAsync_WithAnAnswer_ReadsItTheMomentTheWindowCloses_SoAnythingWrittenLaterIsLost()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var owner = _ShownOwner();
+            var surface = new Window();
+
+            // The trap this cost a working build over: Close() raises Closed synchronously, and the answer is
+            // read there. A real dialog's code-behind closes the window from its own CloseRequested handler, so
+            // anything subscribed after that handler writes its answer too late — the caller reads a cancel and
+            // the session never starts. Pinned here so the ordering in SessionDialogService has a reason on
+            // record, and DialogModalitySplitTests holds the call sites to it.
+            string? answer = null;
+            var pending = surfaces.ShowAsync("key", surface, owner, () => answer);
+
+            surface.Closed += (_, _) => answer = "written too late";
+            surface.Close();
+
+            Assert.Null(await pending);
+
+            owner.Close();
+        });
+    }
+
+    [Fact]
     public async Task ShowAsync_ByTheTimeTheCallerResumes_TheKeyIsFreeAgain()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -128,7 +154,7 @@ public sealed class SurfaceWindowsTests
             async Task Caller()
             {
                 await pending;
-                Assert.Null(surfaces.TryActivate("key"));
+                Assert.Null(surfaces.TryActivateAsync("key"));
             }
 
             var caller = Caller();
@@ -155,6 +181,62 @@ public sealed class SurfaceWindowsTests
             // shutting the cockpit down needs no cleanup here. Pinned so a future change of owner notices.
             Assert.False(surface.IsVisible);
             await pending;
+        });
+    }
+
+    [Fact]
+    public async Task HideAll_TakesTheSurfacesOffTheScreenAndPutsThemBack()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var owner = _ShownOwner();
+            var first = new Window();
+            var second = new Window();
+
+            var pending = surfaces.ShowAsync("first", first, owner);
+            var other = surfaces.ShowAsync("second", second, owner);
+
+            // What the screen lock leans on: it is modal over the main window only, and these are siblings of it.
+            var restore = surfaces.HideAll();
+            Assert.False(first.IsVisible);
+            Assert.False(second.IsVisible);
+
+            restore.Dispose();
+            Assert.True(first.IsVisible);
+            Assert.True(second.IsVisible);
+
+            first.Close();
+            second.Close();
+            await pending;
+            await other;
+
+            owner.Close();
+        });
+    }
+
+    [Fact]
+    public async Task HideAll_ASurfaceClosedWhileHidden_IsNotShownAgain()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var surfaces = new SurfaceWindows();
+            var owner = _ShownOwner();
+            var surface = new Window();
+
+            var pending = surfaces.ShowAsync("key", surface, owner);
+            var restore = surfaces.HideAll();
+
+            // An agent finishing its task can close a surface while the cockpit is locked. Showing a closed window
+            // throws, which would take the unlock down with it — so the restore goes by key and finds nothing.
+            surface.Close();
+            await pending;
+
+            restore.Dispose();
+
+            Assert.False(surface.IsVisible);
+
+            owner.Close();
         });
     }
 

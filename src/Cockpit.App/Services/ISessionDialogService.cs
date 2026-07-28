@@ -5,7 +5,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App.Services;
 
 /// <summary>
-/// Shows the cockpit's modal dialogs from the view-model layer without the view models touching
+/// Shows the cockpit's dialogs from the view-model layer without the view models touching
 /// window types (keeps <see cref="CockpitViewModel"/> unit-testable behind this seam).
 /// </summary>
 public interface ISessionDialogService

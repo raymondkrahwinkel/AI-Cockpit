@@ -116,7 +116,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // forms compete over the same folder. A prefill that arrives while one is open is dropped along with the
         // duplicate — the operator is looking at a form they are already filling in, and overwriting it under
         // their hands is worse than ignoring a button they can press again.
-        if (_surfaces.TryActivate(typeof(NewSessionDialog)) is Task<NewSessionResult?> open)
+        if (_surfaces.TryActivateAsync(typeof(NewSessionDialog)) is Task<NewSessionResult?> open)
         {
             return await open;
         }
@@ -190,14 +190,18 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             viewModel.IsolateInWorktree = true;
         }
 
-        var dialog = new NewSessionDialog { DataContext = viewModel };
-
-        // The answer, read off the view model once the window has closed: a surface is not shown with ShowDialog,
-        // and the value handed to Close() is only readable from that. The dialog's own code-behind listens to the
-        // same event to close the window; this listener is what carries the choice back to the caller. Closing
-        // the window any other way — the X, Escape — never raises it, which is the cancel the caller expects.
+        // The answer, read once the window has closed: a surface is not shown with ShowDialog, and the value
+        // handed to Close() is only readable from that. Closing the window any other way — the X, Escape — never
+        // raises the event, which is the cancel the caller expects.
+        //
+        // ⚠️ Subscribed BEFORE the DataContext is set, and that order is the whole thing. The dialog's own
+        // code-behind subscribes from OnDataContextChanged, and its handler calls Close() — which raises Closed
+        // synchronously, which is where the answer is read. Subscribed second, this line runs after the answer
+        // has already been read as null: every Start session would return "cancelled" and start nothing.
         NewSessionResult? chosen = null;
         viewModel.CloseRequested += result => chosen = result;
+
+        var dialog = new NewSessionDialog { DataContext = viewModel };
 
         // Managing profiles from within the New-session dialog opens the Manage dialog over it, then
         // reloads the picker so any added/edited/removed profile (and its defaults) shows immediately.
@@ -207,7 +211,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             try
             {
-                await ShowManageProfilesAsync(dialog);
+                await _ShowManageProfilesOverAsync(dialog);
                 await viewModel.LoadAsync();
             }
             catch
@@ -242,7 +246,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
-            await ShowManageProfilesAsync(owner);
+            await _ShowSurfaceAsync(typeof(ManageProfilesDialog), owner, _BuildManageProfilesAsync);
         }
     }
 
@@ -272,22 +276,26 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // fine, editing the same one twice is two forms saving over each other. A new project keys on null, so a
         // second "New project" focuses the empty form already open.
         var key = (typeof(ProjectDialog), project?.Id);
-        if (_surfaces.TryActivate(key) is Task<Project?> open)
+        if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
         {
             return await open;
         }
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog, _projectFields.Fields);
+
+        // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
+        // window's own X both leave this null, which is the same answer.
+        //
+        // ⚠️ Subscribed BEFORE the DataContext is set — see ShowNewSessionDialogAsync for why. Second in line
+        // this runs after the answer has been read, and every Save would come back as a cancel.
+        Project? saved = null;
+        viewModel.CloseRequested += result => saved = result;
+
         var dialog = new ProjectDialog { DataContext = viewModel };
 
         // Cloning is answered here rather than in the dialog's code-behind: the clone flow owns a dialog of its
         // own and the manager that runs it, both of which live on this service.
         viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
-
-        // Read back once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
-        // window's own X both leave this null, which is the same answer.
-        Project? saved = null;
-        viewModel.CloseRequested += result => saved = result;
 
         return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
     }
@@ -319,14 +327,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<string?>(owner);
     }
 
-    private Task ShowManageProfilesAsync(Window owner) =>
-        _ShowSurfaceAsync(typeof(ManageProfilesDialog), owner, async () =>
-        {
-            var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
-            await viewModel.LoadAsync();
+    // Modal over the form it was opened from, unlike the Manage-profiles the cockpit opens itself (AC-367). It is
+    // not the cockpit this holds — that form is already a surface, so sessions stay reachable behind it — it is
+    // the form underneath, which owns it. As a surface it could be left open while its owner closes, and Avalonia
+    // takes an owned window down with its owner: a profile being edited would vanish without being asked.
+    private async Task _ShowManageProfilesOverAsync(Window owner) =>
+        await (await _BuildManageProfilesAsync()).ShowDialog(owner);
 
-            return new ManageProfilesDialog { DataContext = viewModel };
-        });
+    private async Task<Window> _BuildManageProfilesAsync()
+    {
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
+        await viewModel.LoadAsync();
+
+        return new ManageProfilesDialog { DataContext = viewModel };
+    }
 
     public async Task ShowMcpServersDialogAsync()
     {
@@ -399,7 +413,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     // populate itself: asked for one that is already open, that work would be done for a window thrown away.
     private async Task _ShowSurfaceAsync(object key, Window owner, Func<Task<Window>> createSurface)
     {
-        if (_surfaces.TryActivate(key) is { } open)
+        if (_surfaces.TryActivateAsync(key) is { } open)
         {
             await open;
             return;
@@ -490,8 +504,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     {
         // The active window, not always MainWindow (AC-456), matching the folder picker below. Owned by the main
         // window this picker left the store dialog it was launched from clickable, so its install buttons stayed
-        // live while the operator browsed — a modal whose own child picker does not hold it is not holding
-        // anything.
+        // live while the operator browsed. The store is a surface now rather than a modal, so it no longer holds
+        // the cockpit either way — but the picker still belongs to the window it was opened from.
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
@@ -510,7 +524,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     public async Task<string?> PickPluginStoreFolderAsync()
     {
         // The active window, not always MainWindow: the picker is launched from the Manage-stores dialog, itself
-        // an owned modal over the store dialog, so it must attach to that stack rather than behind it.
+        // an owned modal over the store surface, so it must attach to that stack rather than behind it.
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;

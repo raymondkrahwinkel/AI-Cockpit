@@ -7,7 +7,7 @@
              x:DataType="vm:CockpitViewModel"
              Background="{x:Null}">
 
-    <!-- The toasts (#61), stacked bottom-right. Pulled out of CockpitView so a plugin's modal dialog can show the
+    <!-- The toasts (#61), stacked bottom-right. Pulled out of CockpitView so a plugin's own window can show the
          same ones: a toast raised from a dialog used to appear on the window behind it, which is to say nowhere.
 
          The overlay spans the whole window, so it must have no Background at all: a *transparent* background still

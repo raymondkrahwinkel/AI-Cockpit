@@ -1237,7 +1237,7 @@
             </StackPanel>
         </Grid>
 
-        <!-- The toasts (#61), now a control of their own so a plugin's modal dialog shows the same ones. -->
+        <!-- The toasts (#61), now a control of their own so a plugin's own window shows the same ones. -->
         <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="3"/>
 
         <!-- The breakdown (#78), rising out of the status bar in the corner the figures are in. It sits in the content

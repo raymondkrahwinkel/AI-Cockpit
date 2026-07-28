@@ -13,7 +13,7 @@ internal readonly record struct PluginSettingsBody(Control Content, bool HasRail
 /// Builds the body of a plugin's settings dialog: the plugin's view in the host's scroll and inset, with the
 /// Options navigation rail beside it when the view declares sections (<see cref="IPluginSettingsSections"/>,
 /// AC-316). Separate from <see cref="PluginDialogHost"/> because it is the part that can be built and asserted
-/// on without a window — the dialog itself is modal and needs a running app to open.
+/// on without a window — opening the dialog itself needs a running app.
 /// </summary>
 internal static class PluginSettingsBodyBuilder
 {
