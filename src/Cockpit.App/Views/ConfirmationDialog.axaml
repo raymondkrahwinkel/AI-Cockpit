@@ -24,7 +24,9 @@
                 <!-- AC-428: the label is the caller's, and callers include plugins — ICockpitActions.ConfirmAsync
                      takes it as a free string. In a window fixed at 440 an unbounded label laid this button out
                      past the right edge (measured: an 86-character one ended at x=634), so it is bounded and
-                     trimmed, with the whole label on the tooltip. 260 leaves room for Cancel and the padding. -->
+                     trimmed, with the whole label on the tooltip. 260 is derived from the Width="440" above:
+                     440 less 28 of padding, 71 for Cancel and 8 between them leaves 333, so change one of the
+                     two and check the other. -->
                 <Button Classes="Accent" Click="OnConfirm" MaxWidth="260"
                         ToolTip.Tip="{Binding ConfirmLabel}">
                     <TextBlock Text="{Binding ConfirmLabel}" TextTrimming="CharacterEllipsis"/>

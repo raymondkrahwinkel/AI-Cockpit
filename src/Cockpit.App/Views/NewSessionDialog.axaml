@@ -26,25 +26,23 @@
              is disabled unless the profile is logged in (CanStart), so it never launches into a failure. -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
-            <!-- AC-428: the login status is the only thing here whose width comes from data, so it is the one
-                 in the star column. It used to sit in a StackPanel with the Manage-profiles button, and a
-                 StackPanel does not clip — a long status pushed that button to x=930 in a 480px window. -->
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="7">
-                <!-- Login status is Claude-only — a local provider has no login. -->
-                <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
-                         IsVisible="{Binding IsClaudeProfile}"
-                         Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                <!-- Two lines: this band also carries Start, so the status may narrow but never push it down. -->
-                <TextBlock Grid.Column="1" Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
-                           IsVisible="{Binding IsClaudeProfile}"
-                           TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
-                           ToolTip.Tip="{Binding LoginStatusLabel}"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <Button Grid.Column="2" Content="Manage profiles" Classes="Subtle" FontSize="12"
-                        VerticalAlignment="Center"
-                        Command="{Binding ManageProfilesCommand}"
-                        Foreground="{StaticResource CockpitAccentBrush}"/>
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0">
+            <!-- AC-428 looked at this band and left it alone. It has the shape AC-427 named — a bound label in a
+                 StackPanel with a button — but LoginStatusLabel is "logged in" or "not logged in" and nothing
+                 else, so no data can reach the failure. Restructuring it moved Manage profiles 127px to sit
+                 beside Start, which is a real change in exchange for none. -->
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <!-- Login status is Claude-only — a local provider has no login. -->
+                    <Ellipse Width="8" Height="8" IsVisible="{Binding IsClaudeProfile}"
+                             Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                    <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
+                               IsVisible="{Binding IsClaudeProfile}"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Button Content="Manage profiles" Classes="Subtle" FontSize="12" VerticalAlignment="Center"
+                            Command="{Binding ManageProfilesCommand}"
+                            Foreground="{StaticResource CockpitAccentBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                     <!-- IsDefault: Enter starts the session (fires ConfirmCommand), but only when it's
                          enabled — CanStart gates it, so Enter never launches into a failure. -->
