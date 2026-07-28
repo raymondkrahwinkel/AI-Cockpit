@@ -43,6 +43,15 @@ internal sealed class PluginDiscovery : ISingletonService
                 continue;
             }
 
+            // Marked for removal: gone as far as anything that asks is concerned, even though the folder itself
+            // survives until the next start deletes it. Discovery is the only thing that can say so now that it
+            // no longer does the deleting — and if that deletion ever fails (a locked file), this is what keeps
+            // the plugin the operator removed from quietly loading again on every start after it.
+            if (File.Exists(Path.Combine(folder, PluginInstaller.RemovalMarker)))
+            {
+                continue;
+            }
+
             var manifestPath = Path.Combine(folder, "plugin.json");
             if (!File.Exists(manifestPath))
             {

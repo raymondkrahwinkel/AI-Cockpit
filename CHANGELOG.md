@@ -533,6 +533,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: while the plugin store is installing something, everything that changes what is installed is switched
+  off rather than merely looking that way — enabling, disabling, removing, moving a plugin up or down the left
+  menu, and adding or removing a workflow template. The layer the store draws over its catalogue while it works
+  never stopped the keyboard, so those buttons were out of reach of the mouse and one Tab and a space bar away
+  from doing exactly what they always did, halfway through an install.
+
+  That layer has stopped blocking the mouse in turn. It says what the store is doing and no longer pretends to
+  be a lock, so everything that changes nothing keeps working while you wait: reading the catalogue, opening a
+  plugin's settings, switching between the lists in the sidebar, following a plugin's homepage or repository.
+
 - changed: the header every dialog wears is lighter. Its name sat at heading size with a lot of room around it, which
   on a short dialog like Set status took two fifths of the window before you reached the first control, and on About
   left the header shouting over the dialog's own content. The name, the line under it and the room around them have
@@ -734,6 +744,30 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a sign-in you started and watched fail was recorded as routine background housekeeping, under a sentence stating
   the cockpit had not asked you — on the one path where asking is exactly what you did. It is a warning now, and it
   is written even when the sign-in fails quietly, so the log the message points you at is never empty.
+
+- fixed: a plugin update could be applied while the cockpit was still running the plugin it replaces. An update is
+  deliberately held back until the next start, because that is the one moment nothing is loaded — but the step that
+  *reads* which plugins are installed was applying the held-back ones on its way past, and that read runs after
+  every enable, disable or removal, and by itself every fifteen minutes while the cockpit looks for new versions.
+  A plugin could therefore be swapped underneath itself, at a moment nobody asked for and with nothing said about
+  it. Waiting updates and removals are now applied at startup and nowhere else, which is what they always claimed.
+
+- fixed: removing a plugin that had an update waiting did not remove it. The waiting update was applied first, and
+  applying it replaces the plugin's folder — the note recording the removal was inside that folder, so it went
+  with it. The plugin came back at a version you had just decided not to keep, saying nothing. Removing a plugin
+  now discards an update waiting for it.
+
+  Changing your mind still works: installing a plugin again after asking for it to be removed cancels the removal.
+  It comes back asking for your approval, the way anything whose bytes you have not approved does — it does not
+  quietly return switched off, and it does not quietly return already trusted.
+
+  A removal that could not be carried out also no longer undoes itself. Deleting the folder is best-effort — a file
+  still open leaves it for the next start — and a plugin in that state was found and loaded again on every start
+  after it. A plugin you removed now stays gone from the moment you remove it, whether or not its folder went.
+
+- fixed: **Update all** ended a batch that lost a plugin with "the rest failed — see the message above", and there
+  was no message above: the store shows one line at a time, so each failure had already been written over by the
+  next plugin, then by the catalogue reloading, then by that summary. It names the plugins that failed instead.
 
 - fixed: text boxes and dropdowns went back to the stock Fluent palette the moment you hovered or typed in them —
   a focused input turned black and grew a two-pixel ring, and a hovered picker took on a translucent dark fill,

@@ -19,7 +19,8 @@ namespace Cockpit.Infrastructure.Plugins;
 /// </summary>
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
-    private const string RemovalMarker = ".remove";
+    /// <summary>The file dropped into a plugin's folder to have it deleted at the next start. Discovery reads it too, so a plugin the operator removed is out of the list from that moment rather than at the restart.</summary>
+    internal const string RemovalMarker = ".remove";
 
     // A reserved (dot-prefixed, so discovery skips it) folder under the plugins root holding staged updates as
     // .pending-updates/<folderId>/. Kept off to the side rather than swapped in place so an update never has to
@@ -130,9 +131,35 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
     public Task MarkForRemovalAsync(string folderId, CancellationToken cancellationToken = default)
     {
         var folder = Path.Combine(_pluginsRoot, folderId);
-        if (Directory.Exists(folder))
+        if (!Directory.Exists(folder))
         {
-            File.WriteAllText(Path.Combine(folder, RemovalMarker), "");
+            // Nothing installed under that id, so there is nowhere to write the marker and this call cannot
+            // remove anything. It leaves a staged copy alone deliberately: with no folder to mark, deleting one
+            // would be this method's only effect, on the strength of an id that matches no installed plugin —
+            // and a caller normalising an id differently (SupersededPluginNotice passes a manifest id) would
+            // silently discard an install the operator asked for.
+            return Task.CompletedTask;
+        }
+
+        File.WriteAllText(Path.Combine(folder, RemovalMarker), "");
+
+        // Removing wins over an update staged for the same plugin earlier in the session, because it is the
+        // later word. Left in place, the startup sweep would apply that update first — deleting the folder and
+        // the marker inside it together — and the removal would be lost without a sound, the plugin coming back
+        // at a version the operator had just decided not to keep.
+        var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
+        if (Directory.Exists(pendingDir))
+        {
+            try
+            {
+                Directory.Delete(pendingDir, recursive: true);
+            }
+            catch
+            {
+                // Best-effort, like every other deletion here: the marker is already written, so the removal
+                // still happens. Worst case the staged copy is applied first and the folder returns — which is
+                // the failure this withdrawal exists to prevent, but not one worth taking Remove down over.
+            }
         }
 
         return Task.CompletedTask;
