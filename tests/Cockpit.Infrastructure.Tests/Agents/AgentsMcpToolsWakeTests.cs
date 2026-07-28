@@ -312,6 +312,21 @@ public sealed class AgentsMcpToolsWakeTests : IDisposable
     }
 
     [Fact]
+    public async Task SetWakeOptIn_WhenTheDeskLookupFails_RefusesRatherThanRecordingConsent()
+    {
+        // The same class as the notify catch-all: a failure while deciding whether this caller may answer at all
+        // must not end with its consent stored anyway. Consent recorded on a path the host could not verify is a
+        // standing permission to wake something nobody checked.
+        _gateway.GetWorkspaceSnapshotAsync("me").Returns<Task<WorkspaceAgentSnapshot?>>(_ => throw new InvalidOperationException("the desk went away"));
+        McpRequestContext.Set("me");
+
+        var json = _Json(await _Tools().SetWakeOptInAsync(enabled: true));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.False(_coordinator.HasWakeConsent("me"));
+    }
+
+    [Fact]
     public async Task ListAgents_ReportsEachPanesOwnWakeOptIn()
     {
         _DeskWith("me", "opted-in", "not-opted-in");
