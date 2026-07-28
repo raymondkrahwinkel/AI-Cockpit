@@ -389,6 +389,9 @@ internal sealed class AutopilotRunCoordinator(
             await host.SendToSessionAsync(pane, string.IsNullOrWhiteSpace(answer) ? "Continue." : answer);
         }
 
+        // AC-347: this is the one place an operator answers a blockade — count it before resuming, so the reliability
+        // figure never counts a resolved blockade as a correction.
+        plan.RecordBlockadeAnswer();
         plan.ResumeRunning();
     }
 

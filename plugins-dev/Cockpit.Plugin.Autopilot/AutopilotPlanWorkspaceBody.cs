@@ -217,7 +217,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         clear.Click += (_, _) => _history.Clear();
 
-        var header = new DockPanel
+        var titleRow = new DockPanel
         {
             LastChildFill = false,
             Children =
@@ -231,6 +231,24 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = _Brush("CockpitTextSecondaryBrush"),
                     [DockPanel.DockProperty] = Dock.Left,
+                },
+            },
+        };
+
+        // The AC-347 reliability line, right under the title so it reads next to the run count. TextTrimming keeps it
+        // readable rather than overflowing when the header is narrow.
+        var header = new StackPanel
+        {
+            Spacing = 1,
+            Children =
+            {
+                titleRow,
+                new TextBlock
+                {
+                    Text = AutopilotRunReliability.Summarize(_history.Items).Describe(),
+                    FontSize = 10.5,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = _Brush("CockpitTextFaintBrush"),
                 },
             },
         };
@@ -331,29 +349,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         });
 
         // Each step on its own line with a mark, and — where it failed or was blocked — the reason it carried underneath,
-        // so the operator sees why without reopening the run.
-        foreach (var step in record.Steps)
+        // so the operator sees why without reopening the run. Right-click reclassifies it (AC-347).
+        for (var stepIndex = 0; stepIndex < record.Steps.Count; stepIndex++)
         {
-            meta.Children.Add(new TextBlock
-            {
-                Text = $"{_HistoryStepMark(step.Status)}  {step.Title}",
-                FontSize = 10.5,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 2, 0, 0),
-                Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
-            });
-
-            if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
-            {
-                meta.Children.Add(new TextBlock
-                {
-                    Text = step.Note,
-                    FontSize = 10.5,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(16, 0, 0, 0),
-                    Foreground = _Brush("CockpitTextFaintBrush"),
-                });
-            }
+            meta.Children.Add(_BuildHistoryStepRow(record, stepIndex, record.Steps[stepIndex]));
         }
 
         return new Border
@@ -373,6 +372,83 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         AutopilotStepStatus.Blocked => "⏸",
         _ => "·",
     };
+
+    // A settled step's own row (AC-347): its status mark plus, when it needed a correction, a trailing "!" so the AC-347
+    // figure has a visible per-step counterpart — and, for a step the operator reclassified by hand, a faint "set by
+    // you" line so a manually set figure never reads as if the run itself had decided it. Right-click always offers the
+    // four classifications — reclassifying is valid for any settled step regardless of its current one, so the menu is
+    // never a dead control.
+    private Control _BuildHistoryStepRow(AutopilotRunRecord record, int stepIndex, AutopilotRunStepRecord step)
+    {
+        var lines = new StackPanel { Spacing = 0 };
+
+        var correctionMark = step.Correction == AutopilotCorrectionKind.None ? string.Empty : "!";
+        lines.Children.Add(new TextBlock
+        {
+            Text = $"{_HistoryStepMark(step.Status)}{correctionMark}  {step.Title}",
+            FontSize = 10.5,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 0),
+            Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
+        });
+
+        if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = step.Note,
+                FontSize = 10.5,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(16, 0, 0, 0),
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            });
+        }
+
+        if (step.CorrectionSource == AutopilotCorrectionSource.Operator)
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = "· set by you",
+                FontSize = 10,
+                Margin = new Thickness(16, 0, 0, 0),
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            });
+        }
+
+        return new Border { Child = lines, ContextMenu = _CorrectionMenu(record, stepIndex) };
+    }
+
+    // The reclassify menu (AC-347): the four correction kinds, each setting CorrectionSource to Operator so the manual
+    // override stays visible as one. Written back through AutopilotRunHistory.Replace — the one path a settled record is
+    // edited through after it landed. It closes over the record instance rather than its position, so an edit lands on
+    // the run it was opened on even if another run settles in the meantime.
+    private ContextMenu _CorrectionMenu(AutopilotRunRecord record, int stepIndex)
+    {
+        MenuItem Item(AutopilotCorrectionKind kind, string label)
+        {
+            var item = new MenuItem { Header = label };
+            item.Click += (_, _) => _SetStepCorrection(record, stepIndex, kind);
+            return item;
+        }
+
+        return new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                Item(AutopilotCorrectionKind.None, "No correction"),
+                Item(AutopilotCorrectionKind.ReviewFinding, "Review finding"),
+                Item(AutopilotCorrectionKind.RunRestart, "Run restart"),
+                Item(AutopilotCorrectionKind.OperatorEdit, "Operator edit"),
+            },
+        };
+    }
+
+    private void _SetStepCorrection(AutopilotRunRecord record, int stepIndex, AutopilotCorrectionKind kind)
+    {
+        var steps = record.Steps.ToList();
+        steps[stepIndex] = steps[stepIndex] with { Correction = kind, CorrectionSource = AutopilotCorrectionSource.Operator };
+        _history.Replace(record, record with { Steps = steps });
+    }
 
     // The finish time as a short, local, human string — parsed from the stored ISO stamp; the raw stamp is the fallback
     // if it somehow does not parse, so a row never shows blank.
@@ -596,12 +672,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var settledPlan = controller.Plan;
         var outcome = controller.Phase;
         var blockReason = controller.BlockReason;
+        var blockadeAnswers = controller.BlockadeAnswers;
 
         _OnUi(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
-            _RecordAndNotify(settledPlan, outcome, blockReason);
+            _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers);
             _Render();
         });
     }
@@ -616,7 +693,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
         outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
 
-    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason)
+    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers)
     {
         // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
         // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
@@ -629,13 +706,26 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 outcome,
                 blockReason,
                 DateTimeOffset.Now.ToString("o"),
-                [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note))]));
+                [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note)
+                {
+                    Attempts = step.Attempts,
+                    Correction = AutopilotCorrection.Classify(step.Status, step.Attempts),
+                    CorrectionSource = AutopilotCorrectionSource.Automatic,
+                })])
+            {
+                RunId = runId,
+                Ticket = plan.Source?.IssueId ?? string.Empty,
+                BlockadeAnswers = blockadeAnswers,
+            });
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
             switch (outcome)
             {
                 case AutopilotPlanPhase.MergeReady:
-                    _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
+                    // The reliability line right after the settle that just moved it (AC-347) — computed after the Add
+                    // above so the just-settled run is already counted in it.
+                    var reliability = AutopilotRunReliability.Summarize(_history.Items).Describe();
+                    _host.ShowToast($"Run “{label}” is merge-ready. {reliability}", PluginToastSeverity.Success);
                     break;
                 case AutopilotPlanPhase.Stopped:
                     _host.ShowToast($"Run “{label}” stopped.", PluginToastSeverity.Information);

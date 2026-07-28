@@ -25,6 +25,7 @@ internal sealed class AutopilotPlanController
     private string? _blockReason;
     private string? _pendingQuestion;
     private string? _sessionPaneId;
+    private int _blockadeAnswers;
 
     /// <summary>The current plan, or null before a planning round has begun.</summary>
     public AutopilotPlan? Plan
@@ -86,6 +87,19 @@ internal sealed class AutopilotPlanController
         }
     }
 
+    /// <summary>How many blockade questions the operator has answered this run (AC-347) — counted, and explicitly not a
+    /// correction (see <see cref="RecordBlockadeAnswer"/>).</summary>
+    public int BlockadeAnswers
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _blockadeAnswers;
+            }
+        }
+    }
+
     public event EventHandler? Changed;
 
     /// <summary>The step running now, or null when none is — a shortcut over the plan for the surface and the driver.</summary>
@@ -117,6 +131,7 @@ internal sealed class AutopilotPlanController
             _blockReason = null;
             _pendingQuestion = null;
             _sessionPaneId = null;
+            _blockadeAnswers = 0;
         }
 
         _Raise();
@@ -317,6 +332,23 @@ internal sealed class AutopilotPlanController
         lock (_lock)
         {
             _sessionPaneId = paneId;
+        }
+    }
+
+    /// <summary>
+    /// Counts a blockade question the operator answered (AC-347) — a blockade the run itself raised and the operator
+    /// resolved is explicitly <em>not</em> a correction, so it is tracked as its own figure rather than folded into
+    /// <see cref="AutopilotCorrectionKind"/>. Called only from <see cref="AutopilotRunCoordinator.AnswerBlockadeAsync"/> —
+    /// the one place an operator answers a blockade. Deliberately not raised from inside <see cref="ResumeRunning"/>
+    /// itself: that would make any future second caller of <see cref="ResumeRunning"/> silently count too, whether or not
+    /// it was actually an operator answering. Does not raise <see cref="Changed"/> — <see cref="ResumeRunning"/> already
+    /// does, right after this is called.
+    /// </summary>
+    public void RecordBlockadeAnswer()
+    {
+        lock (_lock)
+        {
+            _blockadeAnswers++;
         }
     }
 

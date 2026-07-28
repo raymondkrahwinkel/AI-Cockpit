@@ -41,6 +41,26 @@ internal sealed class AutopilotRunHistory
         _Save();
     }
 
+    /// <summary>
+    /// Replaces <paramref name="original"/> with <paramref name="replacement"/> — the path an operator's manual
+    /// reclassification writes through (AC-347). Matched on the record instance, deliberately not on a position: a run
+    /// that settles while the menu is open inserts at the front and shifts every index down one, so a position-keyed
+    /// write would land the edit on a <em>different</em> run without any bound being exceeded — a silently wrong figure,
+    /// which is the one failure this measurement exists to rule out. A record the history no longer holds (cleared, or
+    /// aged past the cap) is a no-op.
+    /// </summary>
+    public void Replace(AutopilotRunRecord original, AutopilotRunRecord replacement)
+    {
+        var index = _records.FindIndex(candidate => ReferenceEquals(candidate, original));
+        if (index < 0)
+        {
+            return;
+        }
+
+        _records[index] = replacement;
+        _Save();
+    }
+
     /// <summary>Clears the history — the operator emptied it.</summary>
     public void Clear()
     {

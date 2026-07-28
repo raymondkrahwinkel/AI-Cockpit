@@ -47,6 +47,20 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
   job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
   never ran. This release only tells you; nothing is executed yet.
+- added: Autopilot's history now says how many runs in a row settled merge-ready without anything having to be put
+  right — the one figure that says whether a run can be left alone, rather than how much work it did. It shows above the
+  history list and again on the toast when a run settles, so it reaches you at the moment it changes instead of only in
+  a panel you would have to go and open.
+
+  The count is strict on purpose, because a lenient one flatters itself: a step the review sent back, a step that ran
+  out of attempts, and a run that ended blocked or stopped all count as a correction. A question the run raised and you
+  answered does not — that is the run doing what it is meant to do, and it is counted separately. Neither does merging
+  it yourself; that is the gate, not a repair.
+
+  Some corrections cannot be seen from the inside. If you changed the work yourself before merging it, right-click the
+  step in the history and say so — a classification you set stays marked as yours, so a number that was adjusted by hand
+  never reads as one the run arrived at on its own. Cost, tokens and duration are deliberately not repeated here; they
+  are already recorded per run, and measuring the same thing twice only produces two figures that drift apart.
 
 - added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
   file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
