@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The fan-out plugin (AC-467): a full-surface workspace type that starts one task on N agents at once, each in
+       its own worktree, and tiles their sessions side by side. Built OUTSIDE Cockpit.slnx (plugins-dev/) like the
+       other plugins. Shared assemblies are compile-only (Private=false / ExcludeAssets=runtime) so the host's copies
+       load and shared types keep one identity — the plugin folder ships only its own DLL + plugin.json.
+
+       minHostVersion is 0.8.0, not the current 0.9.0: the newest host member this plugin actually touches is
+       EmbeddedSessionRequest.RunId/RunLabel (0.8.0), and the gate is meant to name the oldest host it runs on.
+       Claiming 0.9.0 would refuse an operator on 0.8.x a plugin that works there. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.FanOut.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -32,6 +32,22 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
+
+- fixed: a build published as a folder rather than a single file now carries the example workspace and Autopilot with
+  it. Both were copied next to the executable but never into a publish, so that route handed over a cockpit missing
+  two of the plugins it ships with — the single-file build was unaffected, which is why it went unnoticed.
+
 - added: a Local CI plugin that answers, honestly, whether this machine could run your GitHub workflow jobs before
   anything tries. Its settings page reports Docker in three states rather than two — not installed, installed but the
   engine is not answering, and ready — because "Docker Desktop is not running" is the usual one and what you do about
@@ -47,6 +63,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the working tree already is the checkout and the SDK is in the image. Anything the check does not recognise makes a
   job unrunnable rather than being ignored: a job that runs half of itself and comes out green is worse than one that
   never ran. This release only tells you; nothing is executed yet.
+- added: a fan-out workspace — one task, several agents working on it at once. You type the task, set up two to five
+  arms (each an agent profile and, if you want, the angle that arm should take) and press Start. Every arm runs as its
+  own session in its own git worktree, tiled side by side so you can watch them diverge. Vary the profile to put
+  different providers on the same brief; vary the angle to get different takes out of one provider. It is the same run
+  either way — the arms differ only in which field you filled in.
+
+  The separate worktrees are what make the takes comparable afterwards: no two arms touch the same checkout, so none
+  of them can spoil another's work. Closing the workspace ends every session it started, and those sessions never
+  appear in the ordinary session grid — they live only on the fan-out's tiles. Comparing the arms side by side,
+  picking a winner and cleaning up the ones you did not take is not here yet: for now a run is something you read and
+  act on yourself.
 
 - added: Autopilot's history now says how many runs in a row settled merge-ready without anything having to be put
   right — the one figure that says whether a run can be left alone, rather than how much work it did. It shows above the
