@@ -854,6 +854,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   question — several numbered options plus advice — no longer overflows the pane and pushes the answer box out of
   reach.
 
+- fixed: the transcript no longer stops following the newest message for no reason you did anything to cause. Showing
+  the "Thinking…" indicator, the "starting" banner, a usage warning or a pending-resume notice all resize the
+  transcript's own visible area without adding a single message to it — and that resize alone was read as if you had
+  scrolled up by hand, since it moves the same numbers a real scroll does unless the box itself is checked too. A turn
+  with several tool calls flips the "Thinking…" indicator on and off many times over, so the transcript could quietly
+  give up on the newest message well before the turn had finished, with nothing you did to explain it. It keeps
+  following now regardless of how many times those rows come and go; scrolling up on purpose still pauses it and
+  scrolling back down still resumes it, exactly as before.
+
 - fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
   which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your
   sessions spent were created with whatever the system's default permissions said — on a stock Fedora, that means

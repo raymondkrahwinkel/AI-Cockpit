@@ -51,10 +51,13 @@ public partial class SessionView : UserControl
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        // Content grew/shrank (a new row streamed in): keep following the bottom if we were parked
-        // there. Don't re-derive the stick state from a content-driven change — only a real user
-        // scroll (offset moves without the extent moving) flips whether we follow.
-        if (e.ExtentDelta.Y != 0)
+        // Content grew/shrank (a new row streamed in), or the viewport itself resized (the "Thinking…"
+        // row, the starting banner, the usage-warning and pending-resume bars all dock above the
+        // composer and take their band out of the transcript, AC-459): keep following the bottom if we
+        // were parked there. Neither is a user scroll, so neither should re-derive the stick state —
+        // only a real user scroll (offset moves while the extent AND the viewport stay put) flips
+        // whether we follow.
+        if (e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0)
         {
             if (_stickToBottom)
             {
