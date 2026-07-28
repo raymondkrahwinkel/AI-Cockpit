@@ -6,8 +6,8 @@ namespace Cockpit.Plugin.Autopilot;
 /// but shown in the history section with what it did. Persisted through the plugin's storage, so history survives a
 /// restart. <see cref="FinishedAt"/> is an ISO-8601 string (formatted for display on render) rather than a DateTime, so
 /// the record round-trips through JSON without a timezone surprise. <see cref="RunId"/>/<see cref="Ticket"/>/
-/// <see cref="BlockadeAnswers"/> are init-properties, not positional parameters, so persisted history from before
-/// AC-347 still deserializes — a missing field just reads back its default.
+/// <see cref="BlockadeAnswers"/>/<see cref="PullRequestMissing"/> are init-properties, not positional parameters, so
+/// persisted history from before AC-347 still deserializes — a missing field just reads back its default.
 /// </summary>
 internal sealed record AutopilotRunRecord(
     string Name,
@@ -30,4 +30,9 @@ internal sealed record AutopilotRunRecord(
     /// <summary>How many blockade questions the operator answered during this run (AC-347) — counted, and explicitly
     /// <em>not</em> a correction: answering a question the run itself raised is not the same as the run needing rework.</summary>
     public int BlockadeAnswers { get; init; }
+
+    /// <summary>Whether this run reached merge-ready but could not deliver its pull request (AC-347) — no <c>gh</c>, no
+    /// remote, or the publish itself failed. Such a run still needs a human to open the PR by hand, so it is never
+    /// clean regardless of how its steps were classified; see <see cref="AutopilotRunReliability.RanClean"/>.</summary>
+    public bool PullRequestMissing { get; init; }
 }

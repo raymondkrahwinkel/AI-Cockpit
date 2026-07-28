@@ -17,7 +17,6 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "autopilot",
         DisplayName: "Autopilot",
-        // In lockstep with plugin.json's version: the manifest gates loading, this shows in the plugin list.
         Author: "Cockpit",
         Description: "Operator-triggered \"issue → merge-ready PR\" pipeline: the CEO plans, you approve once, it runs autonomously.");
 

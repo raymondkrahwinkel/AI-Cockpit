@@ -237,20 +237,23 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         // The AC-347 reliability line, right under the title so it reads next to the run count. TextTrimming keeps it
         // readable rather than overflowing when the header is narrow.
+        var reliability = new TextBlock
+        {
+            Text = AutopilotRunReliability.Summarize(_history.Items).Describe(),
+            FontSize = 10.5,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+        };
+        // The figure is counted from what the run itself can observe — it cannot see a review finding an agent fixed
+        // inside its own step before ever reporting done, which is exactly why manual reclassification exists.
+        ToolTip.SetTip(reliability, "Counted from what the run itself can see: a step sent back, a step that ran out "
+            + "of attempts, a run that ended blocked or stopped, or one that never opened its pull request. A review "
+            + "finding an agent fixed inside its own step looks clean from here — right-click a step to correct that.");
+
         var header = new StackPanel
         {
             Spacing = 1,
-            Children =
-            {
-                titleRow,
-                new TextBlock
-                {
-                    Text = AutopilotRunReliability.Summarize(_history.Items).Describe(),
-                    FontSize = 10.5,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Foreground = _Brush("CockpitTextFaintBrush"),
-                },
-            },
+            Children = { titleRow, reliability },
         };
 
         var list = new StackPanel { Spacing = 0 };
@@ -339,6 +342,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
                 : $"Blocked — {record.BlockReason}";
 
+        // AC-347: the per-run figure the ticket asks for, read straight off the row rather than counted by eye —
+        // how many of this run's steps needed no correction at all.
+        if (record.Steps.Count > 0)
+        {
+            var cleanSteps = record.Steps.Count(step => step.Correction == AutopilotCorrectionKind.None);
+            outcomeText = $"{outcomeText} · {cleanSteps} of {record.Steps.Count} steps ran clean";
+        }
+
         var meta = new StackPanel { Spacing = 2, Children = { title } };
         meta.Children.Add(new TextBlock
         {
@@ -373,19 +384,31 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _ => "·",
     };
 
-    // A settled step's own row (AC-347): its status mark plus, when it needed a correction, a trailing "!" so the AC-347
-    // figure has a visible per-step counterpart — and, for a step the operator reclassified by hand, a faint "set by
-    // you" line so a manually set figure never reads as if the run itself had decided it. Right-click always offers the
-    // four classifications — reclassifying is valid for any settled step regardless of its current one, so the menu is
-    // never a dead control.
+    // The AC-347 correction label, in operator language rather than the enum name — read next to the step title so
+    // "review finding" and "run restart" are told apart at a glance instead of both rendering as the same bare mark.
+    // Empty for None: a clean step carries no label at all.
+    private static string _CorrectionLabel(AutopilotCorrectionKind correction) => correction switch
+    {
+        AutopilotCorrectionKind.ReviewFinding => "review finding",
+        AutopilotCorrectionKind.RunRestart => "run restart",
+        AutopilotCorrectionKind.OperatorEdit => "operator edit",
+        _ => string.Empty,
+    };
+
+    // A settled step's own row (AC-347): its status mark plus, when it needed a correction, a trailing readable label
+    // so the AC-347 figure has a visible per-step counterpart that also says which kind of correction it was — and, for
+    // a step the operator reclassified by hand, a faint "set by you" line so a manually set figure never reads as if
+    // the run itself had decided it. Right-click always offers the four classifications — reclassifying is valid for
+    // any settled step regardless of its current one, so the menu is never a dead control.
     private Control _BuildHistoryStepRow(AutopilotRunRecord record, int stepIndex, AutopilotRunStepRecord step)
     {
         var lines = new StackPanel { Spacing = 0 };
 
-        var correctionMark = step.Correction == AutopilotCorrectionKind.None ? string.Empty : "!";
+        var correctionLabel = _CorrectionLabel(step.Correction);
+        var correctionSuffix = correctionLabel.Length == 0 ? string.Empty : $" — {correctionLabel}";
         lines.Children.Add(new TextBlock
         {
-            Text = $"{_HistoryStepMark(step.Status)}{correctionMark}  {step.Title}",
+            Text = $"{_HistoryStepMark(step.Status)}  {step.Title}{correctionSuffix}",
             FontSize = 10.5,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 0),
@@ -673,12 +696,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var outcome = controller.Phase;
         var blockReason = controller.BlockReason;
         var blockadeAnswers = controller.BlockadeAnswers;
+        var pullRequestMissing = controller.PullRequestMissing;
 
         _OnUi(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
-            _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers);
+            _RecordAndNotify(settledPlan, outcome, blockReason, context.RunId, blockadeAnswers, pullRequestMissing);
             _Render();
         });
     }
@@ -693,7 +717,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
         outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
 
-    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers)
+    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason, string runId, int blockadeAnswers, bool pullRequestMissing)
     {
         // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
         // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
@@ -709,13 +733,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note)
                 {
                     Attempts = step.Attempts,
-                    Correction = AutopilotCorrection.Classify(step.Status, step.Attempts),
+                    Reworks = step.Reworks,
+                    Correction = AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks),
                     CorrectionSource = AutopilotCorrectionSource.Automatic,
                 })])
             {
                 RunId = runId,
                 Ticket = plan.Source?.IssueId ?? string.Empty,
                 BlockadeAnswers = blockadeAnswers,
+                PullRequestMissing = pullRequestMissing,
             });
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;

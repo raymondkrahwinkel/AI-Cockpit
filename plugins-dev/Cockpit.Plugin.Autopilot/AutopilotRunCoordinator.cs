@@ -179,6 +179,13 @@ internal sealed class AutopilotRunCoordinator(
             // Surface the outcome so a code run that could not produce its PR is never a silent "done": a toast the
             // operator sees now, and a note on the last step so it persists in the run's pipeline/afronding.
             var clean = delivery == AutopilotPrDelivery.NotExpected || (!string.IsNullOrWhiteSpace(prUrl) && string.IsNullOrWhiteSpace(error));
+            if (!clean)
+            {
+                // Recorded immediately, before the toast/note below (which could themselves throw and land in the
+                // catch): a run that provably could not deliver its PR must never read back as clean (AC-347).
+                plan.RecordPullRequestMissing();
+            }
+
             await runOnUi(() => host.ShowToast(outcome, clean ? PluginToastSeverity.Success : PluginToastSeverity.Warning));
 
             if (delivery != AutopilotPrDelivery.NotExpected && plan.Plan?.Steps.LastOrDefault() is { } lastStep)

@@ -26,6 +26,7 @@ internal sealed class AutopilotPlanController
     private string? _pendingQuestion;
     private string? _sessionPaneId;
     private int _blockadeAnswers;
+    private bool _pullRequestMissing;
 
     /// <summary>The current plan, or null before a planning round has begun.</summary>
     public AutopilotPlan? Plan
@@ -100,6 +101,20 @@ internal sealed class AutopilotPlanController
         }
     }
 
+    /// <summary>Whether this run reached merge-ready but could not deliver its pull request (AC-347) — a run that leaves
+    /// the surface still needing a human to open its PR by hand is not "settled clean", even though every hard step
+    /// passed. Read under <see cref="_lock"/>, like the other properties.</summary>
+    public bool PullRequestMissing
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pullRequestMissing;
+            }
+        }
+    }
+
     public event EventHandler? Changed;
 
     /// <summary>The step running now, or null when none is — a shortcut over the plan for the surface and the driver.</summary>
@@ -132,6 +147,7 @@ internal sealed class AutopilotPlanController
             _pendingQuestion = null;
             _sessionPaneId = null;
             _blockadeAnswers = 0;
+            _pullRequestMissing = false;
         }
 
         _Raise();
@@ -224,8 +240,10 @@ internal sealed class AutopilotPlanController
             return false;
         }
 
-        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt.
-        _SetStepStatus(stepId, AutopilotStepStatus.Pending);
+        // Attempts left: back to rework — the driver re-runs the step, and StartStep records the next attempt. One
+        // mutation records both the rework and the status together, so a re-entrant read never sees the rework count
+        // bumped without the status having moved (or vice versa).
+        _MutateStep(stepId, target => target.WithRework().WithStatus(AutopilotStepStatus.Pending));
         return true;
     }
 
@@ -349,6 +367,21 @@ internal sealed class AutopilotPlanController
         lock (_lock)
         {
             _blockadeAnswers++;
+        }
+    }
+
+    /// <summary>
+    /// Marks that this merge-ready run could not deliver its pull request (AC-347) — no <c>gh</c>, no remote, or
+    /// <c>PublishAsync</c> itself failed. Called only from <see cref="AutopilotRunCoordinator._FinalizeMergeReadyAsync"/>,
+    /// the one place delivery is decided. Does not raise <see cref="Changed"/>: it changes no visible run state (the
+    /// phase stays MergeReady, the operator already sees the finalization's own toast/note) — it is read later, from
+    /// history, once the run has settled.
+    /// </summary>
+    public void RecordPullRequestMissing()
+    {
+        lock (_lock)
+        {
+            _pullRequestMissing = true;
         }
     }
 

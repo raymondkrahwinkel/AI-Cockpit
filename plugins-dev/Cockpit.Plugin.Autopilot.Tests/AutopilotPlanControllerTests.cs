@@ -166,10 +166,11 @@ public class AutopilotPlanControllerTests
 
         controller.ValidateStep("1", passed: true, maxAttempts: 2).Should().BeFalse();
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Passed);
+        controller.Plan!.Steps[0].Reworks.Should().Be(0);
     }
 
     [Fact]
-    public void ValidateStep_OnFail_WithAttemptsLeft_SendsItBackToRework()
+    public void ValidateStep_OnFail_WithAttemptsLeft_SendsItBackToRework_AndCountsTheRework()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
@@ -178,10 +179,11 @@ public class AutopilotPlanControllerTests
 
         controller.ValidateStep("1", passed: false, maxAttempts: 2).Should().BeTrue();
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Pending);
+        controller.Plan!.Steps[0].Reworks.Should().Be(1);
     }
 
     [Fact]
-    public void ValidateStep_OnFail_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop()
+    public void ValidateStep_OnFail_WhenAttemptsAreExhausted_SettlesItFailed_BoundingTheLoop_AndDoesNotCountARework()
     {
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
@@ -195,6 +197,8 @@ public class AutopilotPlanControllerTests
 
         controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
         controller.Plan!.Steps[0].Attempts.Should().Be(2);
+        // Only the first fail sent it back to rework; the second ran out of attempts and settled Failed directly.
+        controller.Plan!.Steps[0].Reworks.Should().Be(1);
     }
 
     [Fact]
@@ -283,5 +287,31 @@ public class AutopilotPlanControllerTests
         controller.Settle();
 
         count.Should().Be(5);
+    }
+
+    [Fact]
+    public void RecordPullRequestMissing_SetsThePullRequestMissingFlag()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+
+        controller.RecordPullRequestMissing();
+
+        Assert.True(controller.PullRequestMissing);
+    }
+
+    [Fact]
+    public void BeginPlanning_ResetsPullRequestMissing_FromAPriorRun()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        controller.RecordPullRequestMissing();
+        controller.SettleStep("1", AutopilotStepStatus.Passed);
+        controller.Settle();
+
+        controller.BeginPlanning(PlanWith(Step("2")));
+
+        Assert.False(controller.PullRequestMissing);
     }
 }

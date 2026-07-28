@@ -6,7 +6,8 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 /// <summary>
 /// AC-347 backward compatibility: the new fields on <see cref="AutopilotRunRecord"/>/<see cref="AutopilotRunStepRecord"/>
 /// round-trip through storage, and — the case that actually matters — JSON persisted before this change (no
-/// Attempts/Correction/RunId/Ticket/BlockadeAnswers at all) still deserializes, reading back the new fields' defaults.
+/// Attempts/Reworks/Correction/RunId/Ticket/BlockadeAnswers/PullRequestMissing at all) still deserializes, reading back
+/// the new fields' defaults.
 /// </summary>
 public class AutopilotRunHistoryCompatibilityTests
 {
@@ -32,6 +33,7 @@ public class AutopilotRunHistoryCompatibilityTests
         var step = new AutopilotRunStepRecord("Code", AutopilotStepStatus.Passed, string.Empty)
         {
             Attempts = 2,
+            Reworks = 1,
             Correction = AutopilotCorrectionKind.ReviewFinding,
             CorrectionSource = AutopilotCorrectionSource.Operator,
         };
@@ -40,6 +42,7 @@ public class AutopilotRunHistoryCompatibilityTests
             RunId = "run-id-1",
             Ticket = "AC-347",
             BlockadeAnswers = 3,
+            PullRequestMissing = true,
         };
         history.Add(record);
 
@@ -49,8 +52,10 @@ public class AutopilotRunHistoryCompatibilityTests
         Assert.Equal("run-id-1", restoredRecord.RunId);
         Assert.Equal("AC-347", restoredRecord.Ticket);
         Assert.Equal(3, restoredRecord.BlockadeAnswers);
+        Assert.True(restoredRecord.PullRequestMissing);
         var restoredStep = Assert.Single(restoredRecord.Steps);
         Assert.Equal(2, restoredStep.Attempts);
+        Assert.Equal(1, restoredStep.Reworks);
         Assert.Equal(AutopilotCorrectionKind.ReviewFinding, restoredStep.Correction);
         Assert.Equal(AutopilotCorrectionSource.Operator, restoredStep.CorrectionSource);
     }
@@ -86,11 +91,13 @@ public class AutopilotRunHistoryCompatibilityTests
         Assert.Equal(string.Empty, record.RunId);
         Assert.Equal(string.Empty, record.Ticket);
         Assert.Equal(0, record.BlockadeAnswers);
+        Assert.False(record.PullRequestMissing);
 
         var step = Assert.Single(record.Steps);
         Assert.Equal("Code", step.Title);
         Assert.Equal(AutopilotStepStatus.Passed, step.Status);
         Assert.Equal(0, step.Attempts);
+        Assert.Equal(0, step.Reworks);
         Assert.Equal(AutopilotCorrectionKind.None, step.Correction);
         Assert.Equal(AutopilotCorrectionSource.Automatic, step.CorrectionSource);
     }

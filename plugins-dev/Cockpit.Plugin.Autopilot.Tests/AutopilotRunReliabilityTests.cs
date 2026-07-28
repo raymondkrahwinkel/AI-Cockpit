@@ -22,6 +22,9 @@ public class AutopilotRunReliabilityTests
 
     private static AutopilotRunRecord Stopped(string name) => Record(name, AutopilotPlanPhase.Stopped, Step());
 
+    private static AutopilotRunRecord MergeReadyWithoutPullRequest(string name) =>
+        Record(name, AutopilotPlanPhase.MergeReady, Step()) with { PullRequestMissing = true };
+
     [Fact]
     public void RanClean_MergeReady_WithNoCorrection_IsTrue()
     {
@@ -44,6 +47,25 @@ public class AutopilotRunReliabilityTests
     public void RanClean_Stopped_IsFalse()
     {
         Assert.False(AutopilotRunReliability.RanClean(Stopped("a")));
+    }
+
+    [Fact]
+    public void RanClean_MergeReady_ButPullRequestMissing_IsFalse()
+    {
+        // AC-347: every step ran clean, but the run could not open its PR — it still needs a human, so it is not clean.
+        Assert.False(AutopilotRunReliability.RanClean(MergeReadyWithoutPullRequest("a")));
+    }
+
+    [Fact]
+    public void Summarize_PullRequestMissing_BreaksTheStreak()
+    {
+        var records = new[] { Clean("newest"), MergeReadyWithoutPullRequest("second"), Clean("oldest") };
+
+        var summary = AutopilotRunReliability.Summarize(records);
+
+        Assert.Equal(1, summary.Streak);
+        Assert.Equal(2, summary.CleanRuns);
+        Assert.Equal(3, summary.ConsideredRuns);
     }
 
     [Fact]

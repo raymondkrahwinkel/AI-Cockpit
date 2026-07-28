@@ -52,10 +52,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   history list and again on the toast when a run settles, so it reaches you at the moment it changes instead of only in
   a panel you would have to go and open.
 
-  The count is strict on purpose, because a lenient one flatters itself: a step the review sent back, a step that ran
-  out of attempts, and a run that ended blocked or stopped all count as a correction. A question the run raised and you
-  answered does not — that is the run doing what it is meant to do, and it is counted separately. Neither does merging
-  it yourself; that is the gate, not a repair.
+  The count is strict on purpose, because a lenient one flatters itself. A step the review sent back and a step that ran
+  out of attempts each count as a correction; a run that ended blocked or stopped, or that reached the end without the
+  pull request it promised, is never counted as clean at all. A question the run raised and you answered does not count
+  against it — that is the run doing what it is meant to do, and it is counted separately. Neither does merging it
+  yourself; that is the gate, not a repair.
 
   Some corrections cannot be seen from the inside. If you changed the work yourself before merging it, right-click the
   step in the history and say so — a classification you set stays marked as yours, so a number that was adjusted by hand

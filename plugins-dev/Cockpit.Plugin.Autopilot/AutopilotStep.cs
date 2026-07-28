@@ -41,6 +41,14 @@ internal sealed record AutopilotStep(
     public int Attempts { get; init; }
 
     /// <summary>
+    /// How many times a validation sent this step back to rework (AC-347) — in contrast to <see cref="Attempts"/>,
+    /// which counts every (re-)start, including one with no verdict behind it at all (a crashed session, a stall
+    /// timeout, a refused isolation, a profile/model mismatch). This is the narrower count the reliability
+    /// classification needs: a rework is a judged correction, a restart is not.
+    /// </summary>
+    public int Reworks { get; init; }
+
+    /// <summary>
     /// How many agents work this step at once (AC-174). Default 1. The CEO decides where parallel
     /// work is safe — e.g. splitting code work across two or three agents whose parts will not touch the same files —
     /// and the operator can force it back to a single agent ("no multitasking here"). Agents in a parallel step run
@@ -64,6 +72,9 @@ internal sealed record AutopilotStep(
 
     /// <summary>This step with its attempt count incremented — the driver records a (re-)run before it starts.</summary>
     public AutopilotStep WithAttempt() => this with { Attempts = Attempts + 1 };
+
+    /// <summary>This step with its rework count incremented — a validation sent it back, the one place <see cref="Reworks"/> grows.</summary>
+    public AutopilotStep WithRework() => this with { Reworks = Reworks + 1 };
 
     /// <summary>This step re-targeted at a profile (and its model), the operator's edit during the planning round.</summary>
     public AutopilotStep WithProfile(string profileLabel, string? model) =>

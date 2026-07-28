@@ -11,12 +11,16 @@ internal static class AutopilotRunReliability
     internal const int Window = 20;
 
     /// <summary>
-    /// Whether a settled run counts as clean: it reached <see cref="AutopilotPlanPhase.MergeReady"/> and not one of its
-    /// steps needed a correction. A blocked or operator-stopped run is never clean by definition — it did not reach
-    /// merge-ready without intervention.
+    /// Whether a settled run counts as clean: it reached <see cref="AutopilotPlanPhase.MergeReady"/>, not one of its
+    /// steps needed a correction, and it actually delivered its pull request. A blocked or operator-stopped run is
+    /// never clean by definition — it did not reach merge-ready without intervention — and neither is a merge-ready run
+    /// that could not open its PR (<see cref="AutopilotRunRecord.PullRequestMissing"/>): it still needs a human to open
+    /// one by hand, which is exactly the intervention "clean" rules out.
     /// </summary>
     public static bool RanClean(AutopilotRunRecord record) =>
-        record.Outcome == AutopilotPlanPhase.MergeReady && record.Steps.All(step => step.Correction == AutopilotCorrectionKind.None);
+        record.Outcome == AutopilotPlanPhase.MergeReady
+        && record.Steps.All(step => step.Correction == AutopilotCorrectionKind.None)
+        && !record.PullRequestMissing;
 
     /// <summary>
     /// The reliability summary over the newest <paramref name="window"/> runs: the streak of clean runs counting back
