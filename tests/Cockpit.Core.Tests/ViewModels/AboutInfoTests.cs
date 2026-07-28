@@ -15,7 +15,7 @@ public class AboutInfoTests
     {
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
 
-        info.AppName.Should().Be("AI-Cockpit");
+        info.AppName.Should().Be("Wispslate Cockpit");
         info.GitHubUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit");
         info.IssuesUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit/issues");
         info.PluginStoreUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins");

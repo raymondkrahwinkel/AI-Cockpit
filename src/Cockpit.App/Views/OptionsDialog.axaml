@@ -520,7 +520,7 @@
                                      live and has no such line). The Restart-now button appears once a change is saved. -->
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                             IsVisible="{Binding IsLinuxPlatform}">
-                                    <TextBlock Text="Requires restarting AI-Cockpit to take effect."
+                                    <TextBlock Text="Requires restarting the cockpit to take effect."
                                                Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
                                                VerticalAlignment="Center" TextWrapping="Wrap"/>
                                     <Button Content="Restart now" Classes="Accent"
@@ -802,7 +802,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Updates" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="AI-Cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."/>
+                                    ToolTip.Tip="The cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."/>
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
@@ -810,7 +810,7 @@
                                 <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
                             </StackPanel>
 
-                            <CheckBox Content="Look for a newer build when AI-Cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
+                            <CheckBox Content="Look for a newer build when the cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
                             <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
                                       ToolTip.Tip="The rolling build of main, built last night — useful for trying something that landed today, but things there are expected to break; not what you run a working day on."/>
 
@@ -819,7 +819,7 @@
                                  tarball, a checkout, or a distribution's own package — so it gets a sentence and
                                  the release page, not a button that would quietly do nothing. -->
                             <TextBlock x:Name="SelfUpdateNotice" IsVisible="{Binding !CanUpdateItself}"
-                                       Text="This copy cannot update itself — it was not installed by AI-Cockpit's installer. You will still be told when a newer build exists; download it from the release page, or update it the way you installed it."
+                                       Text="This copy cannot update itself — it was not installed by the cockpit's installer. You will still be told when a newer build exists; download it from the release page, or update it the way you installed it."
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,8,0,0"/>
 
@@ -848,7 +848,7 @@
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="Back up AI-Cockpit" FontWeight="SemiBold"/>
+                                <TextBlock Text="Back up the cockpit" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."/>
                             </StackPanel>
@@ -857,7 +857,7 @@
                                       ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."/>
 
                             <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
-                                      ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside AI-Cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
+                                      ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
                                 <TextBlock Text="Plugins to include" FontWeight="SemiBold"/>
@@ -877,7 +877,7 @@
                                 <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
                             </StackPanel>
 
-                            <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and AI-Cockpit restarts afterwards."
+                            <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and the cockpit restarts afterwards."
                                        Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                             <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
@@ -909,7 +909,7 @@
                                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="12" Margin="0,4">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="Encrypted — AI-Cockpit asks for your password when it starts"
+                                    <TextBlock Text="Encrypted — the cockpit asks for your password when it starts"
                                                IsVisible="{Binding Security.IsEncrypted}"
                                                FontSize="12.5" Foreground="{StaticResource CockpitStatusDoneBrush}"/>
                                     <TextBlock Text="Not encrypted — your keys and tokens are readable in cockpit.json"
@@ -934,10 +934,10 @@
 
                             <!-- AC-5: only meaningful while encryption is on, so the row is shown then rather than
                                  sitting disabled — a control that does nothing is worse than an absent one. -->
-                            <CheckBox Content="Lock AI-Cockpit when the computer locks (screen lock)"
+                            <CheckBox Content="Lock the cockpit when the computer locks (screen lock)"
                                       IsChecked="{Binding Security.LockWithOperatingSystem}"
                                       IsVisible="{Binding Security.IsEncrypted}" Margin="0,8,0,0"
-                                      ToolTip.Tip="When your screen locks, AI-Cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
+                                      ToolTip.Tip="When your screen locks, the cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>
@@ -962,7 +962,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
                                 <TextBlock Text="What this does not do" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="It protects the file, not a running AI-Cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
+                                    ToolTip.Tip="It protects the file, not a running cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -984,7 +984,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
-                                    ToolTip.Tip="Controls that exist to investigate AI-Cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."/>
+                                    ToolTip.Tip="Controls that exist to investigate the cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."/>
                             </StackPanel>
                             <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
                                       ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
@@ -998,7 +998,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
                                     <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."/>
+                                        ToolTip.Tip="Which graphics backend the cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Backend" VerticalAlignment="Center"/>
@@ -1062,7 +1062,7 @@
             <ProgressBar Minimum="0" Maximum="100" Height="6"
                          Value="{Binding Security.MigrationProgress}"
                          Foreground="{StaticResource CockpitAccentBrush}"/>
-            <TextBlock Text="Do not close AI-Cockpit while this runs." HorizontalAlignment="Center"
+            <TextBlock Text="Do not close the cockpit while this runs." HorizontalAlignment="Center"
                        FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
         </StackPanel>
     </Border>

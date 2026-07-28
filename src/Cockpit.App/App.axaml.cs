@@ -15,6 +15,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
@@ -396,7 +397,7 @@ public partial class App : Application
     // the tray is just a quick Show/Quit affordance and closing quits as usual.
     private void _SetUpTrayIcon()
     {
-        var showItem = new NativeMenuItem("Show AI-Cockpit");
+        var showItem = new NativeMenuItem($"Show {CockpitProduct.DisplayName}");
         showItem.Click += (_, _) => ShowMainWindow();
         var quitItem = new NativeMenuItem("Quit");
         quitItem.Click += (_, _) => RequestQuit();
@@ -404,7 +405,7 @@ public partial class App : Application
         var tray = new TrayIcon
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/AppIcon.ico"))),
-            ToolTipText = "Cockpit",
+            ToolTipText = CockpitProduct.DisplayName,
             Menu = new NativeMenu { Items = { showItem, quitItem } },
         };
         tray.Clicked += (_, _) => ShowMainWindow();

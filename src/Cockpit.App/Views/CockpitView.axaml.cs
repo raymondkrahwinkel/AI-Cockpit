@@ -440,7 +440,7 @@ public partial class CockpitView : UserControl
         {
             DataContext = new PasswordDialogViewModel(
                 "Encrypt your credentials",
-                "Your API keys and tokens are encrypted in cockpit.json, and AI-Cockpit asks for this password "
+                "Your API keys and tokens are encrypted in cockpit.json, and the cockpit asks for this password "
                 + "every time it starts.\n\n"
                 + "If you forget it, nobody can decrypt them — not you, not us. The only way back is to clear the "
                 + "credentials and type them in again; your profiles, sessions, layout and shortcuts survive that. "

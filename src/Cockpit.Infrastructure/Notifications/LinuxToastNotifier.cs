@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Notifications;
 using Microsoft.Extensions.Logging;
 
@@ -33,7 +34,7 @@ internal sealed class LinuxToastNotifier(ILogger<LinuxToastNotifier> logger) : I
             CreateNoWindow = true,
         };
 
-        startInfo.ArgumentList.Add("--app-name=Cockpit");
+        startInfo.ArgumentList.Add($"--app-name={CockpitProduct.DisplayName}");
 
         // Normal, not critical: critical notifications on most desktops never expire, and a cockpit that leaves a
         // stack of undismissable banners behind is one you turn notifications off for.

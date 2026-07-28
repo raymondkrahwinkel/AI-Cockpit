@@ -1352,7 +1352,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock Text="Runs beside AI-Cockpit, not under it: one server answers every session, so this is not part of the total above."
+                    <TextBlock Text="Runs beside the cockpit, not under it: one server answers every session, so this is not part of the total above."
                                FontSize="10.5" TextWrapping="Wrap"
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                 </StackPanel>
@@ -1377,7 +1377,7 @@
                         Classes="statusMeter"
                         Padding="8,2"
                         Command="{Binding ToggleResourcePanelCommand}"
-                        ToolTip.Tip="What AI-Cockpit and its sessions are using — click for the breakdown per session">
+                        ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
                         <TextBlock Text="{Binding ResourceCpu}"
                                    FontSize="11"
