@@ -1,20 +1,6 @@
-using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Audio;
-using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.Terminal;
-using Cockpit.Core.Abstractions.TranscriptDisplay;
-using Cockpit.Core.Abstractions.SessionBehavior;
-using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Updates;
-using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Notifications;
-using Cockpit.Core.Terminal;
-using Cockpit.Core.TranscriptDisplay;
-using Cockpit.Core.SessionBehavior;
-using Cockpit.Core.Layout;
 using Cockpit.Core.Updates;
-using Cockpit.Core.Voice;
 using FluentAssertions;
 using NSubstitute;
 
@@ -32,14 +18,14 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
 
         await vm.CheckForUpdatesAsync();
 
         vm.HasUpdate.Should().BeTrue();
         vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("v1.2.3");
+        vm.UpdateName.Should().Be("1.2.3");
     }
 
     [Fact]
@@ -47,7 +33,7 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
         await vm.CheckForUpdatesAsync();
 
@@ -63,7 +49,7 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
         await vm.CheckForUpdatesAsync();
         vm.DismissUpdateCommand.Execute(null);
@@ -79,8 +65,8 @@ public class CockpitViewModelUpdateBannerTests
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
             .Returns(
-                new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null),
-                new UpdateCheckResult(Release("1.2.4", "def", "v1.2.4"), null));
+                new UpdateCheckResult(Release("1.2.3"), null),
+                new UpdateCheckResult(Release("1.2.4"), null));
         var vm = NewVm(updates);
         await vm.CheckForUpdatesAsync();
         vm.DismissUpdateCommand.Execute(null);
@@ -88,7 +74,7 @@ public class CockpitViewModelUpdateBannerTests
         await vm.CheckForUpdatesAsync();
 
         vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("v1.2.4");
+        vm.UpdateName.Should().Be("1.2.4");
     }
 
     [Fact]
@@ -110,13 +96,13 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
 
         await vm.RunPeriodicUpdateCheckAsync();
 
         vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("v1.2.3");
+        vm.UpdateName.Should().Be("1.2.3");
         vm.Toasts.Should().ContainSingle();
     }
 
@@ -125,7 +111,7 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
 
         await vm.RunPeriodicUpdateCheckAsync();
@@ -141,7 +127,7 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
         // The startup setting is the global on/off for every automatic check — off means the hourly loop stays quiet too.
         vm.CheckForUpdatesOnStartup = false;
@@ -159,15 +145,15 @@ public class CockpitViewModelUpdateBannerTests
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
             .Returns(
-                new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null),
-                new UpdateCheckResult(Release("1.2.4", "def", "v1.2.4"), null));
+                new UpdateCheckResult(Release("1.2.3"), null),
+                new UpdateCheckResult(Release("1.2.4"), null));
         var vm = NewVm(updates);
 
         await vm.RunPeriodicUpdateCheckAsync();
         await vm.RunPeriodicUpdateCheckAsync();
 
         vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("v1.2.4");
+        vm.UpdateName.Should().Be("1.2.4");
         // A newer build is worth telling about again: one toast per distinct release.
         vm.Toasts.Should().HaveCount(2);
     }
@@ -177,7 +163,7 @@ public class CockpitViewModelUpdateBannerTests
     {
         var updates = Substitute.For<IUpdateService>();
         updates.CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>())
-            .Returns(new UpdateCheckResult(Release("1.2.3", "abc", "v1.2.3"), null));
+            .Returns(new UpdateCheckResult(Release("1.2.3"), null));
         var vm = NewVm(updates);
         await vm.RunPeriodicUpdateCheckAsync();
         vm.DismissUpdateCommand.Execute(null);
@@ -189,39 +175,7 @@ public class CockpitViewModelUpdateBannerTests
         vm.UpdateBannerVisible.Should().BeFalse();
     }
 
-    private static AppRelease Release(string version, string commit, string name) =>
-        new(version, commit, name, "notes", $"https://example.test/{version}.{commit}", DateTimeOffset.UnixEpoch, IsPrerelease: false);
+    private static AppRelease Release(string version) => new(version, "notes", $"https://example.test/{version}");
 
-    private static CockpitViewModel NewVm(IUpdateService updates)
-    {
-        var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
-        notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
-        var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
-        transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
-        var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
-        sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
-        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
-        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
-        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
-
-        var dialogService = Substitute.For<ISessionDialogService>();
-
-        return new CockpitViewModel(
-            () => new SessionViewModel(),
-            () => new TtyViewModel(),
-            dialogService,
-            Substitute.For<IAudioCaptureService>(),
-            Substitute.For<IAudioPlaybackService>(),
-            Substitute.For<IAttentionNotifier>(),
-            notificationSettingsStore,
-            transcriptDisplaySettingsStore,
-            sessionBehaviorSettingsStore,
-            layoutSettingsStore,
-            voiceSettingsStore,
-            terminalSettingsStore,
-            updateService: updates);
-    }
+    private static CockpitViewModel NewVm(IUpdateService updates) => UpdateTestCockpit.Build(updates);
 }

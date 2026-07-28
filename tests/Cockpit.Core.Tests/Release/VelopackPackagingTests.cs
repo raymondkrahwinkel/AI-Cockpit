@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Cockpit.Core.Updates;
 
 namespace Cockpit.Core.Tests.Release;
 
@@ -71,6 +72,37 @@ public class VelopackPackagingTests
             Assert.Contains($"platform={platform};", pack, StringComparison.Ordinal);
         }
     }
+
+    /// <summary>
+    /// The name the app asks its feed for has to be the name the workflow packed under, or the check reads a channel
+    /// nobody publishes to and finds nothing — quietly, and only on an installed copy, which is the last place you
+    /// would look (AC-387). The two live a repository apart, so this puts them in one assertion.
+    /// </summary>
+    [Theory]
+    [InlineData("release.yml", "stable", UpdateChannel.Stable)]
+    [InlineData("nightly.yml", "nightly", UpdateChannel.Nightly)]
+    public void TheChannelTheAppAsksFor_IsTheOneTheWorkflowPacked(string workflow, string stream, UpdateChannel channel)
+    {
+        var pack = _Step(workflow, "Pack the Velopack release");
+
+        foreach (var platform in new[] { "win", "osx", "linux" })
+        {
+            // The workflow builds the name from two pieces — "platform=win;" and --channel "$platform-<stream>" — so
+            // this composes the same two and requires the app to arrive at the result.
+            Assert.Contains($"platform={platform};", pack, StringComparison.Ordinal);
+            Assert.Contains($"--channel \"$platform-{stream}\"", pack, StringComparison.Ordinal);
+
+            Assert.Equal($"{platform}-{stream}", UpdateChannelName.For(platform, channel));
+        }
+    }
+
+    /// <summary>
+    /// And the platform the running cockpit names itself is one of those three. Without this the rule above could be
+    /// satisfied by a table nothing consults.
+    /// </summary>
+    [Fact]
+    public void TheRunningCockpit_NamesItselfOneOfThePlatformsThatArePacked() =>
+        Assert.Contains(UpdateChannelName.Platform(), new[] { "win", "osx", "linux" });
 
     /// <summary>
     /// <c>scripts/pack-sdk.sh</c> writes the plugin SDK's package into <c>artifacts/</c>. Both it and Velopack

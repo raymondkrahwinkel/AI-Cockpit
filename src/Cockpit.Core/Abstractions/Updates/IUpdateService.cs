@@ -25,5 +25,10 @@ public interface IUpdateSettingsStore
 }
 
 /// <param name="CheckOnStartup">Look once when the cockpit starts. On by default: an update nobody is told about is an update nobody installs.</param>
-/// <param name="Channel">Tagged releases, or also the nightly build of main.</param>
-public sealed record UpdateSettings(bool CheckOnStartup = true, UpdateChannel Channel = UpdateChannel.Stable);
+/// <param name="Channel">
+/// The channel the operator chose, or null when nobody has chosen one — then the build's own stream decides
+/// (<see cref="BuildChannel"/>). Nullable rather than defaulting to <see cref="UpdateChannel.Stable"/>, because a
+/// default is indistinguishable from a choice: a nightly started without a configuration file would land on stable
+/// and be offered a downgrade as its first update.
+/// </param>
+public sealed record UpdateSettings(bool CheckOnStartup = true, UpdateChannel? Channel = null);

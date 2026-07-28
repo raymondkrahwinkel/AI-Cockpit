@@ -1,0 +1,161 @@
+using System.Reflection;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Updates;
+using Cockpit.Core.Updates;
+using Microsoft.Extensions.Logging;
+using Velopack;
+using Velopack.Exceptions;
+using Velopack.Locators;
+using Velopack.Sources;
+
+namespace Cockpit.Infrastructure.Updates;
+
+/// <summary>
+/// Asks the update feed whether a newer cockpit exists (#71, AC-387), through the same <see cref="UpdateManager"/>
+/// that will later fetch and apply it.
+/// <para>
+/// One source, deliberately. The cockpit used to ask GitHub's releases API itself while the packaging wrote a
+/// Velopack feed beside it — two answers to one question, free to disagree: a banner announcing a build the updater
+/// cannot see, or an updater sitting on one the banner never mentioned.
+/// </para>
+/// <para>
+/// A check that fails — no network, a rate limit, GitHub having a bad morning — returns a failure and says so. The
+/// tempting alternative, reporting "you are up to date", is a lie the operator has every reason to believe.
+/// </para>
+/// </summary>
+internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logger) : IUpdateService, ISingletonService
+{
+    private const string RepositoryUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit";
+
+    /// <summary>The rolling tag every nightly is published onto — one release, replaced each night.</summary>
+    private const string NightlyTag = "nightly";
+
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
+
+    public (string Version, string Commit) Current { get; } = _Read(typeof(VelopackUpdateService).Assembly);
+
+    public Task<UpdateCheckResult> CheckAsync(UpdateChannel channel, CancellationToken cancellationToken = default) =>
+        CheckAsync(channel, Source, locator: null, logger, Patience, cancellationToken);
+
+    /// <summary>
+    /// The check, with the feed and the installation handed in. Velopack answers from an installation on disk, so a
+    /// test reaches this by supplying a source of its own and a locator that stands in for one — and what the source
+    /// is asked for is the channel this decides on, which is the part most worth pinning down.
+    /// </summary>
+    internal static async Task<UpdateCheckResult> CheckAsync(
+        UpdateChannel channel,
+        Func<UpdateChannel, IUpdateSource> source,
+        IVelopackLocator? locator,
+        ILogger logger,
+        TimeSpan patience,
+        CancellationToken cancellationToken)
+    {
+        // There are two ways to be a copy the installer never placed, and neither is an error: a host that never ran
+        // VelopackApp.Build().Run() has no locator at all (a test host, the screenshot renderer), and a checkout or a
+        // tarball has one that knows of no installed version. Asked here rather than caught, because both are ordinary
+        // — reaching them through an exception would put a library's own wording in front of the operator, and the
+        // constructor's is "No VelopackLocator has been set".
+        if ((locator ?? (VelopackLocator.IsCurrentSet ? VelopackLocator.Current : null))?.CurrentlyInstalledVersion is null)
+        {
+            return _NotPackaged();
+        }
+
+        try
+        {
+            // Built per check rather than cached: the channel is a construction option, and the operator can change
+            // it while the cockpit is running.
+            var manager = new UpdateManager(
+                source(channel),
+                new UpdateOptions { ExplicitChannel = UpdateChannelName.For(channel) },
+                locator);
+
+            var check = manager.CheckForUpdatesAsync();
+
+            using var waited = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            waited.CancelAfter(patience);
+
+            if (await Task.WhenAny(check, Task.Delay(Timeout.Infinite, waited.Token)) != check)
+            {
+                _Abandon(check);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return UpdateCheckResult.Failed("The update feed did not answer in time.");
+            }
+
+            return await check is { TargetFullRelease: { } release }
+                ? new UpdateCheckResult(_ToRelease(release, channel), null)
+                : UpdateCheckResult.UpToDate;
+        }
+        catch (NotInstalledException)
+        {
+            // The reading above answers for the states that actually occur; this covers the one it cannot see —
+            // Velopack also calls an installation with no application id uninstalled. Same answer either way, from
+            // one place, so the two routes cannot come to tell the operator different things.
+            return _NotPackaged();
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "The update check failed.");
+
+            return UpdateCheckResult.Failed($"The update check failed: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// What a copy nobody installed is told. Not phrased as a fault: it is the ordinary state of a checkout, a
+    /// tarball or a distribution's own package, and it is the same thing the Updates tab says in full.
+    /// </summary>
+    private static UpdateCheckResult _NotPackaged() => UpdateCheckResult.Failed(
+        $"This copy was not installed by the cockpit's installer, so it cannot look for updates. See {RepositoryUrl}/releases");
+
+    /// <summary>
+    /// The feed for one channel. <c>prerelease</c> is what lets the nightly be seen at all — the workflow publishes it
+    /// as a GitHub pre-release — and withholding it on stable is the first of the two things keeping a stable install
+    /// away from nightlies. The second is the channel name, which the check builds.
+    /// </summary>
+    internal static IUpdateSource Source(UpdateChannel channel) =>
+        new GithubSource(RepositoryUrl, null, prerelease: channel == UpdateChannel.Nightly);
+
+    private static AppRelease _ToRelease(VelopackAsset release, UpdateChannel channel)
+    {
+        var version = release.Version.ToFullString();
+
+        return new AppRelease(version, release.NotesMarkdown ?? string.Empty, _ReleasePage(version, channel));
+    }
+
+    /// <summary>
+    /// Where to read about a build. The feed is a list of packages and carries no page of its own, so this is derived
+    /// from the tag the workflow published under: a release is tagged <c>v&lt;version&gt;</c>, and every nightly lands
+    /// on the one rolling tag.
+    /// </summary>
+    private static string _ReleasePage(string version, UpdateChannel channel) =>
+        $"{RepositoryUrl}/releases/tag/{(channel == UpdateChannel.Nightly ? NightlyTag : $"v{version}")}";
+
+    /// <summary>
+    /// Keeps a timed-out check from raising an unobserved exception when it finally fails. Velopack's check takes no
+    /// cancellation token, so the task outlives the wait rather than being stopped.
+    /// </summary>
+    private static void _Abandon(Task check) =>
+        check.ContinueWith(
+            static abandoned => _ = abandoned.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+    /// <summary>
+    /// What this build is. The version carries the semver — including the <c>-nightly.&lt;run&gt;</c> tag a nightly is
+    /// packed with — and SourceRevisionId appends "+&lt;sha&gt;", which is the commit the operator sees beside it.
+    /// </summary>
+    private static (string Version, string Commit) _Read(Assembly assembly)
+    {
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString()
+            ?? string.Empty;
+
+        var plus = informational.IndexOf('+');
+
+        return plus < 0
+            ? (informational, string.Empty)
+            : (informational[..plus], informational[(plus + 1)..]);
+    }
+}
