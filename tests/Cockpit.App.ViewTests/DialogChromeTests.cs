@@ -130,33 +130,92 @@ public class DialogChromeTests
             "the line under the name explains it, so it cannot be reading as loudly as the name");
     });
 
+    // What the bar is allowed to add on top of the lines it carries: 12 above, 12 below, the seam, and — once
+    // there is a second line — the single pixel between the two. Nothing else, which is why this is an equality
+    // and not a bound: every term is a whole-pixel constant, so it is the same figure on any font the OS hands
+    // us. A range here would be a budget, and a budget is what a regression spends.
+    private const double RoomAroundOneLine = 12 + 12 + 1;
+    private const double RoomAroundTwoLines = RoomAroundOneLine + 1;
+
     [Theory]
-    [InlineData(null)]
-    [InlineData("What is this session working on?")]
-    public void TheBar_AddsNoMoreAroundItsText_ThanItsPaddingSeamAndLineSpacing(string? subtitle) => HeadlessAvalonia.Run(() =>
+    [InlineData(null, RoomAroundOneLine)]
+    [InlineData("What is this session working on?", RoomAroundTwoLines)]
+    public void TheBar_AddsExactlyItsPaddingAndSeam_AroundTheHeadingItCarries(string? subtitle, double expected) => HeadlessAvalonia.Run(() =>
     {
-        // AC-426: the bar was 63px for a name alone and 97px with its explanation — on a short dialog like Set
-        // status, two fifths of the window before its first control. What made it heavy was everything except the
-        // text, so the bar is measured against the text and not against the panel holding it: a panel's Bounds
-        // exclude its own Margin, so a difference taken there is the padding and nothing else, and the line
-        // spacing and the caption column — two of the five values this ticket moved — would go unwatched.
+        // AC-426: the bar ran to 63px for a name alone and 97px with its explanation — on a short dialog like Set
+        // status, two fifths of the window before its first control. Everything except the text is what made it
+        // heavy, so the text is what the bar is measured against.
         //
-        // A difference rather than an absolute height, because the fonts come from the OS and CI runs on another
-        // one. That holds here: the room is whole pixels, so it survives any metric the text itself measures.
+        // Measured against the heading's *own* lines, not against every TextBlock in the window: text elsewhere
+        // would enlarge the thing being subtracted and quietly buy the bar the room back. It is also not measured
+        // against the heading panel, whose Bounds exclude its own Margin — that difference is the padding alone,
+        // and the line spacing would cancel out of it.
         var window = new Window { Width = 600, Height = 400 };
         CockpitWindowChrome.Apply(window, "Set status", subtitle);
         window.Show();
         window.UpdateLayout();
 
-        var lines = window.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsVisible).ToList();
-        var bar = lines[0].GetVisualAncestors().OfType<Border>().First();
-        var text = lines.Sum(line => line.Bounds.Height);
-
-        // 12 above, 12 below, the seam, and — with a second line — the 1px between them. The caption column hangs
-        // in the same bar, so a close button outgrowing the heading lands here too. One pixel of slack for
-        // rounding, and nothing for a second opinion.
-        Assert.InRange(bar.Bounds.Height - text, 0, 27);
+        Assert.Equal(expected, _RoomTheBarAddsAroundItsHeading(window), 1);
     });
+
+    [Fact]
+    public void TheSameHoldsOnARealDialog_NotOnlyOnABareWindowWearingTheChrome() => HeadlessAvalonia.Run(() =>
+        // The measurement above is taken on a window that is nothing but the chrome. A technique that only works
+        // there would be measuring its own test rig, so the same figure is asked of a dialog with a full body.
+        Assert.Equal(RoomAroundTwoLines, _RoomTheBarAddsAroundItsHeading(_ShownProjectsDialog()), 1));
+
+    [Fact]
+    public void ASubtitleFullOfNewlines_DoesNotGrowTheBar() => HeadlessAvalonia.Run(() =>
+    {
+        // The sister of ATitleFullOfNewlines_DoesNotGrowTheBar. SubtitleMaxLines calls itself "bounded rather than
+        // trusted" and nothing held it to that — and the equality above never can, because one more subtitle line
+        // raises the bar and the text it is measured against by exactly the same amount. At the bound both of
+        // these are three lines tall; lift the bound and only the second one grows.
+        var atTheBound = _BarHeight("Settings", "one\ntwo\nthree");
+        var wellPast = _BarHeight("Settings", string.Join("\n", Enumerable.Repeat("padding", 40)));
+
+        Assert.Equal(atTheBound, wellPast, 1);
+    });
+
+    [Fact]
+    public void TheCloseButton_HangsFromTheTopOfTheHeading_RatherThanTheEdgeOfTheBar() => HeadlessAvalonia.Run(() =>
+    {
+        // The caption column carries the same top padding as the heading, so the ✕ lines up with the name instead
+        // of floating against the bar's edge — the reference's align-items: flex-start. Dropping that margin costs
+        // nothing the height measurement above would notice.
+        var window = new Window { Width = 600, Height = 400 };
+        CockpitWindowChrome.Apply(window, "Set status", "What is this session working on?");
+        window.Show();
+        window.UpdateLayout();
+
+        // The column and the heading are siblings in the bar, so their Bounds share an origin; the button's own
+        // Bounds are relative to the column that carries the margin, and would read 0 either way.
+        var band = _Band(window);
+        var captionColumn = band.GetVisualDescendants().OfType<StackPanel>()
+            .First(panel => panel.Children.OfType<Button>().Any());
+
+        Assert.Equal(_Heading(band).Bounds.Top, captionColumn.Bounds.Top, 1);
+    });
+
+    // How much taller the band is than the lines of text inside it.
+    private static double _RoomTheBarAddsAroundItsHeading(Window window)
+    {
+        var bar = _Band(window);
+        var heading = _Heading(bar);
+
+        return bar.Bounds.Height - heading.Children.OfType<TextBlock>().Sum(line => line.Bounds.Height);
+    }
+
+    // The band is found by its own colour rather than by position, so a dialog whose content happens to contain a
+    // Border or a StackPanel of text cannot be mistaken for the chrome.
+    private static Border _Band(Window window) =>
+        window.GetVisualDescendants().OfType<Border>().First(border =>
+            border.Background is ISolidColorBrush brush && brush.Color == _Colour("CockpitChromeBgColor"));
+
+    // The heading is the one panel in the band whose own children are the text; the caption column's children are
+    // buttons, so a glyph inside a button cannot be counted as a line of the heading.
+    private static StackPanel _Heading(Border band) =>
+        band.GetVisualDescendants().OfType<StackPanel>().First(panel => panel.Children.OfType<TextBlock>().Any());
 
     [Fact]
     public void TheAppWindowsBar_NamesTheProductOnce_OnOneCompactLine() => HeadlessAvalonia.Run(() =>
@@ -216,15 +275,14 @@ public class DialogChromeTests
         Assert.Equal(plain, hostile);
     });
 
-    private static double _BarHeight(string title)
+    private static double _BarHeight(string title, string? subtitle = null)
     {
         var window = new Window { Width = 600, Height = 400 };
-        CockpitWindowChrome.Apply(window, title);
+        CockpitWindowChrome.Apply(window, title, subtitle);
         window.Show();
         window.UpdateLayout();
 
-        var name = window.GetVisualDescendants().OfType<TextBlock>().First(block => block.IsVisible);
-        return name.GetVisualAncestors().OfType<Border>().First().Bounds.Height;
+        return _Band(window).Bounds.Height;
     }
 
     [Fact]
