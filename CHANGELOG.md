@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: agent sessions sharing a tab can now say what they are working on. An agent claims a worktree, a branch or a
+  file, and the next agent that reaches for the same one is told it is taken, by which session, and for how long — so
+  two agents on one working tree find that out before the first edit instead of when it fails to compile. What is
+  claimed also shows on each session's row when an agent lists who else is on the tab.
+
+  It signals, it does not lock. Nothing stops an agent from working on a claimed resource, and nothing needs cleaning
+  up afterwards: a claim is only its holder's to release, and everything a session holds is dropped the moment it
+  closes, including when it crashed without releasing. Resources are matched exactly as written, so agents have to
+  agree on the spelling — the same worktree written two ways is two claims. Claims stay inside one tab: a session on
+  another tab neither sees them nor is blocked by them, which also means two agents on different tabs reaching for the
+  same folder still do not see each other.
+
 - added: a line between a session's transcript and the box you type in. The transcript scrolls under that edge and its
   bottom row is cut off mid-letter, and with the same background on both sides and nothing drawn in between, that cut
   row read as a bar running underneath the pulsing "Thinking…" indicator rather than as a message scrolled out of

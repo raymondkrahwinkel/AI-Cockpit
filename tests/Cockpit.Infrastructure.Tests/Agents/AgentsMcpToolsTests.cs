@@ -36,6 +36,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
     private readonly IWorkspaceAgentGateway _gateway = Substitute.For<IWorkspaceAgentGateway>();
     private readonly WorkspaceAgentCoordinator _coordinator = new();
     private readonly AgentMessageInbox _inbox = new();
+    private readonly AgentResourceClaims _claims = new();
 
     // The real trail, not a substitute: the audit is a construction requirement of AC-392 (it must inherit the
     // append-only JsonlAuditLog<T>), so the tests that read it back are reading what the running app would write.
@@ -43,7 +44,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
     private AgentNotifyAuditLog _Audit() => new(_auditPath, NullLogger<AgentNotifyAuditLog>.Instance);
 
-    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit());
+    private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit(), _claims);
 
     /// <summary>Puts the named panes on one desk, each resolving to the same snapshot — a sender, an addressee, one workspace.</summary>
     private void _DeskWith(params string[] paneIds)
@@ -219,7 +220,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
     };
 
     [Fact]
-    public async Task ListAgents_ReservesEmptyPlaceholdersForClaimsAndWakeOptIn()
+    public async Task ListAgents_WithNothingClaimed_ReportsNoClaimsAndReservesTheWakeOptIn()
     {
         var snapshot = new WorkspaceAgentSnapshot("ws-1", [new WorkspaceAgentPane("pane-1", "Caller", null, string.Empty)]);
         _gateway.GetWorkspaceSnapshotAsync("pane-1").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(snapshot));
@@ -898,5 +899,331 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal(
             $"message {AgentsMcpTools.MaxMessagesPerRead}",
             second["messages"]!.AsArray()[0]!["body"]!.GetValue<string>());
+    }
+
+    // ---- claim / release / list_claims: who is working on what (AC-393) ----
+
+    private const string Claim = "claim";
+    private const string Release = "release";
+    private const string ListClaims = "list_claims";
+
+    /// <summary>
+    /// Drives one of the three claim tools by its MCP name. The theories below carry names rather than delegates
+    /// because <c>AgentsMcpTools</c> is internal, so a public theory method cannot take one as a parameter.
+    /// </summary>
+    private Task<string> _CallAsync(string tool) => tool switch
+    {
+        Claim => _Tools().ClaimAsync("/repo/worktree-a"),
+        Release => _Tools().ReleaseAsync("/repo/worktree-a"),
+        ListClaims => _Tools().ListClaimsAsync(),
+        _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Not one of the claim tools."),
+    };
+
+    /// <summary>
+    /// AC1 — the collision the whole of AC-119 was opened for, at the tool boundary: the second agent to reach for a
+    /// worktree is told it is taken, and by whom, instead of finding out when an edit fails to compile.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WhatANeighbourAlreadyHolds_IsRefusedAndNamesTheHolder()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/worktree-a");
+
+        McpRequestContext.Set("pane-b");
+        var json = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Equal("pane-a", json["heldBy"]!.GetValue<string>());
+        Assert.Contains("pane-a", json["error"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Claim_WhatNobodyHolds_IsTakenAndReportedAsFresh()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+        Assert.Equal("/repo/worktree-a", json["resource"]!.GetValue<string>());
+        Assert.False(json["alreadyHeld"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// Re-claiming is not an error and does not renew: the reply carries the original moment, so a neighbour watching
+    /// the age for a claim its owner walked away from is not fooled by an agent that re-claims in a loop.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WhatTheCallerAlreadyHolds_ReportsAlreadyHeldWithTheOriginalTimestamp()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+        var first = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        var again = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+
+        Assert.True(again["ok"]!.GetValue<bool>());
+        Assert.True(again["alreadyHeld"]!.GetValue<bool>());
+        Assert.Equal(
+            first["claimedAtUtc"]!.GetValue<DateTimeOffset>(),
+            again["claimedAtUtc"]!.GetValue<DateTimeOffset>());
+    }
+
+    /// <summary>AC5 — a pane's claims are on its own row of the roster, so seeing who is here also shows what they are on.</summary>
+    [Fact]
+    public async Task ListAgents_ShowsTheClaimsEachPaneOnTheDeskHolds_OnThatPanesOwnRow()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-b");
+        await _Tools().ClaimAsync("/repo/worktree-b");
+
+        McpRequestContext.Set("pane-a");
+        var json = _Json(await _Tools().ListAgentsAsync());
+
+        var agents = json["agents"]!.AsArray();
+        Assert.Empty(agents.First(agent => agent!["paneId"]!.GetValue<string>() == "pane-a")!["claims"]!.AsArray());
+        var neighbour = agents.First(agent => agent!["paneId"]!.GetValue<string>() == "pane-b")!["claims"]!.AsArray();
+        var held = Assert.Single(neighbour)!;
+        Assert.Equal("/repo/worktree-b", held["resource"]!.GetValue<string>());
+        Assert.True(held["heldForSeconds"]!.GetValue<long>() >= 0);
+    }
+
+    /// <summary>AC2 — a claim is only its holder's to give up, and the refusal says whose it is.</summary>
+    [Fact]
+    public async Task Release_ByAnAgentThatDoesNotHoldIt_IsRefusedAndTheClaimStands()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/worktree-a");
+
+        McpRequestContext.Set("pane-b");
+        var refused = _Json(await _Tools().ReleaseAsync("/repo/worktree-a"));
+
+        Assert.False(refused["ok"]!.GetValue<bool>());
+        Assert.Equal("pane-a", refused["heldBy"]!.GetValue<string>());
+        var stillListed = _Json(await _Tools().ListClaimsAsync())["claims"]!.AsArray();
+        Assert.Equal("pane-a", Assert.Single(stillListed)!["heldBy"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Release_ByTheHolder_FreesItForANeighbour()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/worktree-a");
+
+        var released = _Json(await _Tools().ReleaseAsync("/repo/worktree-a"));
+
+        Assert.True(released["ok"]!.GetValue<bool>());
+        McpRequestContext.Set("pane-b");
+        Assert.True(_Json(await _Tools().ClaimAsync("/repo/worktree-a"))["ok"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// Not silently treated as success: a resource spelt differently from the one that was claimed is the mistake this
+    /// reply exists to make visible, and "released" on something the caller never held would hide it.
+    /// </summary>
+    [Fact]
+    public async Task Release_WhatNobodyHolds_IsRefusedRatherThanReportedDone()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ReleaseAsync("/repo/never-claimed"));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// AC4 at the tool boundary — the claim of a pane on another desk is neither listed nor in the way. Both halves
+    /// matter: hidden-but-blocking would leak that somebody, somewhere, holds the name; visible would leak who.
+    /// </summary>
+    [Fact]
+    public async Task Claim_AResourceHeldOnAnotherDesk_IsNeitherVisibleNorInTheWay()
+    {
+        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "X", null, string.Empty)]);
+        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "Y", null, string.Empty)]);
+        _gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
+        _gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
+        McpRequestContext.Set("pane-x");
+        await _Tools().ClaimAsync("/repo/worktree-a");
+
+        McpRequestContext.Set("pane-y");
+        var claimed = _Json(await _Tools().ClaimAsync("/repo/worktree-a"));
+        var listed = _Json(await _Tools().ListClaimsAsync())["claims"]!.AsArray();
+
+        Assert.True(claimed["ok"]!.GetValue<bool>());
+        Assert.Equal("pane-y", Assert.Single(listed)!["heldBy"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ListClaims_ShowsWhoHoldsWhat_AndWhichOfThemAreTheCallersOwn()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/worktree-a");
+        McpRequestContext.Set("pane-b");
+        await _Tools().ClaimAsync("feature/AC-393");
+
+        var json = _Json(await _Tools().ListClaimsAsync());
+
+        Assert.Equal(2, json["count"]!.GetValue<int>());
+        var claims = json["claims"]!.AsArray();
+        var mine = claims.First(claim => claim!["heldBy"]!.GetValue<string>() == "pane-b")!;
+        var theirs = claims.First(claim => claim!["heldBy"]!.GetValue<string>() == "pane-a")!;
+        Assert.True(mine["mine"]!.GetValue<bool>());
+        Assert.False(theirs["mine"]!.GetValue<bool>());
+        // Oldest first, so the claim most likely to have been abandoned is the one at the top.
+        Assert.Equal("/repo/worktree-a", claims[0]!["resource"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// The same defence the rest of this server uses: a request the transport could not attribute to a pane has no
+    /// owner to stamp a claim with, so there is nothing to claim, release or list on behalf of — and no argument to
+    /// fall back to reading instead, because none of the three takes a caller.
+    /// </summary>
+    [Theory]
+    [InlineData(Claim)]
+    [InlineData(Release)]
+    [InlineData(ListClaims)]
+    public async Task ClaimTools_WithNoVerifiedPane_Refuse(string tool)
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set(null);
+
+        var json = _Json(await _CallAsync(tool));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        _ = _gateway.DidNotReceiveWithAnyArgs().GetWorkspaceSnapshotAsync(default!);
+    }
+
+    /// <summary>
+    /// The resource is the claiming agent's own text and it is repeated into every neighbour's tool result, so it gets
+    /// the treatment a message body gets — except that an over-long one is refused rather than cut, because a silently
+    /// shortened resource is a claim on something other than what was asked for and would never match the neighbour it
+    /// was meant to warn.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public async Task Claim_WithNothingToClaim_IsRefusedAndNothingIsTaken(string? resource)
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync(resource!));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Equal(0, _Json(await _Tools().ListClaimsAsync())["count"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Claim_WithAResourcePastItsLimit_IsRefusedAndNothingIsTaken()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync(new string('r', AgentsMcpTools.MaxResourceLength + 1)));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.Equal(0, _Json(await _Tools().ListClaimsAsync())["count"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Claim_WithAResourceExactlyAtItsLimit_IsAccepted()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _Tools().ClaimAsync(new string('r', AgentsMcpTools.MaxResourceLength)));
+
+        Assert.True(json["ok"]!.GetValue<bool>());
+    }
+
+    /// <summary>
+    /// A claim is displayed to every neighbour that lists the desk, so an escape sequence in one would repaint their
+    /// tool output. Stripped rather than refused, and the stripped form is what is stored — so the neighbour that
+    /// claims the same thing without the escape sequence meets it rather than claiming it twice.
+    /// </summary>
+    [Fact]
+    public async Task Claim_WithTerminalControlSequencesInTheResource_StoresAndMatchesTheStrippedForm()
+    {
+        _DeskWith("pane-a", "pane-b");
+        McpRequestContext.Set("pane-a");
+        await _Tools().ClaimAsync("/repo/" + Escape + "[31mworktree-a");
+
+        var listed = _Json(await _Tools().ListClaimsAsync())["claims"]!.AsArray();
+        McpRequestContext.Set("pane-b");
+        var collision = _Json(await _Tools().ClaimAsync("/repo/[31mworktree-a"));
+
+        Assert.Equal("/repo/[31mworktree-a", Assert.Single(listed)!["resource"]!.GetValue<string>());
+        Assert.False(collision["ok"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Claim_EnrollsTheVerifiedCaller_LikeListAgentsDoes()
+    {
+        _DeskWith("pane-a");
+        McpRequestContext.Set("pane-a");
+
+        await _Tools().ClaimAsync("/repo/worktree-a");
+
+        Assert.True(_coordinator.IsEnrolled("pane-a"));
+    }
+
+    /// <summary>
+    /// A session the cockpit cannot place on a desk has no desk to scope a claim to. Answered as a refusal rather than
+    /// by falling back to a host-wide claim, which is exactly the partition-free behaviour the ticket ruled out.
+    /// </summary>
+    [Theory]
+    [InlineData(Claim)]
+    [InlineData(Release)]
+    [InlineData(ListClaims)]
+    public async Task ClaimTools_WhenTheCockpitCannotPlaceTheCallerInAWorkspace_Refuse(string tool)
+    {
+        _gateway.GetWorkspaceSnapshotAsync("pane-a").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(null));
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _CallAsync(tool));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+    }
+
+    /// <summary>An unexpected failure comes back as a tool result the agent can read, never as a broken transport.</summary>
+    [Theory]
+    [InlineData(Claim)]
+    [InlineData(Release)]
+    [InlineData(ListClaims)]
+    public async Task ClaimTools_WhenTheGatewayThrows_ReturnOkFalse_NotAProtocolError(string tool)
+    {
+        _gateway.GetWorkspaceSnapshotAsync(Arg.Any<string>()).Returns<Task<WorkspaceAgentSnapshot?>>(_ => throw new InvalidOperationException("boom"));
+        McpRequestContext.Set("pane-a");
+
+        var json = _Json(await _CallAsync(tool));
+
+        Assert.False(json["ok"]!.GetValue<bool>());
+        Assert.False(string.IsNullOrEmpty(json["error"]!.GetValue<string>()));
+    }
+
+    /// <summary>
+    /// The age is what makes a claim its owner walked away from recognisable, so it is the arithmetic and not only the
+    /// field that has to hold: a claim taken an hour ago reads as an hour, and a clock the OS steps backwards between
+    /// the two reads gives zero rather than a claim taken in the future.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0L)]
+    [InlineData(90, 90L)]
+    [InlineData(3600, 3600L)]
+    [InlineData(-30, 0L)]
+    public void HeldForSeconds_ReportsTheAgeInWholeSeconds_AndNeverANegativeOne(int elapsedSeconds, long expected)
+    {
+        var claimedAt = new DateTimeOffset(2026, 7, 28, 9, 0, 0, TimeSpan.Zero);
+
+        var held = AgentsMcpTools.HeldForSeconds(claimedAt, claimedAt.AddSeconds(elapsedSeconds));
+
+        Assert.Equal(expected, held);
     }
 }
