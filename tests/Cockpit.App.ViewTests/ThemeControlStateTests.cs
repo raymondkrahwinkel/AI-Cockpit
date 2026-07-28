@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Controls;
@@ -26,12 +25,12 @@ public class ThemeControlStateTests
         // Avalonia's own accent (#0078d7) is what the box used before this. It looks close enough to the theme's
         // blue to pass an eyeball test, and would have stayed behind the day the accent token moves.
         var box = new CheckBox { Content = "x", IsChecked = true };
-        using var host = _Shown(box);
+        using var host = RenderedScene.Show(box);
 
         var fill = _Fill(box, "NormalRectangle");
 
         // The tick follows the theme's accent, not the platform's.
-        Assert.Equal(_Token("CockpitAccentColor"), fill);
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), fill);
     });
 
     [Fact]
@@ -40,12 +39,12 @@ public class ThemeControlStateTests
         // The same defect as the CheckBox above, one control further along: the ring was filled and stroked with
         // Avalonia's #0078d7 while the theme's accent is #3b82f6 (AC-404, found by the AC-338 palette baseline).
         var choice = new RadioButton { Content = "x", IsChecked = true };
-        using var host = _Shown(choice);
+        using var host = RenderedScene.Show(choice);
 
-        Assert.Equal(_Token("CockpitAccentColor"), _Stroke(choice, "Ring"));
-        Assert.Equal(_Token("CockpitAccentColor"), _EllipseFill(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _Stroke(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _EllipseFill(choice, "Ring"));
         // The dot has to read on that fill, so it is the on-accent ink rather than the ring's own.
-        Assert.Equal(_Token("CockpitTextOnAccentColor"), _EllipseFill(choice, "Dot"));
+        Assert.Equal(RenderedScene.Token("CockpitTextOnAccentColor"), _EllipseFill(choice, "Dot"));
         Assert.True(_Part<Ellipse>(choice, "Dot").IsVisible, "a picked radio button shows its dot");
     });
 
@@ -57,13 +56,13 @@ public class ThemeControlStateTests
         // OuterEllipse to Opacity 0 on :checked. A brush is what a control was told to paint with; this is whether
         // any of it reached the screen.
         var choice = new RadioButton { Content = "x", IsChecked = true };
-        using var host = _Shown(choice);
+        using var host = RenderedScene.Show(choice);
 
         var ring = _Part<Ellipse>(choice, "Ring");
         var origin = ring.TranslatePoint(new Point(2, ring.Bounds.Height / 2), host.Window) ?? default;
 
         // Two pixels in from the ring's left edge, which is its fill and never the dot (8px, centred in 18).
-        Assert.Equal(_Channels(_Token("CockpitAccentColor")), _Channels(_PaintedAt(host.Window, origin)));
+        Assert.Equal(RenderedScene.AsRendered(RenderedScene.TokenBrush("CockpitAccentBrush")), RenderedScene.PaintedAt(host.Window, origin));
     });
 
     [Fact]
@@ -73,10 +72,10 @@ public class ThemeControlStateTests
         // Transparent, so the theme's CockpitPanelBgBrush setter does not reach its unchecked state. Pinning the
         // radio to what the CheckBox happens to render would pin it to that, which is not what the theme says.
         var choice = new RadioButton { Content = "x", IsChecked = false };
-        using var host = _Shown(choice);
+        using var host = RenderedScene.Show(choice);
 
-        Assert.Equal(_Token("CockpitPanelBgColor"), _EllipseFill(choice, "Ring"));
-        Assert.Equal(_Token("CockpitHairlineColor"), _Stroke(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitPanelBgColor"), _EllipseFill(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitHairlineColor"), _Stroke(choice, "Ring"));
         Assert.False(_Part<Ellipse>(choice, "Dot").IsVisible, "an unpicked radio button shows no dot");
     });
 
@@ -84,10 +83,10 @@ public class ThemeControlStateTests
     public void ADisabledRadioButton_RecedesOnTheSameTokensAsADisabledCheckBox() => HeadlessAvalonia.Run(() =>
     {
         var choice = new RadioButton { Content = "x", IsChecked = false, IsEnabled = false };
-        using var host = _Shown(choice);
+        using var host = RenderedScene.Show(choice);
 
-        Assert.Equal(_Token("CockpitSecondaryBgColor"), _EllipseFill(choice, "Ring"));
-        Assert.Equal(_Token("CockpitHairlineSoftColor"), _Stroke(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitSecondaryBgColor"), _EllipseFill(choice, "Ring"));
+        Assert.Equal(RenderedScene.Token("CockpitHairlineSoftColor"), _Stroke(choice, "Ring"));
     });
 
     [Fact]
@@ -96,11 +95,11 @@ public class ThemeControlStateTests
         // The theme never claimed a ScrollBar, so every scrollable surface carried Fluent's #1F1F1F track and
         // corner and its #858585 thumb — colours no source lint could find, because we never wrote them (AC-405).
         var viewer = _Scrolled();
-        using var host = _Shown(viewer);
+        using var host = RenderedScene.Show(viewer);
 
-        Assert.Equal(_Token("CockpitInsetBgColor"), _ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
-        Assert.Equal(_Token("CockpitInsetBgColor"), _ColourOf(_Named<Panel>(viewer, "PART_ScrollBarsSeparator").Background));
-        Assert.Equal(_Token("CockpitTextFaintColor"), _ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
+        Assert.Equal(RenderedScene.Token("CockpitInsetBgColor"), _ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
+        Assert.Equal(RenderedScene.Token("CockpitInsetBgColor"), _ColourOf(_Named<Panel>(viewer, "PART_ScrollBarsSeparator").Background));
+        Assert.Equal(RenderedScene.Token("CockpitTextFaintColor"), _ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
     });
 
     [Fact]
@@ -109,7 +108,7 @@ public class ThemeControlStateTests
         // The obvious way to get this wrong: every colour resolves to a theme token and the thumb is then
         // invisible in its own groove. No assertion about tokens can see that; this one is about the gap.
         var viewer = _Scrolled();
-        using var host = _Shown(viewer);
+        using var host = RenderedScene.Show(viewer);
 
         var thumb = _Brightness(_ColourOf(viewer.GetVisualDescendants().OfType<Thumb>().First().Background));
         var track = _Brightness(_ColourOf(_Named<Rectangle>(viewer, "TrackRect").Fill));
@@ -123,12 +122,12 @@ public class ThemeControlStateTests
         // Same reason as the radio button's ring: a brush is what a control was told to paint with, and the
         // question here is what reached the screen.
         var viewer = _Scrolled();
-        using var host = _Shown(viewer);
+        using var host = RenderedScene.Show(viewer);
 
         var thumb = viewer.GetVisualDescendants().OfType<Thumb>().First();
         var middle = thumb.TranslatePoint(new Point(thumb.Bounds.Width / 2, thumb.Bounds.Height / 2), host.Window) ?? default;
 
-        Assert.Equal(_Channels(_Token("CockpitTextFaintColor")), _Channels(_PaintedAt(host.Window, middle)));
+        Assert.Equal(RenderedScene.AsRendered(RenderedScene.TokenBrush("CockpitTextFaintBrush")), RenderedScene.PaintedAt(host.Window, middle));
     });
 
     [Fact]
@@ -138,7 +137,7 @@ public class ThemeControlStateTests
         // dark form, which is the opposite of what disabled means ("Provider (fixed after creation)").
         var enabled = new ComboBox { ItemsSource = new[] { "a" }, SelectedIndex = 0 };
         var disabled = new ComboBox { ItemsSource = new[] { "a" }, SelectedIndex = 0, IsEnabled = false };
-        using var host = _Shown(new StackPanel { Children = { enabled, disabled } });
+        using var host = RenderedScene.Show(new StackPanel { Children = { enabled, disabled } });
 
         var lit = _Fill(enabled, "Background");
         var dimmed = _Fill(disabled, "Background");
@@ -156,7 +155,7 @@ public class ThemeControlStateTests
         // correct in this harness, so what this test pins down is the state, not a repair. Kept because the theme
         // now claims :selected:focus explicitly instead of relying on Fluent's rule order to lose.
         var list = new ListBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
-        using var host = _Shown(list);
+        using var host = RenderedScene.Show(list);
 
         var row = list.GetVisualDescendants().OfType<ListBoxItem>().First();
         row.Focus();
@@ -166,19 +165,19 @@ public class ThemeControlStateTests
 
         Assert.True(row.IsFocused, "the test is only meaningful while the row actually holds focus");
         // A clicked row looks the same as a selected one.
-        Assert.Equal(_Token("CockpitPanelBgColor"), fill);
+        Assert.Equal(RenderedScene.Token("CockpitPanelBgColor"), fill);
     });
 
     [Fact]
     public void ADisabledButton_KeepsTheThemeSurface() => HeadlessAvalonia.Run(() =>
     {
         var button = new Button { Content = "x", IsEnabled = false };
-        using var host = _Shown(button);
+        using var host = RenderedScene.Show(button);
 
         var fill = _PresenterFill(button);
 
         // A disabled button keeps its shape and fades its label rather than becoming Fluent's grey slab.
-        Assert.Equal(_Token("CockpitPanelBgColor"), fill);
+        Assert.Equal(RenderedScene.Token("CockpitPanelBgColor"), fill);
     });
 
     [Theory]
@@ -199,25 +198,25 @@ public class ThemeControlStateTests
             button.Classes.Add(variant);
         }
 
-        using var host = _Shown(button);
+        using var host = RenderedScene.Show(button);
 
         var label = button.GetVisualDescendants().OfType<TextBlock>().First();
 
         // A disabled button's label has to read as unavailable, whichever variant it is.
-        Assert.Equal(_Token("CockpitTextFaintColor"), _ColourOf(label.Foreground));
+        Assert.Equal(RenderedScene.Token("CockpitTextFaintColor"), _ColourOf(label.Foreground));
     });
 
     [Fact]
     public void ADisabledPicker_FadesItsChosenValue() => HeadlessAvalonia.Run(() =>
     {
         var picker = new ComboBox { ItemsSource = new[] { "Claude CLI" }, SelectedIndex = 0, IsEnabled = false };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         var value = picker.GetVisualDescendants().OfType<TextBlock>()
             .First(block => block.Text == "Claude CLI");
 
         // The value recedes with the surface it sits on, rather than staying bright on a dimmed field.
-        Assert.Equal(_Token("CockpitTextFaintColor"), _ColourOf(value.Foreground));
+        Assert.Equal(RenderedScene.Token("CockpitTextFaintColor"), _ColourOf(value.Foreground));
     });
 
     [Fact]
@@ -225,7 +224,7 @@ public class ThemeControlStateTests
     {
         var off = new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = false };
         var on = new CheckBox { Classes = { "Switch" }, Content = "x", IsChecked = true };
-        using var host = _Shown(new StackPanel { Children = { off, on } });
+        using var host = RenderedScene.Show(new StackPanel { Children = { off, on } });
 
         var travelled = _KnobOffset(on) - _KnobOffset(off);
         var trackWidth = _Part<Border>(on, "Track").Bounds.Width;
@@ -233,7 +232,7 @@ public class ThemeControlStateTests
         Assert.True(travelled > 0, $"a switch that is on shows its knob at the other end, but it moved {travelled}px");
         Assert.True(travelled < trackWidth, $"the knob travels within the {trackWidth}px track, not {travelled}px");
         // An on switch carries the accent.
-        Assert.Equal(_Token("CockpitAccentColor"), _Fill(on, "Track"));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _Fill(on, "Track"));
     });
 
     [Fact]
@@ -244,7 +243,7 @@ public class ThemeControlStateTests
         // flyout do not hang under the window — so anything inherited from the window alone would stop at its edge
         // and the whole open list would fall back to Fluent's colour.
         var picker = new ComboBox { ItemsSource = new[] { "Claude · Opus", "Claude · Sonnet" }, SelectedIndex = 0 };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         picker.IsDropDownOpen = true;
         host.Window.UpdateLayout();
@@ -257,7 +256,7 @@ public class ThemeControlStateTests
         var itemText = item!.GetVisualDescendants().OfType<TextBlock>().First();
 
         // An open list is drawn on its own surface, and has to be readable there too.
-        Assert.Equal(_Token("CockpitTextPrimaryColor"), _ColourOf(itemText.Foreground));
+        Assert.Equal(RenderedScene.Token("CockpitTextPrimaryColor"), _ColourOf(itemText.Foreground));
     });
 
     [Fact]
@@ -266,11 +265,11 @@ public class ThemeControlStateTests
         // The mockup puts inputs a step lighter than the window they are on, so a form reads as a column of things
         // you can type in. They used to be darker, which reads as a recess.
         var box = new TextBox { Text = "x" };
-        using var host = _Shown(box);
+        using var host = RenderedScene.Show(box);
 
         var fill = _Fill(box, "PART_BorderElement");
 
-        var window = _Token("CockpitWindowBgColor");
+        var window = RenderedScene.Token("CockpitWindowBgColor");
         Assert.True(_Brightness(fill) > _Brightness(window),
             $"an input is raised off the window, but {fill} is not lighter than {window}");
     });
@@ -281,7 +280,7 @@ public class ThemeControlStateTests
         // A label/field grid only lines up if the typed row and the picked row are the same height and shape.
         var box = new TextBox { Text = "x" };
         var picker = new ComboBox { ItemsSource = new[] { "a" }, SelectedIndex = 0 };
-        using var host = _Shown(new StackPanel { Children = { box, picker } });
+        using var host = RenderedScene.Show(new StackPanel { Children = { box, picker } });
 
         Assert.Equal(_Fill(picker, "Background"), _Fill(box, "PART_BorderElement"));
         Assert.Equal(picker.CornerRadius, box.CornerRadius);
@@ -299,7 +298,7 @@ public class ThemeControlStateTests
         // was drawn boxed and ringed for exactly that reason: only BorderBrush had been claimed here (AC-425).
         var marker = Color.FromRgb(11, 22, 33);
         var box = new TextBox { Text = "x", Background = new SolidColorBrush(marker), BorderThickness = new Thickness(3) };
-        using var host = _Shown(box);
+        using var host = RenderedScene.Show(box);
 
         var border = _Part<Border>(box, "PART_BorderElement");
 
@@ -327,7 +326,7 @@ public class ThemeControlStateTests
         // And what reached the frame, for the reason the radio button's ring has the same pair: a brush is what the
         // control was told to paint with. Sampled at the right-hand end, clear of the 3px border and of the glyph.
         var fill = border.TranslatePoint(new Point(border.Bounds.Width - 10, border.Bounds.Height / 2), host.Window) ?? default;
-        Assert.Equal(_Channels(marker), _Channels(_PaintedAt(host.Window, fill)));
+        Assert.Equal(RenderedScene.AsRendered(new SolidColorBrush(marker)), RenderedScene.PaintedAt(host.Window, fill));
     });
 
     [Fact]
@@ -339,14 +338,14 @@ public class ThemeControlStateTests
         // edge as the only thing this default TextBox (a real border, asked for at rest) has left to draw the
         // difference with — and that edge is lost unless focus is declared after hover.
         var box = new TextBox { Text = "x" };
-        using var host = _Shown(box);
+        using var host = RenderedScene.Show(box);
 
         host.Window.MouseMove(box.TranslatePoint(new Point(5, 5), host.Window) ?? default);
         box.Focus();
         host.Window.UpdateLayout();
 
         Assert.True(box is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
-        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
     });
 
     [Fact]
@@ -357,13 +356,13 @@ public class ThemeControlStateTests
         // a merely-hovered field looked exactly like a focused one, the same defect this fix removed, the other way
         // round.
         var box = new TextBox { Text = "x" };
-        using var host = _Shown(box);
+        using var host = RenderedScene.Show(box);
 
         host.Window.MouseMove(box.TranslatePoint(new Point(5, 5), host.Window) ?? default);
         host.Window.UpdateLayout();
 
         Assert.True(box is { IsPointerOver: true, IsFocused: false }, "this is about hover without focus");
-        Assert.Equal(_Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+        Assert.Equal(RenderedScene.Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
     });
 
     [Fact]
@@ -373,14 +372,14 @@ public class ThemeControlStateTests
         // focus name the same element at the same priority, so the later rule answers for both while you are
         // clicking. The order is right; nothing was holding it there until this.
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
         picker.Focus();
         host.Window.UpdateLayout();
 
         Assert.True(picker is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
-        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
     });
 
     [Fact]
@@ -390,7 +389,7 @@ public class ThemeControlStateTests
         // state it reclaims this part in, so a rule of ours for it would set a value nothing was competing for.
         var marker = Color.FromRgb(44, 55, 66);
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0, Background = new SolidColorBrush(marker) };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         var border = _Part<Border>(picker, "Background");
 
@@ -409,20 +408,20 @@ public class ThemeControlStateTests
         // pointerover/focus pair on Border#Background, and nothing else pinned that hover and focus draw two
         // different colours there rather than the same one.
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
         host.Window.UpdateLayout();
 
         Assert.True(picker is { IsPointerOver: true, IsFocused: false }, "this is about hover without focus");
-        Assert.Equal(_Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+        Assert.Equal(RenderedScene.Token("CockpitHairlineHoverColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
     });
 
     [Fact]
     public void APicker_ShowsFocus_WhenItIsFocusedButThePointerIsNotOnIt() => HeadlessAvalonia.Run(() =>
     {
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
         picker.Focus();
@@ -430,7 +429,7 @@ public class ThemeControlStateTests
 
         Assert.False(picker.IsPointerOver, "focus has to be read on its own, or hover answers for it");
         Assert.True(picker.IsFocused, "and only while the picker actually holds focus");
-        Assert.Equal(_Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
     });
 
     [Fact]
@@ -442,14 +441,14 @@ public class ThemeControlStateTests
         // ComboBox.Compact's own Background setter and this is the one test that goes red, since the plain-picker
         // test above sets Background as an instance value instead.
         var picker = new ComboBox { Classes = { "Compact" }, ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
-        using var host = _Shown(picker);
+        using var host = RenderedScene.Show(picker);
 
         var border = _Part<Border>(picker, "Background");
 
         host.Window.MouseMove(picker.TranslatePoint(new Point(5, 5), host.Window) ?? default);
         host.Window.UpdateLayout();
         Assert.True(picker.IsPointerOver, "the test only means something while the pointer is on the picker");
-        Assert.Equal(_Token("CockpitSecondaryBgColor"), _ColourOf(border.Background));
+        Assert.Equal(RenderedScene.Token("CockpitSecondaryBgColor"), _ColourOf(border.Background));
     });
 
     /// <summary>The colour a brush paints, and a readable failure when it is not a plain colour at all.</summary>
@@ -479,27 +478,6 @@ public class ThemeControlStateTests
     private static T _Named<T>(Control control, string name) where T : StyledElement =>
         control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
-    /// <summary>The colour actually rendered at a point of the window, read back out of the frame.</summary>
-    private static Color _PaintedAt(Window window, Point point)
-    {
-        using var frame = window.CaptureRenderedFrame()
-            ?? throw new InvalidOperationException("the headless renderer produced no frame to sample");
-        using var buffer = frame.Lock();
-
-        var bytesPerPixel = buffer.RowBytes / buffer.Size.Width;
-        var row = new byte[buffer.RowBytes];
-        Marshal.Copy(buffer.Address + ((int)point.Y * buffer.RowBytes), row, 0, row.Length);
-
-        var offset = (int)point.X * bytesPerPixel;
-        return Color.FromRgb(row[offset], row[offset + 1], row[offset + 2]);
-    }
-
-    /// <summary>
-    /// A colour's three channels, sorted. The frame's channel order is the platform's business (BGRA on one, RGBA
-    /// on another), and this comparison is about which colour was painted, not about how the buffer stores it.
-    /// </summary>
-    private static IReadOnlyList<byte> _Channels(Color colour) => [.. new[] { colour.R, colour.G, colour.B }.Order()];
-
     private static Color _Fill(Control control, string part) =>
         ((ISolidColorBrush)_Part<Border>(control, part).Background!).Color;
 
@@ -524,24 +502,7 @@ public class ThemeControlStateTests
     private static T _Part<T>(Control control, string name) where T : Control =>
         control.GetVisualDescendants().OfType<T>().First(part => part.Name == name);
 
-    private static Color _Token(string key) =>
-        (Color)(Application.Current?.FindResource(key) ?? throw new InvalidOperationException($"no token '{key}'"));
-
     /// <summary>Perceived lightness — enough to say which of two surfaces sits in front of the other.</summary>
     private static double _Brightness(Color colour) =>
         (0.299 * colour.R) + (0.587 * colour.G) + (0.114 * colour.B);
-
-    private static Host _Shown(Control content)
-    {
-        var window = new Window { Width = 400, Height = 300, Content = content };
-        window.Show();
-        window.UpdateLayout();
-
-        return new Host(window);
-    }
-
-    private sealed record Host(Window Window) : IDisposable
-    {
-        public void Dispose() => Window.Close();
-    }
 }
