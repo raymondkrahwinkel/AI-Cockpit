@@ -88,8 +88,10 @@ public sealed class LimitBar : TemplatedControl
             return default;
         }
 
-        var label = Text(Label, Brushes.Gray);
-        var value = Text(Format(percent), Brushes.Gray);
+        // No brush: measuring asks how much room the glyphs need, and nothing here reaches the screen. Naming a
+        // colour would be naming one nobody ever sees.
+        var label = Text(Label, null);
+        var value = Text(Format(percent), null);
         var height = Math.Max(label.Height, value.Height);
 
         // Stretch mode: take the width the panel offers (finite in the flyout), so the track can fill it. Falls
@@ -142,7 +144,7 @@ public sealed class LimitBar : TemplatedControl
 
     private static string Format(double percent) => $"{Math.Round(percent, MidpointRounding.AwayFromZero)}%";
 
-    private FormattedText Text(string text, IBrush brush) =>
+    private FormattedText Text(string text, IBrush? brush) =>
         new(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface(FontFamily), FontSize, brush);
 
@@ -158,16 +160,20 @@ public sealed class LimitBar : TemplatedControl
     }
 
     // Resolved from the theme so a palette change carries: the same tokens the session status dots use.
-    private IBrush TrackBrush => Brush("CockpitHairlineBrush", Brushes.DimGray);
+    private IBrush TrackBrush => Brush("CockpitHairlineBrush", "#2a2f39");
 
-    private IBrush NormalBrush => Brush("CockpitTextSecondaryBrush", Brushes.Gray);
+    private IBrush NormalBrush => Brush("CockpitTextSecondaryBrush", "#949aa5");
 
-    private IBrush WarnBrush => Brush("CockpitStatusWaitingBrush", Brushes.Orange);
+    private IBrush WarnBrush => Brush("CockpitStatusWaitingBrush", "#E0A33E");
 
-    private IBrush CriticalBrush => Brush("CockpitStatusErrorBrush", Brushes.Red);
+    private IBrush CriticalBrush => Brush("CockpitStatusErrorBrush", "#D64545");
 
-    private IBrush Brush(string key, IBrush fallback) =>
+    // Looked up from this control outwards, so a panel that overrides the palette for what it hosts is honoured.
+    // The fallback hex is only reached where there are no resources at all (designer, headless test) and is held
+    // equal to its token by the repository's theme guard — a named framework colour there would paint a grey, an
+    // orange or a red the palette has never contained, and nothing anywhere would say so.
+    private IBrush Brush(string key, string fallbackHex) =>
         this.TryGetResource(key, ActualThemeVariant, out var resource) && resource is IBrush brush
             ? brush
-            : fallback;
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }
