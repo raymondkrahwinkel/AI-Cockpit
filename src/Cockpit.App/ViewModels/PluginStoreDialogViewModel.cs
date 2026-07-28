@@ -148,6 +148,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         if (e.PropertyName == nameof(PluginManagerViewModel.IsBusy))
         {
             OnPropertyChanged(nameof(IsLoadingCatalogue));
+            InstallSelectedVersionCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -328,8 +329,15 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         OnPropertyChanged(nameof(HasSelectedVersionNotes));
     }
 
+    /// <summary>
+    /// Whether the version picker's Install can be started (AC-420). It reaches the same download-and-move as
+    /// the primary Install button one row below it, so it needs the same gate: the busy overlay stops a mouse
+    /// but not a Tab and a space bar, and this button keeps its focus underneath it.
+    /// </summary>
+    public bool CanInstallSelectedVersion => !_manager.IsBusy;
+
     /// <summary>Installs the version picked in the detail panel — a rollback to an older build, a re-install of the current one, or an upgrade.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanInstallSelectedVersion))]
     private async Task InstallSelectedVersionAsync()
     {
         if (SelectedVersion is { } option && SelectedPlugin is { } row)

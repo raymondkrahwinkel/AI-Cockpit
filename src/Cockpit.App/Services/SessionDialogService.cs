@@ -420,7 +420,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<string?> PickPluginZipAsync()
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        // The active window, not always MainWindow (AC-456), matching the folder picker below. Owned by the main
+        // window this picker left the store dialog it was launched from clickable, so its install buttons stayed
+        // live while the operator browsed — a modal whose own child picker does not hold it is not holding
+        // anything.
+        if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
         }

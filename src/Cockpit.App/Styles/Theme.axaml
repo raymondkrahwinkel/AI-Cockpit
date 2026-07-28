@@ -69,6 +69,12 @@
             <Color x:Key="CockpitGhostHoverColor">#0affffff</Color>
             <SolidColorBrush x:Key="CockpitGhostHoverBrush" Color="{StaticResource CockpitGhostHoverColor}"/>
 
+            <!-- The dim a modal busy layer lays over what it blocks (AC-420) — the window fill at 70% (#b3
+                 alpha), not black. Black over these blue-grey surfaces reads as a smudge; the app's own
+                 darkest surface leaves the covered content recognisable while plainly out of reach. -->
+            <Color x:Key="CockpitScrimColor">#b30f1116</Color>
+            <SolidColorBrush x:Key="CockpitScrimBrush" Color="{StaticResource CockpitScrimColor}"/>
+
             <!-- Text -->
             <Color x:Key="CockpitTextPrimaryColor">#e8eaef</Color>
             <Color x:Key="CockpitTextSecondaryColor">#949aa5</Color>

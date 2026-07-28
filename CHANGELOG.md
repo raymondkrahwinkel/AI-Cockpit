@@ -708,6 +708,33 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Zoomed all the way out, where a row of text is shorter than the margin being held steady, that margin now gives
   way to the row — otherwise the terminal would stop growing into space that opened up and leave a strip of the
   pane permanently unused.
+- fixed: **Update all** in the plugin store offered to restart the cockpit as soon as the *first* plugin of the batch
+  was done, while the rest were still downloading. Taking it up there restarted the app mid-batch, and the plugins
+  that had not had their turn were silently left on their old version — with a banner that had just said the update
+  was finished. The restart is now held back until the whole batch is over.
+
+- fixed: a second plugin install could be started while one was already running — from the version picker in the
+  detail panel, or from Install from zip, or from the catalogue on top of a zip install that was showing no sign
+  of itself at all. They reach the same unpacking step, so two of them could unpack over each other into the same
+  folder. Those buttons are now dead for as long as an install is in flight, and a zip install shows the same
+  overlay as the rest instead of running invisibly.
+
+  The last way in was the file picker. With **Install from zip** waiting on a file, nothing was running yet, so an
+  install could still be started from the catalogue — and the two met when the picker came back with a path. The
+  picker now holds the store dialog it was opened from, the way the picker for a store folder beside it already
+  did, so the catalogue is out of reach behind it. Underneath that, unpacking is claimed by one install at a time,
+  so whichever arrives second does not start rather than unpacking over the first.
+
+  Underneath that, the "the store is working" signal used to be cleared by whichever step finished first. Every
+  install ends by reloading the catalogue, and that reload cleared the signal while the install around it was
+  still going — which let the restart offer and the install buttons come back mid-install. It now stays raised
+  until the outermost piece of work is done.
+
+- fixed: installing a plugin, or updating all of them, showed almost nothing while it happened — a line of text in
+  the footer and a search box that stopped responding. The store now covers its catalogue while it works and says
+  what it is doing: which plugin is being installed, and for **Update all**, how far through the batch it is. The
+  footer line keeps working as before. There is no percentage for a single plugin, and deliberately so: the download
+  arrives in one piece, so a bar claiming progress within it would be inventing it.
 
 - fixed: the MCP servers dialog could put its Cancel and Save buttons out of reach, so a server you had just
   configured could not be saved. It happened whenever the dialog had something to tell you — the notice naming the
