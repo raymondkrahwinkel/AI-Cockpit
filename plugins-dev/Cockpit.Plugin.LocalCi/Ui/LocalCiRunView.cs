@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugin.LocalCi.Execution;
+using Cockpit.Plugin.LocalCi.Gate;
 using Cockpit.Plugin.LocalCi.Workflows;
 
 namespace Cockpit.Plugin.LocalCi.Ui;
@@ -31,6 +32,7 @@ internal sealed class LocalCiRunView : UserControl
     private readonly SelectableTextBlock _log = new() { FontFamily = new("Consolas, Menlo, monospace"), FontSize = 12 };
     private readonly ScrollViewer _logScroll;
     private readonly Button _stop;
+    private readonly CheckBox _holdBackPullRequests;
     private readonly DispatcherTimer _redraw;
 
     private readonly Queue<string> _pending = new();
@@ -41,12 +43,22 @@ internal sealed class LocalCiRunView : UserControl
         string projectRoot,
         ILocalJobRunner runner,
         LocalRunTracker tracker,
-        Func<string, CancellationToken, Task<string?>> readHeadCommit)
+        Func<string, CancellationToken, Task<string?>> readHeadCommit,
+        PullRequestGateSettings gate)
     {
         _projectRoot = projectRoot;
         _runner = runner;
         _tracker = tracker;
         _readHeadCommit = readHeadCommit;
+
+        _holdBackPullRequests = new CheckBox
+        {
+            Content = "Hold back pull requests from this checkout until a local run has passed",
+            IsChecked = gate.IsOnFor(projectRoot),
+            Margin = new(0, 8, 0, 0),
+        };
+        _holdBackPullRequests.IsCheckedChanged += (_, _) =>
+            gate.Set(projectRoot, _holdBackPullRequests.IsChecked ?? false);
 
         _stop = new Button { Content = "Stop", IsEnabled = false };
         _stop.Click += (_, _) => _inFlight?.Cancel();
@@ -76,6 +88,7 @@ internal sealed class LocalCiRunView : UserControl
                     Children = { _stop, _headline },
                 },
                 _logScroll,
+                _holdBackPullRequests,
             },
         };
 

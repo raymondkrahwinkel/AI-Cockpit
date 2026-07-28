@@ -68,6 +68,34 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   authors: `IPluginSessionDriver.Conversation` falls back to the `SessionId` you already report, so a provider
   that is already built needs no change; a terminal provider receives a `ReportConversationId` callback on its
   launch context.
+- added: the Local CI plugin now actually runs a workflow job, where it previously only told you whether it could.
+  From a session's header you get the list of jobs in that project's `.github/workflows` — each with a Run button or
+  the concrete reason it cannot run on this machine — and the one you pick runs in a container on your own Docker,
+  against the checkout that session is working in, with the log filling while it happens and a Stop that leaves no
+  container behind. The package cache and the .NET SDK live in volumes that survive between runs, which is what makes
+  the second run worth doing: on this repository's own plugin job, 237 seconds cold against 131 warm. One run at a
+  time, and the container gets half the machine's cores, because the machine it runs on is the one you are working on.
+
+  A job runs whole or not at all. What the plugin will not run whole — a matrix, a runner that is not Linux, a job
+  exchanging artifacts with another — it refuses with the reason instead of running the parts it understands, because
+  a result that quietly skipped steps is more dangerous than no result: you would trust it. And nothing it reports
+  ever says CI is green. act's own documentation warns that its images differ from GitHub's, so a pass here predicts
+  the pull-request check rather than replacing it, and the wording says so.
+
+- added: a session can run those checks on its own project and read the verdict back, so an agent can see whether its
+  work stands up before it pushes. It cannot ask for a run anywhere else: the project is the calling session's, taken
+  from the cockpit rather than from anything the agent supplies, and there is no path to pass. Every run asks you
+  first, showing the exact command that will run — and on a failure the answer carries the tail of the log where the
+  failing test is, not the whole of it. The last local run shows in that session's header.
+
+- added: a project can be set to hold back its pull requests until a local run has passed on the commit that is
+  checked out. Off everywhere until you turn it on, per checkout. A run that failed, never happened, could not happen
+  because Docker was not there, or passed on an earlier commit all count as "not run" — never as a pass, which is the
+  failure this kind of guard usually has. You can still open the pull request: the cockpit asks, shows the reason, and
+  records your answer in the consent trail. Both places that open one — the workflow step and an Autopilot run at
+  merge-ready — ask before they do, and an Autopilot run held back still pushes its branch and says why no pull
+  request followed.
+
 - added: an agent session sharing a tab with others can now agree to be woken, and a neighbour with something that
   cannot wait can ask for it. Waking is off for every session until that session turns it on for itself, and nothing
   a sender does can override that — the agreement is the permission. When it is on, a message a neighbour marks

@@ -1,4 +1,5 @@
 using Cockpit.Plugin.LocalCi.Execution;
+using Cockpit.Plugin.LocalCi.Gate;
 using Cockpit.Plugin.LocalCi.Mcp;
 using Cockpit.Plugin.LocalCi.Runtime;
 using Cockpit.Plugin.LocalCi.Sessions;
@@ -75,6 +76,13 @@ public sealed class LocalCiPlugin : ICockpitPlugin
             return new LocalCiSessionBadge(session, tracker);
         });
 
+        // The gate, as something the two places that open a pull request can ask about. Off in every checkout
+        // until the operator switches it on, and it answers "did not run" rather than "passed" when there is
+        // nothing to go on — see PullRequestGate.
+        var gateSettings = new PullRequestGateSettings(host.Storage);
+        var gate = new PullRequestGateIntent(host, new PullRequestGate(tracker, gateSettings, head));
+        host.RegisterIntentHandler(PullRequestGateIntent.Action, gate.HandleAsync);
+
         // The agent's side: a session can check its own work before it pushes it. Every run goes through the
         // operator's consent, and the tools take no path — the checkout is the caller's own.
         _ = host.AddMcpEndpoint(
@@ -87,7 +95,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         host.AddSessionHeaderAction(new PluginSessionAction(
             "Run CI on this machine…",
             "🧪",
-            session => _ = _OpenForAsync(host, session, runner, tracker, head))
+            session => _ = _OpenForAsync(host, session, runner, tracker, head, gateSettings))
         {
             IconKind = MaterialIconKind.FlaskOutline,
         });
@@ -104,7 +112,8 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         IPluginSessionContext session,
         ILocalJobRunner runner,
         LocalRunTracker tracker,
-        GitHead head)
+        GitHead head,
+        PullRequestGateSettings gate)
     {
         if (session.WorkingDirectory is not { Length: > 0 } projectRoot)
         {
@@ -116,7 +125,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
         return host.ShowDialogAsync(
             "Local CI",
-            () => new LocalCiRunView(projectRoot, runner, tracker, head.ReadAsync),
+            () => new LocalCiRunView(projectRoot, runner, tracker, head.ReadAsync, gate),
             singleInstanceKey: $"run.{session.PaneId}",
             width: 900,
             height: 640);
