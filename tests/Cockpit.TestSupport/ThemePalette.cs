@@ -53,16 +53,18 @@ public static partial class ThemePalette
         var report = new StringBuilder();
 
         report.AppendLine("# colours — the theme token holding each value, or off-palette when none does");
-        foreach (var colour in colours.OrderBy(_Hex, StringComparer.Ordinal))
+        foreach (var colour in colours.OrderBy(Hex, StringComparer.Ordinal))
         {
-            report.AppendLine($"{_Hex(colour)}  {(tokens.TryGetValue(colour, out var names) ? names : OffPalette)}");
+            report.AppendLine($"{Hex(colour)}  {(tokens.TryGetValue(colour, out var names) ? names : OffPalette)}");
         }
 
         report.AppendLine();
         report.AppendLine("# corner radii");
         foreach (var radius in radii.OrderBy(corner => corner.TopLeft).ThenBy(corner => corner.ToString(), StringComparer.Ordinal))
         {
-            report.AppendLine(radius.ToString());
+            // Prefixed, so every line that carries a claim says what kind it is and the two sections can be
+            // compared as one set.
+            report.AppendLine($"radius  {radius}");
         }
 
         return report.ToString();
@@ -173,7 +175,7 @@ public static partial class ThemePalette
     }
 
     /// <summary>Always eight digits, so the ordering a report is written in is the ordering of the text.</summary>
-    private static string _Hex(Color colour) => $"#{colour.A:X2}{colour.R:X2}{colour.G:X2}{colour.B:X2}";
+    public static string Hex(Color colour) => $"#{colour.A:X2}{colour.R:X2}{colour.G:X2}{colour.B:X2}";
 
     [GeneratedRegex("""<Color\s+x:Key="(?<key>[^"]+)"\s*>""")]
     private static partial Regex ColourToken();

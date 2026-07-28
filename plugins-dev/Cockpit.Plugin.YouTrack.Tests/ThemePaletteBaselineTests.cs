@@ -20,31 +20,17 @@ namespace Cockpit.Plugin.YouTrack.Tests;
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
-    private const string RewriteVariable = "COCKPIT_UPDATE_THEME_BASELINES";
-
     private static readonly YouTrackInstance LocalInstance = new("Local", "http://127.0.0.1:9/", string.Empty, string.Empty);
     private static readonly YouTrackIssue First = new("1-1", "AT-1", "Faster startup", "Cold start takes 4s.", "AT", "Backlog");
     private static readonly YouTrackIssue Second = new("1-2", "AT-2", "Fix the sidebar", "It collapses.", "AT", "Backlog");
 
     [Fact]
-    public void TheDialog_PaintsTheColoursItsBaselineRecords() => HeadlessAvalonia.Run(() =>
+    public void TheDialog_PaintsNothingItsBaselineDoesNotAccountFor() => HeadlessAvalonia.Run(() =>
     {
         var painted = _Painted();
 
         var baseline = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.YouTrack.Tests", "Baselines", "dialog.palette.txt");
-        var recorded = File.Exists(baseline) ? _Normalised(File.ReadAllText(baseline)) : null;
-
-        if (Environment.GetEnvironmentVariable(RewriteVariable) == "1")
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(baseline)!);
-            File.WriteAllText(baseline, painted);
-            Assert.Fail($"Rewrote the baseline for 'dialog'. Review the diff, then run again without {RewriteVariable}.");
-        }
-
-        Assert.True(recorded is not null,
-            $"The dialog has no baseline yet. Run with {RewriteVariable}=1 to write it, then review it.");
-
-        Assert.Equal(recorded, _Normalised(painted));
+        ThemePaletteBaseline.Verify(baseline, painted);
     });
 
     /// <summary>
@@ -61,7 +47,7 @@ public class ThemePaletteBaselineTests
 
         var painted = _Painted();
 
-        Assert.Contains($"#{primary.A:X2}{primary.R:X2}{primary.G:X2}{primary.B:X2}", painted, StringComparison.Ordinal);
+        Assert.Contains(ThemePalette.Hex(primary), painted, StringComparison.Ordinal);
     });
 
     private static string _Painted()
@@ -100,6 +86,4 @@ public class ThemePaletteBaselineTests
         }
     }
 
-    /// <summary>Line endings are the checkout's, not the palette's.</summary>
-    private static string _Normalised(string report) => report.ReplaceLineEndings("\n");
 }

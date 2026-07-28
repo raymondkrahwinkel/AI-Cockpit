@@ -22,31 +22,16 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 [Collection("avalonia")]
 public class ThemePaletteBaselineTests
 {
-    private const string RewriteVariable = "COCKPIT_UPDATE_THEME_BASELINES";
-
     public static TheoryData<string> Scenes => ["workspace", "settings"];
 
     [Theory]
     [MemberData(nameof(Scenes))]
-    public void AScene_PaintsTheColoursItsBaselineRecords(string scene)
+    public void AScene_PaintsNothingItsBaselineDoesNotAccountFor(string scene)
     {
         var painted = _Painted(scene);
 
         var baseline = Path.Combine(RepositoryPaths.Root, "plugins-dev", "Cockpit.Plugin.Autopilot.Tests", "Baselines", $"{scene}.palette.txt");
-        var recorded = File.Exists(baseline) ? _Normalised(File.ReadAllText(baseline)) : null;
-
-        if (Environment.GetEnvironmentVariable(RewriteVariable) == "1")
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(baseline)!);
-            File.WriteAllText(baseline, painted);
-            Assert.Fail($"Rewrote the baseline for '{scene}'. Review the diff, then run again without {RewriteVariable}.");
-        }
-
-        Assert.True(recorded is not null,
-            $"Scene '{scene}' has no baseline. Every scene the harness can render carries one — run with "
-            + $"{RewriteVariable}=1 to write it, then review it.");
-
-        Assert.Equal(recorded, _Normalised(painted));
+        ThemePaletteBaseline.Verify(baseline, painted);
     }
 
     /// <summary>
@@ -63,7 +48,7 @@ public class ThemePaletteBaselineTests
 
         var painted = _Painted("settings");
 
-        Assert.Contains($"#{primary.A:X2}{primary.R:X2}{primary.G:X2}{primary.B:X2}", painted, StringComparison.Ordinal);
+        Assert.Contains(ThemePalette.Hex(primary), painted, StringComparison.Ordinal);
     }
 
     private static string _Painted(string scene)
@@ -130,6 +115,4 @@ public class ThemePaletteBaselineTests
         public void Set<T>(string key, T value) => _data[key] = value;
     }
 
-    /// <summary>Line endings are the checkout's, not the palette's.</summary>
-    private static string _Normalised(string report) => report.ReplaceLineEndings("\n");
 }
