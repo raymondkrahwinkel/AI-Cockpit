@@ -13,7 +13,7 @@ namespace Cockpit.Core.Tests.Updates;
 /// </summary>
 public class VelopackBootstrapTests
 {
-    private const string TheHook = "VelopackApp.Build().Run();";
+    private const string TheHook = "VelopackApp.Build().SetAutoApplyOnStartup(false).Run();";
 
     /// <summary>
     /// Installing, updating and uninstalling all re-run the executable with arguments Velopack handles, and the
@@ -46,17 +46,43 @@ public class VelopackBootstrapTests
     }
 
     /// <summary>
-    /// The test host is not a Velopack installation, so this is the real reading of the real environment — the same
-    /// answer a developer gets from <c>dotnet run</c> and a packager gets from the tarball. It must be an answer and
-    /// not an exception: the ticket's premise was that constructing the probe throws off a Velopack install, and it
-    /// does not. This is where that is measured rather than assumed.
+    /// Velopack's locator is a process-wide singleton that the bootstrap in <c>Main</c> installs, and a test host
+    /// never runs that bootstrap — so this covers the "no locator at all" state, not the "locator says this is not
+    /// an installation" one. Both answer <see cref="UpdateSupport.NotPackaged"/>; only the first is reachable from
+    /// here, and saying which is which is the point, because the version of this that reached the state through a
+    /// caught exception looked identical and proved something else entirely.
     /// </summary>
     [Fact]
-    public void TheProbe_UnderATestHost_ReportsNotPackagedWithoutThrowing()
+    public void TheProbe_WithoutABootstrappedLocator_ReportsNotPackaged()
     {
         var support = new VelopackUpdateSupportProbe().Detect();
 
         Assert.Equal(UpdateSupport.NotPackaged, support);
+    }
+
+    /// <summary>
+    /// The same state, asserted one level down, because at the level above it is invisible: with or without the
+    /// guard the answer is "not packaged", the difference being only whether it was reached through an exception the
+    /// <c>catch</c> then swallowed. Asked here, the guard is the thing that decides whether this returns or throws —
+    /// <c>VelopackLocator.Current</c> throws outright when no bootstrap ever set it.
+    /// </summary>
+    [Fact]
+    public void TheReading_WithoutABootstrappedLocator_AnswersRatherThanThrows()
+    {
+        Assert.False(VelopackUpdateSupportProbe.IsInstalledCopy());
+    }
+
+    /// <summary>
+    /// Velopack applies a staged update during <c>Run()</c> and restarts, unless told not to. This project does not
+    /// do silent updates — applying is an action the operator takes — and this executable is also re-run as the
+    /// headless calibration and dictation workers, which would have become update-and-exit instead of doing the
+    /// measurement they were spawned for.
+    /// </summary>
+    [Fact]
+    public void TheVelopackHook_DoesNotApplyAnUpdateOnItsOwn()
+    {
+        Assert.Contains("SetAutoApplyOnStartup(false)", TheHook, StringComparison.Ordinal);
+        Assert.Contains(TheHook, File.ReadAllText(_ProgramPath()), StringComparison.Ordinal);
     }
 
     [Fact]
