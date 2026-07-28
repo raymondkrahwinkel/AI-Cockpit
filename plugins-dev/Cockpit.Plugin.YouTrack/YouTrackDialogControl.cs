@@ -713,20 +713,25 @@ internal sealed class YouTrackDialogControl : UserControl
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
     // title and description as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(YouTrackIssue issue)
-    {
-        var data = new Dictionary<string, string>
-        {
-            ["tracker"] = "youtrack",
-            ["issue"] = issue.IdReadable,
-            ["title"] = issue.Summary,
-            ["description"] = issue.Description ?? string.Empty,
-            ["project"] = issue.Project,
-            ["url"] = _BuildIssueUrl(issue),
-        };
+    private async Task _PlanInAutopilotAsync(YouTrackIssue issue) =>
+        await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _BuildIssueUrl(issue)));
 
-        await _host.SendIntent("autopilot", "plan", data);
-    }
+    /// <summary>
+    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
+    /// </summary>
+    internal static Dictionary<string, string> PlanIntentPayload(YouTrackIssue issue, string url) => new()
+    {
+        ["tracker"] = "youtrack",
+        ["issue"] = issue.IdReadable,
+        ["title"] = issue.Summary,
+        ["description"] = issue.Description ?? string.Empty,
+        ["project"] = issue.Project,
+        ["url"] = url,
+        // What stage a person put it on, so the start gate can key on that rather than on what the description claims
+        // about itself. Sent raw — judging it is the gate's job, not the tracker's.
+        ["stage"] = issue.State ?? string.Empty,
+    };
 
     // What this issue's project allows, read per selection: until it is known, Set state stays disabled rather
     // than being offered and then refused.

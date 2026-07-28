@@ -32,6 +32,18 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: Autopilot starts an issue only once someone has put it on the stage that means "this is ready to be worked
+  on" — `Ready` on YouTrack, the `ready` label on GitHub Issues — and refuses anything else with a note on the issue
+  saying why. The reason it does not simply read the ticket and judge for itself: the ticket is the thing that gets
+  out of date. Items sit in a backlog claiming a fix is impossible where the guard is already in the code, or calling
+  a decision open that was taken weeks ago, and an agent reading that text has no way of knowing. A stage a person
+  moved the item onto is a different kind of evidence, so that is what it keys on; its own judgement of whether the
+  work fits one run still follows, and planning an epic now leaves out the children nobody has marked ready. An issue
+  still marked `[Brainstorm]` is refused whatever stage it is on. Run safety in Autopilot's settings has a box per
+  tracker for what that stage is called — empty one and that tracker starts from any stage, as before.
+- added: a YouTrack project that calls its status field `Kanban State` has its status read like any other. The issue
+  list already knew that name; the read behind it did not, so those projects showed no status at all.
+
 - added: an MCP server that wants a header of its own now works. Some do not take `Authorization: Bearer` at all —
   they want `X-Api-Key`, or a scheme other than Bearer — and until now there was no way to configure that, not even
   by pasting the value in by hand. An HTTP server in the MCP servers dialog has a small list of custom headers you

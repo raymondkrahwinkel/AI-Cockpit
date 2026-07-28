@@ -579,20 +579,25 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
     // title and body as the source), the operator approves it once, then it runs autonomously.
-    private async Task _PlanInAutopilotAsync(GitHubIssue issue)
-    {
-        var data = new Dictionary<string, string>
-        {
-            ["tracker"] = "github-issues",
-            ["issue"] = _IdentityOf(issue),
-            ["title"] = issue.Title,
-            ["description"] = issue.Body ?? string.Empty,
-            ["repository"] = issue.Repository,
-            ["url"] = issue.Url,
-        };
+    private async Task _PlanInAutopilotAsync(GitHubIssue issue) =>
+        await _host.SendIntent("autopilot", "plan", PlanIntentPayload(issue, _IdentityOf(issue)));
 
-        await _host.SendIntent("autopilot", "plan", data);
-    }
+    /// <summary>
+    /// What "Plan in Autopilot" hands over. Kept a pure builder off the control so the payload — in particular the
+    /// stage Autopilot's start gate keys on (AC-345) — is asserted without a live dialog.
+    /// </summary>
+    internal static Dictionary<string, string> PlanIntentPayload(GitHubIssue issue, string identity) => new()
+    {
+        ["tracker"] = "github-issues",
+        ["issue"] = identity,
+        ["title"] = issue.Title,
+        ["description"] = issue.Body ?? string.Empty,
+        ["repository"] = issue.Repository,
+        ["url"] = issue.Url,
+        // GitHub has no stage column, so its labels are what the start gate reads — one per line, because a label may
+        // contain a comma but never a newline. Sent raw; the gate does the judging.
+        ["stage"] = string.Join("\n", issue.Labels),
+    };
 
     private string _RenderPrompt(GitHubIssue issue)
     {

@@ -46,7 +46,7 @@ internal sealed class GitHubGhClient
         var searchArgs = new List<string>
         {
             "search", "issues", "--owner", normalizedOwner, "--state", "open",
-            "--limit", "100", "--json", "number,title,url,body,repository",
+            "--limit", "100", "--json", "number,title,url,body,repository,labels",
         };
         if (assignedToMe)
         {
@@ -219,7 +219,7 @@ internal sealed class GitHubGhClient
             var repository = element.TryGetProperty("repository", out var repo) && repo.TryGetProperty("nameWithOwner", out var nwo)
                 ? nwo.GetString() ?? string.Empty
                 : string.Empty;
-            issues.Add(new GitHubIssue(number, title, url, body, repository));
+            issues.Add(new GitHubIssue(number, title, url, body, repository) { Labels = GitHubIssueLabels.Read(element) });
         }
 
         return issues;

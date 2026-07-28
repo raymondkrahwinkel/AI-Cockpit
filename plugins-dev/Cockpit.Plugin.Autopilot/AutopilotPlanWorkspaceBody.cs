@@ -714,7 +714,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 Model = _settings.CeoModel(),
                 McpServers = PlanningCeoMcpServers(_TrackerReadServers(_plan.Plan?.Source)),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
-                AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
+                AppendSystemPrompt = _plan.Plan is { } plan
+                    ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy(), _settings.ExecutableStage(plan.Source?.Tracker ?? string.Empty))
+                    : null,
                 // The kickoff (AC-189): a chosen template's resolved body, else — free planning — the tracker kickoff for
                 // a run triggered from an item, or null for a CEO-first run so it idles waiting for the operator to say
                 // what it should achieve. Built above from the picker choice. The host submits it after the runtime is
