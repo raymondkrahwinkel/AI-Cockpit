@@ -353,4 +353,30 @@ public class AutopilotPlanControllerTests
 
         Assert.False(controller.PullRequestMissing);
     }
+
+    [Fact]
+    public void InsertStep_AppendsToTheLivingPlan_AndRaisesChanged()
+    {
+        // AC-434: how a review group's shared fix pass joins a plan the CEO never planned it into.
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        var raised = 0;
+        controller.Changed += (_, _) => raised++;
+
+        controller.InsertStep(Step("review-fix-1"));
+
+        Assert.Equal(["1", "review-fix-1"], controller.Plan!.Steps.Select(step => step.Id));
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void InsertStep_BeforeAPlanExists_IsANoOp()
+    {
+        var controller = new AutopilotPlanController();
+
+        controller.InsertStep(Step("orphan"));
+
+        Assert.Null(controller.Plan);
+    }
 }

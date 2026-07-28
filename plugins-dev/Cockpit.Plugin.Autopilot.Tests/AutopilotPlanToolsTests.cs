@@ -35,6 +35,23 @@ public class AutopilotPlanToolsTests
     }
 
     [Fact]
+    public void TryParseSteps_ReadsReviewGate_AndCoercesItToAHardGate_RegardlessOfTheHardFlag()
+    {
+        // AC-434: a review gate is definitionally required — the CEO does not also have to remember 'hard'.
+        const string json = """
+            [
+              {"id":"1","title":"Code review","profile":"Claude","brief":"b","hard":false,"reviewGate":true},
+              {"id":"2","title":"PR","profile":"Claude","brief":"b"}
+            ]
+            """;
+
+        AutopilotPlanTools.TryParseSteps(json, out var steps, out _).Should().BeTrue();
+        steps[0].IsReviewGate.Should().BeTrue();
+        steps[0].Mode.Should().Be(GateMode.Hard);
+        steps[1].IsReviewGate.Should().BeFalse();
+    }
+
+    [Fact]
     public void TryParseSteps_KeepsTheMinimalMcpSetPerStep_DroppingBlanks()
     {
         const string json = """

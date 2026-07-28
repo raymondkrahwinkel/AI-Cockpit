@@ -46,17 +46,11 @@ internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
         }
 
         // Safety commit: the step agents are asked to commit their own work, but stage and commit anything they left
-        // uncommitted so the push carries the whole deliverable. A clean tree means "nothing to commit" — not an error.
-        // The message carries no Co-Authored-By trailer and no AI/agent mention (a hard project rule).
-        await _RunAsync("git", ["add", "-A"], path, cancellationToken);
-        var status = await _RunAsync("git", ["status", "--porcelain"], path, cancellationToken);
-        if (status.Ok && !string.IsNullOrWhiteSpace(status.StdOut))
+        // uncommitted so the push carries the whole deliverable. The message carries no Co-Authored-By trailer and no
+        // AI/agent mention (a hard project rule).
+        if (!await EnsureCommittedAsync(path, request.Title, cancellationToken).ConfigureAwait(false))
         {
-            var commit = await _RunAsync("git", ["commit", "-m", request.Title], path, cancellationToken);
-            if (!commit.Ok)
-            {
-                return new AutopilotPrPublishResult(false, null, $"Could not commit the remaining work: {commit.Error}");
-            }
+            return new AutopilotPrPublishResult(false, null, "Could not commit the remaining work.");
         }
 
         var push = await _RunAsync("git", ["push", "-u", "origin", request.Branch], path, cancellationToken);
@@ -86,6 +80,25 @@ internal sealed class GitCliPrPublisher : IAutopilotPrPublisher
         var url = pr.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .LastOrDefault(line => line.StartsWith("http", StringComparison.OrdinalIgnoreCase));
         return new AutopilotPrPublishResult(true, url, null);
+    }
+
+    public async Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(worktreePath) || !Directory.Exists(worktreePath))
+        {
+            return false;
+        }
+
+        await _RunAsync("git", ["add", "-A"], worktreePath, cancellationToken);
+        var status = await _RunAsync("git", ["status", "--porcelain"], worktreePath, cancellationToken);
+        if (!status.Ok || string.IsNullOrWhiteSpace(status.StdOut))
+        {
+            // Clean tree (or the status probe itself failed): nothing to commit either way — not an error.
+            return true;
+        }
+
+        var commit = await _RunAsync("git", ["commit", "-m", message], worktreePath, cancellationToken);
+        return commit.Ok;
     }
 
     private sealed record CommandResult(bool Ok, string StdOut, string Error);

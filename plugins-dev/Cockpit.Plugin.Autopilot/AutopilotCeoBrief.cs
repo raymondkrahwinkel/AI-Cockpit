@@ -102,7 +102,7 @@ internal static class AutopilotCeoBrief
             array. When you can resolve the folder the run should work in from the item — the repository the issue is
             about — pass it as workingDirectory too; it pre-fills the operator's field for them to confirm or override (a
             git repository isolates each step in a worktree, a plain folder runs without isolation). Each step: {id,
-            title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}.
+            title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}.
             - profile: the session profile the step runs on — use one of the exact profile labels listed above. model:
               MUST be exactly one of the models that profile lists above; omit it entirely for a local profile that lists
               no models (it pins its own). A model that is not on the chosen profile's list — or any model on a local
@@ -110,6 +110,9 @@ internal static class AutopilotCeoBrief
             - brief: the context that step's agent is handed. acceptance: what "done" means for the step — you validate
               the step's output against it, and a step that fails goes back to rework within its attempt cap.
             - hard: true for a required gate that must pass (a security review); false or omitted for a skippable step.
+            - reviewGate: true for the code-review/security-review pair (AC-434) — the run reads every step so marked
+              concurrently instead of one after another, and treats it as hard regardless of what 'hard' says. Omit for
+              every other step.
             - mcp: the minimal list of MCP server ids the step needs — only what it needs, to save tokens and stay
               least-privilege; leave it empty when the step needs nothing extra.
             - agents: how many agents work the step at once (default 1); more only where the work splits cleanly without
@@ -125,8 +128,11 @@ internal static class AutopilotCeoBrief
             Standard gates for a run that changes code: end the plan with two required (hard) gates, kept as distinct
             steps so a security miss is never lost inside a general pass — a code review (correctness, the actual diff,
             project conventions, tests green) and a separate security review (input handling, secrets, injection, unsafe
-            or unsandboxed calls, and the new surface the change exposes), each on a capable model. Include both by
-            default; only drop one when the operator says this run does not need it (a docs-only or plainly trivial
+            or unsandboxed calls, and the new surface the change exposes), each on a capable model. Mark both
+            reviewGate: true — the run reads them concurrently instead of one after another, and clears whatever either
+            finds through one shared fix pass before they re-check (AC-434); you do not plan that fix step yourself, it
+            is inserted only when a gate actually finds something. Include both by default; only drop one when the
+            operator says this run does not need it (a docs-only or plainly trivial
             change).
 
             {{reviewVerification}}

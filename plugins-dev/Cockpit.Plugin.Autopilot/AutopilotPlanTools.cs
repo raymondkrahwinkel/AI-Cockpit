@@ -28,10 +28,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
     [McpServerTool(Name = ToolName)]
-    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
+    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'hard' true marks a required gate, false or omitted a skippable step. 'reviewGate' true marks the code-review/security-review pair (AC-434) — the run runs every step so marked concurrently instead of one after another and treats it as hard regardless of 'hard'. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public async Task<string> SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,
-        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents, issueId}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files. 'issueId' is the tracker item this step is drafted from — the run's source issue, or (for an epic) one of its child issues you folded in — so it can be checked against the tracker's own stage; omit it for a step with no such backing item.")] string stepsJson,
+        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, reviewGate, mcp, agents, issueId}. 'reviewGate' true marks a step as one of the code-review/security-review pair (AC-434) so the run reads them concurrently and clears their findings through one shared fix pass, instead of running them one after another. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files. 'issueId' is the tracker item this step is drafted from — the run's source issue, or (for an epic) one of its child issues you folded in — so it can be checked against the tracker's own stage; omit it for a step with no such backing item.")] string stepsJson,
         [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null,
         [Description("The absolute path of the folder this run should work in, when you can resolve it from the item (e.g. the repository the issue is about) — you propose it and the operator can override it before approving. Optional; when omitted the current directory is kept. A folder that is a git repository has each step isolated in its own worktree; a plain folder (an admin task with no repo) runs without isolation.")] string? workingDirectory = null)
     {
@@ -121,7 +121,8 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                 string.IsNullOrWhiteSpace(dto.Model) ? null : dto.Model.Trim(),
                 dto.Brief?.Trim() ?? string.Empty,
                 string.IsNullOrWhiteSpace(dto.Acceptance) ? null : dto.Acceptance.Trim(),
-                dto.Hard ? GateMode.Hard : GateMode.Skip)
+                // A review gate (AC-434) is definitionally required — the CEO does not also have to remember 'hard'.
+                dto.ReviewGate || dto.Hard ? GateMode.Hard : GateMode.Skip)
             {
                 // Minimal MCP set per step: only what the step needs — blanks dropped.
                 McpServers = dto.Mcp is { Count: > 0 }
@@ -131,6 +132,8 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
                 AgentCount = dto.Agents is { } count && count > 1 ? count : 1,
                 // The tracker item this step is drafted from, when the CEO named one (AC-411) — blank dropped to null.
                 SourceIssueId = string.IsNullOrWhiteSpace(dto.IssueId) ? null : dto.IssueId.Trim(),
+                // AC-434: the code-review/security-review pair — the driver runs every step so marked concurrently.
+                IsReviewGate = dto.ReviewGate,
             });
         }
 
@@ -268,6 +271,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         public string? Brief { get; init; }
         public string? Acceptance { get; init; }
         public bool Hard { get; init; }
+        public bool ReviewGate { get; init; }
         public List<string>? Mcp { get; init; }
         public int? Agents { get; init; }
         public string? IssueId { get; init; }

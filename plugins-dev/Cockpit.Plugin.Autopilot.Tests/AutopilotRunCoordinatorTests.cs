@@ -895,6 +895,107 @@ public class AutopilotRunCoordinatorTests
         plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
     }
 
+    [Fact]
+    public async Task RunAsync_ForAReviewGateStep_ForksAFreshWorktreeOffTheRunBranch_InsteadOfTheSharedOne()
+    {
+        // AC-434: a review-gate step never writes to the run's shared worktree — it forks its own throwaway copy off
+        // the run's own branch tip, so two gates reading concurrently can never collide with each other or with the
+        // fix step that later writes there. WorktreePath null (fresh worktree) + WorkingDirectory the run branch
+        // (not the stale base repository) is exactly that request shape.
+        var plan = _RunningPlan(_HardStep("1") with { IsReviewGate = true });
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run");
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+
+        await shown.Task.WaitAsync(Timeout);
+        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
+            request.WorktreePath == null && request.IsolateInWorktree && request.WorkingDirectory == "/repo/.worktrees/run"));
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForAnOrdinaryStep_StillUsesTheSharedRunWorktree_EvenWhenOneExists()
+    {
+        // The AC-434 change is scoped to IsReviewGate — an ordinary hard step keeps accumulating its work on the run's
+        // one shared worktree exactly as before.
+        var plan = _RunningPlan(_HardStep("1"));
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        var environment = new AutopilotRunEnvironment("/repo", "/repo/.worktrees/run", IsolateSteps: true, RunWorktreeBranch: "autopilot/run");
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+
+        await shown.Task.WaitAsync(Timeout);
+        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
+            request.WorktreePath == "/repo/.worktrees/run" && request.WorkingDirectory == "/repo"));
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForAReviewGroup_SerializesCeoValidation_SoEachGateSettlesOnItsOwnVerdict()
+    {
+        // Adversarial-review fix (AC-434): two gates' agent work runs fully concurrently, but the coordinator holds
+        // exactly one CEO-validation slot (_validationGate) — the second gate's validation turn must not fire until
+        // the first gate's verdict is resolved and cleared, and each gate must settle on the verdict actually given
+        // for IT. Before the fix, both gates shared one _validation TaskCompletionSource: the second gate's turn
+        // could overwrite the first's, hanging or cross-wiring a verdict — exactly what this proves does not happen.
+        var stepA = _HardStep("gate-a") with { Title = "Gate A", IsReviewGate = true };
+        var stepB = _HardStep("gate-b") with { Title = "Gate B", IsReviewGate = true };
+        var plan = _RunningPlanSteps(stepA, stepB);
+        var host = _Host();
+        var sessionA = _Session("gate-a-pane");
+        var sessionB = _Session("gate-b-pane");
+        var context = Substitute.For<IWorkspaceContext>();
+        context.EmbedSession(Arg.Is<EmbeddedSessionRequest>(request => request.InitialUserMessage!.Contains("Gate A"))).Returns(sessionA);
+        context.EmbedSession(Arg.Is<EmbeddedSessionRequest>(request => request.InitialUserMessage!.Contains("Gate B"))).Returns(sessionB);
+        context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shownCount = 0;
+        var validationTurns = new List<string>();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>()))
+            .Do(call => { lock (validationTurns) { validationTurns.Add(call.ArgAt<string>(1)); } });
+
+        // maxAttempts: 1 — a rejected gate settles Failed immediately (no rework), so this test isolates the
+        // validation-routing question from the shared-fix-step machinery covered elsewhere.
+        var run = coordinator.RunAsync(
+            context, _Session("ceo-pane"), _Settings(maxAttempts: 1),
+            _ => Interlocked.Increment(ref shownCount), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await _Until(() => shownCount >= 2);
+        Assert.True(coordinator.ReportStepDone("gate-a-pane", "gate a done"));
+        Assert.True(coordinator.ReportStepDone("gate-b-pane", "gate b done"));
+
+        await _Until(() => validationTurns.Count >= 1);
+        // The proof of serialization: with both gates' work already reported done, a second (unserialized) coordinator
+        // would have sent both validation turns by now. Only one has gone out.
+        Assert.Single(validationTurns);
+        var firstWasGateA = validationTurns[0].Contains("Gate A");
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "clean"));
+
+        await _Until(() => validationTurns.Count >= 2);
+        Assert.NotEqual(firstWasGateA, validationTurns[1].Contains("Gate A"));
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: false, reason: "found something"));
+
+        await run.WaitAsync(Timeout);
+
+        var gateAStatus = plan.Plan!.Steps.First(step => step.Id == "gate-a").Status;
+        var gateBStatus = plan.Plan!.Steps.First(step => step.Id == "gate-b").Status;
+        var (passedStatus, rejectedStatus) = firstWasGateA ? (gateAStatus, gateBStatus) : (gateBStatus, gateAStatus);
+        Assert.Equal(AutopilotStepStatus.Passed, passedStatus);
+        Assert.Equal(AutopilotStepStatus.Failed, rejectedStatus);
+    }
+
     private static AutopilotPlanController _RunningPlan(AutopilotStep step)
     {
         var plan = new AutopilotPlanController();
@@ -952,6 +1053,9 @@ public class AutopilotRunCoordinatorTests
 
         public Task<AutopilotPrPublishResult> PublishAsync(AutopilotPrRequest request, bool createPullRequest, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AutopilotPrPublishResult(Pushed: true, PrUrl: null, Error: "gh failed to open the pull request"));
+
+        public Task<bool> EnsureCommittedAsync(string worktreePath, string message, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
     }
 
     // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an

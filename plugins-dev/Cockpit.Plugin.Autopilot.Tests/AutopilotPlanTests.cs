@@ -98,4 +98,57 @@ public class AutopilotPlanTests
         located.Steps.Should().BeEquivalentTo(plan.Steps);
         plan.WorkingDirectory.Should().BeEmpty();
     }
+
+    // AC-434. Plain xUnit Assert here (not FluentAssertions, which the codebase is moving off — CSharp.md
+    // §FluentAssertions) — new assertions, not new usage of the file's existing style.
+    private static AutopilotStep _Step(string id, bool reviewGate = false, AutopilotStepStatus status = AutopilotStepStatus.Pending) =>
+        new(id, $"Step {id}", "d", "work", null, "b", null, GateMode.Hard, status) { IsReviewGate = reviewGate };
+
+    [Fact]
+    public void NextPendingGroup_ForAnOrdinaryStep_IsJustThatOneStep()
+    {
+        var plan = new AutopilotPlan("goal", null, [_Step("1"), _Step("2")]);
+
+        Assert.Equal(["1"], plan.NextPendingGroup.Select(step => step.Id));
+    }
+
+    [Fact]
+    public void NextPendingGroup_ForAReviewGate_IsEveryPendingStepSharingTheFlag_InPlanOrder()
+    {
+        var plan = new AutopilotPlan("goal", null,
+            [_Step("code-review", reviewGate: true), _Step("security-review", reviewGate: true), _Step("pr")]);
+
+        Assert.Equal(["code-review", "security-review"], plan.NextPendingGroup.Select(step => step.Id));
+    }
+
+    [Fact]
+    public void NextPendingGroup_ExcludesAReviewGateStepThatAlreadySettled()
+    {
+        var plan = new AutopilotPlan("goal", null,
+        [
+            _Step("code-review", reviewGate: true, status: AutopilotStepStatus.Passed),
+            _Step("security-review", reviewGate: true),
+        ]);
+
+        Assert.Equal(["security-review"], plan.NextPendingGroup.Select(step => step.Id));
+    }
+
+    [Fact]
+    public void NextPendingGroup_DoesNotPullANonAdjacentReviewGateForward_PastAnUnfinishedOrdinaryStep()
+    {
+        // Adversarial-review fix: a CEO plan that does not keep its review gates adjacent (an implement step sitting
+        // between them) must not let the second gate run before that step has even started.
+        var plan = new AutopilotPlan("goal", null,
+            [_Step("code-review", reviewGate: true), _Step("implement"), _Step("security-review", reviewGate: true)]);
+
+        Assert.Equal(["code-review"], plan.NextPendingGroup.Select(step => step.Id));
+    }
+
+    [Fact]
+    public void NextPendingGroup_IsEmpty_WhenEveryStepHasSettled()
+    {
+        var plan = new AutopilotPlan("goal", null, [_Step("1", status: AutopilotStepStatus.Passed)]);
+
+        Assert.Empty(plan.NextPendingGroup);
+    }
 }

@@ -37,6 +37,12 @@ internal sealed class AutopilotRunCoordinator(
     // is skipped. The app supplies the real GitCliPrPublisher through AutopilotRunContext.
     private readonly IAutopilotPrPublisher? _prPublisher = prPublisher;
 
+    // AC-434: a review group's gates run concurrently, and more than one can reach the leftover-work safety commit
+    // (below) at the same moment — two concurrent `git add`/`git commit` on the one shared run worktree can collide
+    // on git's own index lock (found in a confirming adversarial pass). One at a time removes the race; the commit
+    // itself is still best-effort (see the call site).
+    private readonly SemaphoreSlim _safetyCommitGate = new(1, 1);
+
     // Injectable for tests (short values keep the stall test fast); production uses the defaults below.
     private readonly TimeSpan _stepDoneReminderDelay = stepDoneReminderDelay ?? StepDoneReminderDelay;
     private readonly TimeSpan _stepStallTimeout = stepStallTimeout ?? StepStallTimeout;
@@ -46,14 +52,23 @@ internal sealed class AutopilotRunCoordinator(
     private string? _validationReason;
     private string? _blockedPane;
 
+    // AC-434: at most one step may be mid-validation with the CEO at a time — a single CEO conversation cannot
+    // usefully judge two steps at once, and _validation/_validationReason above are a single slot. A review group's
+    // gates run their agent work concurrently but queue here for the CEO's own turn one at a time, so a group never
+    // cross-wires (or drops) a verdict between two steps waiting on the same CEO session.
+    private readonly SemaphoreSlim _validationGate = new(1, 1);
+
     // AC-201 tiered escalation state, all guarded by _lock. A worker's autopilot_blocked now consults the run's CEO
     // first (spoor 2) instead of going straight to the operator: _consultPane is the worker awaiting the CEO's answer
-    // (at most one at a time), _ceoSession is the live CEO the consult is relayed to and the fail-closed check reads,
-    // _activeStepId names the running step whose consult budget _consultCounts tracks, and _maxConsultsPerStep caps how
-    // often one step may consult before the run falls back to the operator.
+    // (at most one at a time — a second worker's concurrent consult is turned down rather than queued, the same
+    // fail-safe-not-fail-silent shape as the fail-closed/loop-cap branches below), _ceoSession is the live CEO the
+    // consult is relayed to and the fail-closed check reads, _paneStepIds names which step each live worker pane
+    // belongs to (AC-434: a review group runs more than one step's worker at once, so "the" active step no longer
+    // identifies a consult — the pane does), and _maxConsultsPerStep caps how often one step may consult before the
+    // run falls back to the operator.
     private string? _consultPane;
     private IEmbeddedSession? _ceoSession;
-    private string? _activeStepId;
+    private readonly Dictionary<string, string> _paneStepIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _consultCounts = new(StringComparer.Ordinal);
     private int _maxConsultsPerStep;
 
@@ -281,9 +296,12 @@ internal sealed class AutopilotRunCoordinator(
                 _blockedPane = workerPane;
                 toCeo = false;
             }
-            // Loop-cap: count this consult against the running step's budget; once a step exceeds it, stop bouncing the
-            // worker off the CEO and put the question to the operator instead.
-            else if (_activeStepId is { } stepId && _BumpConsult(stepId) > _maxConsultsPerStep)
+            // Loop-cap: count this consult against the CALLING pane's own step (AC-434 — a review group runs more than
+            // one step's worker at once, so plan.ActiveStep/"the" running step no longer identifies which step this
+            // consult belongs to; _paneStepIds does — populated for every live step-agent pane in the same lock as
+            // _stepAgents, which the guard above already confirmed holds workerPane). Once that step exceeds its
+            // budget, stop bouncing this worker off the CEO and put the question to the operator instead.
+            else if (_BumpConsult(_paneStepIds[workerPane]) > _maxConsultsPerStep)
             {
                 _blockedPane = workerPane;
                 toCeo = false;
@@ -292,7 +310,7 @@ internal sealed class AutopilotRunCoordinator(
             {
                 _consultPane = workerPane;
                 ceoPane = plan.SessionPaneId;
-                step = plan.ActiveStep;
+                step = plan.Plan?.Steps.FirstOrDefault(candidate => candidate.Id == _paneStepIds[workerPane]);
                 toCeo = true;
             }
         }
@@ -561,15 +579,28 @@ internal sealed class AutopilotRunCoordinator(
         // creates one per agent), so they do not race on one directory's files and git index — the same isolation the
         // parallel path had before the run-worktree change, and what this coordinator's contract promises. Null too when
         // the run does not isolate (a non-git folder), where a step runs directly in the working directory.
-        var stepWorktreePath = agentCount == 1 ? environment.RunWorktreePath : null;
+        //
+        // AC-434: a review-gate step is never handed the shared worktree, even though it is always a single agent — two
+        // gates read the same diff concurrently, and only the driver's synthesized fix step (never a review gate) is
+        // allowed to write there. Null forces a fresh throwaway worktree per gate, forked from stepWorkingDirectory below
+        // rather than the shared one, so the gates can never collide with each other or with the fix step.
+        var stepWorktreePath = !step.IsReviewGate && agentCount == 1 ? environment.RunWorktreePath : null;
+
+        // AC-434: that fresh throwaway worktree must fork from the run's own branch tip — where the fix steps of earlier
+        // rounds already landed — not from the stale base repository a plain fresh worktree would otherwise fork from
+        // (WorkingDirectory is normally the base checkout, see below). Only a review-gate step needs this; every other
+        // step already runs in (or forks from) the base as it always has.
+        var stepWorkingDirectory = step.IsReviewGate && environment.RunWorktreePath is { Length: > 0 }
+            ? environment.RunWorktreePath
+            : environment.RepositoryDirectory;
 
         // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
         plan.NoteStep(step.Id, string.Empty);
 
-        // This is the running step a consult belongs to (AC-201), with a fresh consult budget for the attempt.
+        // This attempt's fresh consult budget (AC-201) — _paneStepIds below is what a consult now looks the step up
+        // through (AC-434), not a coordinator-wide "the active step".
         lock (_lock)
         {
-            _activeStepId = step.Id;
             _consultCounts.Remove(step.Id);
         }
 
@@ -584,6 +615,29 @@ internal sealed class AutopilotRunCoordinator(
             if (profiles.Count > 0 && AutopilotPlanTools.ValidateStepProfile(step, profiles) is { } profileError)
             {
                 throw new InvalidOperationException(profileError);
+            }
+
+            // AC-434: a review-gate step reads its own throwaway worktree forked from the run branch's latest commit —
+            // any work still sitting uncommitted in the shared run worktree is invisible to that fork. Step agents are
+            // briefed to commit their own work, but (as GitCliPrPublisher's own leftover-work safety commit already
+            // assumes) that is not always true. Fail-soft and best-effort, like every other git probe here: a publish
+            // fault must never keep the gate from running, it would just review a stale diff. Serialized against the
+            // group's other concurrent gate through _safetyCommitGate — see its own doc.
+            if (step.IsReviewGate && _prPublisher is not null && environment.RunWorktreePath is { Length: > 0 } runWorktree)
+            {
+                await _safetyCommitGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await _prPublisher.EnsureCommittedAsync(runWorktree, "Autopilot: work in progress before review", cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort — see above.
+                }
+                finally
+                {
+                    _safetyCommitGate.Release();
+                }
             }
 
             for (var index = 0; index < agentCount; index++)
@@ -621,7 +675,7 @@ internal sealed class AutopilotRunCoordinator(
                     // does not set this — its worktree is the confinement, and this would point at the base repo, not it.
                     ConfineFileToolsToWorkingDirectory = !environment.IsolateSteps,
                     PermissionMode = settings.AutonomyMode(),
-                    WorkingDirectory = environment.RepositoryDirectory,
+                    WorkingDirectory = stepWorkingDirectory,
                     InitialUserMessage = AutopilotStepBrief.For(step, agentCount, index + 1),
                     // The step agent drives itself; start its composer off so the operator does not type into it, until
                     // they deliberately intervene (EnableCurrentStepInput). The brief still submits — it is host-driven.
@@ -651,6 +705,10 @@ internal sealed class AutopilotRunCoordinator(
                 {
                     _stepAgents[agent.PaneId] = signal;
                     _liveStepSessions.Add(agent);
+                    // AC-434: which step this pane belongs to — a review group runs more than one step's worker pane
+                    // at once, so a consult from this pane must charge (and be briefed against) its own step, not
+                    // whichever step happens to be "the" active one.
+                    _paneStepIds[agent.PaneId] = step.Id;
                 }
 
                 sessions.Add(agent);
@@ -664,31 +722,60 @@ internal sealed class AutopilotRunCoordinator(
             // status still shows running). Say so on the block, so the operator sees the run has moved on to validation.
             plan.NoteStep(step.Id, "Work reported — the CEO is validating it against the acceptance…");
 
-            // Swap the surface to the CEO session for the validation window so it is clear the CEO is now reviewing the
-            // step, not the finished worker still sitting there. Cleared in the finally, whatever
-            // the outcome.
-            setValidating(true);
-
-            var validation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            lock (_lock)
+            // AC-434: only one step's session may be mid-validation with the CEO at a time (see _validationGate's own
+            // doc) — a review group's gates queue here for the CEO's turn one at a time, after running their own work
+            // fully concurrently above. Released (and _validation cleared) in the inner finally below, not the outer
+            // one, so the next queued gate's validation is never nulled out by this one's later, unrelated cleanup.
+            await _validationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            bool passed;
+            try
             {
-                _validation = validation;
-            }
+                // Swap the surface to the CEO session for the validation window so it is clear the CEO is now
+                // reviewing the step, not the finished worker still sitting there.
+                setValidating(true);
 
-            await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries));
-            var passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
-            if (!passed)
-            {
-                // The CEO turned the step down; show its reason on the block so a failed step explains itself.
-                string? reason;
+                var validation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 lock (_lock)
                 {
-                    reason = _validationReason;
+                    _validation = validation;
                 }
 
-                plan.NoteStep(step.Id, string.IsNullOrWhiteSpace(reason)
-                    ? "The CEO did not accept this step against its acceptance."
-                    : $"CEO: {reason.Trim()}");
+                await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries));
+                passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
+                if (!passed)
+                {
+                    // The CEO turned the step down; show its reason on the block so a failed step explains itself.
+                    string? reason;
+                    lock (_lock)
+                    {
+                        reason = _validationReason;
+                    }
+
+                    plan.NoteStep(step.Id, string.IsNullOrWhiteSpace(reason)
+                        ? "The CEO did not accept this step against its acceptance."
+                        : $"CEO: {reason.Trim()}");
+                }
+            }
+            finally
+            {
+                // The release is its own innermost finally so a throwing setValidating (a UI handler on Changed)
+                // can never leak the gate — every other queued gate would hang behind it until cancellation
+                // (found in a confirming adversarial pass). Clearing _validation and releasing happen together, so
+                // the next queued gate's own fresh _validation can never be nulled out by this one's cleanup
+                // running late (AC-434).
+                try
+                {
+                    lock (_lock)
+                    {
+                        _validation = null;
+                    }
+
+                    setValidating(false);
+                }
+                finally
+                {
+                    _validationGate.Release();
+                }
             }
 
             // The only path that actually reached the CEO's verdict: a genuine acceptance or a genuine rejection.
@@ -711,18 +798,14 @@ internal sealed class AutopilotRunCoordinator(
         }
         finally
         {
-            // The validation window is over (passed, failed, threw or cancelled) — return the surface to the step view.
-            setValidating(false);
-
             lock (_lock)
             {
                 foreach (var session in sessions)
                 {
                     _stepAgents.Remove(session.PaneId);
                     _liveStepSessions.Remove(session);
+                    _paneStepIds.Remove(session.PaneId);
                 }
-
-                _validation = null;
 
                 // A blockade raised by this step's agent cannot outlive the step; drop it so the next step starts clean.
                 if (_blockedPane is not null && sessions.Any(session => session.PaneId == _blockedPane))
@@ -730,16 +813,10 @@ internal sealed class AutopilotRunCoordinator(
                     _blockedPane = null;
                 }
 
-                // Likewise a consult raised by this step's own worker (AC-201) cannot outlive the step. Clear the active
-                // step and its consult budget so the next step (or the next attempt) starts with a clean tier.
+                // Likewise a consult raised by this step's own worker (AC-201) cannot outlive the step.
                 if (_consultPane is not null && sessions.Any(session => session.PaneId == _consultPane))
                 {
                     _consultPane = null;
-                }
-
-                if (_activeStepId == step.Id)
-                {
-                    _activeStepId = null;
                 }
 
                 _consultCounts.Remove(step.Id);
