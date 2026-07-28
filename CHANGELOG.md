@@ -32,6 +32,25 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an agent session sharing a tab with others can now agree to be woken, and a neighbour with something that
+  cannot wait can ask for it. Waking is off for every session until that session turns it on for itself, and nothing
+  a sender does can override that — the agreement is the permission. When it is on, a message a neighbour marks
+  urgent starts a turn on that session instead of waiting for one, which is what makes "leave that branch alone"
+  arrive in time rather than after the damage. Whether a session has agreed shows on its row when an agent lists who
+  else is on the tab, so a sender can tell beforehand whether urgent means anything for that addressee.
+
+  A wake never interrupts. A session that is working, or whose sub-agents are still running, is left alone and the
+  message simply waits. A session with a permission question open in front of you is left alone too: nothing an agent
+  calls urgent comes ahead of a decision you are standing at. The question is still there afterwards, and still
+  answerable. Neither can a wake cross tabs — the cockpit re-checks that the two sessions still share one tab at the
+  moment of waking, not just when the message was sent.
+
+  A woken session is told plainly what happened: the turn opens with a block naming the session that caused it and
+  saying that the cockpit started this turn, that you did not type it, and that being called urgent is the sender's
+  opinion and not permission for anything. Every wake, and every wake that was refused with the reason it was
+  refused, goes on the same trail the messages themselves are recorded on — a wake spends a turn you are paying for
+  without you having asked, so it leaves a mark either way.
+
 - added: the Plugin manager now tells you, per plugin, whether it actually loaded, its last error, and whether
   its MCP server contribution is still standing — three separate facts instead of one vague status line. A
   contribution that fails after a plugin has already started (its MCP server registration, say) is caught and
@@ -43,8 +62,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   happens to go and look. Whenever the session next takes a turn — because you typed something, or because a scheduled
   resume woke it — what is waiting for it rides out with that turn, a few messages at a time, in a block that says
   plainly that it came from another agent and not from you, and names the session it came from. Your own transcript
-  says so too, next to what you typed, so an answer never arrives without a visible reason for it. Nothing about a
-  message starts a turn by itself: it rides on one that was going to happen anyway.
+  says so too, next to what you typed, so an answer never arrives without a visible reason for it. A message rides on
+  a turn that was going to happen anyway — the one thing that can start one is described further down, and only for a
+  session that asked to be reachable that way.
 
   This works for the sessions the cockpit composes turns for. A session that is a command-line agent running inside a
   terminal cannot have it, and that is a real limit rather than an oversight: there the cockpit writes keystrokes and
