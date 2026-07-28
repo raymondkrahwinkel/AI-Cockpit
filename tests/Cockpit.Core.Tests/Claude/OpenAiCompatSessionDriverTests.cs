@@ -8,6 +8,7 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -524,6 +525,35 @@ public class OpenAiCompatSessionDriverTests
         await driver.StartAsync(profile);
 
         captured.Should().BeEquivalentTo(["cockpit-youtrack", "cockpit-session"]);
+    }
+
+    [Fact]
+    public async Task StartAsync_ConnectsTheToolLoopOnThePaneIdTheHostGaveIt()
+    {
+        string? captured = null;
+        var toolSession = Substitute.For<IMcpToolSession>();
+        toolSession.Tools.Returns([]);
+        toolSession.ConnectedServerNames.Returns(Array.Empty<string>());
+        toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+        var toolProvider = Substitute.For<IMcpToolProvider>();
+        toolProvider
+            .ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Do<string?>(pane => captured = pane), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(toolSession);
+        var factory = Substitute.For<IChatClientFactory>();
+        factory.Create(Arg.Any<ProviderConfig>()).Returns(Substitute.For<IChatClient>());
+        var driver = new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
+
+        // AC-89/AC-106: a local-model session must reach the cockpit's own endpoints on the pane the host stamped it
+        // with, exactly as a CLI session does. That id is what a delegated task's worktrees are keyed on, so a driver
+        // that dropped it would leave them keyed on whatever the model claimed — and the cleanup on stop would then
+        // release nothing. The ceremony is the same for both providers; only this half is provider-specific.
+        await driver.StartAsync(profile, launchOptions: new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.PaneId] = "task-42",
+        });
+
+        captured.Should().Be("task-42");
     }
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
