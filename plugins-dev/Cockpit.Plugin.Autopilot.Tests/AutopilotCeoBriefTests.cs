@@ -239,26 +239,31 @@ public class AutopilotCeoBriefTests
     [Fact]
     public void For_SplitsAReviewGatesVerification_NarrowWhileFixing_FullOnTheRoundThatFindsNothing()
     {
-        // AC-433: the expensive half is tied to the round that carries the verdict, and only to that one. Both halves
-        // have to be stated — a brief that only says "verify narrowly" weakens the gate, and one that only says "verify
-        // fully" is what the pilot already did eight times per item.
+        // AC-433: the expensive half is tied to the round that carries the verdict, and only to that one. Each round is
+        // asserted together with the scope it owns, in one span — asserting the two round descriptions and the two
+        // scopes separately would stay green with the scopes swapped, which is the instruction inverted rather than
+        // weakened. The sentence carrying "a narrow round's regression is caught by the full one" is pinned too: that
+        // is the ticket's fourth criterion, and it is the reason the cheap half is safe to allow at all.
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
         var brief = _Unwrapped(AutopilotCeoBrief.For(plan));
 
         Assert.Contains("only that last round carries the verdict", brief);
-        Assert.Contains("A round that ends with findings verifies narrowly", brief);
-        Assert.Contains("build incrementally and run the tests covering the changed area", brief);
-        Assert.Contains("The round that ends clean verifies fully", brief);
-        Assert.Contains("build the whole project from scratch with warnings treated as errors", brief);
-        Assert.Contains("run the complete test suite", brief);
+        Assert.Contains(
+            "A round that ends with findings verifies narrowly: build incrementally and run the tests covering the changed area",
+            brief);
+        Assert.Contains(
+            "The round that ends clean verifies fully: build the whole project from scratch with warnings treated as errors, and run the complete test suite",
+            brief);
+        Assert.Contains("broke something outside its own test selection is caught exactly there", brief);
     }
 
     [Fact]
-    public void For_MakesTheRoundsScopeReported_AndPartOfTheGatesAcceptance_SoAFullRoundIsCheckedNotAssumed()
+    public void For_AsksEachRoundToReportItsScope_AndToPutTheSameInTheGatesAcceptance()
     {
-        // The reporting duty is the half that stops this from being indistinguishable from quietly weakening the gate:
-        // the scope goes into the acceptance, which is what the CEO validator judges the finished step against.
+        // The reporting duty is the half that stops this from being indistinguishable from quietly weakening the gate.
+        // What is pinned here is what the brief asks for, not that a report is enforced — nothing in the plugin captures
+        // a round's real scope; the acceptance is where it lands so the CEO validator has something to judge against.
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
         var brief = _Unwrapped(AutopilotCeoBrief.For(plan));

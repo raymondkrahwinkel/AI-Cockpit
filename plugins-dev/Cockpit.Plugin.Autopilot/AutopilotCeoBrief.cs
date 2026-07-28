@@ -197,13 +197,15 @@ internal static class AutopilotCeoBrief
         """;
 
     // What each review round is worth verifying (AC-433). A gate reviews, its findings get fixed, and it reviews again
-    // until a round finds nothing — but in the first pilot every one of those rounds rebuilt the whole solution from
-    // scratch and ran the entire suite, for both gates, while only the last round of each carried a verdict. A round
-    // that ends in fixes is answering "does the fix work"; an incremental build and the tests around the change answer
-    // that. The round that ends clean is what the verdict means, so that one stays whole — in the same pilot three of
-    // the security gate's round-2 findings were regressions on its own round-1 fixes, which is what a full final round
-    // is for. Paired with a reporting duty on purpose: with the scope unreported, a cheaper round and a quietly
-    // weakened gate look the same from outside. Project-neutral like the rest of this brief — it names no build tool.
+    // until a round finds nothing. The protocol in force during the first pilot asked every one of those rounds for a
+    // clean whole-solution build and the entire suite; over two gates that came to eight cycles on one item, of which
+    // two carried a verdict. A round that ends in fixes is answering "does the fix work", which an incremental build
+    // and the tests around the change already answer. The round that ends clean is what the verdict means, so that one
+    // stays whole — three of the four findings in that pilot's second security round were regressions on its own
+    // round-1 fixes, which is what a full final round is for. Paired with a reporting duty on purpose: with the scope
+    // unreported, a cheaper round and a quietly weakened gate look the same from outside. This is brief text, so it
+    // asks rather than enforces — nothing here captures a round's actual scope, which is why the duty is to report it
+    // where the validator reads it. Project-neutral like the rest of this brief: it names no build tool.
     private static string _ReviewVerification() =>
         """
         Verification cost per review round. A review gate reviews, its findings get fixed, and it reviews again until a
