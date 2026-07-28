@@ -34,6 +34,15 @@ internal sealed record AutopilotStep(
     public IReadOnlyList<string> McpServers { get; init; } = [];
 
     /// <summary>
+    /// The tracker-neutral id of the issue this step is drafted from, when the CEO folded a specific item into the
+    /// plan — the run's own source issue, or (for an epic) one of its child issues (AC-411). Null for a step with no
+    /// such backing item (most steps, and every step of a CEO-first run). Lets <see cref="AutopilotPlanTools.SetPlan"/>
+    /// check a child against the same executable-stage gate its parent already passed, rather than trusting the CEO's
+    /// read of the item's stage from the brief.
+    /// </summary>
+    public string? SourceIssueId { get; init; }
+
+    /// <summary>
     /// How many times this step has been started (AC-174). The CEO validates a step's output against
     /// its <see cref="Acceptance"/>; a step that does not pass is sent back to rework and re-run — but only while it has
     /// attempts left under the run's cap, so a rework loop is bounded and never becomes an endless loop.

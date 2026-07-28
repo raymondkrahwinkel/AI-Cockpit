@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Tracking;
 using FluentAssertions;
 using NSubstitute;
 
@@ -182,19 +183,142 @@ public class AutopilotPlanToolsTests
         controller.Plan!.Steps.Should().HaveCount(2);
     }
 
-    private static (AutopilotPlanTools Tools, AutopilotPlanController Controller) _PlanningTools()
+    private static (AutopilotPlanTools Tools, AutopilotPlanController Controller) _PlanningTools(
+        AutopilotPlanSource? source = null, ITrackerProvider? tracker = null)
     {
         var host = Substitute.For<ICockpitHost>();
         host.GetProfilesAsync().Returns(Task.FromResult(Roster));
         host.CurrentMcpCallerPaneId.Returns("pane-1");
+        host.TrackerProviders.Returns(tracker is null ? [] : new[] { tracker });
 
         var controller = new AutopilotPlanController();
-        controller.BeginPlanning(AutopilotPlan.Empty(source: null, goal: "Ship it"));
+        controller.BeginPlanning(AutopilotPlan.Empty(source, goal: "Ship it"));
         controller.BindSession("pane-1");
 
-        return (new AutopilotPlanTools(host, controller), controller);
+        return (new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage())), controller);
     }
 
     private static bool _Ok(string result) =>
         JsonDocument.Parse(result).RootElement.GetProperty("ok").GetBoolean();
+
+    // AC-411: the child-stage code-gate. A step whose issueId names a tracker child other than the run's own source
+    // issue is checked against the tracker's own stage before the plan is accepted.
+    [Fact]
+    public async Task SetPlan_RejectsAChildStep_WhoseTrackerStageIsNotExecutable()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Backlog")));
+        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+
+        var result = await tools.SetPlan(
+            "Work the epic",
+            """[{"id":"1","title":"Fix the child","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
+
+        _Ok(result).Should().BeFalse();
+        result.Should().Contain("AC-1").And.Contain("Backlog");
+    }
+
+    [Fact]
+    public async Task SetPlan_RejectsAChildStep_StillMarkedBrainstorm_OnTheIssuesOwnTitle()
+    {
+        // The tracker's own title carries the marker, not the CEO's step title — proving the check reads the real
+        // issue rather than trusting whatever the CEO wrote into the plan (the exact gap AC-345's brief-only version left).
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new TrackerIssueSnapshot("[Brainstorm] a loose idea", "Ready")));
+        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+
+        var result = await tools.SetPlan(
+            "Work the epic",
+            """[{"id":"1","title":"A perfectly normal-sounding step title","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
+
+        _Ok(result).Should().BeFalse();
+        result.Should().Contain("Brainstorm");
+    }
+
+    [Fact]
+    public async Task SetPlan_AcceptsAChildStep_OnTheExecutableStage()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Ready")));
+        var (tools, controller) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+
+        var result = await tools.SetPlan(
+            "Work the epic",
+            """[{"id":"1","title":"Fix the child","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
+
+        _Ok(result).Should().BeTrue();
+        controller.Plan!.Steps[0].SourceIssueId.Should().Be("AC-1");
+    }
+
+    [Fact]
+    public async Task SetPlan_DoesNotRecheckTheRunsOwnSourceIssue()
+    {
+        // The item the operator clicked already passed the gate before this planning round opened (AC-345) — a step
+        // that names that same issue is not re-fetched from the tracker.
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "A single item"), tracker);
+
+        var result = await tools.SetPlan(
+            "Ship it",
+            """[{"id":"1","title":"Do the work","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-343"}]""");
+
+        _Ok(result).Should().BeTrue();
+        await tracker.DidNotReceive().GetIssueSnapshotAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetPlan_WithTwoStepsOnTheSameChild_FetchesItsSnapshotOnlyOnce()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new TrackerIssueSnapshot("Fix the widget", "Ready")));
+        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+
+        var result = await tools.SetPlan(
+            "Work the epic",
+            """
+            [
+              {"id":"1","title":"Part one","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"},
+              {"id":"2","title":"Part two","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}
+            ]
+            """);
+
+        _Ok(result).Should().BeTrue();
+        await tracker.Received(1).GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetPlan_WithNoIssueIdOnAStep_SkipsTheChildGate()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        var (tools, _) = _PlanningTools(new AutopilotPlanSource("youtrack", "AC-343", "EPIC: Autopilot v2"), tracker);
+
+        var result = await tools.SetPlan(
+            "Work the epic",
+            """[{"id":"1","title":"A step with no tracker item","profile":"Claude","model":"sonnet","brief":"b","hard":false}]""");
+
+        _Ok(result).Should().BeTrue();
+    }
+
+    private sealed class FakeStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
+
+        public T? Get<T>(string key) => _data.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
+
+        public void Set<T>(string key, T value) => _data[key] = JsonSerializer.Serialize(value);
+
+        public void SetSecret(string key, string value) => Set(key, value);
+
+        public string? GetSecret(string key) => Get<string>(key);
+    }
 }

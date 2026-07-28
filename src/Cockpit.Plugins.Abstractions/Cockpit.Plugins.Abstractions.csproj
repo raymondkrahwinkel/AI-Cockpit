@@ -223,7 +223,13 @@
          setter is absent on an older host's copy of this record — so the two plugins that set it (youtrack,
          github-issues) raise their manifest's minHostVersion to 0.8.0. Additions only — a minor; major and
          abstractionsVersion stay 1. -->
-    <Version>1.33.0</Version>
+    <!-- 1.34.0 (AC-411): added ITrackerProvider.GetIssueSnapshotAsync (default-implemented, returning an empty
+         TrackerIssueSnapshot) plus the new TrackerIssueSnapshot record — the read half of the child-stage code-gate:
+         Autopilot's plan-emit tool can now read an epic child's own title and stage straight from the tracker,
+         instead of trusting the CEO's prose about it, before that child enters an executed plan. An existing
+         provider (or test fake) that does not implement it keeps compiling and simply reports nothing to check
+         against. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.34.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
