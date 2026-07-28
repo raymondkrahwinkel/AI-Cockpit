@@ -55,6 +55,7 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   matters: a server that silently failed to reach a session would otherwise look exactly like an empty desk, and
   nothing about that looks wrong. What it cannot tell you is *why* it never called — it may simply not have looked
   yet, or the server may not be mounted for it — so it says that rather than picking a cause.
+
 - added: agents on the same desk can now send each other a message. An agent can notify another session it can see,
   with a short label and a body, and collect what was sent to it — so "I have the parser, leave it alone" is
   something one session can actually say to another instead of the two of them finding out by colliding. Messages
