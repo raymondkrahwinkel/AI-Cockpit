@@ -641,17 +641,11 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
-    <!-- RadioButton: one choice out of a set, and the CheckBox story one control further along — it was still
-         drawing in Avalonia's *system* accent (#0078d7) while the theme's is #3b82f6 (found by the AC-338
-         palette baseline, fixed as AC-404). It could not be done the way the CheckBox was: Fluent's radio in
-         Avalonia 12 names no template parts at all — walking a rendered one finds only Border#RootBorder, and
-         its ellipses carry no name — so there is nothing for a `/template/ Ellipse#…` rule to bind to, and a
-         selector naming a part that does not exist styles nothing without saying so. Hence a template of its
-         own, with the parts named, drawn from the same tokens the CheckBox rules use.
-         The parts are Ring and Dot rather than Fluent's OuterEllipse/CheckGlyph on purpose: Fluent's radio
-         *rules* are still loaded even though its template is gone, and they match by part name — one of them
-         fades OuterEllipse to Opacity 0 on :checked. Named that way, a picked button came out as a white dot
-         with no ring at all, while every colour assertion passed, because the fill was right and invisible. -->
+    <!-- RadioButton: the CheckBox story one control along — it kept Avalonia's system accent (#0078d7). It gets
+         a template of its own because Fluent's builds no named parts to reach into, and the parts are Ring and
+         Dot rather than Fluent's OuterEllipse/CheckGlyph because Fluent's rules are still loaded and match by
+         name: one of them fades OuterEllipse to Opacity 0 on :checked, which rendered a picked button as a dot
+         with no ring while every colour was correct. -->
     <Style Selector="RadioButton">
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
@@ -662,8 +656,7 @@
                              Fill="{StaticResource CockpitPanelBgBrush}"
                              Stroke="{StaticResource CockpitHairlineBrush}"
                              StrokeThickness="1"/>
-                    <!-- Same cell and same margin as the ring, so the dot sits on its centre rather than on the
-                         cell's — the ring's own margin is what moves the two apart if the dot omits it. -->
+                    <!-- Same margin as the ring, so the dot centres on the ring rather than on the cell. -->
                     <Ellipse Name="Dot" Width="8" Height="8" Margin="0,0,8,0"
                              HorizontalAlignment="Center" VerticalAlignment="Center"
                              Fill="{StaticResource CockpitTextOnAccentBrush}"
