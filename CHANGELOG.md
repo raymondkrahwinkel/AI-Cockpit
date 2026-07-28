@@ -493,6 +493,19 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the shortcut that zooms a session pane to full width is now Ctrl+Shift+M. It was Ctrl+B, which never
+  arrived while a terminal had the keyboard — the shell claimed it first, as its tmux prefix or as
+  backward-char — and a zoomed pane is exactly the moment a terminal has the keyboard, so the shortcut was
+  unusable where it was meant to be used. Two modifiers get it past a focused terminal, the way the session and
+  workspace switches already do. Not Ctrl+Shift+Z, which would read better: that is the platform's second Redo
+  chord, and a two-modifier shortcut is taken before a text field sees it, so it would have eaten Redo in the
+  prompt box. Not Ctrl+Alt+a-letter either — AltGr arrives as Ctrl+Alt, so on an ISO layout that combination is
+  how you type a character (the Ctrl+Alt+arrows that move between panes are unaffected: an arrow types nothing).
+  If you had ever saved your shortcuts, the old Ctrl+B is carried over for you; any other gesture
+  you set is left as it is. Note that the carry-over goes by the gesture, not by when you set it, so binding zoom
+  back to Ctrl+B does not stick — it is moved again on the next start, which is deliberate: Ctrl+B is a gesture
+  that cannot reach the cockpit from a focused terminal.
+
 - changed: the model list offered when you start a Claude session names a family rather than a release — "Opus", not
   "Opus 4.8". The value behind it is the CLI's own alias, which follows whatever that alias resolves to today, so a
   label carrying a version number could only ever go stale while the session it started ran on something else. The

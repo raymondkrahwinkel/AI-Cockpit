@@ -300,14 +300,10 @@ public partial class CockpitView : UserControl
             return false;
         }
 
-        // While typing (text field or terminal), most bindings stay gated so they never hijack a keystroke.
-        // A binding still fires if it is "always active" (the command palette) or its gesture uses two or more
-        // modifiers (e.g. Ctrl+Shift+P) — those are commands, not something you type, and are never a lone
-        // readline/shell key like Ctrl+R, so intercepting them over the terminal is safe. The session-switch
-        // bindings sit in between: live over the terminal (the tunnelling handler marks them handled, so claude
-        // never sees them), but not in a text box, where the arrow keys are caret navigation.
-        var inTextBox = _IsTextBoxFocused();
-        var inTerminal = _IsTerminalFocused();
+        // While typing (text field or terminal), most bindings stay gated so they never hijack a keystroke —
+        // ShortcutDispatchGate decides which ones survive that. The tunnelling handler marks a match handled, so
+        // a shortcut that does fire over the terminal never reaches the PTY.
+        var focus = _FocusedInput();
         foreach (var binding in shortcuts)
         {
             if (_TryParseGesture(binding.Gesture) is not { } gesture)
@@ -315,7 +311,7 @@ public partial class CockpitView : UserControl
                 continue;
             }
 
-            if (!_IsBindingLive(binding, gesture, inTextBox, inTerminal))
+            if (!ShortcutDispatchGate.IsBindingLive(binding, gesture, focus))
             {
                 continue;
             }
@@ -329,24 +325,6 @@ public partial class CockpitView : UserControl
 
         return false;
     }
-
-    private static bool _IsBindingLive(ShortcutBinding binding, KeyGesture gesture, bool inTextBox, bool inTerminal)
-    {
-        if (binding.AlwaysActive || _HasMultipleModifiers(gesture))
-        {
-            return true;
-        }
-
-        if (inTextBox)
-        {
-            return false;
-        }
-
-        return !inTerminal || binding.ActiveInTerminal;
-    }
-
-    private static bool _HasMultipleModifiers(KeyGesture gesture) =>
-        System.Numerics.BitOperations.PopCount((uint)gesture.KeyModifiers) >= 2;
 
     // KeyGesture.Parse throws on an invalid/blank gesture string (a half-typed one in Options); treat any
     // unparseable gesture as "no match" rather than letting it crash the key handler.
@@ -367,22 +345,8 @@ public partial class CockpitView : UserControl
         }
     }
 
-    private bool _IsTextBoxFocused() =>
-        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
-
-    private bool _IsTerminalFocused()
-    {
-        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-        for (var visual = focused as Visual; visual is not null; visual = visual.GetVisualParent())
-        {
-            if (visual is TerminalControl)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private ShortcutFocus _FocusedInput() =>
+        ShortcutDispatchGate.FocusOf(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement());
 
     /// <summary>Sidebar item click → select that session, and arm a possible drag-reorder (AC-115). Plain event
     /// handler (not a command) since the clicked session is the DataContext of the <see cref="Border"/> raising the
