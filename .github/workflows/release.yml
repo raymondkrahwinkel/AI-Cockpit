@@ -88,26 +88,37 @@ jobs:
         shell: bash
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # Self-contained: the operator should not have to install a .NET runtime to run a desktop app. Windows is a
-      # single file — the .exe you download, double-click, and later overwrite to update — with the bundled plugins
-      # embedded in it rather than in a folder beside it. Not trimmed: trimming is what breaks Avalonia's
-      # reflection-driven XAML loading; single-file does not.
+      # Self-contained: the operator should not have to install a .NET runtime to run a desktop app. A directory
+      # publish on every platform now — the updater replaces an application *folder*, so it needs the files as
+      # files, and a self-extracting single exe defeats that (AC-384). Not trimmed either way: trimming is what
+      # breaks Avalonia's reflection-driven XAML loading.
       - name: Publish
         shell: bash
         run: |
-          single_file=false
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
-            single_file=true
-          fi
-
           dotnet publish src/Cockpit.App/Cockpit.App.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
-            -p:PublishSingleFile=$single_file \
-            -p:IncludeNativeLibrariesForSelfExtract=$single_file \
             -p:Version=${{ steps.version.outputs.version }} \
             --output publish/${{ matrix.rid }}
+
+      # A second, single-file publish on Windows only, purely to keep the artifacts that were here before this
+      # ticket working. Both of them — the portable .exe below and the Inno installer — package exactly one file
+      # (windows-installer.iss has a single [Files] entry), so handing them a directory publish would produce a
+      # bare launcher without its runtime beside it: an installer that installs something that cannot start.
+      # Which of the two sets survives is [e]'s decision, not this one's; until then they both have to work.
+      - name: Publish the single-file Windows build
+        if: matrix.rid == 'win-x64'
+        shell: bash
+        run: |
+          dotnet publish src/Cockpit.App/Cockpit.App.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version=${{ steps.version.outputs.version }} \
+            --output publish/win-x64-singlefile
 
       # One artifact per platform, and it is the thing you run: an .exe, a .app, an AppImage. The Linux tarball
       # rides along as well, because unpacking a directory on a server is a real use.
@@ -118,7 +129,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           case "${{ matrix.rid }}" in
             win-x64)
-              cp publish/win-x64/Cockpit.App.exe "artifacts/ai-cockpit-$version-win-x64.exe"
+              cp publish/win-x64-singlefile/Cockpit.App.exe "artifacts/ai-cockpit-$version-win-x64.exe"
               ;;
             osx-arm64)
               scripts/package-macos.sh arm64 "$version"
@@ -145,7 +156,7 @@ jobs:
         shell: pwsh
         run: |
           scripts/package-windows-installer.ps1 `
-            -PublishDir publish/win-x64 `
+            -PublishDir publish/win-x64-singlefile `
             -Version "${{ steps.version.outputs.version }}" `
             -OutputPath "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-win-x64-setup.exe"
 
@@ -159,6 +170,64 @@ jobs:
           mv artifacts/appimage/*.AppImage \
             "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-x86_64.AppImage"
           rm -rf artifacts/appimage
+
+      # The Velopack feed: what the in-app updater actually reads (AC-384). vpk turns the publish directory into a
+      # Setup, a Portable build and the *-full.nupkg the updater downloads, plus the two index files it looks the
+      # release up in. Pinned to the version the Velopack package in the app is on — the tool writes the feed that
+      # library reads, so they are a matched pair, not two independent dependencies.
+      - name: Install vpk
+        shell: bash
+        run: dotnet tool install -g vpk --version 1.2.0
+
+      # macOS wants an .icns and the repository has none — only the .ico Windows uses and the .png everything else
+      # does. Built here from the PNG rather than committed, so there is one source of truth for the icon.
+      - name: Build the macOS icon
+        if: matrix.rid == 'osx-arm64'
+        shell: bash
+        run: |
+          iconset=AppIcon.iconset
+          mkdir -p "$iconset"
+          for size in 16 32 64 128 256 512; do
+            sips -z $size $size src/Cockpit.App/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}.png"
+            sips -z $((size * 2)) $((size * 2)) src/Cockpit.App/Assets/AppIcon.png --out "$iconset/icon_${size}x${size}@2x.png"
+          done
+          iconutil -c icns "$iconset" -o AppIcon.icns
+
+      # The channel carries the platform as well as the stream, so one feed can never offer a macOS package to a
+      # Windows install: an updater asks for releases.win-stable.json and finds only Windows builds in it.
+      #
+      # Its own output directory, because scripts/pack-sdk.sh writes the plugin SDK into artifacts/ as well. Mixed
+      # together there would be no telling which files the updater is meant to read.
+      - name: Pack the Velopack release
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RID: ${{ matrix.rid }}
+        run: |
+          case "$RID" in
+            win-x64)   platform=win;   main_exe=Cockpit.App.exe; icon=src/Cockpit.App/Assets/AppIcon.ico ;;
+            osx-arm64) platform=osx;   main_exe=Cockpit.App;     icon=AppIcon.icns ;;
+            linux-x64) platform=linux; main_exe=Cockpit.App;     icon=src/Cockpit.App/Assets/AppIcon.png ;;
+          esac
+
+          # --categories exists on the Linux packer only; it replaces a hand-written .desktop entry.
+          EXTRA=()
+          if [ "$platform" = "linux" ]; then
+            EXTRA+=(--categories "Development;System")
+          fi
+
+          # ${EXTRA[@]+"${EXTRA[@]}"} rather than "${EXTRA[@]}": the macOS runners are on bash 3.2, which treats
+          # expanding an empty array as an unbound variable under set -u and kills the step.
+          vpk pack ${EXTRA[@]+"${EXTRA[@]}"} \
+            --packId AI-Cockpit \
+            --packTitle "AI Cockpit" \
+            --packAuthors "Raymond Krahwinkel" \
+            --packVersion "$VERSION" \
+            --packDir "publish/$RID" \
+            --mainExe "$main_exe" \
+            --icon "$icon" \
+            --channel "$platform-stable" \
+            --outputDir artifacts-velopack
 
       # The plugin SDK rides along with the host it is the contract for: the release that carries a contribution
       # point is the release an out-of-repo plugin author has something to pin to. Packed on the Linux leg only —
@@ -194,7 +263,11 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          # Both directories by name: the glob does not descend, so artifacts/* alone would attach the Velopack
+          # folder as nothing at all — and the feed index inside it is the one file the updater cannot do without.
+          files: |
+            artifacts/*
+            artifacts-velopack/*
           body_path: release-notes.md
           draft: false
           prerelease: false
