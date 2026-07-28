@@ -187,7 +187,11 @@ internal sealed class AutopilotRunCoordinator(
                 // AC-453: a checkout the operator has gated gets no pull request while the local run is red or
                 // absent. The push still happens — the work belongs on its branch either way — and the reason
                 // travels into the run's outcome, so a run that delivered no PR says why rather than reading clean.
-                var heldBack = await LocalCiGate.RefusalFor(host, environment.RunWorktreePath!);
+                // Only asked when a pull request was actually going to be attempted: on a push-only delivery there
+                // is no pull request to hold back, and reporting a gate reason there would name the wrong cause.
+                var heldBack = delivery == AutopilotPrDelivery.CanCreatePr
+                    ? await LocalCiGate.RefusalFor(host, environment.RunWorktreePath!)
+                    : null;
 
                 var result = await _prPublisher.PublishAsync(
                     request,
