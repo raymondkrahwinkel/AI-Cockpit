@@ -99,6 +99,64 @@ public class AutopilotRunContextTests
             [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running]).Should().BeFalse();
     }
 
+    [Fact]
+    public void PreferredContextIndex_PicksTheFirstRun_WhenNoneAwaitsTheOperator()
+    {
+        // The unbugged single-run case, and the multi-run case where nothing needs the operator yet: the first run
+        // stays the default, exactly what the surface showed before AC-440.
+        AutopilotPlanWorkspaceBody.PreferredContextIndex([AutopilotPlanPhase.Running]).Should().Be(0);
+        AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Planning]).Should().Be(0);
+    }
+
+    [Fact]
+    public void PreferredContextIndex_PicksTheAwaitingRun_EvenWhenItIsNotFirst()
+    {
+        // AC-440's bug: the pane always rendered _activeContexts[0] while the "Needs you" badge lit up for any active
+        // run in AwaitingOperator — so a second, later run's blockade could sit behind the first run's still-running
+        // step surface with no way to reach it. The awaiting run must win regardless of its position in the list.
+        AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().Be(1);
+        AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().Be(2);
+    }
+
+    [Fact]
+    public void PreferredContextIndex_PicksTheFirstAwaitingRun_WhenSeveralAreAwaiting()
+    {
+        AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator]).Should().Be(0);
+    }
+
+    [Fact]
+    public void NextAwaitingIndex_IsNull_WhenNothingAwaits()
+    {
+        // The badge is never visible with nothing awaiting, but the click handler guards it anyway rather than
+        // trusting that invariant blindly.
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 0, currentIndex: -1).Should().BeNull();
+    }
+
+    [Fact]
+    public void NextAwaitingIndex_StepsToTheNextRun_AndWrapsAfterTheLast()
+    {
+        // Repeated clicks must reach every awaiting run in turn, not stick on the first (the exact bug a review caught
+        // before this shipped: deriving "next" from the badge's own click history rather than the run actually shown
+        // made the first click on a second awaiting run land back on the one already displayed).
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: -1).Should().Be(0);
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 0).Should().Be(1);
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 1).Should().Be(0);
+    }
+
+    [Fact]
+    public void NextAwaitingIndex_ReturnsTheOnlyRun_WhenOnlyOneAwaits()
+    {
+        // With one awaiting run already shown (currentIndex 0), the "next" is itself — the caller's own
+        // ReferenceEquals guard is what turns this into a no-op click rather than a same-run re-render that would
+        // rebuild the answer TextBox and drop whatever the operator had typed.
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: 0).Should().Be(0);
+        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: -1).Should().Be(0);
+    }
+
     /// <summary>Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".</summary>
     private sealed class FakeStorage : IPluginStorage
     {
