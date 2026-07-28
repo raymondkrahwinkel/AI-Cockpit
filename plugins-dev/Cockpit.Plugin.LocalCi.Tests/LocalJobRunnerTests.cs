@@ -140,6 +140,24 @@ public class LocalJobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task AStopThatArrivesBeforeTheRunStartsIsAnswered_NotThrown()
+    {
+        var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);
+        var act = FakeStreamingCliRunner.Exiting(0);
+        using var runner = _RunnerFor(FakeLocalCiRuntime.Ready(), act, "run-1");
+        using var alreadyStopped = new CancellationTokenSource();
+        await alreadyStopped.CancelAsync();
+
+        var result = await runner.RunAsync(
+            new LocalRunRequest(_project.Root, workflow, "build"), _ => { }, approve: null, alreadyStopped.Token);
+
+        // Everything before act starts observes the token, so without this the caller is handed an exception where
+        // it was promised an answer — and whoever is showing the run never learns it ended.
+        Assert.Equal(LocalRunOutcome.Cancelled, result.Outcome);
+        Assert.Empty(act.Calls);
+    }
+
+    [Fact]
     public async Task ASecondRunIsToldTheMachineIsBusyRatherThanQueued()
     {
         var workflow = _project.AddWorkflow("ci.yml", TemporaryProject.OneLinuxJob);

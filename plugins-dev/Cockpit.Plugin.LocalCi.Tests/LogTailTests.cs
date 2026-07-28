@@ -43,4 +43,29 @@ public class LogTailTests
 
     [Fact]
     public void NothingInNothingOut() => Assert.Equal(string.Empty, new LogTail(10, 100).Text());
+
+    [Fact]
+    public async Task TwoWritersAtOnceIsTheOrdinaryCase()
+    {
+        var tail = new LogTail(maxLines: 50, maxCharacters: 4000);
+
+        // A run has two: a process serves stdout and stderr as independent read loops, and act writes its progress
+        // to one while the job writes to the other. Unsynchronised, the trimming loop corrupts the queue or throws
+        // on a thread nobody is watching — which in .NET takes the whole app with it.
+        await Task.WhenAll(
+            Task.Run(() => _Fill(tail, "out")),
+            Task.Run(() => _Fill(tail, "err")));
+
+        var lines = tail.Text().Split(Environment.NewLine);
+        Assert.Equal(50, lines.Length);
+        Assert.All(lines, line => Assert.Matches("^(out|err) [0-9]+$", line));
+    }
+
+    private static void _Fill(LogTail tail, string stream)
+    {
+        for (var line = 0; line < 5000; line++)
+        {
+            tail.Add($"{stream} {line}");
+        }
+    }
 }

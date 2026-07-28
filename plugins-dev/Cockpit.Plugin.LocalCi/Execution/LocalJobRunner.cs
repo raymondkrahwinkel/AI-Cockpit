@@ -48,6 +48,30 @@ internal sealed class LocalJobRunner(
         Func<string, Task<bool>>? approve,
         CancellationToken cancellationToken)
     {
+        try
+        {
+            return await _DecideAndRunAsync(request, onLine, approve, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // A stop that lands before the run starts is still a stop, and it has to come back as one. Everything
+            // up to here — probing the machine, reading the workflows, taking the slot — observes the token and
+            // would otherwise throw out of a caller that was promised an answer, leaving whoever is showing the
+            // run with no way to learn it ended.
+            return LocalRunResult.DidNotRun(
+                request.WorkflowPath,
+                request.JobId,
+                LocalRunOutcome.Cancelled,
+                "the run was stopped before it started.");
+        }
+    }
+
+    private async Task<LocalRunResult> _DecideAndRunAsync(
+        LocalRunRequest request,
+        Action<string> onLine,
+        Func<string, Task<bool>>? approve,
+        CancellationToken cancellationToken)
+    {
         var status = await runtime.GetStatusAsync(cancellationToken);
         if (!status.CanRunJobs)
         {

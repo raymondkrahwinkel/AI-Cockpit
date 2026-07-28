@@ -61,7 +61,13 @@ internal sealed class LocalCiRunView : UserControl
             gate.Set(projectRoot, _holdBackPullRequests.IsChecked ?? false);
 
         _stop = new Button { Content = "Stop", IsEnabled = false };
-        _stop.Click += (_, _) => _inFlight?.Cancel();
+        _stop.Click += (_, _) =>
+        {
+            if (_inFlight is { } running)
+            {
+                _ = _StopAsync(running);
+            }
+        };
 
         _logScroll = new ScrollViewer { Content = _log, Height = 260, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
 
@@ -174,20 +180,20 @@ internal sealed class LocalCiRunView : UserControl
 
         using var cancellation = new CancellationTokenSource();
         _inFlight = cancellation;
-        _stop.IsEnabled = true;
         _headline.Text = $"Running {request.JobId}…";
         _shown.Add($"$ {request.JobId} in {request.WorkflowPath}");
 
         var startedAt = DateTimeOffset.UtcNow;
         var commit = await _readHeadCommit(_projectRoot, cancellation.Token);
-        _tracker.Begin(_projectRoot, request.JobId, startedAt, () =>
-        {
-            cancellation.Cancel();
-            return Task.CompletedTask;
-        });
+        _tracker.Begin(_projectRoot, request.JobId, startedAt, () => _StopAsync(cancellation));
+
+        // Only now: until the tracker knows about this run there is nothing for a stop to be recorded against, and
+        // the awaits above hand control back to the window in between.
+        _stop.IsEnabled = true;
         _redraw.Start();
 
-        LocalRunResult result;
+        var result = LocalRunResult.DidNotRun(
+            request.WorkflowPath, request.JobId, LocalRunOutcome.Cancelled, "the run ended without a verdict.");
         try
         {
             // No consent question here: the operator is the one asking, and a prompt in front of the button they
@@ -200,10 +206,32 @@ internal sealed class LocalCiRunView : UserControl
             _Flush();
             _inFlight = null;
             _stop.IsEnabled = false;
+
+            // Inside the finally, and before the token source is disposed: a run the tracker is never told the end
+            // of stays in the status bar for the life of the app, offering a Kill for something that stopped long
+            // ago. Completing here also drops the stop callback that holds this token source.
+            _tracker.Complete(_projectRoot, result, commit, DateTimeOffset.UtcNow);
         }
 
-        _tracker.Complete(_projectRoot, result, commit, DateTimeOffset.UtcNow);
         _headline.Text = result.Headline;
+    }
+
+    /// <summary>
+    /// The status bar's Kill, and the window's own Stop. Tolerant of a token source already disposed: completing a
+    /// run drops this callback, but the operator can be pressing Kill at that exact moment.
+    /// </summary>
+    private static Task _StopAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The run finished on its own between the click and here. Nothing left to stop.
+        }
+
+        return Task.CompletedTask;
     }
 
     private void _ShowLastResult() =>

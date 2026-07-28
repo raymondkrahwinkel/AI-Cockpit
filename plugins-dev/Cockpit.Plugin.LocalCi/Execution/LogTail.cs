@@ -5,24 +5,39 @@ namespace Cockpit.Plugin.LocalCi.Execution;
 /// what tells you why a job failed is the last stretch of it. Bounded on both counts because either one alone
 /// still lets a log through that nobody wants in an agent's context: a thousand short lines, or one enormous one.
 /// </summary>
+/// <remarks>
+/// Synchronised because a run's two output streams arrive on their own threads: a <see cref="System.Diagnostics.Process"/>
+/// services stdout and stderr as independent read loops with no ordering between them, and act writes its progress to
+/// stderr while the job's own output goes to stdout — so both are writing here at once for the whole of a normal run.
+/// </remarks>
 internal sealed class LogTail(int maxLines, int maxCharacters)
 {
     /// <summary>Enough to carry a failing test's name, its assertion and the summary line under it.</summary>
     public static LogTail ForFailure() => new(maxLines: 120, maxCharacters: 8000);
 
+    private readonly object _gate = new();
     private readonly Queue<string> _lines = new();
     private int _characters;
 
     public void Add(string line)
     {
-        _lines.Enqueue(line);
-        _characters += line.Length + 1;
-
-        while (_lines.Count > maxLines || (_characters > maxCharacters && _lines.Count > 1))
+        lock (_gate)
         {
-            _characters -= _lines.Dequeue().Length + 1;
+            _lines.Enqueue(line);
+            _characters += line.Length + 1;
+
+            while (_lines.Count > maxLines || (_characters > maxCharacters && _lines.Count > 1))
+            {
+                _characters -= _lines.Dequeue().Length + 1;
+            }
         }
     }
 
-    public string Text() => string.Join(Environment.NewLine, _lines);
+    public string Text()
+    {
+        lock (_gate)
+        {
+            return string.Join(Environment.NewLine, _lines);
+        }
+    }
 }
