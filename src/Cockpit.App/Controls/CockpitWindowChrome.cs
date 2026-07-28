@@ -68,6 +68,15 @@ internal static class CockpitWindowChrome
             window.Background = background;
         }
 
+        if (titleBar == CockpitTitleBar.Dialog)
+        {
+            // Every dialog, rather than the three that remembered to ask (AC-428). A dialog is centred on its
+            // owner and has nothing to drag it back by, so one that opens taller than the screen has put its
+            // own buttons past the bottom edge — which is the same failure as a footer laid out past the right
+            // edge, on the other axis. The app's own window is left alone: it is meant to fill the screen.
+            DialogScreenClamp.Apply(window);
+        }
+
         if (closeOnEscape)
         {
             // Esc closes a dialog. A bubbling handler, so a control that legitimately uses Esc first — an open

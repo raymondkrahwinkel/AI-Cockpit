@@ -18,7 +18,6 @@ public partial class PluginStoreDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
-        DialogScreenClamp.Apply(this);
         Closed += OnClosed;
     }
 

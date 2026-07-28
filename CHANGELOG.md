@@ -780,6 +780,28 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a dialog can no longer put its own buttons out of reach. Configuring an MCP server whose name clashed with
+  one the cockpit already runs left Cancel and Save off the right-hand edge of a window that could not be resized, so
+  the server you had just filled in could not be saved. The cause was never the height it looked like: a message
+  whose length comes from your data shared a column with the buttons, and a column does not clip, so the buttons
+  were laid out past the edge and the window cut them off.
+
+  Every dialog has now been checked for the same shape, with the longest content it can actually be given rather
+  than an empty form. Managing profiles had it too — a status message naming several profiles pushed Cancel and Save
+  out and squeezed Remove to nothing — and a plugin asking you to confirm something could carry its own button off
+  the dialog with a long enough label. Those texts now wrap and shorten, with the whole message on the tooltip,
+  because the message is the one thing on that row that can afford to give way.
+
+- fixed: dialogs now fit the screen they open on. A dialog is centred on the cockpit with nothing to drag it back
+  by, so one designed for a desktop — the plugin store's catalogue, the project editor, managing profiles — opened
+  with its buttons past the bottom edge of a laptop panel, and there was no way to reach them. Three of them
+  already shrank to fit; all of them do now, including the windows a plugin opens.
+
+  The forms inside them scroll rather than being cut off, so what gives way on a small screen is the middle of the
+  dialog and never the row of buttons. That also settles what used to happen when something long arrived in one:
+  a git error a page long in the clone dialog, a plugin's install path in the consent prompt, or a caller's
+  explanation above the password boxes would grow the window off the bottom of the screen instead.
+
 - fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
   which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your
   sessions spent were created with whatever the system's default permissions said — on a stock Fedora, that means

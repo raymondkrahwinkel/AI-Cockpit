@@ -25,6 +25,17 @@ internal static class DialogScreenClamp
         // WorkingArea is in physical pixels and Width/Height are in DIPs, so the scaling has to come out first
         // or this clamps to the wrong number on any display that is not at 100%.
         var available = screen.WorkingArea;
+        var (widthBudget, heightBudget) =
+            (available.Width / screen.Scaling * MaxScreenFraction, available.Height / screen.Scaling * MaxScreenFraction);
+
+        // A ceiling as well as a size (AC-428). Clamping Width/Height alone misses the dialogs that carry no
+        // height to clamp: a SizeToContent window measures itself, and it measures itself again every time its
+        // content changes — a long git error arriving in the clone dialog, a plugin's install path in the consent
+        // dialog. The bound therefore has to outlive this call. Whatever the window already asked for wins when
+        // it is stricter, so ConfirmationDialog keeps its own 560.
+        window.MaxWidth = Math.Min(window.MaxWidth, Math.Max(window.MinWidth, widthBudget));
+        window.MaxHeight = Math.Min(window.MaxHeight, Math.Max(window.MinHeight, heightBudget));
+
         (window.Width, window.Height) = Fit(
             window.Width, window.Height,
             window.MinWidth, window.MinHeight,

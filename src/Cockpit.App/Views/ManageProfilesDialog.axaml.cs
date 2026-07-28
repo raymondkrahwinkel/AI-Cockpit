@@ -18,7 +18,6 @@ public partial class ManageProfilesDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
-        DialogScreenClamp.Apply(this);
         DataContextChanged += OnDataContextChanged;
     }
 
