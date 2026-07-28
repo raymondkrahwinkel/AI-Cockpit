@@ -66,28 +66,62 @@ public class VelopackUpdateServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A rolling tag republished tonight is not a new release to compare against — the version is. Two nightlies of
-    /// the same tag differ by their run number, and the higher one is the update.
+    /// The nightly workflow deletes its release and its tag and makes them again every run, so the feed after a
+    /// retag carries one nightly, not a history — and the tag it hangs on is the same string it was yesterday. What
+    /// tells last night's install from tonight's build is therefore the version and nothing else, which is exactly
+    /// what the rolling tag cannot do. Modelled the way the workflow leaves it: one asset, a higher run number.
     /// </summary>
     [Fact]
-    public async Task ANightlyBuild_IsOfferedTheNightlyWithTheHigherRun()
+    public async Task AfterTheNightlyTagIsRemade_TheRebuiltNightlyIsStillSeenAsNewer()
     {
-        var result = await Check(
-            UpdateChannel.Nightly,
-            new Feed(Package("0.8.0-nightly.4"), Package("0.8.0-nightly.9")),
-            installed: "0.8.0-nightly.5");
+        var result = await Check(UpdateChannel.Nightly, new Feed(Package("0.8.0-nightly.9")), installed: "0.8.0-nightly.5");
 
         Assert.Equal("0.8.0-nightly.9", result.Release?.Version);
     }
 
-    /// <summary>Nothing newer on the channel is an "up to date", and that is the only thing that may report one.</summary>
+    /// <summary>And the same feed against an install that already has it: a retag on its own is not an update.</summary>
     [Fact]
-    public async Task NothingNewerOnTheChannel_IsUpToDate()
+    public async Task AfterTheNightlyTagIsRemade_TheSameBuildIsNotOfferedAgain()
     {
-        var result = await Check(UpdateChannel.Stable, new Feed(Package("0.7.0")));
+        var result = await Check(UpdateChannel.Nightly, new Feed(Package("0.8.0-nightly.9")), installed: "0.8.0-nightly.9");
 
         Assert.Null(result.Release);
         Assert.Null(result.Failure);
+    }
+
+    /// <summary>Nothing newer on the channel is an "up to date", and that is the only thing that may report one.</summary>
+    [Theory]
+    [InlineData(UpdateChannel.Stable, "0.7.0", "0.8.0")]
+    [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.4", "0.8.0-nightly.5")]
+    public async Task NothingNewerOnTheChannel_IsUpToDate(UpdateChannel channel, string offered, string installed)
+    {
+        var result = await Check(channel, new Feed(Package(offered)), installed);
+
+        Assert.Null(result.Release);
+        Assert.Null(result.Failure);
+    }
+
+    /// <summary>
+    /// The channel does not only name the feed — it decides which source is built, and that is what carries the
+    /// pre-release flag. Wiring the two together is the whole of "a stable install is never shown a nightly", and
+    /// nothing else here would notice if the check asked for one channel and built the source for the other.
+    /// </summary>
+    [Theory]
+    [InlineData(UpdateChannel.Stable)]
+    [InlineData(UpdateChannel.Nightly)]
+    public async Task TheSourceIsBuiltForTheChannelBeingChecked(UpdateChannel channel)
+    {
+        UpdateChannel? built = null;
+
+        await VelopackUpdateService.CheckAsync(
+            channel,
+            asked => { built = asked; return new Feed(); },
+            new TestVelopackLocator("AI-Cockpit", "0.8.0", _packages),
+            NullLogger.Instance,
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
+
+        Assert.Equal(channel, built);
     }
 
     /// <summary>

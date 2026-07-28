@@ -15,8 +15,11 @@ public static class BuildChannel
     private const string Nightly = "nightly";
 
     /// <summary>
-    /// The stream a version belongs to. Only the nightly prerelease tag means nightly: a release candidate
-    /// (<c>1.0.0-rc.1</c>) is published by the release workflow onto the stable channel, so it belongs there too.
+    /// The stream a version belongs to. Only the nightly prerelease tag means nightly; every other prerelease reads
+    /// as stable, which is the answer that offers less. A release candidate is the case to think about, and it cannot
+    /// arrive from the pipeline at all — the release workflow's tag gate accepts <c>vX.Y.Z</c> and nothing else, and
+    /// names <c>v0.8.0-rc.1</c> as one of the tags it exists to turn away. So a version like that is a build made some
+    /// other way, and guessing it wants nightlies would be a guess with a downgrade on the other side of it.
     /// </summary>
     public static UpdateChannel FromVersion(string version)
     {

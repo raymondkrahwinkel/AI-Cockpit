@@ -800,6 +800,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>True while the stored settings are being applied, so filling the controls does not read as using them.</summary>
     private bool _loadingUpdateSettings;
 
+    /// <summary>
+    /// True once the operator has changed either update setting. Both go through one save, so this is set in one
+    /// place — and it is what tells a load that finished afterwards not to overwrite a decision already on disk.
+    /// </summary>
+    private bool _updateSettingsTouched;
+
     // How often the background re-check for a newer build runs while the cockpit is open (AC-188) — the startup look
     // is a single shot, this catches a release cut hours after the window opened.
     private static readonly TimeSpan PeriodicUpdateCheckInterval = TimeSpan.FromHours(1);
@@ -3214,20 +3220,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var settings = await store.LoadAsync();
 
-            _loadingUpdateSettings = true;
-            try
+            // Reading the file waits out anything holding it, for up to a couple of seconds, and the Updates tab is
+            // reachable while it does. Whatever the operator changed in that window went to disk already; applying
+            // what was read before it would overwrite their choice in memory and snap the control back under their
+            // hand — the "a channel you touched is permanent" promise, broken by the load that came after it.
+            if (!_updateSettingsTouched)
             {
-                CheckForUpdatesOnStartup = settings.CheckOnStartup;
-                _chosenChannel = settings.Channel;
+                _loadingUpdateSettings = true;
+                try
+                {
+                    CheckForUpdatesOnStartup = settings.CheckOnStartup;
+                    _chosenChannel = settings.Channel;
 
-                // Nobody has chosen, so the build decides (AC-387). Defaulting to stable instead is how a nightly
-                // started without a configuration file is offered the latest stable as its first update — a
-                // downgrade, presented as an upgrade.
-                IncludeNightlyBuilds = (_chosenChannel ?? BuildChannel.FromVersion(version)) == UpdateChannel.Nightly;
-            }
-            finally
-            {
-                _loadingUpdateSettings = false;
+                    // Nobody has chosen, so the build decides (AC-387). Defaulting to stable instead is how a nightly
+                    // started without a configuration file is offered the latest stable as its first update — a
+                    // downgrade, presented as an upgrade.
+                    IncludeNightlyBuilds = (_chosenChannel ?? BuildChannel.FromVersion(version)) == UpdateChannel.Nightly;
+                }
+                finally
+                {
+                    _loadingUpdateSettings = false;
+                }
             }
         }
 
@@ -3435,6 +3448,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             return;
         }
+
+        _updateSettingsTouched = true;
 
         _ = _updateSettingsStore?.SaveAsync(new UpdateSettings(CheckForUpdatesOnStartup, _chosenChannel));
     }

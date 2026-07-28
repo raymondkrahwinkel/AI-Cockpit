@@ -523,6 +523,33 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the cockpit now looks for a newer build in the same place an update would come from, instead of asking
+  GitHub's release list separately. Those were two answers to one question and free to disagree — a banner offering a
+  build the updater could not see, or the other way round. There is one now.
+
+  What it looks for is a feed named for your platform and your channel together, so a release carrying Windows, macOS
+  and Linux packages side by side can never hand you somebody else's.
+
+  Two things you may notice. The status line no longer prints the date a build was published: the feed is a list of
+  packages and does not carry one, and an invented date is worse than none. And a copy that was not put there by the
+  cockpit's installer — a checkout, a tarball, your distribution's own package — can no longer look for updates at
+  all, where before it could look but not install. It now says so instead of quietly reporting nothing, and the
+  Updates tab no longer promises to tell you about new builds it cannot see.
+
+- changed: a nightly build stays on nightlies. If you had never picked a channel, the cockpit assumed stable — so a
+  nightly you had downloaded on purpose, started for the first time, would offer you the latest stable as its "update".
+  That is a downgrade wearing an upgrade's clothes. With no choice on record the channel now follows the build you are
+  actually running, and a nightly looks for nightlies.
+
+  Picking a channel yourself still wins, and now it sticks: once you touch that setting it is your decision and the
+  build no longer overrides it. Changing anything else in the Updates tab leaves the channel alone.
+
+  **One-time note if you have been running the cockpit already.** The old setting wrote a channel back on every start
+  whether or not you had ever chosen one, so a stored value proved nothing about what you wanted — and treating it as
+  a choice would have left the problem above in place for everyone who already had a config. It is read once as "not
+  chosen", and the build decides again. If you had deliberately opted into nightlies on a stable build, tick that box
+  one more time; it is permanent from then on.
+
 - changed: the header every dialog wears is lighter. Its name sat at heading size with a lot of room around it, which
   on a short dialog like Set status took two fifths of the window before you reached the first control, and on About
   left the header shouting over the dialog's own content. The name, the line under it and the room around them have

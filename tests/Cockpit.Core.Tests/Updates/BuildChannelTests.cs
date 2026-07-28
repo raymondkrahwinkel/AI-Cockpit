@@ -24,8 +24,10 @@ public class BuildChannelTests
         Assert.Equal(expected, BuildChannel.FromVersion(version));
 
     /// <summary>
-    /// A release candidate is a pre-release that the release workflow publishes onto the stable channel, so that is
-    /// where it belongs. Reading every pre-release as a nightly would put an rc on a feed it was never packed for.
+    /// Reading every pre-release as a nightly would put a build on a feed it was never packed for. A release
+    /// candidate is not even something the pipeline can produce — the release workflow's tag gate turns away
+    /// anything that is not <c>vX.Y.Z</c> — so this is a build from somewhere else, and stable is the answer that
+    /// offers it less rather than more.
     /// </summary>
     [Fact]
     public void AReleaseCandidate_IsNotANightly() =>

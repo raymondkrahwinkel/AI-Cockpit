@@ -74,9 +74,11 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
             using var waited = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             waited.CancelAfter(patience);
 
+            // Velopack's check takes no cancellation token, so a slow feed is waited out rather than stopped: the
+            // task is left to finish into nothing. Whatever it ends up doing is not watched — an unobserved task
+            // exception is swallowed by the runtime, which this project does not opt out of.
             if (await Task.WhenAny(check, Task.Delay(Timeout.Infinite, waited.Token)) != check)
             {
-                _Abandon(check);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 return UpdateCheckResult.Failed("The update feed did not answer in time.");
@@ -130,17 +132,6 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
     /// </summary>
     private static string _ReleasePage(string version, UpdateChannel channel) =>
         $"{RepositoryUrl}/releases/tag/{(channel == UpdateChannel.Nightly ? NightlyTag : $"v{version}")}";
-
-    /// <summary>
-    /// Keeps a timed-out check from raising an unobserved exception when it finally fails. Velopack's check takes no
-    /// cancellation token, so the task outlives the wait rather than being stopped.
-    /// </summary>
-    private static void _Abandon(Task check) =>
-        check.ContinueWith(
-            static abandoned => _ = abandoned.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
 
     /// <summary>
     /// What this build is. The version carries the semver — including the <c>-nightly.&lt;run&gt;</c> tag a nightly is

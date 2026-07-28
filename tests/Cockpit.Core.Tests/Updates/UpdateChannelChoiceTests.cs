@@ -42,15 +42,48 @@ public class UpdateChannelChoiceTests : IDisposable
         Assert.False(vm.IncludeNightlyBuilds);
     }
 
-    /// <summary>Criterion 4, first half: a choice beats what the build would have implied.</summary>
-    [Fact]
-    public async Task AChosenChannel_WinsOverTheBuildsOwnStream()
+    /// <summary>
+    /// Criterion 4, first half: a choice beats what the build would have implied — in both directions, because a
+    /// rule tested one way round is satisfied by code that only works one way round.
+    /// </summary>
+    [Theory]
+    [InlineData("0.8.0-nightly.12", UpdateChannel.Stable, false)]
+    [InlineData("0.8.0", UpdateChannel.Nightly, true)]
+    public async Task AChosenChannel_WinsOverTheBuildsOwnStream(string build, UpdateChannel chosen, bool expected)
     {
-        var vm = UpdateTestCockpit.Build(Updates("0.8.0-nightly.12"), Store(new UpdateSettings(Channel: UpdateChannel.Stable)));
+        var vm = UpdateTestCockpit.Build(Updates(build), Store(new UpdateSettings(Channel: chosen)));
 
         await vm.InitialiseUpdatesAsync();
 
-        Assert.False(vm.IncludeNightlyBuilds);
+        Assert.Equal(expected, vm.IncludeNightlyBuilds);
+    }
+
+    /// <summary>
+    /// The read waits out whatever holds the file, and the Updates tab is reachable while it does. A choice made in
+    /// that window is already on disk; letting the load land on top of it would take the operator's decision back
+    /// and snap the control under their hand — the "permanent" half of criterion 4, undone by timing.
+    /// </summary>
+    [Fact]
+    public async Task AChoiceMadeWhileTheSettingsAreStillLoading_IsNotOverwrittenByThem()
+    {
+        var opened = new TaskCompletionSource();
+        var store = Substitute.For<IUpdateSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            await opened.Task;
+            return new UpdateSettings();
+        });
+
+        var vm = UpdateTestCockpit.Build(Updates("0.8.0"), store);
+        var initialising = vm.InitialiseUpdatesAsync();
+
+        // The operator reaches the tab and opts into nightlies before the file has finished being read.
+        vm.IncludeNightlyBuilds = true;
+        opened.SetResult();
+        await initialising;
+
+        Assert.True(vm.IncludeNightlyBuilds);
+        await store.Received().SaveAsync(Arg.Is<UpdateSettings>(s => s.Channel == UpdateChannel.Nightly), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
