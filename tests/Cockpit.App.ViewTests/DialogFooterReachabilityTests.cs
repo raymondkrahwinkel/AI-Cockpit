@@ -49,7 +49,7 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     [Fact]
     public void NoDialogLaysAControlOutsideItself_WhateverItsTextSays() => HeadlessAvalonia.Run(() =>
     {
-        var (dialogs, stressed, untouched, offenders) = (0, 0, new List<string>(), new List<string>());
+        var (scenes, stressed, bodyless, offenders) = (0, 0, new List<string>(), new List<string>());
 
         foreach (var scene in Screenshotter.SceneNames)
         {
@@ -61,12 +61,17 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
 
             try
             {
-                dialogs++;
+                scenes++;
                 var texts = _StressEveryTextThatCameFromData(window);
                 stressed += texts;
-                if (texts == 0)
+
+                // The shared chrome's title bar is built in C#, so it is never in a dialog's own literal set and
+                // every scene stresses it. Counted apart from the rest, because a total that always includes it
+                // can never reach zero — which would make this line incapable of reporting the gap it exists to
+                // report. Measured before this split: 26 of 41 "stressed" texts were title bars.
+                if (texts <= 1)
                 {
-                    untouched.Add(scene);
+                    bodyless.Add(scene);
                 }
 
                 window.UpdateLayout();
@@ -78,8 +83,8 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
             }
         }
 
-        output.WriteLine($"{dialogs} dialogs, {stressed} texts stressed; nothing to stress in: " +
-                         (untouched.Count == 0 ? "none" : string.Join(", ", untouched)));
+        output.WriteLine($"{scenes} dialog scenes, {stressed} texts stressed; nothing beyond the title bar in: " +
+                         (bodyless.Count == 0 ? "none" : string.Join(", ", bodyless)));
 
         Assert.True(offenders.Count == 0,
             "these controls ended up outside the dialog holding them:" +
@@ -135,16 +140,17 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     /// this asserts it reached them, because three of the twenty-one used to ask for it by hand and the other
     /// eighteen simply did not.
     /// <para>
-    /// Two ways to be bounded, and which one a dialog gets is the clamp's own distinction. A window with a
-    /// height of its own is resized to fit and keeps no ceiling, so the operator can still drag it larger than
-    /// the screen. A window that measures itself has no height to resize and re-measures whenever its content
-    /// changes, so it gets a ceiling that outlives the moment it opened.
+    /// Only the dialogs that measure themselves are asserted on here, because they are the only ones this can
+    /// say anything about. A window with a height of its own is <em>resized</em> to fit, and the headless screen
+    /// is 1280 high while the tallest such dialog opens at 900 — so "it fits" would be true with the clamp
+    /// deleted. That arithmetic is held against a real 1280×720 by <c>DialogScreenClampTests</c> instead, where
+    /// it bites.
     /// </para>
     /// </summary>
     [Fact]
-    public void EveryDialogIsBoundedByTheScreenItOpensOn() => HeadlessAvalonia.Run(() =>
+    public void EveryDialogThatMeasuresItself_IsCappedAtTheScreenItOpensOn() => HeadlessAvalonia.Run(() =>
     {
-        var (dialogs, unbounded) = (0, new List<string>());
+        var (capped, unbounded) = (0, new List<string>());
 
         foreach (var scene in Screenshotter.SceneNames)
         {
@@ -156,19 +162,19 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
 
             try
             {
-                dialogs++;
+                if (window.SizeToContent is SizeToContent.Manual)
+                {
+                    continue;
+                }
+
+                capped++;
                 var screen = window.Screens.ScreenFromWindow(window);
                 Assert.NotNull(screen);
 
                 var available = screen.WorkingArea.Height / screen.Scaling;
-                var bounded = window.SizeToContent is SizeToContent.Manual
-                    ? window.Height <= available
-                    : window.MaxHeight <= available;
-
-                if (!bounded)
+                if (window.MaxHeight > available)
                 {
-                    unbounded.Add($"{scene} ({window.SizeToContent}) stands at {window.Height:0.#} under a ceiling " +
-                                  $"of {window.MaxHeight:0.#}, on a screen offering {available:0.#}");
+                    unbounded.Add($"{scene} may grow to {window.MaxHeight:0.#} on a screen offering {available:0.#}");
                 }
             }
             finally
@@ -177,8 +183,9 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
             }
         }
 
-        output.WriteLine($"{dialogs} dialogs checked against the screen");
+        output.WriteLine($"{capped} self-measuring dialog scenes capped at the screen");
 
+        Assert.True(capped > 0, "no dialog reached the branch this is about, so it proved nothing");
         Assert.True(unbounded.Count == 0, string.Join(Environment.NewLine, unbounded));
     });
 
@@ -356,8 +363,10 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     {
         var file = Path.Combine(RepositoryPaths.Root, "src", "Cockpit.App", "Views", $"{window.GetType().Name}.axaml");
 
+        // \b so PlaceholderText= does not come along: it ends in Text and matched, quietly exempting any bound
+        // value that happened to read the same as a placeholder ("value", "Repository", "X-Api-Key").
         return File.Exists(file)
-            ? [.. Regex.Matches(File.ReadAllText(file), "Text=\"([^\"{][^\"]*)\"").Select(match => match.Groups[1].Value)]
+            ? [.. Regex.Matches(File.ReadAllText(file), "\\bText=\"([^\"{][^\"]*)\"").Select(match => match.Groups[1].Value)]
             : [];
     }
 
@@ -436,9 +445,17 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     private static string _Describe(Control control) => control switch
     {
         ContentControl { Content: string label } => label,
+        // A button whose content is a control rather than a string — ConfirmationDialog's trimming label, the
+        // icon-plus-text pairs — would otherwise be reported as "Button" and name nothing.
+        ContentControl { Content: Control inner } when _FirstText(inner) is { } label => label,
         TextBox { PlaceholderText: { Length: > 0 } hint } => $"the box for '{hint}'",
         _ => control.Name ?? control.GetType().Name,
     };
+
+    private static string? _FirstText(Control control) => control is TextBlock { Text: { Length: > 0 } own }
+        ? own
+        : control.GetVisualDescendants().OfType<TextBlock>()
+            .Select(text => text.Text).FirstOrDefault(text => text is { Length: > 0 });
 
     private static bool _Ancestor<T>(Visual control, Window window) where T : Visual
     {

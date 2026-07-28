@@ -853,18 +853,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   whose length comes from your data shared a column with the buttons, and a column does not clip, so the buttons
   were laid out past the edge and the window cut them off.
 
-  All twenty-one dialogs were then driven with the longest text each can actually be given, rather than with an
-  empty form, and three more had it. Managing profiles pushed Cancel and Save out and squeezed Remove to nothing
-  when a status message named several profiles, and did it again when asked to confirm removing one. The list of
-  delegated tasks put Stop — the only way to end a running task — past the edge for a long enough task name. And
-  a plugin asking you to confirm something could carry its own button off the dialog with a long enough label.
-  Those texts now wrap and shorten, with the whole message on the tooltip, because the text is the one thing on
-  such a row that can afford to give way.
+  Every dialog was then swept for the same shape, with each text it lays out driven far past any length it would
+  really carry, and three more had it. Managing profiles pushed Cancel and Save out and squeezed Remove to
+  nothing when a status message named several profiles, and did it again when asked to confirm removing one. The
+  list of delegated tasks put Stop — the only way to end a running task — past the edge for a long enough task
+  name. And a plugin asking you to confirm something could carry its own button off the dialog with a long
+  enough label. Those texts now wrap and shorten, with the whole message on the tooltip, because the text is the
+  one thing on such a row that can afford to give way.
 
 - fixed: dialogs now fit the screen they open on. A dialog is centred on the cockpit with nothing to drag it back
-  by, so one designed for a desktop — the plugin store's catalogue at 820 tall, the project editor at 760 — opened
-  with its buttons past the bottom edge of a 768-pixel laptop panel and there was no way to reach them. Three
-  dialogs already shrank to fit; all of them do now, including the windows a plugin opens.
+  by, so one designed for a desktop opened with its buttons past the bottom edge of a 768-pixel laptop panel and
+  there was no way to reach them. Three of them already shrank to fit — the plugin store, managing profiles and
+  managing stores — while the rest, the project editor at 760 tall among them, did not. All of them do now,
+  including the windows a plugin opens.
 
   A dialog that sizes itself to its content is capped rather than resized, since there is no size to shrink, and
   the form inside it scrolls. That settles what used to happen when something long arrived in one: a git error a
