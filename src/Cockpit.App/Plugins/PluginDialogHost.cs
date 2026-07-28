@@ -4,22 +4,34 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Shows a plugin's content in a modal window over the cockpit's main window (#14), wrapped in the shared
-/// cockpit window chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app.
-/// The plugin owns the content control. The settings variant adds a host-provided Save/Close footer so
-/// every plugin's settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/>
-/// and closes the dialog on success.
+/// Shows a plugin's content in a window beside the cockpit (#14), wrapped in the shared cockpit window
+/// chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app. The plugin owns
+/// the content control. The settings variant adds a host-provided Save/Close footer so every plugin's
+/// settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and
+/// closes the window on success.
+/// <para>
+/// These are surfaces, not questions (AC-367): a plugin's issue list or workflow manager is read and
+/// worked in for minutes, and as a modal it took every running session down with it. One window per title,
+/// so the toolbar button that opened it brings it forward rather than stacking a second copy.
+/// </para>
 /// </summary>
-internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
+internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
     {
+        if (surfaces.TryActivate(_DialogKey(title)) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out _))
         {
             return;
@@ -27,11 +39,17 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         window.Content = _WithToasts(createContent(), owner);
         CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
-        await window.ShowDialog(owner);
+        await surfaces.ShowAsync(_DialogKey(title), window, owner);
     }
 
     public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
     {
+        if (surfaces.TryActivate(_SettingsKey(title)) is { } open)
+        {
+            await open;
+            return;
+        }
+
         if (!_TryCreateWindow(title, width, height, out var window, out var owner, out var maximum))
         {
             return;
@@ -88,12 +106,19 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
-        await window.ShowDialog(owner);
+        await surfaces.ShowAsync(_SettingsKey(title), window, owner);
     }
 
-    // A dialog is modal, and the cockpit's toasts live on the window behind it — so a toast raised from inside a
-    // plugin's dialog (a workflow's Notify step, say) appeared nowhere at all. The same overlay goes on top of the
-    // dialog, bound to the same view model, so one toast shows in whichever window the operator is looking at.
+    // Keyed on the title, which is what the operator sees and what the plugin passes for the same button every
+    // time. Dialog and settings are keyed apart: a plugin whose settings carry the same title as its dialog would
+    // otherwise get one where it opened the other.
+    private static object _DialogKey(string title) => ("plugin-dialog", title);
+
+    private static object _SettingsKey(string title) => ("plugin-settings", title);
+
+    // The cockpit's toasts live on the main window, so a toast raised from inside a plugin's window (a workflow's
+    // Notify step, say) appeared nowhere at all when that window covered it. The same overlay goes on top of this
+    // one, bound to the same view model, so one toast shows in whichever window the operator is looking at.
     private static Control _WithToasts(Control content, Window owner)
     {
         var overlay = new ToastOverlay { DataContext = owner.DataContext };
@@ -113,9 +138,8 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         // The owner is whichever window the operator is actually looking at, not always the main one: a settings
         // dialog opened from the gear on a plugin's own dialog must sit on top of that dialog. Owned by the main
-        // window it would open behind a modal that blocks its own owner — visible nowhere, with the app looking
-        // hung. The main window stays the fallback, which is what it is for every dialog opened from the cockpit
-        // itself.
+        // window it would open behind the very window that asked for it. The main window stays the fallback,
+        // which is what it is for every dialog opened from the cockpit itself.
         owner = lifetime.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
 
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit

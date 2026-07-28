@@ -214,7 +214,7 @@ public interface ICockpitHost
     /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
     IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
 
-    /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
+    /// <summary>Opens a window beside the cockpit hosting <paramref name="createContent"/>; the plugin owns the content control. Not modal: the operator can still reach a running session, and opening it again while it is up brings that window forward rather than making a second one.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
     /// <summary>

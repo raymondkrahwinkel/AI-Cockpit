@@ -2,7 +2,7 @@ using Avalonia.Controls;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>Opens a modal dialog over the main window hosting a plugin-built control (#14) — backs <c>ICockpitHost.ShowDialogAsync</c> and the plugin-settings gear.</summary>
+/// <summary>Opens a window beside the cockpit hosting a plugin-built control (#14) — backs <c>ICockpitHost.ShowDialogAsync</c> and the plugin-settings gear. Not modal (AC-367): the operator keeps every running session reachable while it is open, and asking twice brings the open one forward.</summary>
 public interface IPluginDialogHost
 {
     /// <summary>

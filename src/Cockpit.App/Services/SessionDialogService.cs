@@ -24,9 +24,16 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App.Services;
 
 /// <summary>
-/// Hosts the modal dialogs over the main window. Constructs each dialog's view model with the profile
-/// store/login checker it injects, so the dialogs get their data without a service locator, then shows
-/// it with <c>ShowDialog</c> and relays the typed result back to the caller.
+/// Hosts the cockpit's dialogs. Constructs each dialog's view model with the profile store/login checker
+/// it injects, so the dialogs get their data without a service locator, then shows it and relays the
+/// typed result back to the caller.
+/// <para>
+/// Two kinds, and the difference is deliberate (AC-367). A <b>surface</b> — projects, MCP servers, the
+/// plugin store, options — is something the operator works in for minutes, so it opens beside the cockpit
+/// through <see cref="SurfaceWindows"/> and leaves every running session reachable. A <b>question</b> —
+/// confirm a removal, type a password, trust a plugin — is answered in seconds and nothing may carry on
+/// half-answered, so it stays a modal <c>ShowDialog</c>. Either way the caller awaits the same task.
+/// </para>
 /// </summary>
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
@@ -49,6 +56,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
     private readonly IProjectStore _projectStore;
     private readonly IProjectFieldRegistry _projectFields;
+    private readonly SurfaceWindows _surfaces;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -69,8 +77,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IRepositoryCloneManager cloneManager,
         IVerifyRunnerRegistry verifyRunnerRegistry,
         IProjectStore projectStore,
-        IProjectFieldRegistry projectFields)
+        IProjectFieldRegistry projectFields,
+        SurfaceWindows surfaces)
     {
+        _surfaces = surfaces;
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
         _profileStore = profileStore;
@@ -94,13 +104,21 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
-        // Topmost window, not always the main one (AC-297): a plugin can open this dialog from its own modal —
-        // an issue dialog's "New session" button — and that modal blocks the main window. Owned by the main window
-        // this would open behind the very dialog that asked for it, and it would not block that dialog either, so a
-        // second click would stack another one. Same reasoning as PluginDialogHost's owner pick.
+        // Topmost window, not always the main one (AC-297): a plugin opens this from its own window — an issue
+        // dialog's "New session" button — and owned by the main window it would open behind the very window that
+        // asked for it. Same reasoning as PluginDialogHost's owner pick.
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return null;
+        }
+
+        // One at a time (AC-367): you can only start one session, and a second copy would let two half-filled
+        // forms compete over the same folder. A prefill that arrives while one is open is dropped along with the
+        // duplicate — the operator is looking at a form they are already filling in, and overwriting it under
+        // their hands is worse than ignoring a button they can press again.
+        if (_surfaces.TryActivate(typeof(NewSessionDialog)) is Task<NewSessionResult?> open)
+        {
+            return await open;
         }
 
         // The New-session picker reads the catalog (registry + plugin-provided servers, AC-11) so a plugin's
@@ -174,6 +192,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new NewSessionDialog { DataContext = viewModel };
 
+        // The answer, read off the view model once the window has closed: a surface is not shown with ShowDialog,
+        // and the value handed to Close() is only readable from that. The dialog's own code-behind listens to the
+        // same event to close the window; this listener is what carries the choice back to the caller. Closing
+        // the window any other way — the X, Escape — never raises it, which is the cancel the caller expects.
+        NewSessionResult? chosen = null;
+        viewModel.CloseRequested += result => chosen = result;
+
         // Managing profiles from within the New-session dialog opens the Manage dialog over it, then
         // reloads the picker so any added/edited/removed profile (and its defaults) shows immediately.
         // async void via the Action event: guard it so a dialog/store failure can't tear the process
@@ -210,7 +235,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             }
         };
 
-        return await dialog.ShowDialog<NewSessionResult?>(owner);
+        return await _surfaces.ShowAsync(typeof(NewSessionDialog), dialog, owner, () => chosen);
     }
 
     public async Task ShowManageProfilesDialogAsync()
@@ -229,8 +254,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         // The one shared manager, so what this window shows is what the sidebar and the overview show.
-        await projects.LoadAsync();
-        await new ProjectsDialog { DataContext = projects }.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(ProjectsDialog), owner, async () =>
+        {
+            await projects.LoadAsync();
+            return new ProjectsDialog { DataContext = projects };
+        });
     }
 
     public async Task<Project?> ShowProjectDialogAsync(Project? project)
@@ -240,6 +268,15 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
+        // Keyed on the project, not just the window type (AC-367): editing two different projects side by side is
+        // fine, editing the same one twice is two forms saving over each other. A new project keys on null, so a
+        // second "New project" focuses the empty form already open.
+        var key = (typeof(ProjectDialog), project?.Id);
+        if (_surfaces.TryActivate(key) is Task<Project?> open)
+        {
+            return await open;
+        }
+
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog, _projectFields.Fields);
         var dialog = new ProjectDialog { DataContext = viewModel };
 
@@ -247,7 +284,12 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own and the manager that runs it, both of which live on this service.
         viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
 
-        return await dialog.ShowDialog<Project?>(owner);
+        // Read back once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
+        // window's own X both leave this null, which is the same answer.
+        Project? saved = null;
+        viewModel.CloseRequested += result => saved = result;
+
+        return await _surfaces.ShowAsync(key, dialog, owner, () => saved);
     }
 
     // Keeps the URL beside the path: a project shows where its folder came from, which the clone dialog's own
@@ -277,14 +319,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<string?>(owner);
     }
 
-    private async Task ShowManageProfilesAsync(Window owner)
-    {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
-        await viewModel.LoadAsync();
+    private Task ShowManageProfilesAsync(Window owner) =>
+        _ShowSurfaceAsync(typeof(ManageProfilesDialog), owner, async () =>
+        {
+            var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
+            await viewModel.LoadAsync();
 
-        var dialog = new ManageProfilesDialog { DataContext = viewModel };
-        await dialog.ShowDialog(owner);
-    }
+            return new ManageProfilesDialog { DataContext = viewModel };
+        });
 
     public async Task ShowMcpServersDialogAsync()
     {
@@ -293,12 +335,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders, _oauthCoordinator);
-        await viewModel.LoadAsync();
+        await _ShowSurfaceAsync(typeof(McpServersDialog), owner, async () =>
+        {
+            var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders, _oauthCoordinator);
+            await viewModel.LoadAsync();
 
-        var dialog = new McpServersDialog { DataContext = viewModel };
-        viewModel.CloseRequested += dialog.Close;
-        await dialog.ShowDialog(owner);
+            var dialog = new McpServersDialog { DataContext = viewModel };
+            viewModel.CloseRequested += dialog.Close;
+
+            return dialog;
+        });
     }
 
     public async Task ShowVerifyRunnersDialogAsync()
@@ -308,11 +354,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var viewModel = new VerifyRunnersViewModel(_verifyRunnerRegistry);
-        await viewModel.LoadAsync();
+        await _ShowSurfaceAsync(typeof(VerifyRunnersDialog), owner, async () =>
+        {
+            var viewModel = new VerifyRunnersViewModel(_verifyRunnerRegistry);
+            await viewModel.LoadAsync();
 
-        var dialog = new VerifyRunnersDialog { DataContext = viewModel };
-        await dialog.ShowDialog(owner);
+            return new VerifyRunnersDialog { DataContext = viewModel };
+        });
     }
 
     public async Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null)
@@ -322,16 +370,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var viewModel = new PluginStoreDialogViewModel(manager, initialFilter);
-        var dialog = new PluginStoreDialog { DataContext = viewModel };
-        await viewModel.LoadAsync();
-        await dialog.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(PluginStoreDialog), owner, async () =>
+        {
+            var viewModel = new PluginStoreDialogViewModel(manager, initialFilter);
+            var dialog = new PluginStoreDialog { DataContext = viewModel };
+            await viewModel.LoadAsync();
+
+            return dialog;
+        });
     }
 
-    // Most dialogs are only ever shown over the main window, so they hardcode it as the owner. The store
-    // dialog can itself be a step below another modal (Options → Store), so it — and anything the store
-    // dialog opens in turn, like plugin consent — needs the topmost active window instead, or it centers
-    // behind the dialog stack rather than over it (#62 design-doc caveat).
+    // Most dialogs are only ever opened from the main window, so they hardcode it as the owner. The store
+    // dialog can itself be a step below another window (Options → Store), so it — and anything the store
+    // opens in turn, like plugin consent — needs the topmost active window instead, or it centres behind
+    // the window it was opened from rather than over it (#62 design-doc caveat).
     private static Window? _ActiveOwnerWindow()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
@@ -341,6 +393,24 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
+
+    // Opens a surface that answers nothing, and waits for it to close like the modal it used to be (AC-367).
+    // The window is built by a callback rather than passed in because nearly every surface reads a store to
+    // populate itself: asked for one that is already open, that work would be done for a window thrown away.
+    private async Task _ShowSurfaceAsync(object key, Window owner, Func<Task<Window>> createSurface)
+    {
+        if (_surfaces.TryActivate(key) is { } open)
+        {
+            await open;
+            return;
+        }
+
+        await _surfaces.ShowAsync(key, await createSurface(), owner);
+    }
+
+    // The same, for a surface that needs nothing read before it can be built.
+    private Task _ShowSurfaceAsync(object key, Window owner, Func<Window> createSurface) =>
+        _ShowSurfaceAsync(key, owner, () => Task.FromResult(createSurface()));
 
     public async Task<(DateTimeOffset Moment, string Prompt)?> ShowScheduleResumeDialogAsync(DateTimeOffset suggested, string prompt)
     {
@@ -364,9 +434,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var dialog = new OptionsDialog { DataContext = viewModel };
-
-        await dialog.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(OptionsDialog), owner, () => new OptionsDialog { DataContext = viewModel });
 
         // AC-233: the usage thresholds are edited in place like every other option here, so they are written when
         // the dialog closes. Sessions already open keep the numbers they were started with; the ones started after
@@ -478,8 +546,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         // The shared view model, so the dialog lists the same tasks the orchestrator tools act on.
-        var dialog = new DelegatedTasksDialog { DataContext = _delegatedTasks };
-        await dialog.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(DelegatedTasksDialog), owner, () => new DelegatedTasksDialog { DataContext = _delegatedTasks });
     }
 
     public async Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees)
@@ -491,9 +558,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         // The caller's shared view model, so the dialog and the status-bar counter read the same worktrees. Refreshed
         // to the real git state (clean/dirty, owner live/gone) before it opens.
-        await worktrees.RefreshAsync();
-        var dialog = new WorktreesDialog { DataContext = worktrees };
-        await dialog.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(WorktreesDialog), owner, async () =>
+        {
+            await worktrees.RefreshAsync();
+            return new WorktreesDialog { DataContext = worktrees };
+        });
     }
 
     public async Task ShowAboutDialogAsync()
@@ -503,10 +572,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var pluginProviders = _pluginProviderRegistry.Registrations.Select(registration => registration.DisplayName);
-        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), pluginProviders);
-        var dialog = new AboutDialog { DataContext = info };
-        await dialog.ShowDialog(owner);
+        await _ShowSurfaceAsync(typeof(AboutDialog), owner, () =>
+        {
+            var pluginProviders = _pluginProviderRegistry.Registrations.Select(registration => registration.DisplayName);
+            var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), pluginProviders);
+
+            return new AboutDialog { DataContext = info };
+        });
     }
 
     public async Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands)
