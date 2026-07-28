@@ -678,6 +678,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: text boxes and dropdowns went back to the stock Fluent palette the moment you hovered or typed in them —
+  a focused input turned black and grew a two-pixel ring, and a hovered picker took on a translucent dark fill,
+  none of which are colours this theme uses. Hovering and focusing now leave a field's own fill and border alone.
+  The most visible symptom was the Insert prompt search bar, which asks for no box at all and was drawn as one
+  anyway.
+
+- fixed: the flow name in the workflow editor answers to the pointer and to focus again. It is a text box you can
+  type in rather than a label, and it had no way of saying so once the fix above took away the stock highlight it
+  had been borrowing — so it now carries a border of its own that stays invisible until you reach for it. The
+  toolbar it sits in is two pixels taller for that, and no longer changes height when you click into the name.
+
 - fixed: the bottom row of a terminal pane could be drawn where the pane had no room to show it, so a session's
   last line was simply absent — and nothing said so. A task list that ends one entry early looks like a task list
   that ended. The terminal deliberately keeps its row count steady through the small height changes the surrounding

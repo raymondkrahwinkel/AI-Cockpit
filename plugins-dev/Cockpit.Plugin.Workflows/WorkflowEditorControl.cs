@@ -141,8 +141,12 @@ internal sealed class WorkflowEditorControl : UserControl
             FontWeight = FontWeight.SemiBold,
             FontSize = 13,
             MinWidth = 240,
+            // An invisible border rather than none: a field asking for zero thickness gives the theme's hover
+            // and focus rules nothing to paint on, and this one sits in a toolbar beside Back and Active
+            // rather than auto-focusing the way the search fields that go without a border do (AC-425). The
+            // width stays the theme's, so the toolbar keeps the same height as every other input.
             Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
+            BorderBrush = Brushes.Transparent,
             VerticalAlignment = VerticalAlignment.Center,
         };
         ToolTip.SetTip(name, "The flow's name — type to change it");
