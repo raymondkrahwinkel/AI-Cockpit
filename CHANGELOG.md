@@ -847,6 +847,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Autopilot's "Needs you" state could leave you with no way to answer. With more than one run active, the
+  pane could keep showing a still-running run's session while the badge lit up for a different run waiting on you —
+  a notice with no path to the run it was about. The badge now takes you to the run that needs you, and clicking it
+  again steps through the others if several do at once. The blockade panel also gets its own scrollbar, so a longer
+  question — several numbered options plus advice — no longer overflows the pane and pushes the answer box out of
+  reach.
+
 - fixed: the cockpit's audit trails are no longer readable by every account on the machine. The files recording
   which commands you approved, which prompts sub-agents were given, what one agent sent another, and what your
   sessions spent were created with whatever the system's default permissions said — on a stock Fedora, that means
