@@ -15,6 +15,7 @@ using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Velopack;
 
 namespace Cockpit.App;
 
@@ -33,6 +34,14 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Installing, updating and uninstalling all re-run this executable with arguments Velopack owns, and this
+        // call is what handles them and ends the process (AC-385). It is deliberately the first statement in Main:
+        // anything placed above it runs during every one of those passes, in a window nobody sees — a second
+        // cockpit claiming the single-instance lock mid-update, plugins being installed by an installer, a log
+        // being truncated. On an ordinary launch none of those arguments are present and this returns immediately,
+        // which is also why it is safe ahead of the headless children below.
+        VelopackApp.Build().Run();
+
         // Headless calibration child (AC-68): a measurement of one Whisper backend, spawned by the running cockpit
         // because Whisper.net loads its native runtime once per process. This must be the very first thing Main
         // does — before the single-instance guard (which would refuse a second cockpit), before Avalonia, plugins
