@@ -638,6 +638,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   report what it actually built and ran, and the same requirement goes into the gate's acceptance — so what a gate
   claims about its final round is something you can read back instead of assume.
 
+- changed: Autopilot's code-review and security-review gates now read a finished diff at the same time instead of
+  one after another, each on its own throwaway copy of the work so the two can never write over each other. When
+  either finds something, one shared step applies both gates' findings before they check again; a gate that comes
+  back clean the first time is done and never waits on the other.
+
 - changed: the release page now tells you what your own machine is about to do about an unsigned download, for all
   three platforms rather than only macOS. Windows SmartScreen calls the publisher unknown, a downloaded AppImage has
   no executable bit, and Gatekeeper reports a perfectly good app as damaged — each refusal looks like a broken
