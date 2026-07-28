@@ -4283,7 +4283,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
-        var result = await _dialogService.ShowNewSessionDialogAsync(prefill);
+        var result = await _dialogService.ShowNewSessionDialogAsync(
+            prefill,
+            project: await _ProjectLinkedAsAsync(prefill?.LinkedProject));
         if (result is null)
         {
             return null;
@@ -4296,6 +4298,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         return paneId;
+    }
+
+    /// <summary>
+    /// The project a plugin's prefill named by its link (AC-419) — "the one tracked in YouTrack's AC" — handed to the
+    /// dialog through the project parameter the operator's own project pick already uses (AC-164), so a preselected
+    /// project brings its folder, profile, worktree default and MCP overlay exactly as picking it by hand would.
+    /// Null for no link, a link nothing declares, or one two projects declare; the dialog then opens on no project.
+    /// </summary>
+    private async Task<Project?> _ProjectLinkedAsAsync(ProjectLink? link)
+    {
+        if (link is null)
+        {
+            return null;
+        }
+
+        // The projects list is filled by a fire-and-forget read at startup, so a plugin that opens this dialog early —
+        // a shortcut pressed while the cockpit is still settling — can get here first and find it empty. Reading it now
+        // in that case is the difference between "no project links that" and "the list was not there yet". Guarded like
+        // _ProjectIdForDirectoryAsync's read for the same reason: an unreadable list costs a preselection, while an
+        // exception escaping here would reach the host's catch and cancel the dialog outright — no session at all
+        // because a convenience could not be worked out.
+        if (Projects.Projects.Count == 0)
+        {
+            try
+            {
+                await Projects.LoadAsync();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        return ProjectLinkMatch.For(Projects.Projects, link.FieldKey, link.Value);
     }
 
     /// <summary>

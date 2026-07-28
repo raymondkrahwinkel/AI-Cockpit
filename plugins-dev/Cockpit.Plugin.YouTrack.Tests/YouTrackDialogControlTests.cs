@@ -168,6 +168,50 @@ public class YouTrackDialogControlTests
     });
 
     [Fact]
+    public void NewSession_NamesTheProjectTheSelectedIssueLivesIn_SoTheDialogCanPreselectIt() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-419: the dialog already knows which issue it is for, so it can say which cockpit project that issue's
+        // YouTrack project is linked to (AC-317) instead of leaving the operator on "No project" every time.
+        //
+        // The issue under test is moved to a project the other fixture is not in. Both fixtures are in AT, so an
+        // assertion on AT would hold just as well on a build that read the first row, or the grid's project filter,
+        // instead of the selection — the test would pass while proving none of what its name says.
+        var elsewhere = Second with { Project = "OTHER" };
+        var harness = DialogHarness.Open(First, elsewhere);
+        harness.Select(elsewhere);
+
+        harness.Click("New session");
+
+        var link = harness.Host.LastNewSessionPrefill?.LinkedProject;
+        var fieldKey = link?.FieldKey;
+        var value = link?.Value;
+        _out.WriteLine($"link={fieldKey ?? "<null>"}={value ?? "<null>"}");
+        harness.Close();
+
+        fieldKey.Should().Be("youtrack.project", "that is the key the project editor stores the link under");
+        value.Should().Be("OTHER", "the issue being started decides — not the first row, and not the project filter");
+    });
+
+    [Fact]
+    public void AnIssueWithNoProject_NamesNoProjectRatherThanAnEmptyOne() => HeadlessAvalonia.Run(() =>
+    {
+        // An "All projects" query whose response carries no project.shortName leaves the issue with no project at
+        // all (YouTrackClient._ExtractProject falls back to the query's tag, and that query has none). A link
+        // carrying an empty value would be a question with no answer in it.
+        var orphan = First with { Project = string.Empty };
+        var harness = DialogHarness.Open(orphan, Second);
+        harness.Select(orphan);
+
+        harness.Click("New session");
+
+        var link = harness.Host.LastNewSessionPrefill?.LinkedProject;
+        _out.WriteLine($"link={link?.Value ?? "<null>"}");
+        harness.Close();
+
+        link.Should().BeNull();
+    });
+
+    [Fact]
     public void ClosingTheNewSessionDialog_ArmsTheButtonAgain() => HeadlessAvalonia.Run(() =>
     {
         var harness = DialogHarness.Open(First, Second);
