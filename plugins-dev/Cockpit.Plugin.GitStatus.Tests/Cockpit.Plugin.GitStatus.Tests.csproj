@@ -28,9 +28,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj" />
-    <!-- TestGitDirectory, shared with the host's test projects (AC-371) rather than copied here: git leaves its
-         objects read-only and Windows will not delete those, which failed this project's whole git fixture from
-         its teardown. Autopilot.Tests and Workflows.Tests take the same reference. -->
+    <!-- TestGitDirectory (AC-339), taken from the project that exists to be shared rather than copied here: git
+         leaves its objects read-only and Windows will not delete those, which failed every test in the workflow-
+         steps fixture from its teardown. Four other plugin test projects take the same reference. -->
     <ProjectReference Include="..\..\tests\Cockpit.TestSupport\Cockpit.TestSupport.csproj" />
   </ItemGroup>
 
