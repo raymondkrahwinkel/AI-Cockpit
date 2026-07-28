@@ -175,124 +175,132 @@
             </DockPanel>
         </Border>
 
-        <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">
+        <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send.
+             The hairline is what tells the transcript apart from the composer's zone (AC-424). The transcript scrolls
+             under it and its bottom row is cut mid-glyph — with nothing drawn between the two and the same background
+             on both sides, that cut row read as colliding with the "Thinking…" indicator eight pixels below it, which
+             is what the overlap report described. A boundary makes scrolled-under content read as scrolled-under. The
+             8px that used to be this panel's top margin is now padding under the line, so nothing else moves. -->
+        <Border DockPanel.Dock="Bottom" Padding="0,8,0,0"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
+            <DockPanel LastChildFill="True">
 
-            <!-- "Still starting" banner: shown only while the session is actively launching (IsStarting), so it
-                 never sits stuck after a failed start. It signals the session is coming up; a message typed too
-                 early is answered by the composer's own "not started" notice rather than promised a send. -->
-            <Border DockPanel.Dock="Top" IsVisible="{Binding IsStarting}" Margin="0,0,0,8"
-                    Background="{StaticResource CockpitSecondaryBgBrush}"
-                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,6">
-                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                    <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
-                               VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
-                    <TextBlock Text="Starting the session — one moment…" FontSize="12"
-                               VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                </StackPanel>
-            </Border>
+                <!-- "Still starting" banner: shown only while the session is actively launching (IsStarting), so it
+                     never sits stuck after a failed start. It signals the session is coming up; a message typed too
+                     early is answered by the composer's own "not started" notice rather than promised a send. -->
+                <Border DockPanel.Dock="Top" IsVisible="{Binding IsStarting}" Margin="0,0,0,8"
+                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
+                                   VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Text="Starting the session — one moment…" FontSize="12"
+                                   VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
 
-            <!-- "Thinking…" indicator: shown from send until the assistant's first output, so a local model
-                 that sits silent while it loads/processes visibly signals it is working rather than hung. The
-                 dot pulses so it reads as live activity. -->
-            <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
-                    HorizontalAlignment="Left">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
-                               VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
-                    <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                </StackPanel>
-            </Border>
+                <!-- "Thinking…" indicator: shown from send until the assistant's first output, so a local model
+                     that sits silent while it loads/processes visibly signals it is working rather than hung. The
+                     dot pulses so it reads as live activity. -->
+                <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
+                        HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
+                                   VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
 
-            <!-- Queued messages (T8): typed while a turn was in flight, dispatched when it completes.
-                 Each is a cancellable chip; hidden when the queue is empty. -->
-            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding QueuedMessages}" Margin="0,0,0,8"
-                          IsVisible="{Binding HasQueuedMessages}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:QueuedMessageViewModel">
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource CockpitControlRadius}"
-                                Padding="8,4" Margin="0,0,6,6">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
-                                           MaxWidth="360" TextTrimming="CharacterEllipsis"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <Button Command="{Binding RemoveCommand}" Classes="Subtle"
-                                        VerticalAlignment="Center" Padding="4,0"
-                                        ToolTip.Tip="Cancel this queued message">
-                                    <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                <!-- Queued messages (T8): typed while a turn was in flight, dispatched when it completes.
+                     Each is a cancellable chip; hidden when the queue is empty. -->
+                <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding QueuedMessages}" Margin="0,0,0,8"
+                              IsVisible="{Binding HasQueuedMessages}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:QueuedMessageViewModel">
+                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource CockpitControlRadius}"
+                                    Padding="8,4" Margin="0,0,6,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
+                                               MaxWidth="360" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <Button Command="{Binding RemoveCommand}" Classes="Subtle"
+                                            VerticalAlignment="Center" Padding="4,0"
+                                            ToolTip.Tip="Cancel this queued message">
+                                        <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-            <!-- Pasted-image chips: removable thumbnail + x. Hidden when there are no attachments. -->
-            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding PendingAttachments}" Margin="0,0,0,8"
-                          IsVisible="{Binding HasPendingAttachments}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ImageAttachmentViewModel">
-                        <Border Background="{StaticResource CockpitPanelBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource CockpitControlRadius}"
-                                Padding="4" Margin="0,0,6,6">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
-                                <Button Command="{Binding RemoveCommand}" Classes="Subtle"
-                                        VerticalAlignment="Top" Padding="4,0"
-                                        ToolTip.Tip="Remove image">
-                                    <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                <!-- Pasted-image chips: removable thumbnail + x. Hidden when there are no attachments. -->
+                <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding PendingAttachments}" Margin="0,0,0,8"
+                              IsVisible="{Binding HasPendingAttachments}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ImageAttachmentViewModel">
+                            <Border Background="{StaticResource CockpitPanelBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource CockpitControlRadius}"
+                                    Padding="4" Margin="0,0,6,6">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
+                                    <Button Command="{Binding RemoveCommand}" Classes="Subtle"
+                                            VerticalAlignment="Top" Padding="4,0"
+                                            ToolTip.Tip="Remove image">
+                                        <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-            <!-- Send stays enabled while busy (T8): a send mid-turn queues the message rather than
-                 being blocked. CanSend gates on there being text/an image, so it is not a dead control. -->
-            <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"
-                    Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
-            <!-- Stop sits by the composer, as an icon, only while a turn is actually running — so interrupting the
-                 current turn (control_request/interrupt) is where the eye is, not a button parked in the header that
-                 reads as live even when nothing is. Send stays put beside it so a follow-up can still be queued. -->
-            <Button DockPanel.Dock="Right" Command="{Binding StopCommand}" IsVisible="{Binding IsBusy}"
-                    Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
-                    ToolTip.Tip="Stop the current turn (interrupt)">
-                <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
-            </Button>
-            <!-- Screenshot (AC-220): opens the desktop's own picker and attaches the result to this composer, so
-                 it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
-                 interesting one — the tooltip is where a session that cannot take an image says why — and
-                 Avalonia hides tooltips on disabled controls unless told otherwise. -->
-            <Button DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
-                    Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
-                    ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
-                <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
-            </Button>
-            <!-- IsEnabled binds IsInputEnabled (AC-174): an autonomous embedded run starts with its composer off so the
-                 operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
-                 box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->
-            <TextBox x:Name="InputBox" Text="{Binding InputText}" IsEnabled="{Binding IsInputEnabled}"
-                     PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
-                     AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
-        </DockPanel>
+                <!-- Send stays enabled while busy (T8): a send mid-turn queues the message rather than
+                     being blocked. CanSend gates on there being text/an image, so it is not a dead control. -->
+                <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"
+                        Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
+                <!-- Stop sits by the composer, as an icon, only while a turn is actually running — so interrupting the
+                     current turn (control_request/interrupt) is where the eye is, not a button parked in the header that
+                     reads as live even when nothing is. Send stays put beside it so a follow-up can still be queued. -->
+                <Button DockPanel.Dock="Right" Command="{Binding StopCommand}" IsVisible="{Binding IsBusy}"
+                        Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                        ToolTip.Tip="Stop the current turn (interrupt)">
+                    <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
+                </Button>
+                <!-- Screenshot (AC-220): opens the desktop's own picker and attaches the result to this composer, so
+                     it can be sent with a sentence of your own. ShowOnDisabled because the disabled state is the
+                     interesting one — the tooltip is where a session that cannot take an image says why — and
+                     Avalonia hides tooltips on disabled controls unless told otherwise. -->
+                <Button DockPanel.Dock="Right" Command="{Binding CaptureScreenshotCommand}"
+                        Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                        ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
+                    <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
+                </Button>
+                <!-- IsEnabled binds IsInputEnabled (AC-174): an autonomous embedded run starts with its composer off so the
+                     operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
+                     box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->
+                <TextBox x:Name="InputBox" Text="{Binding InputText}" IsEnabled="{Binding IsInputEnabled}"
+                         PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
+                         AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
+            </DockPanel>
+        </Border>
 
         <Grid>
         <!-- Empty-state card fills the transcript area until the first row arrives, so a fresh session
