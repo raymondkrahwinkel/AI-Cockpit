@@ -8,7 +8,9 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
@@ -99,6 +101,58 @@ public class CockpitViewModelTests
 
         paneId.Should().BeNull();
         vm.Sessions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ShowNewSessionDialogForPlugin_WithALinkedProject_OpensTheDialogOnIt()
+    {
+        // AC-419: the plugin names the project the only way it can — by what the operator linked it as — and the
+        // dialog opens on it, folder/profile/worktree defaults and all, exactly as picking it by hand would.
+        var cockpit = TrackedIn("Cockpit", "AC");
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>())
+            .Returns(NewSessionResultFor(SessionKind.Sdk));
+        var vm = NewVm(dialogService, projects: await LoadedProjectsAsync(TrackedIn("Depot", "DEP"), cockpit));
+
+        var prefill = new NewSessionPrefill(SessionName: "AC-419")
+        {
+            LinkedProject = new ProjectLink("youtrack.project", "AC"),
+        };
+        await vm.ShowNewSessionDialogForPluginAsync(prefill);
+
+        await dialogService.Received(1).ShowNewSessionDialogAsync(prefill, Arg.Any<bool>(), cockpit);
+    }
+
+    [Fact]
+    public async Task ShowNewSessionDialogForPlugin_WithALinkNoProjectDeclares_OpensOnNoProject()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>())
+            .Returns(NewSessionResultFor(SessionKind.Sdk));
+        var vm = NewVm(dialogService, projects: await LoadedProjectsAsync(TrackedIn("Depot", "DEP")));
+
+        await vm.ShowNewSessionDialogForPluginAsync(new NewSessionPrefill
+        {
+            LinkedProject = new ProjectLink("youtrack.project", "AC"),
+        });
+
+        await dialogService.Received(1).ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), null);
+    }
+
+    [Fact]
+    public async Task ShowNewSessionDialogForPlugin_WithTwoProjectsOnTheSameLink_PicksNeither()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Any<Project?>())
+            .Returns(NewSessionResultFor(SessionKind.Sdk));
+        var vm = NewVm(dialogService, projects: await LoadedProjectsAsync(TrackedIn("Cockpit", "AC"), TrackedIn("Cockpit fork", "AC")));
+
+        await vm.ShowNewSessionDialogForPluginAsync(new NewSessionPrefill
+        {
+            LinkedProject = new ProjectLink("youtrack.project", "AC"),
+        });
+
+        await dialogService.Received(1).ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), null);
     }
 
     [Fact]
@@ -1100,7 +1154,8 @@ public class CockpitViewModelTests
         ITerminalSettingsStore? terminalSettingsStore = null,
         ILayoutSettingsStore? layoutSettingsStore = null,
         IPluginDialogHost? pluginDialogHost = null,
-        ITerminalAccessRegistry? terminals = null)
+        ITerminalAccessRegistry? terminals = null,
+        ProjectsViewModel? projects = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -1139,8 +1194,25 @@ public class CockpitViewModelTests
             voiceSettingsStore,
             terminalSettingsStore,
             pluginDialogHost: pluginDialogHost,
-            terminals: terminals);
+            terminals: terminals,
+            projects: projects);
     }
+
+    /// <summary>A projects view model over a store holding exactly <paramref name="saved"/>, already loaded.</summary>
+    private static async Task<ProjectsViewModel> LoadedProjectsAsync(params Project[] saved)
+    {
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync().Returns(new ProjectSettings { Projects = saved });
+        var projects = new ProjectsViewModel(store, dialogs: null);
+        await projects.LoadAsync();
+        return projects;
+    }
+
+    private static Project TrackedIn(string name, string trackerProject) =>
+        new(name.ToLowerInvariant(), name)
+        {
+            PluginFields = new Dictionary<string, string> { ["youtrack.project"] = trackerProject },
+        };
 
     private static ISessionDialogService DefaultDialogService()
     {

@@ -619,7 +619,17 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         var prefill = new NewSessionPrefill(
             InitialPrompt: _RenderPrompt(issue),
-            SessionName: SessionLabel.Name(issue));
+            SessionName: SessionLabel.Name(issue))
+        {
+            // AC-419: the cockpit project the operator linked to this repository (AC-317) is preselected, instead of
+            // the dialog opening on "No project" while already knowing which issue it is for. The issue's own
+            // repository rather than the dialog's filter — in the cross-repo view the filter names no single one.
+            // gh can return an issue without its repository (the same shape SessionLabel.Name falls back for), and a
+            // link with nothing to match on is not one worth sending.
+            LinkedProject = string.IsNullOrWhiteSpace(issue.Repository)
+                ? null
+                : new ProjectLink(GitHubRepositoryField.Key, issue.Repository),
+        };
 
         // The New-session dialog is modal to the main window, not to this one, so nothing but this button stops a
         // second press from opening a second dialog — with its own onStarted, and its own session. It stays inert

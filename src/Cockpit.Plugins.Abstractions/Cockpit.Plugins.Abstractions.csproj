@@ -203,7 +203,16 @@
          behaves exactly as before. The other direction still holds: a provider that *reads* it fails on an older host
          whose SDK has no such member, so the three that do (claude-provider, cli-agent-provider, kimi-provider) raise
          their manifest's minHostVersion to 0.7.0. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.31.0</Version>
+    <!-- 1.32.0 (AC-419): ProjectLink, and NewSessionPrefill.LinkedProject carrying one — a plugin opening the
+         New-session dialog names the cockpit project by the link the operator gave it (the YouTrack project it is
+         tracked in, the repository it lives in) and the host preselects it, rather than the dialog opening on "No
+         project" while already knowing which issue it is for. An init-only property rather than a sixth parameter on
+         NewSessionPrefill's primary constructor: that constructor is what every published plugin zip calls, and
+         widening it is the binary break the AC-40 rule exists to prevent. The other direction holds as ever — the
+         setter is absent on an older host's copy of this record — so the two plugins that set it (youtrack,
+         github-issues) raise their manifest's minHostVersion to 0.8.0. Additions only — a minor; major and
+         abstractionsVersion stay 1. -->
+    <Version>1.32.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

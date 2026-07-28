@@ -37,6 +37,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   row read as a bar running underneath the pulsing "Thinking…" indicator rather than as a message scrolled out of
   view. The line makes the edge an edge, so what is scrolled away looks scrolled away.
 
+- added: starting a new session from a YouTrack issue or a GitHub issue now opens the dialog with the cockpit project
+  that issue belongs to already selected. It uses the link you set in the project editor under "Where it is tracked" —
+  the YouTrack project, or the repository — so a dialog that already knows which ticket it is for no longer asks you to
+  name the project by hand every time. The project brings its folder, profile, worktree default and MCP servers along,
+  exactly as picking it yourself would, and all of it stays editable until you press Start.
+
+  Nothing is guessed. If no project claims that tracker project or repository, the picker opens on "No project" as it
+  always did, and it does the same when two projects claim the same one: a preselection you would stop reading is worse
+  than none at all. Update the YouTrack and GitHub Issues plugins from the store to get it.
+
 - added: the product icons now exist as a square set that can actually be used as an app icon and a favicon. The two
   files that came out of the logo sheet were separate renders — different canvases, a W drawn at different
   proportions in each — so neither was square and the pair did not read as one mark in two colours. They now share

@@ -8,7 +8,11 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.8.0: the usage trail (AC-251) — new host-provided functionality the plugins consume: a plugin that embeds
+    <!-- 0.8.0 also carries AC-419: a plugin opening the New-session dialog names the cockpit project by the link the
+         operator gave it (NewSessionPrefill.LinkedProject / ProjectLink) and the host preselects the project that
+         declares it. Same shape as the usage trail below — an init-only property an older host's copy of the record
+         does not have — so a plugin that sets it sets minHostVersion 0.8.0 too.
+         0.8.0: the usage trail (AC-251) — new host-provided functionality the plugins consume: a plugin that embeds
          sessions names the run it embeds them for (EmbeddedSessionRequest.RunId / RunLabel), and the host records
          that against each session's token and cost totals in usage-history.jsonl. Without it a run's spend is spread
          over a session per step with nothing saying they belong together — the host cannot infer it, since a plugin
