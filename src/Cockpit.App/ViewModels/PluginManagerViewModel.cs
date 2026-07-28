@@ -97,6 +97,36 @@ public partial class PluginManagerViewModel : ViewModelBase
     private bool _isBusy;
 
     /// <summary>
+    /// How many items of the running batch have finished, and how many it has in all (AC-420) — the same
+    /// count "Update all" already writes into <see cref="StatusMessage"/>, as numbers, so the busy overlay
+    /// can draw a determinate bar next to it. A count of 0 means there is no honest fraction to draw — a
+    /// single install is one step — and the overlay runs indeterminate.
+    /// </summary>
+    [ObservableProperty]
+    private int _busyStepsCompleted;
+
+    [ObservableProperty]
+    private int _busyStepCount;
+
+    /// <summary>Whether the busy overlay has a real fraction to show, rather than only "something is happening".</summary>
+    public bool HasBusyProgress => BusyStepCount > 0;
+
+    partial void OnBusyStepCountChanged(int value) => OnPropertyChanged(nameof(HasBusyProgress));
+
+    // A restart and a second install are both unreachable while work is in flight (AC-420), and both are
+    // gated by their command's CanExecute — which is what a bound Button consults, so the affordance goes
+    // dead rather than only looking dead. The install button in the detail pane and on each catalogue card
+    // binds IsEnabled to the row's own CanTakePrimaryAction, which knows nothing about a running install:
+    // without this, a second click re-entered InstallFromStoreAsync into a second download and a second
+    // Directory.Move onto the same target folder.
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRestart));
+        RestartNowCommand.NotifyCanExecuteChanged();
+        InstallFromStoreCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
     /// True once an install/enable/disable/remove has actually changed plugin state this session (#53) — the
     /// manager shows a "Restart now" button once this flips, instead of the operator having to remember to
     /// close and relaunch the app by hand. Sticky for the session: it never resets to false, since an
@@ -105,8 +135,14 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private bool _needsRestart;
 
-    /// <summary>Whether a "Restart now" affordance can do anything — false in the design-time/no-op constructor, where there is no real app to restart.</summary>
-    public bool CanRestart => _restartService is not null;
+    /// <summary>
+    /// Whether a "Restart now" affordance can do anything — false in the design-time/no-op constructor, where
+    /// there is no real app to restart, and false while an install or a batch update is running (AC-420).
+    /// "Update all" raises <see cref="NeedsRestart"/> after the *first* plugin of the batch, so the button
+    /// appeared while the other nine were still downloading; restarting there left them silently un-updated
+    /// with a banner saying the update was done.
+    /// </summary>
+    public bool CanRestart => _restartService is not null && !IsBusy;
 
     /// <summary>Design-time constructor for the previewer.</summary>
     public PluginManagerViewModel()
@@ -684,7 +720,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         StatusMessage = $"'{row.Name}' removed. Flows you already made from it are unaffected.";
     }
 
-    [RelayCommand]
+    /// <summary>Whether a store install can be started — nothing else may already be in flight (AC-420).</summary>
+    public bool CanInstallFromStore => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanInstallFromStore))]
     private async Task InstallFromStoreAsync(StorePluginRowViewModel row)
     {
         if (_storeClient is null || _installer is null)
@@ -822,6 +861,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         IsBusy = true;
+        BusyStepsCompleted = 0;
+        BusyStepCount = updates.Count;
         try
         {
             var updated = 0;
@@ -841,6 +882,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                 {
                     StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
                 }
+
+                // Counted whether it worked or not: the bar tracks how far through the batch we are, and a
+                // failed plugin is behind us too. Whether it installed is what `updated` answers.
+                BusyStepsCompleted = i + 1;
             }
 
             await BrowseStoresAsync();
@@ -852,6 +897,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            // Cleared here rather than only on the next batch: a single install that follows has one step and
+            // no fraction to show, and a stale "10 of 10" behind its overlay would be a bar for other work.
+            BusyStepCount = 0;
+            BusyStepsCompleted = 0;
             OnPropertyChanged(nameof(HasAvailableUpdates));
             OnPropertyChanged(nameof(AvailableUpdateCount));
         }

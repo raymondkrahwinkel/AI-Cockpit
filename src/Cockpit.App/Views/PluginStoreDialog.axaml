@@ -438,6 +438,34 @@
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+
+            <!-- Busy layer (AC-420). While an install or a batch update runs the catalogue is covered and out
+                 of reach, showing the line the footer is already writing (which names the plugin) and a bar:
+                 determinate over the batch's plugin count, indeterminate for a single install, where there is
+                 no honest fraction to draw — the download buffers whole, so there is no byte progress to tap.
+
+                 A last child spanning all three columns rather than a wrapper around the Grid: it has to cover
+                 the detail pane too, whose install button is the one that used to re-enter. The footer stays
+                 uncovered on purpose — its status line has to remain readable — so "Restart the cockpit now"
+                 down there is held off by its command instead (PluginManagerViewModel.CanRestart), which is
+                 also what keeps it unreachable from anywhere else. -->
+            <Border Grid.Column="0" Grid.ColumnSpan="3" IsVisible="{Binding Manager.IsBusy}"
+                    Background="{StaticResource CockpitScrimBrush}">
+                <Border Width="380" Padding="20,18" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{StaticResource CockpitPanelBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitPanelRadius}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="{Binding Manager.StatusMessage}" TextWrapping="Wrap" FontSize="12.5"
+                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        <ProgressBar Height="3" CornerRadius="2" Minimum="0"
+                                     Maximum="{Binding Manager.BusyStepCount}"
+                                     Value="{Binding Manager.BusyStepsCompleted}"
+                                     IsIndeterminate="{Binding !Manager.HasBusyProgress}"
+                                     Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </StackPanel>
+                </Border>
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

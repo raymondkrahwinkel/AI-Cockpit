@@ -67,6 +67,9 @@ internal static class Screenshotter
         ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         ["plugin-store"] = (_, _) => _PluginStore(),
+        // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
+        ["plugin-store-installing"] = (_, _) => _PluginStoreBusy(stepCount: 0, stepsCompleted: 0, "Downloading 'GitHub Issues' v1.8.0…"),
+        ["plugin-store-updating"] = (_, _) => _PluginStoreBusy(stepCount: 6, stepsCompleted: 2, "Updating 'Git status' (3 of 6)…"),
         ["manage-stores"] = (_, _) => _ManageStores(),
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
@@ -229,7 +232,26 @@ internal static class Screenshotter
     // (no network browse — the dialog only loads on the real app's open), so its layout — the
     // categories | plugins | details columns, the Installed/Updates group pinned to the sidebar foot, the
     // list rows and their install-state — can be verified headless.
-    private static PluginStoreDialog _PluginStore()
+    private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
+
+    // The store while it is working (AC-420): a single install, whose bar has no fraction to draw and runs
+    // indeterminate, and a batch update, whose bar is fed by the same counter the status line is. NeedsRestart
+    // is on in both because that is the state that was reported — "Update all" raises it after the first plugin
+    // of the batch, so the footer offers a restart while the rest are still downloading. The offer has to be
+    // visibly out of reach here, which is the whole point of the scene.
+    private static PluginStoreDialog _PluginStoreBusy(int stepCount, int stepsCompleted, string status)
+    {
+        var viewModel = _PluginStoreViewModel();
+        viewModel.Manager.StatusMessage = status;
+        viewModel.Manager.BusyStepCount = stepCount;
+        viewModel.Manager.BusyStepsCompleted = stepsCompleted;
+        viewModel.Manager.NeedsRestart = true;
+        viewModel.Manager.IsBusy = true;
+
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    private static PluginStoreDialogViewModel _PluginStoreViewModel()
     {
         var manager = new PluginManagerViewModel();
         manager.Stores.Add(PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json"));
@@ -238,12 +260,10 @@ internal static class Screenshotter
             manager.AvailablePlugins.Add(row);
         }
 
-        var viewModel = new PluginStoreDialogViewModel(manager)
+        return new PluginStoreDialogViewModel(manager)
         {
             SelectedPlugin = manager.AvailablePlugins.FirstOrDefault(),
         };
-
-        return new PluginStoreDialog { DataContext = viewModel };
     }
 
     // Renders the Manage-stores dialog (#62, AC-7) with a few sample stores seeded straight into the manager's
