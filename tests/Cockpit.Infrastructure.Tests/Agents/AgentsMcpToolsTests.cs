@@ -34,7 +34,7 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
     private AgentsMcpTools _Tools() => new(_gateway, _coordinator, _inbox, _Audit());
 
-    /// <summary>Two panes on one desk — the shape every message test needs: a sender, an addressee, one workspace.</summary>
+    /// <summary>Puts the named panes on one desk, each resolving to the same snapshot — a sender, an addressee, one workspace.</summary>
     private void _DeskWith(params string[] paneIds)
     {
         var snapshot = new WorkspaceAgentSnapshot(
@@ -308,10 +308,11 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     /// <summary>
-    /// AC5 — the line moves information, not authority. A notify's entire effect is an envelope waiting in the
-    /// addressee's inbox: nothing else on the host is called, nobody is woken, and the recipient's session does
-    /// not run until it chooses to. Asserted by driving the tool with collaborators that would record being used
-    /// and showing the only thing touched is the addressee's own inbox — plus the recipient still having to ask.
+    /// AC5 — the line moves information, not authority. A notify's entire effect <em>on the addressee</em> is an
+    /// envelope waiting in its inbox: nothing is looked up, decided or started on the recipient's behalf, nobody is
+    /// woken, and the recipient's session does not run until it chooses to. Asserted with collaborators that record
+    /// being used — the only pane whose workspace is resolved, and the only pane put on the roster, are the sender's
+    /// own, which is the side a send does have effects on — plus the recipient still having to ask.
     /// </summary>
     [Fact]
     public async Task Notify_TriggersNothingOnTheRecipient_ItOnlyLeavesSomethingToBeCollected()
