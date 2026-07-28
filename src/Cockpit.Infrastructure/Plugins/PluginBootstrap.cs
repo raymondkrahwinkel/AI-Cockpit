@@ -55,7 +55,8 @@ public sealed class PluginBootstrap : ISingletonService
     }
 
     /// <summary>
-    /// Scans <see cref="PluginsRoot"/>, parses each manifest, hashes each entry assembly and runs the load
+    /// Scans the plugins root this instance was built with — <see cref="PluginsRoot"/> unless a test pointed
+    /// it elsewhere — parses each manifest, hashes each entry assembly and runs the load
     /// policy against the saved registrations — returning what to do with every plugin found, loading none
     /// and changing nothing on disk. A plugin marked for removal is left out: its folder survives until the
     /// next start deletes it, but it is gone as far as anything asking here is concerned.

@@ -110,8 +110,9 @@ public class PluginDeferredChangesTests : IDisposable
     /// The other order is the operator changing their mind back, and the install has to win there. It already
     /// did — the swap deletes the marker along with the folder — and this is here so the fix above cannot be
     /// widened into "a removal always wins" without the reversal being noticed. It pins the outcome, not the
-    /// order the two sweeps run in: withdrawing the staged copy at the moment of removal is what makes the two
-    /// intentions unable to coexist, so neither sweep has to run first any more.
+    /// order the two sweeps run in — and the two <em>can</em> still meet here: the marker is written first and
+    /// the install then stages a pending copy beside it without touching that marker. The order does not
+    /// matter because applying the staged copy deletes the folder the marker lives in either way.
     /// </summary>
     [Fact]
     public async Task Reinstalling_APluginMarkedForRemoval_KeepsIt()

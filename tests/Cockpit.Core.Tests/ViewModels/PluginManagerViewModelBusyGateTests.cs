@@ -305,7 +305,7 @@ public class PluginManagerViewModelBusyGateTests
     /// told to ask again by CanExecuteChanged. Without that, the gate above is true and the button still works.
     /// </summary>
     [Fact]
-    public void EveryGatedCommand_IsToldToReassess_WhenBusyFlips()
+    public void TheThreeInstallGates_AreToldToReassess_WhenBusyFlips()
     {
         var manager = new PluginManagerViewModel();
         var reasked = new Dictionary<string, int> { ["install"] = 0, ["restart"] = 0, ["zip"] = 0 };
@@ -502,6 +502,62 @@ public class PluginManagerViewModelBusyGateTests
     }
 
     /// <summary>
+    /// Remove a plugin, change your mind, install it again. The removal is applied at the next start, so the
+    /// folder is still there and the installer stages over it — which used to walk into the update branch and
+    /// read "the state it had" off a registration Remove had just deleted. That reads as disabled, so the
+    /// plugin came back switched off and with the new bytes pinned as approved, under a line promising it would
+    /// activate. It must write no registration at all: no registration is what awaiting-approval looks like.
+    /// </summary>
+    [Fact]
+    public async Task Reinstalling_APluginYouJustRemoved_DoesNotComeBackDisabledAndUnasked()
+    {
+        var registrationStore = Substitute.For<IPluginRegistrationStore>();
+        registrationStore
+            .LoadAllAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(new Dictionary<string, PluginRegistration>()));
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _Downloads(storeClient, () => { });
+        _StagesTheUpdate(installer);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), registrationStore: registrationStore);
+
+        await manager.InstallFromStoreCommand.ExecuteAsync(_UpdatableRow("github-issues", "GitHub Issues"));
+
+        await registrationStore.DidNotReceive().SaveAsync(
+            Arg.Any<string>(), Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
+        Assert.True(manager.NeedsRestart);
+    }
+
+    /// <summary>
+    /// And the ordinary update still keeps what it had, which is the branch above's whole reason for existing:
+    /// an enabled plugin that updates comes back enabled, with the new bytes pinned, and no consent prompt.
+    /// </summary>
+    [Fact]
+    public async Task AnUpdateOverAKnownInstall_KeepsItsEnabledStateAndRepinsTheNewBytes()
+    {
+        var registrationStore = Substitute.For<IPluginRegistrationStore>();
+        registrationStore
+            .LoadAllAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(
+                new Dictionary<string, PluginRegistration>
+                {
+                    ["plugin-folder"] = new(Enabled: true, PinnedSha256: "sha256-of-the-old-bytes"),
+                }));
+        var storeClient = Substitute.For<IPluginStoreClient>();
+        var installer = Substitute.For<IPluginInstaller>();
+        _Downloads(storeClient, () => { });
+        _StagesTheUpdate(installer);
+        var manager = _Manager(storeClient, installer, Substitute.For<IAppRestartService>(), registrationStore: registrationStore);
+
+        await manager.InstallFromStoreCommand.ExecuteAsync(_UpdatableRow("github-issues", "GitHub Issues"));
+
+        await registrationStore.Received(1).SaveAsync(
+            "plugin-folder",
+            Arg.Is<PluginRegistration>(saved => saved.Enabled && saved.PinnedSha256 == "sha256-of-the-new-bytes"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// The deliberate exception, pinned so widening the gate over it is a decision rather than a tidy-up. A
     /// plugin's own settings dialog writes that plugin's settings and touches neither the plugins folder, the
     /// registration store, nor the catalogue — and an install is no reason to stop the operator reading.
@@ -634,12 +690,18 @@ public class PluginManagerViewModelBusyGateTests
         IPluginStoreClient storeClient,
         IPluginInstaller installer,
         IAppRestartService restartService,
-        ISessionDialogService? dialogService = null)
+        ISessionDialogService? dialogService = null,
+        IPluginRegistrationStore? registrationStore = null)
     {
-        var registrationStore = Substitute.For<IPluginRegistrationStore>();
-        registrationStore
-            .LoadAllAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(new Dictionary<string, PluginRegistration>()));
+        // Only stubbed when this made it: a caller passing its own has already said what it holds, and
+        // overwriting that here would quietly empty it.
+        if (registrationStore is null)
+        {
+            registrationStore = Substitute.For<IPluginRegistrationStore>();
+            registrationStore
+                .LoadAllAsync(Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IReadOnlyDictionary<string, PluginRegistration>>(new Dictionary<string, PluginRegistration>()));
+        }
 
         return new PluginManagerViewModel(
             registrationStore,

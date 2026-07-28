@@ -133,8 +133,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         var folder = Path.Combine(_pluginsRoot, folderId);
         if (!Directory.Exists(folder))
         {
-            // Nothing installed under that id, so nothing to mark — and nothing to withdraw either. Dropping a
-            // staged update here would destroy an install on the strength of an id that matches no plugin.
+            // Nothing installed under that id, so there is nowhere to write the marker and this call cannot
+            // remove anything. It leaves a staged copy alone deliberately: with no folder to mark, deleting one
+            // would be this method's only effect, on the strength of an id that matches no installed plugin —
+            // and a caller normalising an id differently (SupersededPluginNotice passes a manifest id) would
+            // silently discard an install the operator asked for.
             return Task.CompletedTask;
         }
 

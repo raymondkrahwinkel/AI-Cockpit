@@ -234,18 +234,26 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// and leaves the focus underneath it, so a Tab and a space bar walk straight past it.
     /// </summary>
     /// <remarks>
-    /// Three families, with three different reasons, which is why the list is longer than "everything that
-    /// reloads":
+    /// Four families, with four different reasons, which is why the list is longer than "everything that
+    /// reloads". All twelve are here:
     /// <list type="bullet">
-    /// <item>Enable, disable, remove and the catalogue card's power toggle rewrite the registration entry an
-    /// install re-pins on its way out (<see cref="_AfterInstallAsync"/>), then reload — and the toggle
-    /// re-browses on top of that, rebuilding the very catalogue the install is walking.</item>
-    /// <item>The menu arrows reload nothing, but write <em>every</em> plugin's position into that same
-    /// registration file, one save per plugin, interleaved with the install's own writes to it.</item>
-    /// <item>The template commands touch neither the plugins folder nor the registration store. They are here
-    /// for <see cref="StatusMessage"/> and <see cref="NeedsRestart"/>: the status line is the running
-    /// install's only line — it is what the overlay is showing — and a template installed over it replaces
-    /// the sentence naming the plugin being downloaded with one naming the template.</item>
+    /// <item><see cref="EnablePluginCommand"/>, <see cref="DisablePluginCommand"/>,
+    /// <see cref="RemovePluginCommand"/>, <see cref="TogglePluginMenuVisibilityCommand"/> and
+    /// <see cref="ToggleStorePluginCommand"/> rewrite the registration entry an install re-pins on its way out
+    /// (<see cref="_AfterInstallAsync"/>), then reload — and the store toggle re-browses on top of that,
+    /// rebuilding the catalogue the install is walking.</item>
+    /// <item><see cref="MovePluginUpCommand"/> and <see cref="MovePluginDownCommand"/> reload nothing, but
+    /// write <em>every</em> plugin's position into that same registration file, one save per plugin,
+    /// interleaved with the install's own writes to it.</item>
+    /// <item><see cref="InstallTemplateCommand"/> and <see cref="RemoveTemplateCommand"/> touch neither the
+    /// plugins folder nor the registration store. They are here for <see cref="StatusMessage"/> and
+    /// <see cref="NeedsRestart"/>: the status line is the running install's only line — it is what the overlay
+    /// is showing — and a template installed over it replaces the sentence naming the plugin being downloaded
+    /// with one naming the template.</item>
+    /// <item><see cref="AddStoreCommand"/>, <see cref="RemoveStoreCommand"/> and
+    /// <see cref="BrowseStoresCommand"/> clear and refill <see cref="Stores"/>, <see cref="StoreInfos"/> and
+    /// <see cref="AvailablePlugins"/> — the collections a running browse is walking and enriching, and the one
+    /// a batch update took its snapshot from.</item>
     /// </list>
     /// The two settings buttons deliberately stay live: they open a plugin's own settings dialog, which
     /// writes that plugin's settings and touches none of the above.
@@ -324,11 +332,17 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// <remarks>
     /// Deliberately not gated on <see cref="IsBusy"/>, unlike the commands above (AC-455). Three routes reach
     /// it from the main window — Options, the store, the update toast — and none of them belongs to the store
-    /// dialog, so a gate here would mean "you cannot open Options while a plugin installs", which is a real
-    /// cost for a real but small risk: since the sweeps moved to startup this is a read of the plugins folder,
-    /// and the one crash it could cause (clearing the store list a running browse was walking) is closed by
-    /// that browse taking a snapshot. What is left is cosmetic and outlives this ticket: a rebuild mid-install
-    /// leaves the Manage-stores dialog's per-store counts stale until the next browse.
+    /// dialog, so a gate here would mean "you cannot open Options while a plugin installs", a real cost for a
+    /// small risk: since the sweeps moved to startup this is a read of the plugins folder.
+    /// <para>
+    /// They are genuinely reachable mid-install, though it takes one step to see how: the store dialog is
+    /// modal over the main window, but its footer's Close sits outside the busy layer and closes
+    /// unconditionally, while the install carries on — the work belongs to this manager, not to the dialog. So
+    /// close it and Ctrl+O is live with an install still running. The one crash that opens (clearing the store
+    /// list a running browse is enumerating) is closed by that browse taking a snapshot. What is left is
+    /// cosmetic and outlives this ticket: a rebuild mid-install leaves the Manage-stores dialog's per-store
+    /// counts stale until the next browse.
+    /// </para>
     /// </remarks>
     public async Task LoadAsync()
     {
@@ -682,8 +696,9 @@ public partial class PluginManagerViewModel : ViewModelBase
             // they arrive, and a slow or broken image never delays the list.
             var logoLoads = new List<Task>();
             // Over a snapshot, for the reason "Update all" takes one: this loop awaits a fetch per store, and
-            // opening Options or the store from the main window reloads the store list underneath it — that is
-            // reachable from the keyboard mid-install, and enumerating a collection someone cleared throws.
+            // LoadAsync clears that list. Reachable mid-install by closing the store dialog — which its footer
+            // allows while the install carries on here — and then opening Options; enumerating a collection
+            // someone cleared throws. See LoadAsync's remarks for why that route is left open.
             foreach (var store in Stores.ToList())
             {
                 var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
@@ -1182,8 +1197,18 @@ public partial class PluginManagerViewModel : ViewModelBase
             if (_registrationStore is not null && result.FolderId is { } folderId && result.Sha256 is { } newSha256)
             {
                 var registrations = await _registrationStore.LoadAllAsync();
-                var wasEnabled = registrations.TryGetValue(folderId, out var prior) && prior.Enabled;
-                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: wasEnabled, PinnedSha256: newSha256));
+                if (registrations.TryGetValue(folderId, out var prior))
+                {
+                    await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: prior.Enabled, PinnedSha256: newSha256));
+                }
+
+                // No registration at all means this is not an update: the operator removed this plugin and has
+                // now installed it again, so the folder is still on disk (the removal is applied at the next
+                // start) and the installer staged over it. Writing a registration here would answer a question
+                // nobody asked — "keep the state it had" reads a state that was deleted, so it lands on
+                // disabled — and would pin bytes that were never consented to. Left absent, the restart applies
+                // the staged copy and discovery meets a plugin with no registration, which is exactly what it
+                // is: one awaiting approval (AC-455).
             }
 
             StatusMessage = installedMessage;

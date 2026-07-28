@@ -733,8 +733,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: removing a plugin that had an update waiting did not remove it. The waiting update was applied first, and
   applying it replaces the plugin's folder — the note recording the removal was inside that folder, so it went
   with it. The plugin came back at a version you had just decided not to keep, saying nothing. Removing a plugin
-  now discards an update waiting for it. Installing a plugin again after asking for its removal still cancels that
-  removal, as it did before.
+  now discards an update waiting for it.
+
+  Changing your mind still works: installing a plugin again after asking for it to be removed cancels the removal.
+  It comes back asking for your approval, the way anything whose bytes you have not approved does — it does not
+  quietly return switched off, and it does not quietly return already trusted.
 
   A removal that could not be carried out also no longer undoes itself. Deleting the folder is best-effort — a file
   still open leaves it for the next start — and a plugin in that state was found and loaded again on every start
