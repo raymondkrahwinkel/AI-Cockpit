@@ -11,10 +11,33 @@ permissions:
   contents: write
 
 jobs:
+  # 'v*' is as narrow as a tag filter gets, and it still lets through far more than a release should be:
+  # v0.8.0-rc.1, v1.2, v1.2.3.4 and version-1.2.3 all match it. Every one of those would have built a full
+  # release with prerelease: false — taking over GitHub's "latest release" — and the finalize job would then
+  # have rolled [Unreleased] away under it, leaving the real release that followed with empty notes. So the
+  # tag is checked here, in its own job that everything else needs, before anything reads or writes the
+  # changelog. A workflow job rather than a line in a script: a script is something a later step can forget
+  # to call.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # GITHUB_REF_NAME rather than the templating expression for the same value: a tag name is
+      # attacker-supplied text, and an expression is substituted into the script before bash parses it, so a
+      # tag carrying a quote would be run as shell rather than compared as a string.
+      - name: Reject a tag that is not a plain vMAJOR.MINOR.PATCH
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$GITHUB_REF_NAME' is not a release tag. A release is tagged vMAJOR.MINOR.PATCH — for example v1.2.3 — with no suffix and no fourth part. Nothing was built and the changelog was not touched; delete the tag and push a plain version tag instead."
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME is a release tag."
+
   # The release notes are the changelog, not the commit list: pull the [Unreleased] section out before
   # anything is built, so every platform's publish attaches the same curated body. Read-only here — the
   # changelog is only *rolled* into a version (the finalize job below) once the release has gone out.
   changelog:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

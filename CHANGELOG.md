@@ -548,6 +548,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a release candidate could be published as if it were the release. Any tag beginning with a `v` started the
+  full release build, so a `v1.2.3-rc.1` — or a typo like `v1.2` — produced a normal release that took over "latest"
+  on GitHub, and consumed the pending release notes on its way out, leaving the real release that followed with
+  nothing to show. Only a plain `v1.2.3` starts a release now; anything else stops the run before a release exists
+  and before the notes are touched.
+
 - fixed: a workflow run that failed was reported in the amber the cockpit uses for "waiting for you" rather than in
   red. A run that broke is not waiting for anybody, and in a list of runs the two looked the same.
 
