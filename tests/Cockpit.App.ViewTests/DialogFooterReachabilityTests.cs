@@ -70,7 +70,7 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
 
             var unreachable = _Unreachable(window);
             Assert.True(unreachable.Count == 0,
-                $"'{scene}' put {unreachable.Count} button(s) outside a {window.Bounds.Width:0.#}×" +
+                $"'{scene}' put {unreachable.Count} control(s) outside a {window.Bounds.Width:0.#}×" +
                 $"{window.Bounds.Height:0.#} window after {stressed} of its texts were given a long value:" +
                 Environment.NewLine + string.Join(Environment.NewLine, unreachable));
         }
@@ -147,7 +147,7 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
             var unreachable = _Unreachable(window);
             Assert.True(unreachable.Count == 0,
                 $"'{scene}' at {window.Bounds.Height:0.#} high — the smallest it claims to work at — left " +
-                $"{unreachable.Count} button(s) outside itself:" +
+                $"{unreachable.Count} control(s) outside itself:" +
                 Environment.NewLine + string.Join(Environment.NewLine, unreachable));
         }
         finally
@@ -197,9 +197,12 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     [Fact]
     public void TheRemoveConfirmation_KeepsItsAnswersInsideTheDialog() => HeadlessAvalonia.Run(() =>
     {
+        // A profile label is whatever the operator typed, so it is stressed to the same length as the status
+        // messages above rather than to a plausible one — the question is what the layout does, not what a
+        // reasonable person would call a profile.
         var viewModel = new ViewModels.ManageProfilesDialogViewModel
         {
-            PendingRemovalLabel = "the profile I keep for the long-running review sessions on the big repository",
+            PendingRemovalLabel = LongEnoughToOverrun,
             IsConfirmingRemove = true,
         };
 
@@ -337,7 +340,7 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
     private static string _Describe(Control control) => control switch
     {
         ContentControl { Content: string label } => label,
-        TextBox { Watermark: { Length: > 0 } hint } => $"the box for '{hint}'",
+        TextBox { PlaceholderText: { Length: > 0 } hint } => $"the box for '{hint}'",
         _ => control.Name ?? control.GetType().Name,
     };
 
