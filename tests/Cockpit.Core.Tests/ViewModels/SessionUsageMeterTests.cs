@@ -1,13 +1,13 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// The #8 token/cost meter's accumulation and formatting: each turn's result usage/cost folds into a
-/// running session total, a usage-less (error) turn contributes nothing, and the compact strings stay
-/// glanceable (k/M tokens, sub-dollar precision, cost dropped when the provider reports none).
+/// The #8 token/cost meter's accumulation and formatting: a turn's own token usage folds into a running
+/// session total while the reported cost — which already covers the whole session — replaces the previous
+/// figure, a usage-less (error) turn contributes nothing, and the compact strings stay glanceable (k/M
+/// tokens, sub-dollar precision, cost dropped when the provider reports none).
 /// </summary>
 public class SessionUsageMeterTests
 {
@@ -16,27 +16,78 @@ public class SessionUsageMeterTests
     {
         var meter = new SessionUsageMeter();
 
-        meter.HasData.Should().BeFalse();
-        meter.TotalTokens.Should().Be(0);
-        meter.Turns.Should().Be(0);
+        Assert.False(meter.HasData);
+        Assert.Equal(0, meter.TotalTokens);
+        Assert.Equal(0, meter.Turns);
     }
 
     [Fact]
-    public void Add_SumsUsageAndCostAcrossTurns()
+    public void Add_SumsTokenBucketsAcrossTurns()
     {
         var meter = new SessionUsageMeter();
 
         meter.Add(new TokenUsage(100, 20, 300, 40), 0.01);
         meter.Add(new TokenUsage(10, 5, 30, 4), 0.02);
 
-        meter.InputTokens.Should().Be(110);
-        meter.OutputTokens.Should().Be(25);
-        meter.CacheReadInputTokens.Should().Be(330);
-        meter.CacheCreationInputTokens.Should().Be(44);
-        meter.TotalTokens.Should().Be(509);
-        meter.TotalCostUsd.Should().BeApproximately(0.03, 1e-9);
-        meter.Turns.Should().Be(2);
-        meter.HasData.Should().BeTrue();
+        Assert.Equal(110, meter.InputTokens);
+        Assert.Equal(25, meter.OutputTokens);
+        Assert.Equal(330, meter.CacheReadInputTokens);
+        Assert.Equal(44, meter.CacheCreationInputTokens);
+        Assert.Equal(509, meter.TotalTokens);
+        Assert.Equal(2, meter.Turns);
+        Assert.True(meter.HasData);
+    }
+
+    // AC-481: total_cost_usd is what the session has cost so far, not what the last turn cost. Adding the
+    // figures up billed every earlier turn again, so three turns of 1.00 → 2.00 → 3.00 read as 6.00.
+    [Fact]
+    public void Add_ReportedCostReplacesRatherThanAccumulates()
+    {
+        var meter = new SessionUsageMeter();
+
+        meter.Add(new TokenUsage(10, 1, 0, 0), 1.00);
+        meter.Add(new TokenUsage(10, 1, 0, 0), 2.00);
+        meter.Add(new TokenUsage(10, 1, 0, 0), 3.00);
+
+        Assert.Equal(3.00, meter.TotalCostUsd, 9);
+    }
+
+    // The figures a real two-turn claude session reported (measured for AC-481): the second result carries
+    // the session total, so the meter must land on it and not on the sum of the two.
+    [Fact]
+    public void Add_MeasuredTwoTurnSession_LandsOnTheLastReportedTotal()
+    {
+        var meter = new SessionUsageMeter();
+
+        meter.Add(new TokenUsage(2, 3, 20_504, 6_850), 0.078837);
+        meter.Add(new TokenUsage(2, 3, 27_354, 2_730), 0.119899);
+
+        Assert.Equal(0.119899, meter.TotalCostUsd, 9);
+    }
+
+    // An error result carries the session total unchanged, so the same figure twice is one spend, not two.
+    [Fact]
+    public void Add_EqualConsecutiveReports_CountThatCostOnce()
+    {
+        var meter = new SessionUsageMeter();
+
+        meter.Add(new TokenUsage(10, 1, 0, 0), 0.05);
+        meter.Add(new TokenUsage(10, 1, 0, 0), 0.05);
+
+        Assert.Equal(0.05, meter.TotalCostUsd, 9);
+    }
+
+    [Fact]
+    public void Add_CostlessTurnBetweenReports_LeavesTheRunningCostAlone()
+    {
+        var meter = new SessionUsageMeter();
+
+        meter.Add(new TokenUsage(10, 1, 0, 0), 1.00);
+        meter.Add(usage: null, costUsd: null);
+        meter.Add(new TokenUsage(10, 1, 0, 0), 2.00);
+
+        Assert.Equal(2.00, meter.TotalCostUsd, 9);
+        Assert.Equal(3, meter.Turns);
     }
 
     [Fact]
@@ -47,9 +98,9 @@ public class SessionUsageMeterTests
 
         meter.Add(usage: null, costUsd: null);
 
-        meter.TotalTokens.Should().Be(120);
-        meter.TotalCostUsd.Should().BeApproximately(0.01, 1e-9);
-        meter.Turns.Should().Be(2);
+        Assert.Equal(120, meter.TotalTokens);
+        Assert.Equal(0.01, meter.TotalCostUsd, 9);
+        Assert.Equal(2, meter.Turns);
     }
 
     [Fact]
@@ -59,7 +110,7 @@ public class SessionUsageMeterTests
 
         meter.Add(usage: null, costUsd: 0.005);
 
-        meter.HasData.Should().BeTrue();
+        Assert.True(meter.HasData);
     }
 
     [Fact]
@@ -68,7 +119,7 @@ public class SessionUsageMeterTests
         var meter = new SessionUsageMeter();
         meter.Add(new TokenUsage(45_200, 0, 0, 0), 0.0123);
 
-        meter.Summary.Should().Be("45.2k tok · $0.0123");
+        Assert.Equal("45.2k tok · $0.0123", meter.Summary);
     }
 
     [Fact]
@@ -77,7 +128,7 @@ public class SessionUsageMeterTests
         var meter = new SessionUsageMeter();
         meter.Add(new TokenUsage(500, 0, 0, 0), costUsd: null);
 
-        meter.Summary.Should().Be("500 tok");
+        Assert.Equal("500 tok", meter.Summary);
     }
 
     [Theory]
@@ -85,13 +136,13 @@ public class SessionUsageMeterTests
     [InlineData(45_210, "45.2k")]
     [InlineData(2_300_000, "2.30M")]
     public void FormatTokens_IsGlanceable(int tokens, string expected)
-        => SessionUsageMeter.FormatTokens(tokens).Should().Be(expected);
+        => Assert.Equal(expected, SessionUsageMeter.FormatTokens(tokens));
 
     [Theory]
     [InlineData(0.0123, "$0.0123")]
     [InlineData(2.5, "$2.50")]
     public void FormatCost_UsesExtraDigitsUnderADollar(double cost, string expected)
-        => SessionUsageMeter.FormatCost(cost).Should().Be(expected);
+        => Assert.Equal(expected, SessionUsageMeter.FormatCost(cost));
 
     [Fact]
     public void Tooltip_BreaksDownBucketsAndTurnCount()
@@ -99,7 +150,8 @@ public class SessionUsageMeterTests
         var meter = new SessionUsageMeter();
         meter.Add(new TokenUsage(10_000, 2_000, 30_000, 4_000), 0.05);
 
-        meter.Tooltip.Should().Be(
-            "Input 10.0k · Output 2.0k · Cache read 30.0k · Cache write 4.0k · $0.0500 · 1 turn");
+        Assert.Equal(
+            "Input 10.0k · Output 2.0k · Cache read 30.0k · Cache write 4.0k · $0.0500 · 1 turn",
+            meter.Tooltip);
     }
 }

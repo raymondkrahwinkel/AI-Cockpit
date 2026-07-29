@@ -18,7 +18,7 @@ public sealed record PluginTurnCompleted : PluginSessionEvent
     /// </summary>
     public PluginTokenUsage? Usage { get; init; }
 
-    /// <summary>Turn cost in USD, when the provider reports one; <see langword="null"/> when it does not (most do not — they have no pricing).</summary>
+    /// <summary>What the session has cost in USD so far — a running total, not this turn's share — when the provider reports one; <see langword="null"/> when it does not (most do not — they have no pricing).</summary>
     public double? TotalCostUsd { get; init; }
 
     /// <summary>The provider's own turn count for the session, when it reports one.</summary>

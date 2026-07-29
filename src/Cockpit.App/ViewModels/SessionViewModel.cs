@@ -1674,9 +1674,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         };
     }
 
-    // Fold this turn's reported usage/cost into the running session meter (#8) and refresh the bound
-    // meter text. A turn whose result carried no usage (e.g. an error) contributes nothing but is still
-    // counted, so the meter simply stays as it was when there is nothing new to add.
+    // Give this turn's reported usage and cost to the session meter (#8) and refresh the bound meter text.
+    // The meter sums the tokens and follows the cost, which the result reports as a session total rather
+    // than a per-turn share. A turn whose result carried neither (e.g. an error) leaves the totals where
+    // they were but is still counted as a turn.
     internal void _AccumulateUsage(TurnCompleted turn)
     {
         _usage.Add(turn.Usage, turn.TotalCostUsd);

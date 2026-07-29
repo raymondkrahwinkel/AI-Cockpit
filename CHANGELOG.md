@@ -966,6 +966,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the cost shown for a session was far too high, because the session's whole spend was counted again on
+  every turn. The figure the CLI reports alongside each answer is what the session has cost so far, not what
+  that one answer cost, so adding those figures up charged every earlier turn a second time — a two-turn
+  session read about double its real cost, and a nine-turn one several times over. The meter beside the
+  session status, its hover breakdown, and the usage trail written to disk now follow the newest reported
+  total rather than a running sum. Token counts were never affected and are unchanged: those really are
+  per-turn, which is precisely why a plausible token count could sit next to a wrong amount without anything
+  looking odd. Resuming a session keeps what it spent earlier — the command-line tool starts its count from
+  zero again in that case, and the previous amount is now banked instead of dropped. Figures already written
+  to the usage trail stay as they are; the correction applies from here on.
+
 - fixed: a managed worktree whose folder was emptied but never deleted can be removed again. When a removal cleared
   the checkout but could not delete the folder itself — a handle Windows was still holding, say — what stayed behind
   was a row for a worktree that is no longer one. The panel called it "Uncommitted changes" about a folder holding

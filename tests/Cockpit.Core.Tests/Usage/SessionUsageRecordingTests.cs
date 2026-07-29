@@ -1,5 +1,8 @@
+using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Usage;
 using NSubstitute;
@@ -39,8 +42,42 @@ public class SessionUsageRecordingTests
     private static SessionViewModel _Session(IUsageHistory history) =>
         new(Substitute.For<ISessionManager>(), usageHistory: history);
 
+    private static async IAsyncEnumerable<SessionEvent> _NoEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static ISessionDriverFactory _FactoryFor(ISessionDriver driver)
+    {
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        return factory;
+    }
+
     private static TurnCompleted _Turn(TokenUsage? usage, double? costUsd) =>
         new() { SessionId = "s-1", Subtype = "success", Result = "done", IsError = false, Usage = usage, TotalCostUsd = costUsd };
+
+    // What lets the meter simply follow the newest reported cost (AC-481): a panel drives one CLI process for
+    // its whole life, so there is never an earlier process whose spend would have to be carried over. Pinned
+    // here because SessionUsageMeter's own documentation leans on it.
+    [Fact]
+    public async Task ASecondStart_IsRefused_SoOnePanelDrivesOneProcess()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_NoEvents());
+        var profile = new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude"));
+        var vm = new SessionViewModel(new SessionManager(_FactoryFor(driver)));
+
+        await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        await driver.Received(1).StartAsync(
+            Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
+            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
 
     [Fact]
     public void ACompletedTurn_WritesTheSessionsRunningTotals_ToTheTrail()
@@ -70,8 +107,11 @@ public class SessionUsageRecordingTests
         var history = new RecordingUsageHistory();
         var session = _Session(history);
 
+        // The cost figures rise the way a real session reports them — each result states what the session has
+        // cost so far, not what its last turn cost (AC-481). A falling pair would pass here for the wrong
+        // reason, by taking the meter's restarted-process branch instead of its ordinary one.
         session._AccumulateUsage(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
-        session._AccumulateUsage(_Turn(new TokenUsage(50, 5, 0, 0), 0.05));
+        session._AccumulateUsage(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
 
         // Cumulative, not per-turn: the newest record is the session's total, which is what makes a record per
         // turn a crash-proof snapshot rather than something a reader has to add up.
