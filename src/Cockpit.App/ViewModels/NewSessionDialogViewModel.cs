@@ -1005,18 +1005,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _RefreshSdkLaunchOptions(value);
         OnPropertyChanged(nameof(HasTtyProvider));
 
-        // A profile with no TTY provider to run only runs as an SDK session (a local HTTP provider has none;
-        // neither does a plugin provider that registered no IPluginTtyProvider) — force SDK and let the view
-        // hide the kind selector, rather than leaving Kind on whatever it was and silently launching the
-        // wrong CLI once Start is pressed. Suppress the refresh this kind change would otherwise fire, so the
-        // one at the end of this method is the single refresh for the settled kind (no double spawn).
+        // Seed Kind from the newly selected profile (AC-139): its saved default (falling back to TTY), unless it
+        // has no TTY provider to run at all (a local HTTP provider has none; neither does a plugin provider that
+        // registered no IPluginTtyProvider) — then SDK wins regardless of the saved default, and the view hides
+        // the kind selector, rather than leaving Kind on whatever it was and silently launching the wrong CLI once
+        // Start is pressed. Suppress the refresh this kind change would otherwise fire, so the one at the end of
+        // this method is the single refresh for the settled kind (no double spawn).
         _suppressDynamicOptionsRefresh = true;
         try
         {
-            if (!HasTtyProvider)
-            {
-                SelectedKind = SessionKind.Sdk;
-            }
+            SelectedKind = SessionKindDefaults.ResolveDefaultKind(value, _ttyProviderResolver);
         }
         finally
         {

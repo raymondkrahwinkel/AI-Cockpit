@@ -7,6 +7,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.App;
 
@@ -59,6 +60,13 @@ internal static class Screenshotter
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with
+        // the toggle pre-set to TTY, the same profile with it pre-set to SDK, and a local-provider profile (no TTY
+        // route at all) where the toggle disappears in favour of a plain "SDK-only" label. Tall enough that the
+        // section — well below the fold of the editor's resting height — is not the part of the scene you cannot see.
+        ["profiles-default-kind-tty"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Tty),
+        ["profiles-default-kind-sdk"] = (_, _) => _ManageProfilesWithDefaultKind(SessionKind.Sdk),
+        ["profiles-default-kind-sdk-only"] = (_, _) => _ManageProfilesSdkOnlyDefaultKind(),
         ["verify-runners"] = (_, _) => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
         ["verify-runners-edit"] = (_, _) => _VerifyRunnersEditing(),
         ["new-session"] = (_, _) => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
@@ -236,6 +244,43 @@ internal static class Screenshotter
         viewModel.EditWorkingDirectory = "/home/me/AI-Cockpit";
 
         return new VerifyRunnersDialog { DataContext = viewModel };
+    }
+
+    // Renders the Manage-profiles editor on a Claude profile (a provider with a TTY route of its own) with the
+    // Default kind (AC-139) set to the given kind, so the segmented toggle's two live states — SDK highlighted,
+    // TTY highlighted — are both verifiable headless.
+    private static ManageProfilesDialog _ManageProfilesWithDefaultKind(SessionKind defaultKind)
+    {
+        // The bundled Claude provider plugin's config, not a bare ClaudeConfig: Fase 4 only understands a Claude
+        // profile as one of these (a legacy ClaudeConfig is migrated to it on load through SessionProfileEntry, a
+        // step this design-time scene bypasses) — using the legacy shape directly here left the editor unable to
+        // resolve a provider option for it at all, silently falling back to Ollama and hiding the very state
+        // (a provider with a TTY route) this scene exists to show.
+        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null), Purpose: "Primary Claude profile")
+        {
+            DefaultKind = defaultKind == SessionKind.Sdk ? ProfileSessionKind.Sdk : ProfileSessionKind.Tty,
+        };
+        return _ManageProfilesEditing(profile);
+    }
+
+    // Renders the Manage-profiles editor on a local (Ollama) profile — a provider with no TTY route at all — so the
+    // Default-kind toggle's third state (AC-139) is verifiable headless: the segmented control disappears entirely
+    // in favour of a plain "SDK-only" label, rather than offering a choice that could never take effect.
+    private static ManageProfilesDialog _ManageProfilesSdkOnlyDefaultKind() =>
+        _ManageProfilesEditing(new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model"));
+
+    private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile)
+    {
+        var viewModel = new ViewModels.ManageProfilesDialogViewModel();
+        var editable = new ViewModels.EditableProfileViewModel(profile, isLoggedIn: true);
+        viewModel.Profiles.Clear();
+        viewModel.Profiles.Add(editable);
+        viewModel.SelectedProfile = editable;
+
+        // Taller than the dialog opens, the way the project editor's memory-source scene is: the Default kind
+        // section sits below the fold of a default-sized editor, and a scene that renders only the part above the
+        // fold proves nothing about the part this change actually touched.
+        return new ManageProfilesDialog { DataContext = viewModel, Height = 1500 };
     }
 
     // Renders the Options dialog with one of its tabs selected, so a tab other than the first one can be

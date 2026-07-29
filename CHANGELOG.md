@@ -755,6 +755,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   a plugin under `plugins-dev` — a toast offers **Reload**, which brings the new build in and restarts, instead
   of a manual zip/install round-trip for every change. It only refreshes a plugin you already installed, and only
   on a dev checkout; a release build behaves exactly as before.
+- added: a profile can now set its own default session Kind (SDK or TTY), so the New-session dialog's Kind toggle
+  opens on the route you actually use it for instead of always starting on TTY. Only offered for a profile whose
+  provider can run both routes; a provider with none (a local model, or a plugin that never registered a terminal
+  route) shows "SDK-only" instead of a choice that could never take effect, and always starts SDK regardless of
+  what is set here. Per session, the toggle in the New-session dialog still has the final word.
 
 ### Changed
 

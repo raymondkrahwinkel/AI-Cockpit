@@ -69,6 +69,16 @@ public sealed record SessionProfile(
     /// </summary>
     public string? SystemPrompt { get; init; }
 
+    /// <summary>
+    /// Which route (SDK/TTY) the New-session dialog pre-selects for this profile (AC-139) — the operator can
+    /// still overrule it for one session with the dialog's own Kind toggle. <see langword="null"/> — the
+    /// default, and what every profile saved before this setting existed still has — falls back to TTY, the
+    /// long-standing hard default. Meaningless (and never offered in the profile editor) for a provider with no
+    /// TTY route of its own (a local HTTP model, or a plugin that registered none): such a profile always starts
+    /// SDK regardless of this field, which <c>SessionKindDefaults.ResolveDefaultKind</c> enforces.
+    /// </summary>
+    public ProfileSessionKind? DefaultKind { get; init; }
+
     /// <summary>Which backend drives this profile.</summary>
     public SessionProvider Provider => ProviderConfig.Provider;
 
