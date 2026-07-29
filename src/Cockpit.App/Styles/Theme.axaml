@@ -1182,7 +1182,11 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <!-- CockpitTextOnAccentBrush, not CockpitTextPrimaryBrush (AC-381): the near-white primary text
+             tuned for a panel surface only reached ~4.29:1 on the darkened accent, short of the 4.5:1 AA
+             floor this ticket exists to enforce — this pill is exactly the "accent stand that carries
+             text" criterion 1 covers, so it follows Button.Accent onto the token measured at 5.17:1. -->
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextOnAccentBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
     <Style Selector="Button.accentCta:pointerover /template/ ContentPresenter">
