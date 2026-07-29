@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
 
@@ -28,9 +29,15 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ReferencePlaceholder))]
     [NotifyPropertyChangedFor(nameof(CanBrowse))]
     [NotifyPropertyChangedFor(nameof(ShowsSendsContentOption))]
+    [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     private ProjectResourceRole _role;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
     private string _reference;
 
     [ObservableProperty]
@@ -89,6 +96,32 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private bool _isMachineBound;
+
+    /// <summary>
+    /// What a Memory row's own registered source found about the typed value (AC-503), or null when nothing is
+    /// known yet — a brand-new row, a row whose source has no <see cref="MemorySourceChoice.CheckReachability"/>
+    /// (the "no check available" default every source had before AC-503), a row that is not a Memory row, or one
+    /// reset by <see cref="_ResetReachability"/> the instant <see cref="Reference"/>, <see cref="Role"/> or
+    /// <see cref="SelectedMemorySourceChoice"/> changes — the same "a value that is about to be judged again must
+    /// not keep showing the previous judgement" rule <see cref="IsBroken"/>'s own dialog-driven refresh follows,
+    /// just applied immediately here rather than only once the debounced check answers, since this one is a network
+    /// call and can take long enough that a stale confirmation sitting under a row the operator just changed would
+    /// read as still true. Set from outside by <see cref="ProjectDialogViewModel"/> once its own check completes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
+    [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
+    private ProjectMemorySourceReachability? _reachability;
+
+    /// <summary>
+    /// The confirmation text to show under a <see cref="ProjectMemorySourceReachability.Confirmed"/> row — the
+    /// plugin's own <see cref="ProjectMemorySourceReachabilityResult.Detail"/>, or null to fall back to a fixed
+    /// sentence. Ignored for any other <see cref="Reachability"/>, the same restraint that result type's own doc
+    /// comment describes.
+    /// </summary>
+    [ObservableProperty]
+    private string? _reachabilityDetail;
 
     /// <summary>
     /// Whether this is the last row in <see cref="ProjectDialogViewModel.ResourceRows"/> — set from outside, by the
@@ -153,6 +186,15 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// </summary>
     partial void OnRoleChanged(ProjectResourceRole oldValue, ProjectResourceRole newValue)
     {
+        // AC-503: a role switch changes what Reference means (see this method's own remarks below on the Memory
+        // fold/unfold), and a Reachability answer belongs to a specific typed value against a specific source —
+        // neither of which this switch can be trusted to leave alone. Unconditional, at the top, rather than folded
+        // into one of the branches below: every branch either reassigns Reference/SelectedMemorySourceChoice itself
+        // (which resets this the same way, see OnReferenceChanged/OnSelectedMemorySourceChoiceChanged below) or
+        // leaves both alone entirely (switching to Memory with no picker registered at all) — the second case would
+        // otherwise carry a stale answer forward with nothing else here to catch it.
+        _ResetReachability();
+
         // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
         // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
         // flag for any other role. The other direction needs nothing here: ProjectResource.SendsContent reports
@@ -192,11 +234,42 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         }
     }
 
+    /// <summary>AC-503: a Reachability answer belongs to a specific typed value — an edit invalidates it the instant it happens, before any debounced re-check can even start.</summary>
+    partial void OnReferenceChanged(string value) => _ResetReachability();
+
+    /// <summary>AC-503: a Reachability answer belongs to a specific source — picking a different one (or Folder) invalidates whatever the previous source found.</summary>
+    partial void OnSelectedMemorySourceChoiceChanged(MemorySourceChoice? value) => _ResetReachability();
+
+    private void _ResetReachability()
+    {
+        Reachability = null;
+        ReachabilityDetail = null;
+    }
+
     /// <summary>
     /// Whether the memory-source picker is shown for this row — only for a Memory row, and only once something
     /// registered a source (AC-166's <c>HasMemorySources</c>, answered per row instead of once for the dialog).
     /// </summary>
     public bool ShowsMemorySourcePicker => Role == ProjectResourceRole.Memory && MemorySourceChoices.Count > 0;
+
+    /// <summary>
+    /// Whether to show a confirmation under this Memory row (AC-503) — the counterpart to <see cref="IsBroken"/> for
+    /// a plugin-registered source rather than a filesystem path. Gated on <see cref="Role"/> and a non-blank typed
+    /// value the same way <see cref="IsNotFoundReachable"/>/<see cref="IsNotSignedIn"/> are, so a blank field never
+    /// shows any of the three (AC-503 acceptance criterion 6) whatever <see cref="Reachability"/> last held from
+    /// before the field was cleared — clearing the field itself already resets it (see
+    /// <see cref="OnReferenceChanged"/>), but this gate is the belt to that braces.
+    /// </summary>
+    public bool IsConfirmedReachable =>
+        Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.Confirmed;
+
+    /// <summary>The AC-503 "not found" state — see <see cref="IsConfirmedReachable"/>'s own remarks on the shared gating.</summary>
+    public bool IsNotFoundReachable =>
+        Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.NotFound;
+
+    /// <summary>The AC-503 "not signed in / unreachable" state — see <see cref="IsConfirmedReachable"/>'s own remarks on the shared gating.</summary>
+    public bool IsNotSignedIn =>
+        Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.NotSignedIn;
 
     /// <summary>
     /// Whether "Send along" is offered for this row at all (AC-486) — <see cref="ProjectResourceRole.Instructions"/>

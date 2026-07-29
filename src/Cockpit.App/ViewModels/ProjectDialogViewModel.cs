@@ -109,7 +109,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 viewModel.MemorySourceChoices.Add(new MemorySourceChoice("Folder", Scheme: null));
             }
 
-            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme));
+            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme)
+            {
+                CheckReachability = registration.CheckReachability,
+            });
         }
 
         // Every saved resource becomes a row, in order — the whole of AC-485: what the old single Memory row (and
@@ -516,9 +519,27 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// previously keep.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Cancelled and replaced at the start of every <see cref="_RunResourceDiagnosticsAsync"/> call (AC-503
+    /// acceptance criterion 5) — a Reachability check is a network call that can run long enough to still be in
+    /// flight when a newer edit supersedes it, unlike the filesystem probe's own version-guard (which only ever
+    /// discards a stale <em>answer</em>, since a filesystem check finishes fast enough that letting it run to
+    /// completion costs nothing). Cancelling the token itself, not merely discarding the result, is what actually
+    /// stops an older in-flight tool call rather than leaving it to complete unread in the background.
+    /// </summary>
+    private CancellationTokenSource? _reachabilityCancellation;
+
     private async Task _RunResourceDiagnosticsAsync(TimeSpan quietPeriod)
     {
         var version = ++_resourceDiagnosticsRefreshVersion;
+
+        // AC-503: retiring the previous call's in-flight reachability checks (if any) the instant a newer one is
+        // scheduled — before the quiet-period wait even starts, so a rapid run of edits (simulated typing) never has
+        // two overlapping checks racing to answer the same row.
+        _reachabilityCancellation?.Cancel();
+        _reachabilityCancellation?.Dispose();
+        var reachabilityCancellation = new CancellationTokenSource();
+        _reachabilityCancellation = reachabilityCancellation;
 
         // Wait for the typing to stop before judging anything. Running the probe off the UI thread stops it freezing
         // the window, but it does not stop it running once per character — and a half-typed path is a path that does
@@ -543,14 +564,33 @@ public partial class ProjectDialogViewModel : ViewModelBase
         var resources = ResourceRows.Select(row => (row, resource: row.ToDomain())).ToList();
         var sourceDirectory = SourceDirectory;
 
-        var (unresolved, machineBound) = await Task.Run(() =>
+        var fsProbeTask = Task.Run(() =>
         {
             var unresolvedReferences = ProjectResourceProbe.FindUnresolved(resources.Select(pair => pair.resource));
             var isMachineBound = resources.ToDictionary(
                 pair => pair.row,
                 pair => ProjectResourcePathPortability.IsMachineBound(sourceDirectory, pair.resource.Reference));
             return (Unresolved: unresolvedReferences, MachineBound: isMachineBound);
-        }).ConfigureAwait(true);
+        });
+
+        // AC-503: a Memory row whose picked source has a reachability check and a non-blank typed value gets one,
+        // run alongside the filesystem probe above rather than after it — this is a network call and the two probes
+        // judge disjoint sets of rows (this one only ever looks at Memory rows; ProjectResourceProbe never does,
+        // see its own class remarks), so there is nothing for the two to race over.
+        var reachabilityTasks = resources
+            .Where(pair => pair.row.Role == ProjectResourceRole.Memory
+                && pair.row.SelectedMemorySourceChoice?.CheckReachability is not null
+                && !string.IsNullOrWhiteSpace(pair.row.Reference))
+            .Select(pair => _RunReachabilityCheckAsync(
+                pair.row,
+                pair.row.Reference.Trim(),
+                pair.row.SelectedMemorySourceChoice!.CheckReachability!,
+                version,
+                reachabilityCancellation.Token))
+            .ToList();
+
+        var (unresolved, machineBound) = await fsProbeTask.ConfigureAwait(true);
+        await Task.WhenAll(reachabilityTasks).ConfigureAwait(true);
 
         if (version != _resourceDiagnosticsRefreshVersion)
         {
@@ -562,6 +602,52 @@ public partial class ProjectDialogViewModel : ViewModelBase
             row.IsBroken = resource.ReachesSessions && unresolved.Contains(resource.Reference);
             row.IsMachineBound = machineBound[row];
         }
+    }
+
+    /// <summary>
+    /// Runs one Memory row's own <see cref="ProjectMemorySourceRegistration.CheckReachability"/> (AC-503) and writes
+    /// the answer back onto <paramref name="row"/> — but only if <paramref name="version"/> still matches
+    /// <see cref="_resourceDiagnosticsRefreshVersion"/> once the check completes, the same stale-answer guard
+    /// <see cref="_RunResourceDiagnosticsAsync"/> already applies to the filesystem probe's own result.
+    /// </summary>
+    /// <param name="value">The bare value the operator typed — never the folded <c>"{scheme}:{value}"</c> form <see cref="ProjectResourceRowViewModel.ToDomain"/> saves, which the plugin's own check never asked to see.</param>
+    /// <param name="check">The row's picked source's own check delegate.</param>
+    /// <param name="version">The refresh version this call belongs to.</param>
+    /// <param name="cancellationToken">Cancelled by a newer <see cref="_RunResourceDiagnosticsAsync"/> call starting (see <see cref="_reachabilityCancellation"/>) — never awaited past that point.</param>
+    private async Task _RunReachabilityCheckAsync(
+        ProjectResourceRowViewModel row,
+        string value,
+        Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>> check,
+        int version,
+        CancellationToken cancellationToken)
+    {
+        ProjectMemorySourceReachabilityResult result;
+        try
+        {
+            result = await check(value, cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer edit — the cancellation itself is this call's "stale, drop it" signal, the same
+            // as the filesystem probe's own version check answers for its slower-but-uncancellable path.
+            return;
+        }
+        catch (Exception)
+        {
+            // A plugin's own check delegate threw before it could decide anything — treated exactly like a network
+            // failure at the host-probe layer (Cockpit.Plugins.Abstractions.Mcp.McpProbeOutcome.Failed): never
+            // NotFound for a failure this ambiguous (AC-503 acceptance criterion 4), which would name the wrong
+            // cause for what might simply be a hiccup in the plugin's own check.
+            result = ProjectMemorySourceReachabilityResult.NotSignedIn;
+        }
+
+        if (version != _resourceDiagnosticsRefreshVersion)
+        {
+            return;
+        }
+
+        row.Reachability = result.State;
+        row.ReachabilityDetail = result.State == ProjectMemorySourceReachability.Confirmed ? result.Detail : null;
     }
 
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

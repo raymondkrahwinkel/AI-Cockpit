@@ -25,4 +25,21 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// "Read it through the Depot MCP's <c>read</c> tool." Told rather than loaded for the same reason a folder
 /// reference is only ever named, not opened: the host does not run your MCP tools on the session's behalf.
 /// </param>
-public sealed record ProjectMemorySourceRegistration(string Scheme, string Title, string Instruction);
+public sealed record ProjectMemorySourceRegistration(string Scheme, string Title, string Instruction)
+{
+    /// <summary>
+    /// Confirms whether a value the operator typed for this source actually resolves to something (AC-503) — the
+    /// plugin-resource half of the confirmation a <c>Reference</c> row already gets for a broken absolute path
+    /// (AC-485). Takes the row's typed value (the bare identifier, not <c>"{Scheme}:{value}"</c>) and a cancellation
+    /// token the project editor cancels the instant a newer edit supersedes this one, the same version-guard its own
+    /// <c>Reference</c>-probe diagnostics already use.
+    /// <para>
+    /// <see langword="null"/> (the default) means "no check available" — a row whose source did not set this
+    /// behaves exactly as it always has: nothing shown under the row, the same as a plugin that predates AC-503, or
+    /// one whose author decided the value cannot be cheaply confirmed at all. This is additive, not a positional
+    /// constructor parameter, for the same ABI reason every other addition to this record has been since AC-500: a
+    /// prebuilt plugin binary carrying the old constructor keeps compiling and behaving as it did.
+    /// </para>
+    /// </summary>
+    public Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>>? CheckReachability { get; init; }
+}

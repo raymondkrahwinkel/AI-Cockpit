@@ -143,13 +143,16 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // A plain Dictionary from BuildRegistrationPairs' own Connection.Id would throw on a duplicate key if
         // storage ever held two connections under the same id (corrupted or hand-edited settings) — building it by
         // hand keeps a duplicate merely overwriting the earlier entry instead of crashing Save().
+        //
+        // _host is threaded through both calls (AC-503) so CheckReachability is wired up on every registration this
+        // sync ever hands the host — the same as DepotPlugin.Initialize's own startup pass.
         var before = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections, _host))
         {
             before[pair.Connection.Id] = pair.Registration;
         }
 
-        var after = DepotMemorySource.BuildRegistrationPairs(registrations);
+        var after = DepotMemorySource.BuildRegistrationPairs(registrations, _host);
         var afterById = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
         foreach (var pair in after)
         {
@@ -163,7 +166,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // restart, with nothing surfacing why. Retiring every stale scheme first removes that ordering dependency.
         foreach (var (id, oldRegistration) in before)
         {
-            if (!afterById.TryGetValue(id, out var stillCurrent) || stillCurrent != oldRegistration)
+            if (!afterById.TryGetValue(id, out var stillCurrent) || !_SameApartFromCheck(stillCurrent, oldRegistration))
             {
                 _host.RemoveProjectMemorySource(oldRegistration.Scheme);
             }
@@ -171,7 +174,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
         foreach (var (connection, newRegistration) in after)
         {
-            if (before.TryGetValue(connection.Id, out var oldRegistration) && oldRegistration == newRegistration)
+            if (before.TryGetValue(connection.Id, out var oldRegistration) && _SameApartFromCheck(oldRegistration, newRegistration))
             {
                 // Unchanged: re-adding it would only hit Register's "scheme already taken" refusal, since this very
                 // content is already the one registered.
@@ -181,6 +184,19 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             _host.AddProjectMemorySource(newRegistration);
         }
     }
+
+    /// <summary>
+    /// Compares two registrations the way this diff means "unchanged" — every field <em>except</em>
+    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/>. The record's own generated equality compares
+    /// that delegate too, and every call to <see cref="DepotMemorySource.BuildRegistrationPairs"/> above builds a
+    /// fresh closure over its own connection even when nothing about the connection changed — two such closures are
+    /// never delegate-equal (different targets), so the record's own <c>==</c> would call every connection "changed"
+    /// on every save, defeating the whole point of this diff.
+    /// </summary>
+    private static bool _SameApartFromCheck(ProjectMemorySourceRegistration a, ProjectMemorySourceRegistration b) =>
+        string.Equals(a.Scheme, b.Scheme, StringComparison.Ordinal)
+        && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+        && string.Equals(a.Instruction, b.Instruction, StringComparison.Ordinal);
 
     private async Task _ReclaimOrphanedMcpRegistryEntriesAsync(IReadOnlyList<string> orphanedNames)
     {
