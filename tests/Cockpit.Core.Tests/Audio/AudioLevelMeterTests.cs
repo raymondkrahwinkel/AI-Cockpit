@@ -1,5 +1,4 @@
 using Cockpit.Core.Audio;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Audio;
 
@@ -11,13 +10,13 @@ public class AudioLevelMeterTests
     {
         var silence = ConstantFrame(0f, sampleCount: 64);
 
-        AudioLevelMeter.NormalizedRms(silence).Should().Be(0);
+        Assert.Equal(0, AudioLevelMeter.NormalizedRms(silence));
     }
 
     [Fact]
     public void NormalizedRms_EmptyFrame_IsZero()
     {
-        AudioLevelMeter.NormalizedRms(ReadOnlySpan<byte>.Empty).Should().Be(0);
+        Assert.Equal(0, AudioLevelMeter.NormalizedRms(ReadOnlySpan<byte>.Empty));
     }
 
     [Fact]
@@ -25,7 +24,7 @@ public class AudioLevelMeterTests
     {
         var loud = ConstantFrame(1f, sampleCount: 64);
 
-        AudioLevelMeter.NormalizedRms(loud).Should().Be(1);
+        Assert.Equal(1, AudioLevelMeter.NormalizedRms(loud));
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class AudioLevelMeterTests
         // -55..-12 dB window maps to ~0.81 — well up the meter rather than hugging the floor.
         var speech = ConstantFrame(0.1f, sampleCount: 128);
 
-        AudioLevelMeter.NormalizedRms(speech).Should().BeApproximately(0.81, 0.02);
+        Assert.Equal(0.81, AudioLevelMeter.NormalizedRms(speech), 0.02);
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class AudioLevelMeterTests
     {
         var veryQuiet = ConstantFrame(0.001f, sampleCount: 128);
 
-        AudioLevelMeter.NormalizedRms(veryQuiet).Should().Be(0);
+        Assert.Equal(0, AudioLevelMeter.NormalizedRms(veryQuiet));
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class AudioLevelMeterTests
         var quiet = ConstantFrame(0.02f, sampleCount: 128);
         var loud = ConstantFrame(0.2f, sampleCount: 128);
 
-        AudioLevelMeter.NormalizedRms(loud).Should().BeGreaterThan(AudioLevelMeter.NormalizedRms(quiet));
+        Assert.True(AudioLevelMeter.NormalizedRms(loud) > AudioLevelMeter.NormalizedRms(quiet));
     }
 
     private static byte[] ConstantFrame(float amplitude, int sampleCount)

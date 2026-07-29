@@ -1,5 +1,4 @@
 using Cockpit.Core.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Configuration;
 
@@ -18,14 +17,13 @@ public sealed class CockpitBuildTests
     [Fact]
     public void StateFolders_ForDevelopmentAndProduction_AreDifferentDirectories()
     {
-        CockpitBuild.DevelopmentStateFolder.Should().NotBe(CockpitBuild.ProductionStateFolder);
+        Assert.NotEqual(CockpitBuild.ProductionStateFolder, CockpitBuild.DevelopmentStateFolder);
     }
 
     [Fact]
     public void ProductionStateFolder_IsTheNameTheOperatorsStateIsAlreadyUnder()
     {
-        CockpitBuild.ProductionStateFolder.Should().Be("Cockpit",
-            "renaming this orphans every installed cockpit's settings, plugins and profiles");
+        Assert.Equal("Cockpit", CockpitBuild.ProductionStateFolder);
     }
 
     [Fact]
@@ -34,6 +32,6 @@ public sealed class CockpitBuildTests
         var expected = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), CockpitBuild.StateFolder);
 
-        CockpitBuild.StateRoot.Should().Be(expected);
+        Assert.Equal(expected, CockpitBuild.StateRoot);
     }
 }

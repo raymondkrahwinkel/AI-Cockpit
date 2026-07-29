@@ -2,7 +2,6 @@ using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Core.Layout;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -24,7 +23,7 @@ public class PluginRegistrationStoreTests : IDisposable
     {
         var store = new PluginRegistrationStore(_configFilePath);
 
-        (await store.LoadAllAsync()).Should().BeEmpty();
+        Assert.Empty((await store.LoadAllAsync()));
     }
 
     [Fact]
@@ -36,9 +35,9 @@ public class PluginRegistrationStoreTests : IDisposable
         await store.SaveAsync("weather", new PluginRegistration(Enabled: false, PinnedSha256: "def456"));
 
         var loaded = await store.LoadAllAsync();
-        loaded.Should().HaveCount(2);
-        loaded["github-issues"].Should().Be(new PluginRegistration(true, "abc123"));
-        loaded["weather"].Should().Be(new PluginRegistration(false, "def456"));
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded));
+        Assert.Equal(new PluginRegistration(true, "abc123"), loaded["github-issues"]);
+        Assert.Equal(new PluginRegistration(false, "def456"), loaded["weather"]);
     }
 
     [Fact]
@@ -51,8 +50,8 @@ public class PluginRegistrationStoreTests : IDisposable
         await store.RemoveAsync("a");
 
         var loaded = await store.LoadAllAsync();
-        loaded.Should().ContainKey("b");
-        loaded.Should().NotContainKey("a");
+        Assert.Contains("b", loaded.Keys);
+        Assert.DoesNotContain("a", loaded.Keys);
     }
 
     [Fact]
@@ -64,8 +63,9 @@ public class PluginRegistrationStoreTests : IDisposable
         var pluginStore = new PluginRegistrationStore(_configFilePath);
         await pluginStore.SaveAsync("x", new PluginRegistration(true, "h"));
 
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
-        (await pluginStore.LoadAllAsync()).Should().ContainKey("x");
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
+        var loaded = await pluginStore.LoadAllAsync();
+        Assert.Contains("x", loaded.Keys);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class PluginRegistrationStoreTests : IDisposable
 
         await store.SaveDataAsync("github-issues", data);
 
-        (await store.LoadDataAsync("github-issues")).Should().BeEquivalentTo(data);
+        Assert.Equivalent(data, (await store.LoadDataAsync("github-issues")));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class PluginRegistrationStoreTests : IDisposable
 
         await store.SaveDataAsync("p", new Dictionary<string, string> { ["k"] = "\"v\"" });
 
-        (await store.LoadAllAsync())["p"].Should().Be(new PluginRegistration(true, "hash-1"));
+        Assert.Equal(new PluginRegistration(true, "hash-1"), (await store.LoadAllAsync())["p"]);
     }
 
     [Fact]
@@ -98,7 +98,8 @@ public class PluginRegistrationStoreTests : IDisposable
 
         await store.SaveAsync("p", new PluginRegistration(Enabled: false, PinnedSha256: "hash-2"));
 
-        (await store.LoadDataAsync("p")).Should().ContainKey("k");
+        var data = await store.LoadDataAsync("p");
+        Assert.Contains("k", data.Keys);
     }
 
     public void Dispose()

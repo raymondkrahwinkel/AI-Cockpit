@@ -1,6 +1,5 @@
 using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -34,8 +33,8 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Alt+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Down");
+        Assert.Equal("Alt+Up", settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal("Alt+Down", settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().BeEmpty();
-        settings.GestureFor(ShortcutAction.NextSession).Should().BeEmpty();
+        Assert.Empty(settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Empty(settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -69,7 +68,7 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
+        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -88,9 +87,9 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Alt+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Down");
-        settings.GestureFor(ShortcutAction.CommandPalette).Should().Be("Ctrl+K", "the unrelated saved gesture is untouched");
+        Assert.Equal("Alt+Up", settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal("Alt+Down", settings.GestureFor(ShortcutAction.NextSession));
+        Assert.Equal("Ctrl+K", settings.GestureFor(ShortcutAction.CommandPalette));
     }
 
     [Fact]
@@ -108,8 +107,8 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().BeEmpty();
-        settings.GestureFor(ShortcutAction.NextSession).Should().BeEmpty();
+        Assert.Empty(settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Empty(settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -119,8 +118,8 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
+        Assert.Equal("Ctrl+Shift+Up", settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
     }
 
     public void Dispose()

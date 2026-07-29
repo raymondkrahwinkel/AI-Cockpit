@@ -1,6 +1,5 @@
 using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -34,8 +33,8 @@ public class ShortcutSettingsStoreArrowMigrationTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
+        Assert.Equal("Ctrl+Shift+Up", settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class ShortcutSettingsStoreArrowMigrationTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Alt+Up");
+        Assert.Equal("Alt+Up", settings.GestureFor(ShortcutAction.PreviousSession));
     }
 
     [Fact]
@@ -60,10 +59,10 @@ public class ShortcutSettingsStoreArrowMigrationTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
-        settings.GestureFor(ShortcutAction.FocusPaneUp).Should().Be("Ctrl+Alt+Up");
-        settings.GestureFor(ShortcutAction.FocusPaneDown).Should().Be("Ctrl+Alt+Down");
+        Assert.Equal("Ctrl+Shift+Up", settings.GestureFor(ShortcutAction.PreviousSession));
+        Assert.Equal("Ctrl+Shift+Down", settings.GestureFor(ShortcutAction.NextSession));
+        Assert.Equal("Ctrl+Alt+Up", settings.GestureFor(ShortcutAction.FocusPaneUp));
+        Assert.Equal("Ctrl+Alt+Down", settings.GestureFor(ShortcutAction.FocusPaneDown));
     }
 
     public void Dispose()

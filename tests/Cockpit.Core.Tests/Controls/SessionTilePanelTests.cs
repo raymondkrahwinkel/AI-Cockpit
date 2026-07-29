@@ -1,6 +1,5 @@
 using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Controls;
 
@@ -22,8 +21,8 @@ public class SessionTilePanelTests
     {
         var (columns, rows) = SessionTilePanel.Dimensions(visibleCount);
 
-        columns.Should().Be(expectedColumns);
-        rows.Should().Be(expectedRows);
+        Assert.Equal(expectedColumns, columns);
+        Assert.Equal(expectedRows, rows);
     }
 
     [Theory]
@@ -38,8 +37,8 @@ public class SessionTilePanelTests
     {
         var (columns, rows) = SessionTilePanel.Dimensions(visibleCount, stackVertically: true);
 
-        columns.Should().Be(expectedColumns);
-        rows.Should().Be(expectedRows);
+        Assert.Equal(expectedColumns, columns);
+        Assert.Equal(expectedRows, rows);
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public class SessionTilePanelTests
         // Drop "a" onto the empty 4th cell (index 3): it lands there, its old cell becomes a hole.
         var changed = SessionTilePanel.PlaceInCells(cells, "a", 3);
 
-        changed.Should().BeTrue();
-        cells.Should().Equal(new object?[] { null, "b", "c", "a" });
+        Assert.True(changed);
+        Assert.Equal(new object?[] { null, "b", "c", "a" }, cells);
     }
 
     [Fact]
@@ -59,9 +58,9 @@ public class SessionTilePanelTests
     {
         var cells = new List<object?> { "a", "b", "c" };
 
-        SessionTilePanel.PlaceInCells(cells, "a", 2).Should().BeTrue();
+        Assert.True(SessionTilePanel.PlaceInCells(cells, "a", 2));
 
-        cells.Should().Equal("c", "b", "a");
+        Assert.Equal(new object?[] { "c", "b", "a" }, cells);
     }
 
     [Fact]
@@ -73,7 +72,7 @@ public class SessionTilePanelTests
         // hole; the pad at index 2 also stays a hole because "b" sits after it.
         SessionTilePanel.PlaceInCells(cells, "b", 3);
 
-        cells.Should().Equal(new object?[] { "a", null, null, "b" });
+        Assert.Equal(new object?[] { "a", null, null, "b" }, cells);
     }
 
     [Fact]
@@ -86,9 +85,9 @@ public class SessionTilePanelTests
 
         var removed = SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "c" });
 
-        removed.Should().BeTrue();
-        cells.Should().Equal("a", "c");
-        SessionTilePanel.Dimensions(cells.Count).Should().Be((2, 1));
+        Assert.True(removed);
+        Assert.Equal(new object?[] { "a", "c" }, cells);
+        Assert.Equal((2, 1), SessionTilePanel.Dimensions(cells.Count));
     }
 
     [Fact]
@@ -98,8 +97,8 @@ public class SessionTilePanelTests
         // not a closed session and must survive the reconcile.
         var cells = new List<object?> { "a", null, "b" };
 
-        SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "b" }).Should().BeFalse();
-        cells.Should().Equal(new object?[] { "a", null, "b" });
+        Assert.False(SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "b" }));
+        Assert.Equal(new object?[] { "a", null, "b" }, cells);
     }
 
     [Fact]
@@ -109,8 +108,8 @@ public class SessionTilePanelTests
         // leaves the drag-hole where it is.
         var cells = new List<object?> { "a", null, "b", "c" };
 
-        SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "c" }).Should().BeTrue();
-        cells.Should().Equal(new object?[] { "a", null, "c" });
+        Assert.True(SessionTilePanel.DropClosedCells(cells, new HashSet<object> { "a", "c" }));
+        Assert.Equal(new object?[] { "a", null, "c" }, cells);
     }
 
     [Fact]
@@ -118,8 +117,8 @@ public class SessionTilePanelTests
     {
         var cells = new List<object?> { "a", "b" };
 
-        SessionTilePanel.PlaceInCells(cells, "a", 0).Should().BeFalse();
-        cells.Should().Equal("a", "b");
+        Assert.False(SessionTilePanel.PlaceInCells(cells, "a", 0));
+        Assert.Equal(new object?[] { "a", "b" }, cells);
     }
 
     // Spatial pane navigation (AC-31): NeighbourCell walks the grid from a cell in a direction and returns the
@@ -131,10 +130,10 @@ public class SessionTilePanelTests
     {
         var full = new[] { true, true, true, true };
 
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: false).Should().Be(1);
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: false).Should().Be(2);
-        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Left, stackVertically: false).Should().Be(2);
-        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Up, stackVertically: false).Should().Be(1);
+        Assert.Equal(1, SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: false));
+        Assert.Equal(2, SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: false));
+        Assert.Equal(2, SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Left, stackVertically: false));
+        Assert.Equal(1, SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Up, stackVertically: false));
     }
 
     [Fact]
@@ -142,10 +141,10 @@ public class SessionTilePanelTests
     {
         var full = new[] { true, true, true, true };
 
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Left, stackVertically: false).Should().BeNull();
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Up, stackVertically: false).Should().BeNull();
-        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Right, stackVertically: false).Should().BeNull();
-        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Down, stackVertically: false).Should().BeNull();
+        Assert.Null(SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Left, stackVertically: false));
+        Assert.Null(SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Up, stackVertically: false));
+        Assert.Null(SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Right, stackVertically: false));
+        Assert.Null(SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Down, stackVertically: false));
     }
 
     [Fact]
@@ -156,9 +155,9 @@ public class SessionTilePanelTests
         //   2 .
         var three = new[] { true, true, true };
 
-        SessionTilePanel.NeighbourCell(three, 2, PaneDirection.Right, stackVertically: false).Should().BeNull();
-        SessionTilePanel.NeighbourCell(three, 1, PaneDirection.Down, stackVertically: false).Should().BeNull();
-        SessionTilePanel.NeighbourCell(three, 0, PaneDirection.Down, stackVertically: false).Should().Be(2);
+        Assert.Null(SessionTilePanel.NeighbourCell(three, 2, PaneDirection.Right, stackVertically: false));
+        Assert.Null(SessionTilePanel.NeighbourCell(three, 1, PaneDirection.Down, stackVertically: false));
+        Assert.Equal(2, SessionTilePanel.NeighbourCell(three, 0, PaneDirection.Down, stackVertically: false));
     }
 
     [Fact]
@@ -170,7 +169,7 @@ public class SessionTilePanelTests
         //   4 5
         var withHole = new[] { true, true, false, true, true, true };
 
-        SessionTilePanel.NeighbourCell(withHole, 0, PaneDirection.Down, stackVertically: false).Should().Be(4);
+        Assert.Equal(4, SessionTilePanel.NeighbourCell(withHole, 0, PaneDirection.Down, stackVertically: false));
     }
 
     [Fact]
@@ -181,8 +180,8 @@ public class SessionTilePanelTests
         //   1 3
         var full = new[] { true, true, true, true };
 
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: true).Should().Be(1);
-        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: true).Should().Be(2);
+        Assert.Equal(1, SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: true));
+        Assert.Equal(2, SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: true));
     }
 
     [Fact]
@@ -192,7 +191,7 @@ public class SessionTilePanelTests
 
         foreach (var direction in Enum.GetValues<PaneDirection>())
         {
-            SessionTilePanel.NeighbourCell(one, 0, direction, stackVertically: false).Should().BeNull();
+            Assert.Null(SessionTilePanel.NeighbourCell(one, 0, direction, stackVertically: false));
         }
     }
 }

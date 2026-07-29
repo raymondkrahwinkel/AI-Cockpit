@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -13,13 +12,13 @@ public class PluginVersionTests
     [InlineData("2.0", "1.9.9", true)]
     public void IsNewer_NumericVersions_ComparesByValue(string candidate, string current, bool expected)
     {
-        PluginVersion.IsNewer(candidate, current).Should().Be(expected);
+        Assert.Equal(expected, PluginVersion.IsNewer(candidate, current));
     }
 
     [Fact]
     public void IsNewer_NonNumeric_FallsBackToInequality()
     {
-        PluginVersion.IsNewer("2.0.0-beta", "1.0.0").Should().BeTrue();
-        PluginVersion.IsNewer("1.0.0-beta", "1.0.0-beta").Should().BeFalse();
+        Assert.True(PluginVersion.IsNewer("2.0.0-beta", "1.0.0"));
+        Assert.False(PluginVersion.IsNewer("1.0.0-beta", "1.0.0-beta"));
     }
 }

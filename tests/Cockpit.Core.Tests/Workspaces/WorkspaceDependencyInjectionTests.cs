@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
@@ -37,7 +36,7 @@ public class WorkspaceDependencyInjectionTests
     {
         using var provider = BuildProvider();
 
-        provider.GetService<IWorkspaceSettingsStore>().Should().NotBeNull();
+        Assert.NotNull(provider.GetService<IWorkspaceSettingsStore>());
     }
 
     [Fact]
@@ -47,8 +46,8 @@ public class WorkspaceDependencyInjectionTests
 
         var cockpit = provider.GetRequiredService<CockpitViewModel>();
 
-        cockpit.Workspaces.Should().NotBeNull();
-        cockpit.Workspaces.Active.Should().NotBeNull("the grid always needs a workspace to render");
-        cockpit.Workspaces.Active!.Type.Should().Be(WorkspaceType.Sessions);
+        Assert.NotNull(cockpit.Workspaces);
+        Assert.NotNull(cockpit.Workspaces.Active);
+        Assert.Equal(WorkspaceType.Sessions, cockpit.Workspaces.Active!.Type);
     }
 }

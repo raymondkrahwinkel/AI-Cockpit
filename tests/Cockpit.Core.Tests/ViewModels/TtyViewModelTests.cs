@@ -2,7 +2,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -45,16 +44,16 @@ public class TtyViewModelTests
 
         vm.LaunchConfigured(Work, "acceptEdits", "opus", "high", "D:/Projects/demo");
 
-        launchCount.Should().Be(1);
-        launchedProfile.Should().Be(Work);
-        launchedOptions.Should().NotBeNull();
-        launchedOptions![TtyLaunchOption.PermissionMode].Should().Be("acceptEdits");
-        launchedOptions[TtyLaunchOption.Model].Should().Be("opus");
-        launchedOptions[TtyLaunchOption.Effort].Should().Be("high");
-        launchedWorkingDirectory.Should().Be("D:/Projects/demo");
-        vm.WorkingDirectory.Should().Be("D:/Projects/demo");
-        vm.ActiveProfileLabel.Should().Be("work");
-        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        Assert.Equal(1, launchCount);
+        Assert.Equal(Work, launchedProfile);
+        Assert.NotNull(launchedOptions);
+        Assert.Equal("acceptEdits", launchedOptions![TtyLaunchOption.PermissionMode]);
+        Assert.Equal("opus", launchedOptions[TtyLaunchOption.Model]);
+        Assert.Equal("high", launchedOptions[TtyLaunchOption.Effort]);
+        Assert.Equal("D:/Projects/demo", launchedWorkingDirectory);
+        Assert.Equal("D:/Projects/demo", vm.WorkingDirectory);
+        Assert.Equal("work", vm.ActiveProfileLabel);
+        Assert.Equal(SessionStatus.Busy, vm.SessionStatus);
     }
 
     [Fact]
@@ -65,11 +64,11 @@ public class TtyViewModelTests
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
         vm.LaunchRequested += _ => launchCount++;
-        launchCount.Should().Be(0);           // nothing raised yet — no subscriber at configure time
+        Assert.Equal(0, launchCount);           // nothing raised yet — no subscriber at configure time
 
         vm.TryRaiseLaunch();                  // the view calls this once it has subscribed
 
-        launchCount.Should().Be(1);
+        Assert.Equal(1, launchCount);
     }
 
     [Fact]
@@ -83,7 +82,7 @@ public class TtyViewModelTests
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
-        vm.IsTerminal.Should().BeFalse();
+        Assert.False(vm.IsTerminal);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class TtyViewModelTests
 
         vm.LaunchTerminal(new ShellDescriptor("pwsh", "PowerShell", "pwsh", []));
 
-        vm.IsTerminal.Should().BeTrue();
+        Assert.True(vm.IsTerminal);
     }
 
     [Fact]
@@ -107,7 +106,7 @@ public class TtyViewModelTests
         vm.TryRaiseLaunch();
         vm.TryRaiseLaunch();
 
-        launchCount.Should().Be(1);
+        Assert.Equal(1, launchCount);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class TtyViewModelTests
 
         vm.TryRaiseLaunch();
 
-        launchCount.Should().Be(0);
+        Assert.Equal(0, launchCount);
     }
 
     [Fact]
@@ -129,7 +128,7 @@ public class TtyViewModelTests
 
         vm.OnProcessExited();
 
-        vm.SessionStatus.Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, vm.SessionStatus);
     }
 
     [Fact]
@@ -137,10 +136,10 @@ public class TtyViewModelTests
     {
         var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         vm.LaunchConfigured(profile: null, permissionMode: null, model: null, effort: null);
-        vm.Status.Should().Contain("Launching");
+        Assert.Contains("Launching", vm.Status);
 
         vm.OnLaunchSucceeded();
 
-        vm.Status.Should().Be("Running");
+        Assert.Equal("Running", vm.Status);
     }
 }

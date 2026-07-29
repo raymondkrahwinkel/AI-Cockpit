@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -17,27 +16,27 @@ public class LinuxSessionTests
     [InlineData("WAYLAND")]
     public void TheSessionSaysItIsWayland_SoItIs(string sessionType)
     {
-        LinuxSession.IsWayland(sessionType, waylandDisplay: null).Should().BeTrue();
+        Assert.True(LinuxSession.IsWayland(sessionType, waylandDisplay: null));
     }
 
     /// <summary>Raymond's KDE/Wayland laptop, the machine the portal route was designed against.</summary>
     [Fact]
     public void AWaylandSessionThatSetsBoth_IsWayland()
     {
-        LinuxSession.IsWayland("wayland", "wayland-0").Should().BeTrue();
+        Assert.True(LinuxSession.IsWayland("wayland", "wayland-0"));
     }
 
     /// <summary>The socket is the fallback for a session that never set the type — a compositor is being talked to either way.</summary>
     [Fact]
     public void OnlyTheSocketIsSet_StillWayland()
     {
-        LinuxSession.IsWayland(xdgSessionType: null, waylandDisplay: "wayland-0").Should().BeTrue();
+        Assert.True(LinuxSession.IsWayland(xdgSessionType: null, waylandDisplay: "wayland-0"));
     }
 
     [Fact]
     public void AnX11Session_IsNotWayland()
     {
-        LinuxSession.IsWayland("x11", waylandDisplay: null).Should().BeFalse();
+        Assert.False(LinuxSession.IsWayland("x11", waylandDisplay: null));
     }
 
     /// <summary>
@@ -48,19 +47,19 @@ public class LinuxSessionTests
     [Fact]
     public void AnX11SessionWithNoWaylandSocket_IsNotWayland()
     {
-        LinuxSession.IsWayland("x11", waylandDisplay: "").Should().BeFalse();
+        Assert.False(LinuxSession.IsWayland("x11", waylandDisplay: ""));
     }
 
     /// <summary>A headless session — a CI runner, a container — sets neither. X11 is the honest read: there is no compositor to ask.</summary>
     [Fact]
     public void ASessionThatSaysNothing_IsNotWayland()
     {
-        LinuxSession.IsWayland(xdgSessionType: null, waylandDisplay: null).Should().BeFalse();
+        Assert.False(LinuxSession.IsWayland(xdgSessionType: null, waylandDisplay: null));
     }
 
     [Fact]
     public void ATtySession_IsNotWayland()
     {
-        LinuxSession.IsWayland("tty", waylandDisplay: null).Should().BeFalse();
+        Assert.False(LinuxSession.IsWayland("tty", waylandDisplay: null));
     }
 }

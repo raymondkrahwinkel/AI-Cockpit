@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -46,10 +45,10 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore("personal"), Catalog(Server("youtrack"), Server("depot")));
 
-        viewModel.IsEditing.Should().BeFalse();
-        viewModel.DialogTitle.Should().Be("New project");
-        viewModel.CanSave.Should().BeFalse("a project needs a name");
-        viewModel.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+        Assert.False(viewModel.IsEditing);
+        Assert.Equal("New project", viewModel.DialogTitle);
+        Assert.False(viewModel.CanSave, "a project needs a name");
+        Assert.All(viewModel.McpServers, server => Assert.True(server.IsEnabledForSession));
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public class ProjectDialogViewModelTests
 
         // A server switched off in the registry reaches no session at all, so offering it here as a per-project
         // toggle would promise a project something it cannot have — and every other picker already leaves it out.
-        viewModel.McpServers.Select(server => server.Name).Should().Equal("depot");
+        Assert.Equal(new[] { "depot" }, viewModel.McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public class ProjectDialogViewModelTests
         };
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog(Server("depot")));
 
-        viewModel.ToProject().McpOverlay.DisabledServerNames.Should().Contain("gone");
+        Assert.Contains("gone", viewModel.ToProject().McpOverlay.DisabledServerNames);
     }
 
     [Fact]
@@ -87,7 +86,7 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(Server("youtrack"), internalServer));
 
-        viewModel.McpServers.Select(server => server.Name).Should().Equal("youtrack");
+        Assert.Equal(new[] { "youtrack" }, viewModel.McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -101,9 +100,9 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, ProfileStore("personal"), Catalog(Server("youtrack"), Server("depot")));
 
-        viewModel.IsEditing.Should().BeTrue();
-        viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession.Should().BeFalse();
-        viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession.Should().BeTrue();
+        Assert.True(viewModel.IsEditing);
+        Assert.False(viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession);
+        Assert.True(viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
     }
 
     [Fact]
@@ -113,7 +112,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal", "work"), Catalog());
 
-        viewModel.SelectedProfileLabel.Should().Be("work");
+        Assert.Equal("work", viewModel.SelectedProfileLabel);
     }
 
     /// <summary>A label whose profile was since renamed or removed must not be handed back as a selection nothing resolves.</summary>
@@ -124,7 +123,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
 
-        viewModel.SelectedProfileLabel.Should().BeNull();
+        Assert.Null(viewModel.SelectedProfileLabel);
     }
 
     [Fact]
@@ -135,7 +134,7 @@ public class ProjectDialogViewModelTests
         viewModel.Name = "Cockpit";
         viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession = false;
 
-        viewModel.ToProject().McpOverlay.DisabledServerNames.Should().Equal("depot");
+        Assert.Equal(new[] { "depot" }, viewModel.ToProject().McpOverlay.DisabledServerNames);
     }
 
     [Fact]
@@ -145,7 +144,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ToProject().Id.Should().Be(project.Id);
+        Assert.Equal(project.Id, viewModel.ToProject().Id);
     }
 
     /// <summary>v1 edits which servers are on, not the servers themselves — a project's own servers must survive an edit.</summary>
@@ -159,8 +158,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ToProject().McpOverlay.AdditionalServers.Should().ContainSingle()
-            .Which.Name.Should().Be("project-tools");
+        Assert.Equal("project-tools", Assert.Single(viewModel.ToProject().McpOverlay.AdditionalServers).Name);
     }
 
     /// <summary>Likewise for what v2 writes: editing a project in v1 must not drop its knowledge-store reference (AC-166).</summary>
@@ -171,7 +169,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ToProject().MemoryRef.Should().Be("depot:ai-cockpit");
+        Assert.Equal("depot:ai-cockpit", viewModel.ToProject().MemoryRef);
     }
 
     /// <summary>
@@ -195,7 +193,7 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ToProject().Resources.Should().Equal(project.Resources);
+        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
     }
 
     /// <summary>
@@ -223,13 +221,17 @@ public class ProjectDialogViewModelTests
 
         var saved = viewModel.ToProject();
 
-        saved.MemoryRef.Should().Be("/home/raymond/Notes/CockpitV2");
+        Assert.Equal("/home/raymond/Notes/CockpitV2", saved.MemoryRef);
         // AC-485 review (FIX 9): .Equal pins the whole sequence in the order the operator left it, not merely that
         // the untouched rows still appear somewhere in the saved list.
-        saved.Resources.Should().Equal(
-            new ProjectResource("/home/raymond/Notes/CockpitV2", ProjectResourceRole.Memory),
-            instructions,
-            reference);
+        Assert.Equal(
+            new[]
+            {
+                new ProjectResource("/home/raymond/Notes/CockpitV2", ProjectResourceRole.Memory),
+                instructions,
+                reference,
+            },
+            saved.Resources);
     }
 
     [Fact]
@@ -242,9 +244,9 @@ public class ProjectDialogViewModelTests
 
         var project = viewModel.ToProject();
 
-        project.Name.Should().Be("Cockpit");
-        project.Description.Should().BeNull();
-        project.BehaviorPrompt.Should().BeNull();
+        Assert.Equal("Cockpit", project.Name);
+        Assert.Null(project.Description);
+        Assert.Null(project.BehaviorPrompt);
     }
 
     [Fact]
@@ -256,8 +258,8 @@ public class ProjectDialogViewModelTests
         viewModel.ApplyPickedDirectory("/home/raymond/clones/cockpit", "https://example.test/cockpit.git");
 
         var project = viewModel.ToProject();
-        project.SourceDirectory.Should().Be("/home/raymond/clones/cockpit");
-        project.GitUrl.Should().Be("https://example.test/cockpit.git");
+        Assert.Equal("/home/raymond/clones/cockpit", project.SourceDirectory);
+        Assert.Equal("https://example.test/cockpit.git", project.GitUrl);
     }
 
     /// <summary>Pointing an existing project at a folder of its own drops the clone URL, which no longer describes where it came from.</summary>
@@ -269,7 +271,7 @@ public class ProjectDialogViewModelTests
 
         viewModel.ApplyPickedDirectory("/home/raymond/elsewhere");
 
-        viewModel.ToProject().GitUrl.Should().BeNull();
+        Assert.Null(viewModel.ToProject().GitUrl);
     }
 
     [Fact]
@@ -277,9 +279,9 @@ public class ProjectDialogViewModelTests
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
 
-        viewModel.SaveCommand.CanExecute(null).Should().BeFalse();
+        Assert.False(viewModel.SaveCommand.CanExecute(null));
         viewModel.Name = "Cockpit";
-        viewModel.SaveCommand.CanExecute(null).Should().BeTrue();
+        Assert.True(viewModel.SaveCommand.CanExecute(null));
     }
 
     [Fact]
@@ -296,8 +298,8 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
 
-        viewModel.AdditionalInfo.Select(field => field.Label).Should().Equal("Repository", "Customer");
-        viewModel.AdditionalInfo[0].Value.Should().Be("https://github.com/example/repo");
+        Assert.Equal(new[] { "Repository", "Customer" }, viewModel.AdditionalInfo.Select(field => field.Label));
+        Assert.Equal("https://github.com/example/repo", viewModel.AdditionalInfo[0].Value);
     }
 
     [Fact]
@@ -306,10 +308,10 @@ public class ProjectDialogViewModelTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
 
         viewModel.AddInfoFieldCommand.Execute(null);
-        viewModel.AdditionalInfo.Should().ContainSingle().Which.Label.Should().BeEmpty();
+        Assert.Empty(Assert.Single(viewModel.AdditionalInfo).Label);
 
         viewModel.RemoveInfoFieldCommand.Execute(viewModel.AdditionalInfo[0]);
-        viewModel.AdditionalInfo.Should().BeEmpty();
+        Assert.Empty(viewModel.AdditionalInfo);
     }
 
     [Fact]
@@ -322,8 +324,8 @@ public class ProjectDialogViewModelTests
 
         var saved = viewModel.ToProject();
 
-        saved.AdditionalInfo.Should().ContainSingle("a row the operator added and left alone is not information");
-        saved.AdditionalInfo[0].Should().Be(new ProjectInfoField("Repository", "https://github.com/example/repo"));
+        Assert.Single(saved.AdditionalInfo);
+        Assert.Equal(new ProjectInfoField("Repository", "https://github.com/example/repo"), saved.AdditionalInfo[0]);
     }
 
     [Fact]
@@ -335,8 +337,8 @@ public class ProjectDialogViewModelTests
         viewModel.Name = "Cockpit";
         viewModel.AdditionalInfo.Add(new ProjectInfoFieldViewModel(value: "https://example.test"));
 
-        viewModel.CanSave.Should().BeTrue();
-        viewModel.ToProject().AdditionalInfo.Should().ContainSingle().Which.Value.Should().Be("https://example.test");
+        Assert.True(viewModel.CanSave);
+        Assert.Equal("https://example.test", Assert.Single(viewModel.ToProject().AdditionalInfo).Value);
     }
 
     [Fact]
@@ -355,10 +357,10 @@ public class ProjectDialogViewModelTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog());
 
-        viewModel.AdditionalInfo.Select(field => field.IsSharedWithSessions).Should().Equal(true, false);
+        Assert.Equal(new[] { true, false }, viewModel.AdditionalInfo.Select(field => field.IsSharedWithSessions));
 
         viewModel.AdditionalInfo[1].IsSharedWithSessions = true;
-        viewModel.ToProject().AdditionalInfo.Select(field => field.IsSharedWithSessions).Should().Equal(true, true);
+        Assert.Equal(new[] { true, true }, viewModel.ToProject().AdditionalInfo.Select(field => field.IsSharedWithSessions));
     }
 
     [Fact]
@@ -370,12 +372,12 @@ public class ProjectDialogViewModelTests
 
         row.IsSecret = true;
 
-        row.IsSharedWithSessions.Should().BeFalse();
-        row.CanShareWithSessions.Should().BeFalse();
-        row.ToDomain().ReachesSessions.Should().BeFalse();
+        Assert.False(row.IsSharedWithSessions);
+        Assert.False(row.CanShareWithSessions);
+        Assert.False(row.ToDomain().ReachesSessions);
 
         row.IsSecret = false;
-        row.IsSharedWithSessions.Should().BeFalse("the tick is not silently restored — the operator says so again");
+        Assert.False(row.IsSharedWithSessions, "the tick is not silently restored — the operator says so again");
     }
 
     [Fact]
@@ -392,7 +394,7 @@ public class ProjectDialogViewModelTests
 
         viewModel.CancelCommand.Execute(null);
 
-        closed.Should().BeTrue();
-        closedWith.Should().BeNull();
+        Assert.True(closed);
+        Assert.Null(closedWith);
     }
 }

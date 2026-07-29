@@ -1,6 +1,5 @@
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Configuration;
 
@@ -17,13 +16,13 @@ public class ProviderConfigEntryTests
 
         var entry = ProviderConfigEntry.FromDomain(config);
 
-        entry.Should().NotBeNull();
-        entry!.Provider.Should().Be(SessionProvider.Plugin);
-        entry.PluginProviderId.Should().Be("gemini-provider.gemini");
-        entry.PluginConfigJson.Should().Be("""{"apiKey":"secret","model":"gemini-2.5-flash"}""");
-        entry.BaseUrl.Should().BeNull();
-        entry.Model.Should().BeNull();
-        entry.ApiKey.Should().BeNull();
+        Assert.NotNull(entry);
+        Assert.Equal(SessionProvider.Plugin, entry!.Provider);
+        Assert.Equal("gemini-provider.gemini", entry.PluginProviderId);
+        Assert.Equal("""{"apiKey":"secret","model":"gemini-2.5-flash"}""", entry.PluginConfigJson);
+        Assert.Null(entry.BaseUrl);
+        Assert.Null(entry.Model);
+        Assert.Null(entry.ApiKey);
     }
 
     [Fact]
@@ -33,9 +32,9 @@ public class ProviderConfigEntryTests
 
         var roundTripped = ProviderConfigEntry.FromDomain(original)!.ToDomain(claudeConfigDir: string.Empty, claudeExecutablePath: null);
 
-        roundTripped.Should().BeOfType<PluginProviderConfig>();
+        Assert.IsType<PluginProviderConfig>(roundTripped);
         var plugin = (PluginProviderConfig)roundTripped!;
-        plugin.ProviderId.Should().Be(original.ProviderId);
-        plugin.ConfigJson.Should().Be(original.ConfigJson);
+        Assert.Equal(original.ProviderId, plugin.ProviderId);
+        Assert.Equal(original.ConfigJson, plugin.ConfigJson);
     }
 }

@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Voice;
@@ -50,8 +49,8 @@ public class GlobalHotkeyServiceDependencyInjectionTests
 
         var service = provider.GetService<IGlobalHotkeyService>();
 
-        service.Should().NotBeNull();
-        service.Should().BeOfType(_ExpectedForThisSession());
+        Assert.NotNull(service);
+        Assert.IsType(_ExpectedForThisSession(), service);
     }
 
     /// <summary>

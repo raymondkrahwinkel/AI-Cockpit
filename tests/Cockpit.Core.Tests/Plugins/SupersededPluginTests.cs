@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -17,14 +16,14 @@ public class SupersededPluginTests
     [Fact]
     public void ShouldOffer_WhenTheOldPluginAndASuccessorAreBothEnabled_SaysSo()
     {
-        Widgets.ShouldOffer(["widgets", "clock", "git-status"]).Should().BeTrue();
+        Assert.True(Widgets.ShouldOffer(["widgets", "clock", "git-status"]));
     }
 
     /// <summary>Without the old one there is nothing to remove — the ordinary case, and it must stay quiet.</summary>
     [Fact]
     public void ShouldOffer_WithOnlyTheSuccessors_SaysNothing()
     {
-        Widgets.ShouldOffer(["clock", "system-monitor"]).Should().BeFalse();
+        Assert.False(Widgets.ShouldOffer(["clock", "system-monitor"]));
     }
 
     /// <summary>
@@ -34,20 +33,20 @@ public class SupersededPluginTests
     [Fact]
     public void ShouldOffer_WithNoSuccessorEnabled_SaysNothing()
     {
-        Widgets.ShouldOffer(["widgets", "git-status"]).Should().BeFalse();
+        Assert.False(Widgets.ShouldOffer(["widgets", "git-status"]));
     }
 
     [Fact]
     public void ShouldOffer_WithNothingEnabled_SaysNothing()
     {
-        Widgets.ShouldOffer([]).Should().BeFalse();
+        Assert.False(Widgets.ShouldOffer([]));
     }
 
     /// <summary>One successor is enough: the clock ships with the app, the monitor comes from the store when wanted.</summary>
     [Fact]
     public void ShouldOffer_WithOnlyTheBundledSuccessor_StillSaysSo()
     {
-        Widgets.ShouldOffer(["widgets", "clock"]).Should().BeTrue();
+        Assert.True(Widgets.ShouldOffer(["widgets", "clock"]));
     }
 
     /// <summary>
@@ -57,7 +56,6 @@ public class SupersededPluginTests
     [Fact]
     public void Known_HoldsTheOneSplitThisBuildMade()
     {
-        SupersededPlugin.Known.Should().ContainSingle()
-            .Which.Should().BeEquivalentTo(new SupersededPlugin("widgets", "Reference widgets", ["clock", "system-monitor"]));
+        Assert.Equivalent(new SupersededPlugin("widgets", "Reference widgets", ["clock", "system-monitor"]), Assert.Single(SupersededPlugin.Known));
     }
 }

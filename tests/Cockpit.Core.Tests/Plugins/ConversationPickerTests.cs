@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
@@ -22,8 +21,7 @@ public class ConversationPickerTests
 
         host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", () => Task.FromResult<string?>("abc-123")));
 
-        registry.Pickers.Should().ContainSingle()
-            .Which.Title.Should().Be("Search transcripts");
+        Assert.Equal("Search transcripts", Assert.Single(registry.Pickers).Title);
     }
 
     [Fact]
@@ -35,7 +33,7 @@ public class ConversationPickerTests
 
         var picked = await registry.Pickers[0].PickAsync();
 
-        picked.Should().Be("abc-123");
+        Assert.Equal("abc-123", picked);
     }
 
     // A provider whose history is folder-scoped hands back where the conversation ran as well as its id, through
@@ -51,11 +49,11 @@ public class ConversationPickerTests
         });
 
         var pickWithLocation = registry.Pickers[0].PickWithLocationAsync;
-        pickWithLocation.Should().NotBeNull();
+        Assert.NotNull(pickWithLocation);
 
         var picked = pickWithLocation is null ? null : await pickWithLocation();
 
-        picked.Should().Be(new PickedConversation("abc-123", "/home/me/project"));
+        Assert.Equal(new PickedConversation("abc-123", "/home/me/project"), picked);
     }
 
     // No plugin that browses a provider's history installed is the normal case: the dialog then simply shows no
@@ -63,7 +61,7 @@ public class ConversationPickerTests
     [Fact]
     public void WithNoPluginInstalled_ThereIsNoPicker()
     {
-        new ConversationPickerRegistry().Pickers.Should().BeEmpty();
+        Assert.Empty(new ConversationPickerRegistry().Pickers);
     }
 
     private static ICockpitHost NewHost(IConversationPickerRegistry registry)

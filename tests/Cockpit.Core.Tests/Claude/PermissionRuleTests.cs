@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Core.Sessions.Permissions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -15,8 +14,8 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForWildcard("Bash");
 
-        rule.Matches("Bash", """{"command":"ls"}""").Should().BeTrue();
-        rule.Matches("Bash", """{"command":"rm -rf /"}""").Should().BeTrue();
+        Assert.True(rule.Matches("Bash", """{"command":"ls"}"""));
+        Assert.True(rule.Matches("Bash", """{"command":"rm -rf /"}"""));
     }
 
     [Fact]
@@ -24,7 +23,7 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForWildcard("Bash");
 
-        rule.Matches("Edit", "{}").Should().BeFalse();
+        Assert.False(rule.Matches("Edit", "{}"));
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
 
-        rule.Matches("Bash", """{"command":"dotnet build"}""").Should().BeTrue();
+        Assert.True(rule.Matches("Bash", """{"command":"dotnet build"}"""));
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForExact("Edit", """{"file_path":"a.txt","old_string":"x"}""");
 
-        rule.Matches("Edit", """{ "old_string": "x",  "file_path": "a.txt" }""").Should().BeTrue();
+        Assert.True(rule.Matches("Edit", """{ "old_string": "x",  "file_path": "a.txt" }"""));
     }
 
     [Theory]
@@ -59,7 +58,7 @@ public class PermissionRuleTests
 
         var rule = PermissionRule.ForExact("Bash", literalInput);
 
-        rule.Matches("Bash", escapedInput).Should().BeTrue();
+        Assert.True(rule.Matches("Bash", escapedInput));
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
 
-        rule.Matches("Bash", """{"command":"dotnet test"}""").Should().BeFalse();
+        Assert.False(rule.Matches("Bash", """{"command":"dotnet test"}"""));
     }
 
     [Fact]
@@ -75,7 +74,7 @@ public class PermissionRuleTests
     {
         var rule = PermissionRule.ForExact("Bash", """{"command":"dotnet build"}""");
 
-        rule.Matches("Write", """{"command":"dotnet build"}""").Should().BeFalse();
+        Assert.False(rule.Matches("Write", """{"command":"dotnet build"}"""));
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public class PermissionRuleTests
     {
         var set = new PermissionRuleSet();
 
-        set.Add(PermissionRule.ForWildcard("Bash")).Should().BeTrue();
-        set.Add(PermissionRule.ForWildcard("Bash")).Should().BeFalse();
-        set.Snapshot().Should().ContainSingle();
+        Assert.True(set.Add(PermissionRule.ForWildcard("Bash")));
+        Assert.False(set.Add(PermissionRule.ForWildcard("Bash")));
+        Assert.Single(set.Snapshot());
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class PermissionRuleTests
     {
         var set = new PermissionRuleSet([PermissionRule.ForExact("Read", """{"file_path":"a.txt"}""")]);
 
-        set.IsAlwaysAllowed("Read", """{"file_path":"a.txt"}""").Should().BeTrue();
-        set.IsAlwaysAllowed("Read", """{"file_path":"b.txt"}""").Should().BeFalse();
+        Assert.True(set.IsAlwaysAllowed("Read", """{"file_path":"a.txt"}"""));
+        Assert.False(set.IsAlwaysAllowed("Read", """{"file_path":"b.txt"}"""));
     }
 }

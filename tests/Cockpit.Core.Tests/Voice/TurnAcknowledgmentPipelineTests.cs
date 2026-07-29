@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -19,8 +18,8 @@ public class TurnAcknowledgmentPipelineTests
 
         var next = await TurnAcknowledgmentPipeline.SpeakAsync(queue, cleanupService: null, TurnAckMode.Off, phraseIndex: 0, "do the thing", speakerId: 1, language: "en");
 
-        queue.ReceivedCalls().Should().BeEmpty();
-        next.Should().Be(0);
+        Assert.Empty(queue.ReceivedCalls());
+        Assert.Equal(0, next);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class TurnAcknowledgmentPipelineTests
         var next = await TurnAcknowledgmentPipeline.SpeakAsync(queue, cleanupService: null, TurnAckMode.InstantPhrases, phraseIndex: 0, "do the thing", speakerId: 2, language: "en");
 
         queue.Received(1).Enqueue(Arg.Is<IReadOnlyList<string>>(s => s.Count == 1 && s[0] == presets[0]), 2, "en");
-        next.Should().Be(1);
+        Assert.Equal(1, next);
     }
 
     [Fact]
@@ -58,7 +57,7 @@ public class TurnAcknowledgmentPipelineTests
         var next = await TurnAcknowledgmentPipeline.SpeakAsync(queue, cleanup, TurnAckMode.LocalLlm, phraseIndex: 0, "do the thing", speakerId: 3, language: "en");
 
         queue.Received(1).Enqueue(Arg.Is<IReadOnlyList<string>>(s => s.Count == 1 && s[0] == "On it, checking now."), 3, "en");
-        next.Should().Be(0);
+        Assert.Equal(0, next);
     }
 
     [Fact]
@@ -72,6 +71,6 @@ public class TurnAcknowledgmentPipelineTests
         var next = await TurnAcknowledgmentPipeline.SpeakAsync(queue, cleanup, TurnAckMode.LocalLlm, phraseIndex: 0, "do the thing", speakerId: 3, language: "en");
 
         queue.Received(1).Enqueue(Arg.Is<IReadOnlyList<string>>(s => s[0] == presets[0]), 3, "en");
-        next.Should().Be(1);
+        Assert.Equal(1, next);
     }
 }

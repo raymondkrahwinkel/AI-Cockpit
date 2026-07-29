@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -48,14 +47,16 @@ public class McpToolProviderConnectAsyncTests
         bothStopwatch.Stop();
 
         // Both connected, in the same order the servers were listed (deterministic despite racing in parallel).
-        session.ConnectedServerNames.Should().Equal("server-a", "server-b");
-        session.Tools.Select(tool => tool.Name).Should().Contain(["tool_a", "tool_b"]);
+        Assert.Equal(new[] { "server-a", "server-b" }, session.ConnectedServerNames);
+        var toolNames = session.Tools.Select(tool => tool.Name).ToList();
+        Assert.Contains("tool_a", toolNames);
+        Assert.Contains("tool_b", toolNames);
 
         // A sequential connect of two servers would take roughly double a single server's connect time; well
         // under that (vs. the just-measured single-server baseline) proves the two connects overlapped rather
         // than running one after another. The 1.6x slack absorbs normal timing noise without hiding a real
         // regression to sequential (which would land close to 2x).
-        bothStopwatch.Elapsed.Should().BeLessThan(soloStopwatch.Elapsed * 1.6);
+        Assert.True(bothStopwatch.Elapsed < soloStopwatch.Elapsed * 1.6);
     }
 
     [Fact]
@@ -72,8 +73,8 @@ public class McpToolProviderConnectAsyncTests
         // The per-session selection (#44) excludes server-b — on top of both being registry-enabled.
         await using var session = await provider.ConnectAsync(new HashSet<string> { "server-a" });
 
-        session.ConnectedServerNames.Should().Equal("server-a");
-        session.Tools.Should().ContainSingle().Which.Name.Should().Be("tool_a");
+        Assert.Equal(new[] { "server-a" }, session.ConnectedServerNames);
+        Assert.Equal("tool_a", Assert.Single(session.Tools).Name);
     }
 
     [Fact]
@@ -89,8 +90,8 @@ public class McpToolProviderConnectAsyncTests
 
         await using var session = await provider.ConnectAsync();
 
-        session.ConnectedServerNames.Should().Equal("server-a");
-        session.Tools.Should().ContainSingle().Which.Name.Should().Be("tool_a");
+        Assert.Equal(new[] { "server-a" }, session.ConnectedServerNames);
+        Assert.Equal("tool_a", Assert.Single(session.Tools).Name);
     }
 
     /// <summary>Disables the built-in stdio presets (npx/uvx) — irrelevant here and not guaranteed available on a test machine.</summary>
@@ -124,12 +125,12 @@ public class McpToolProviderConnectAsyncTests
 
         var session = await provider.ConnectAsync(paneId: "local-model-pane-under-test");
 
-        keyring.LivePaneCount.Should().Be(1, "connecting minted this pane's token");
+        Assert.Equal(1, keyring.LivePaneCount);
 
         await session.DisposeAsync();
 
-        keyring.LivePaneCount.Should().Be(0, "the token must not outlive the tool loop it was minted for");
-        keyring.LiveTokenCount.Should().Be(0);
+        Assert.Equal(0, keyring.LivePaneCount);
+        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     // A connect with no pane id (no session to name) never touches the keyring — nothing was minted, so disposing
@@ -143,8 +144,8 @@ public class McpToolProviderConnectAsyncTests
         var session = await provider.ConnectAsync();
         await session.DisposeAsync();
 
-        keyring.LivePaneCount.Should().Be(0);
-        keyring.LiveTokenCount.Should().Be(0);
+        Assert.Equal(0, keyring.LivePaneCount);
+        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     // AC-143 full lifecycle (acceptance criterion 2): both remaining mint sites — the TTY route and this in-process
@@ -169,13 +170,13 @@ public class McpToolProviderConnectAsyncTests
         var ttyProcess = ttyLauncher.Launch(ttyProvider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane");
         var toolSession = await provider.ConnectAsync(paneId: "local-model-pane");
 
-        keyring.LivePaneCount.Should().Be(2, "both routes minted their own pane's token");
+        Assert.Equal(2, keyring.LivePaneCount);
 
         ttyProcess.Dispose();
         await toolSession.DisposeAsync();
 
-        keyring.LivePaneCount.Should().Be(0);
-        keyring.LiveTokenCount.Should().Be(0);
+        Assert.Equal(0, keyring.LivePaneCount);
+        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null)

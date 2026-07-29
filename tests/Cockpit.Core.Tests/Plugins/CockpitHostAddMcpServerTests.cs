@@ -5,7 +5,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -159,8 +158,8 @@ public class CockpitHostAddMcpServerTests
         await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-1"));
         await host.AddMcpServer(new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-2"));
 
-        servers.Should().ContainSingle();
-        servers[0].ApiKey.Should().Be("token-2");
+        Assert.Single(servers);
+        Assert.Equal("token-2", servers[0].ApiKey);
     }
 
     [Fact]

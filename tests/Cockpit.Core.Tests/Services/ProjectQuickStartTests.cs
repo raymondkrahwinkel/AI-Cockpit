@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
@@ -51,7 +50,7 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(Project.Create("Cockpit"));
 
-        result.Should().BeNull("a session needs a profile to run on, and the project names none");
+        Assert.Null(result);
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result.Should().BeNull();
+        Assert.Null(result);
     }
 
     [Fact]
@@ -80,13 +79,13 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result.Should().NotBeNull();
-        result!.Profile.Should().BeSameAs(profile);
-        result.SessionName.Should().Be("Cockpit", "the operator picked the project, so that is what the session is");
-        result.WorkingDirectory.Should().Be("/home/raymond/RiderProjects/AI-Cockpit");
-        result.IsolateInWorktree.Should().BeTrue();
-        result.ProjectId.Should().Be(project.Id);
-        result.SystemPrompt.Should().Be("You are Olaf.\n\nWork ticket by ticket.");
+        Assert.NotNull(result);
+        Assert.Same(profile, result!.Profile);
+        Assert.Equal("Cockpit", result.SessionName);
+        Assert.Equal("/home/raymond/RiderProjects/AI-Cockpit", result.WorkingDirectory);
+        Assert.True(result.IsolateInWorktree);
+        Assert.Equal(project.Id, result.ProjectId);
+        Assert.Equal("You are Olaf.\n\nWork ticket by ticket.", result.SystemPrompt);
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.EnabledMcpServerNames.Should().BeEquivalentTo("depot", "youtrack");
+        Assert.Equivalent(new object[] { "depot", "youtrack" }, result!.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -117,7 +116,7 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.EnabledMcpServerNames.Should().BeEquivalentTo("depot", "youtrack");
+        Assert.Equivalent(new object[] { "depot", "youtrack" }, result!.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -130,7 +129,7 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.EnabledMcpServerNames.Should().BeEquivalentTo("depot");
+        Assert.Equivalent(new object[] { "depot" }, result!.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -161,7 +160,8 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.EnabledMcpServerNames.Should().NotBeNull().And.BeEmpty();
+        Assert.NotNull(result!.EnabledMcpServerNames);
+        Assert.Empty(result.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -172,8 +172,8 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.Kind.Should().Be(SessionKind.Tty);
-        result.ReadingLevel.Should().BeNull("a reading level is an SDK concept");
+        Assert.Equal(SessionKind.Tty, result!.Kind);
+        Assert.Null(result.ReadingLevel);
     }
 
     [Fact]
@@ -192,9 +192,9 @@ public class ProjectQuickStartTests
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.Kind.Should().Be(SessionKind.Sdk);
-        result.ReadingLevel.Should().Be(ReadingLevel.Simple);
-        result.SdkLaunchOptions.Should().ContainKey("model");
-        result.PluginTtyOptions.Should().BeNull("the two option vocabularies never both apply to one launch");
+        Assert.Equal(SessionKind.Sdk, result!.Kind);
+        Assert.Equal(ReadingLevel.Simple, result.ReadingLevel);
+        Assert.Contains("model", result.SdkLaunchOptions!.Keys);
+        Assert.Null(result.PluginTtyOptions);
     }
 }

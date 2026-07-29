@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -14,10 +13,10 @@ public class TerminalPaletteActionTests
     [Fact]
     public void NewTerminal_IsInTheCatalogAndUnboundByDefault()
     {
-        var descriptor = ShortcutCatalog.All.Should().ContainSingle(entry => entry.Action == ShortcutAction.NewTerminal).Subject;
+        var descriptor = Assert.Single(ShortcutCatalog.All, entry => entry.Action == ShortcutAction.NewTerminal);
 
-        descriptor.Label.Should().Be("New terminal");
-        descriptor.DefaultGesture.Should().BeEmpty();
+        Assert.Equal("New terminal", descriptor.Label);
+        Assert.Empty(descriptor.DefaultGesture);
     }
 
     [Fact]
@@ -25,7 +24,7 @@ public class TerminalPaletteActionTests
     {
         var titles = new CockpitViewModel().BuildPaletteCommands().Select(command => command.Title).ToList();
 
-        titles.Should().Contain("New terminal");
+        Assert.Contains("New terminal", titles);
     }
 
     /// <summary>
@@ -35,6 +34,6 @@ public class TerminalPaletteActionTests
     [Fact]
     public void NewTerminal_DoesNotStayActiveInATerminal()
     {
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewTerminal).Should().BeFalse();
+        Assert.False(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewTerminal));
     }
 }

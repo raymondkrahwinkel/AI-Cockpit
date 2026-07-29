@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -52,8 +51,8 @@ public class NewSessionProjectFirstTests
 
         await viewModel.LoadAsync();
 
-        viewModel.HasProjects.Should().BeFalse("a cockpit without projects opens the dialog exactly as before");
-        viewModel.SelectedProject.Should().BeNull();
+        Assert.False(viewModel.HasProjects, "a cockpit without projects opens the dialog exactly as before");
+        Assert.Null(viewModel.SelectedProject);
     }
 
     [Fact]
@@ -65,7 +64,7 @@ public class NewSessionProjectFirstTests
 
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.SelectedProfile?.Label.Should().Be("work");
+        Assert.Equal("work", viewModel.SelectedProfile?.Label);
     }
 
     [Fact]
@@ -77,7 +76,7 @@ public class NewSessionProjectFirstTests
 
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.WorkingDirectory.Should().Be("/home/raymond/RiderProjects/AI-Cockpit");
+        Assert.Equal("/home/raymond/RiderProjects/AI-Cockpit", viewModel.WorkingDirectory);
     }
 
     /// <summary>The project's folder overrides the profile's default — that ordering is the whole precedence rule.</summary>
@@ -103,7 +102,7 @@ public class NewSessionProjectFirstTests
 
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.WorkingDirectory.Should().Be("/home/raymond/project-dir");
+        Assert.Equal("/home/raymond/project-dir", viewModel.WorkingDirectory);
     }
 
     /// <summary>
@@ -120,7 +119,7 @@ public class NewSessionProjectFirstTests
         viewModel.SelectedProject = viewModel.Projects[0];
         viewModel.SelectedProfile = viewModel.Profiles.Single(profile => profile.Label == "work");
 
-        viewModel.WorkingDirectory.Should().Be("/home/raymond/project-dir");
+        Assert.Equal("/home/raymond/project-dir", viewModel.WorkingDirectory);
     }
 
     /// <summary>A folder the operator typed is theirs; picking a project must not overwrite it.</summary>
@@ -134,7 +133,7 @@ public class NewSessionProjectFirstTests
         viewModel.WorkingDirectory = "/home/raymond/somewhere-else";
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.WorkingDirectory.Should().Be("/home/raymond/somewhere-else");
+        Assert.Equal("/home/raymond/somewhere-else", viewModel.WorkingDirectory);
     }
 
     [Fact]
@@ -147,14 +146,14 @@ public class NewSessionProjectFirstTests
             projectRegistry: [new McpServerConfig { Name = "youtrack" }, new McpServerConfig { Name = "project-tools" }]);
         await viewModel.LoadAsync();
 
-        viewModel.McpServers.Select(server => server.Name).Should().BeEquivalentTo(["youtrack", "depot"]);
+        Assert.Equivalent(new object[] { "youtrack", "depot" }, viewModel.McpServers.Select(server => server.Name));
 
         viewModel.SelectedProject = viewModel.Projects[0];
         await Task.Yield();
 
-        viewModel.McpServers.Select(server => server.Name).Should().BeEquivalentTo(
-            ["youtrack", "project-tools"],
-            "the overlay decides which servers exist for this project's sessions, which a tick cannot express");
+        Assert.Equivalent(
+            new object[] { "youtrack", "project-tools" },
+            viewModel.McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -169,7 +168,7 @@ public class NewSessionProjectFirstTests
         viewModel.CloseRequested += value => result = value;
         viewModel.ConfirmCommand.Execute(null);
 
-        result?.ProjectId.Should().Be(project.Id);
+        Assert.Equal(project.Id, result?.ProjectId);
     }
 
     [Fact]
@@ -186,8 +185,8 @@ public class NewSessionProjectFirstTests
         viewModel.SelectedProject = viewModel.Projects[0];
         await viewModel.McpChecklistRefresh;
 
-        viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession.Should().BeFalse();
-        viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession.Should().BeTrue();
+        Assert.False(viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
+        Assert.True(viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession);
     }
 
     [Fact]
@@ -215,16 +214,16 @@ public class NewSessionProjectFirstTests
 
         var viewModel = new NewSessionDialogViewModel(profileStore, loginChecker, catalog, projectStore: projectStore);
         await viewModel.LoadAsync();
-        viewModel.CanStart.Should().BeTrue("nothing is in flight yet");
+        Assert.True(viewModel.CanStart, "nothing is in flight yet");
 
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.CanStart.Should().BeFalse("the rebuild is in flight and Start would read the old checklist");
+        Assert.False(viewModel.CanStart, "the rebuild is in flight and Start would read the old checklist");
 
         pending.SetResult([]);
         await viewModel.McpChecklistRefresh;
 
-        viewModel.CanStart.Should().BeTrue("and released once it landed");
+        Assert.True(viewModel.CanStart, "and released once it landed");
     }
 
     [Fact]
@@ -242,7 +241,8 @@ public class NewSessionProjectFirstTests
         viewModel.CloseRequested += value => result = value;
         viewModel.ConfirmCommand.Execute(null);
 
-        result?.EnabledMcpServerNames.Should().NotBeNull().And.BeEmpty();
+        Assert.NotNull(result?.EnabledMcpServerNames);
+        Assert.Empty(result!.EnabledMcpServerNames!);
     }
 
     /// <summary>The AC-142 half: the profile's identity and the project's behaviour reach the launch as one appended prompt.</summary>
@@ -271,7 +271,7 @@ public class NewSessionProjectFirstTests
         viewModel.CloseRequested += value => result = value;
         viewModel.ConfirmCommand.Execute(null);
 
-        result?.SystemPrompt.Should().Be("You are Olaf. Your memory is in the Depot MCP.\n\nTest before opening a PR.");
+        Assert.Equal("You are Olaf. Your memory is in the Depot MCP.\n\nTest before opening a PR.", result?.SystemPrompt);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class NewSessionProjectFirstTests
         viewModel.CloseRequested += value => result = value;
         viewModel.ConfirmCommand.Execute(null);
 
-        result?.ProjectId.Should().BeNull();
-        result?.SystemPrompt.Should().BeNull();
+        Assert.Null(result?.ProjectId);
+        Assert.Null(result?.SystemPrompt);
     }
 }

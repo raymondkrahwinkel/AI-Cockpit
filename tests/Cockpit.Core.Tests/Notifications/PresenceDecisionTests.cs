@@ -1,5 +1,4 @@
 using Cockpit.Core.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
@@ -14,29 +13,25 @@ public class PresenceDecisionTests
     [Fact]
     public void Decide_RecentInput_Unlocked_IsPresent()
     {
-        PresenceDecision.Decide(TimeSpan.FromMinutes(2), isLocked: false, Threshold)
-            .Should().Be(PresenceState.Present);
+        Assert.Equal(PresenceState.Present, PresenceDecision.Decide(TimeSpan.FromMinutes(2), isLocked: false, Threshold));
     }
 
     [Fact]
     public void Decide_IdlePastThreshold_Unlocked_IsAway()
     {
-        PresenceDecision.Decide(TimeSpan.FromMinutes(20), isLocked: false, Threshold)
-            .Should().Be(PresenceState.Away);
+        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(TimeSpan.FromMinutes(20), isLocked: false, Threshold));
     }
 
     [Fact]
     public void Decide_IdleExactlyAtThreshold_IsAway()
     {
         // >= threshold counts as away, so the boundary itself is away.
-        PresenceDecision.Decide(Threshold, isLocked: false, Threshold)
-            .Should().Be(PresenceState.Away);
+        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(Threshold, isLocked: false, Threshold));
     }
 
     [Fact]
     public void Decide_Locked_IsAway_EvenWithRecentInput()
     {
-        PresenceDecision.Decide(TimeSpan.Zero, isLocked: true, Threshold)
-            .Should().Be(PresenceState.Away);
+        Assert.Equal(PresenceState.Away, PresenceDecision.Decide(TimeSpan.Zero, isLocked: true, Threshold));
     }
 }

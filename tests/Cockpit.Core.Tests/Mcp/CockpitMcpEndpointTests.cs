@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -21,13 +20,13 @@ public class CockpitMcpEndpointTests
         var tools = new SessionStatusTools(sink);
 
         var ok = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("pane-1", "AC-13"));
-        ok.GetProperty("ok").GetBoolean().Should().BeTrue();
-        ok.GetProperty("status").GetString().Should().Be("AC-13");
+        Assert.True(ok.GetProperty("ok").GetBoolean());
+        Assert.Equal("AC-13", ok.GetProperty("status").GetString());
 
         // An id that matches no session is reported honestly, so the agent can fix the id rather than assume it worked.
         var missed = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("unknown", "AC-13"));
-        missed.GetProperty("ok").GetBoolean().Should().BeFalse();
-        missed.TryGetProperty("error", out _).Should().BeTrue();
+        Assert.False(missed.GetProperty("ok").GetBoolean());
+        Assert.True(missed.TryGetProperty("error", out _));
     }
 
     // A status without a name must not touch the title: an agent that says what it is doing has not asked to be
@@ -42,7 +41,7 @@ public class CockpitMcpEndpointTests
         var reply = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("pane-1", "AC-13"));
 
         await sink.DidNotReceive().SuggestNameAsync(Arg.Any<string>(), Arg.Any<string>());
-        reply.TryGetProperty("renamed", out _).Should().BeFalse("a reply that never asked about the name should not answer about it");
+        Assert.False(reply.TryGetProperty("renamed", out _), "a reply that never asked about the name should not answer about it");
     }
 
     [Theory]
@@ -59,8 +58,8 @@ public class CockpitMcpEndpointTests
 
         // False is not a failure: the session keeps a name somebody chose, and the agent is told so rather than left
         // believing it renamed anything.
-        reply.GetProperty("ok").GetBoolean().Should().BeTrue();
-        reply.GetProperty("renamed").GetBoolean().Should().Be(taken);
+        Assert.True(reply.GetProperty("ok").GetBoolean());
+        Assert.Equal(taken, reply.GetProperty("renamed").GetBoolean());
     }
 
     // Nothing to rename on a session that does not exist — and the reply is the same "fix your id" error as before,
@@ -75,6 +74,6 @@ public class CockpitMcpEndpointTests
         var reply = JsonSerializer.Deserialize<JsonElement>(await tools.SetStatusAsync("unknown", "AC-13", "AC-312"));
 
         await sink.DidNotReceive().SuggestNameAsync(Arg.Any<string>(), Arg.Any<string>());
-        reply.GetProperty("ok").GetBoolean().Should().BeFalse();
+        Assert.False(reply.GetProperty("ok").GetBoolean());
     }
 }

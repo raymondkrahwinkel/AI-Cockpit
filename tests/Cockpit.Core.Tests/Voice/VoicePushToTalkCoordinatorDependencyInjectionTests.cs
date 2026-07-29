@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Infrastructure;
@@ -37,9 +36,9 @@ public class VoicePushToTalkCoordinatorDependencyInjectionTests
     {
         await using var provider = BuildProvider();
 
-        provider.GetService<VoicePushToTalkCoordinator>().Should().NotBeNull();
-        provider.GetService<VoiceOverlayViewModel>().Should().NotBeNull();
-        provider.GetService<IVoiceOverlayPresenter>().Should().BeOfType<VoiceOverlayPresenter>();
+        Assert.NotNull(provider.GetService<VoicePushToTalkCoordinator>());
+        Assert.NotNull(provider.GetService<VoiceOverlayViewModel>());
+        Assert.IsType<VoiceOverlayPresenter>(provider.GetService<IVoiceOverlayPresenter>());
     }
 
     [Fact]
@@ -50,6 +49,6 @@ public class VoicePushToTalkCoordinatorDependencyInjectionTests
         var coordinator = provider.GetRequiredService<VoicePushToTalkCoordinator>();
         var overlay = provider.GetRequiredService<VoiceOverlayViewModel>();
 
-        coordinator.Overlay.Should().BeSameAs(overlay);
+        Assert.Same(overlay, coordinator.Overlay);
     }
 }

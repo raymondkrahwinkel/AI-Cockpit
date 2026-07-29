@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -24,9 +23,9 @@ public class LocalModelServerTests
 
         var servers = LocalModelServers.From(rows);
 
-        servers.Should().ContainSingle();
-        servers[0].Name.Should().Be("Ollama");
-        servers[0].MemoryBytes.Should().Be(5_040_000_000);
+        Assert.Single(servers);
+        Assert.Equal("Ollama", servers[0].Name);
+        Assert.Equal(5_040_000_000, servers[0].MemoryBytes);
     }
 
     // The runner is inside the server's tree. Counted on its own as well, the model would appear twice — and the panel
@@ -40,7 +39,7 @@ public class LocalModelServerTests
             new(101, 100, TimeSpan.Zero, 5_000_000_000, "ollama runner"),
         };
 
-        LocalModelServers.From(rows).Single().MemoryBytes.Should().Be(5_040_000_000);
+        Assert.Equal(5_040_000_000, LocalModelServers.From(rows).Single().MemoryBytes);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class LocalModelServerTests
         // What tells the operator the memory went with the model rather than with the server.
         var rows = new List<ProcessRow> { new(100, 1, TimeSpan.Zero, 40_000_000, "ollama") };
 
-        LocalModelServers.From(rows).Single().MemoryBytes.Should().Be(40_000_000);
+        Assert.Equal(40_000_000, LocalModelServers.From(rows).Single().MemoryBytes);
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class LocalModelServerTests
             new(200, 1, TimeSpan.Zero, 900_000_000, "LM Studio"),
         };
 
-        LocalModelServers.From(rows).Select(server => server.Name).Should().Equal("LM Studio", "Ollama");
+        Assert.Equal(new[] { "LM Studio", "Ollama" }, LocalModelServers.From(rows).Select(server => server.Name));
     }
 
     [Fact]
@@ -73,6 +72,6 @@ public class LocalModelServerTests
             new(50, 1, TimeSpan.Zero, 700_000_000, "claude"),
         };
 
-        LocalModelServers.From(rows).Should().BeEmpty();
+        Assert.Empty(LocalModelServers.From(rows));
     }
 }

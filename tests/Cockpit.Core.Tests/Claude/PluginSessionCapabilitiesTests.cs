@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -16,6 +15,6 @@ public class PluginSessionCapabilitiesTests
     {
         var capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true);
 
-        capabilities.SupportsVision.Should().BeFalse();
+        Assert.False(capabilities.SupportsVision);
     }
 }

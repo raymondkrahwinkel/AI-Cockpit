@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -13,8 +12,8 @@ public class TtsProseExtractorTests
     [Fact]
     public void Extract_EmptyOrWhitespace_ReturnsNothing()
     {
-        TtsProseExtractor.Extract(string.Empty).Should().BeEmpty();
-        TtsProseExtractor.Extract("   \n  ").Should().BeEmpty();
+        Assert.Empty(TtsProseExtractor.Extract(string.Empty));
+        Assert.Empty(TtsProseExtractor.Extract("   \n  "));
     }
 
     [Fact]
@@ -22,7 +21,7 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("The build is green. Tests pass! What now?");
 
-        sentences.Should().Equal("The build is green.", "Tests pass!", "What now?");
+        Assert.Equal(new[] { "The build is green.", "Tests pass!", "What now?" }, sentences);
     }
 
     [Fact]
@@ -30,7 +29,8 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("Goedenavond Raymond 🌙 alles is groen ✅ en gepusht.");
 
-        sentences.Should().ContainSingle().Which.Should().Be("Goedenavond Raymond alles is groen en gepusht.");
+        var sentence = Assert.Single(sentences);
+        Assert.Equal("Goedenavond Raymond alles is groen en gepusht.", sentence);
     }
 
     [Fact]
@@ -38,7 +38,8 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("Klaar 👍🏽 en verzonden.");
 
-        sentences.Should().ContainSingle().Which.Should().Be("Klaar en verzonden.");
+        var sentence = Assert.Single(sentences);
+        Assert.Equal("Klaar en verzonden.", sentence);
     }
 
     [Fact]
@@ -46,7 +47,8 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("Het kost €5 en 2 + 2 = 4.");
 
-        sentences.Should().ContainSingle().Which.Should().Be("Het kost €5 en 2 + 2 = 4.");
+        var sentence = Assert.Single(sentences);
+        Assert.Equal("Het kost €5 en 2 + 2 = 4.", sentence);
     }
 
     [Fact]
@@ -56,8 +58,8 @@ public class TtsProseExtractorTests
 
         var sentences = TtsProseExtractor.Extract(markdown);
 
-        sentences.Should().Equal("Here is the fix.", "Done.");
-        string.Join(" ", sentences).Should().NotContain("DockPanel");
+        Assert.Equal(new[] { "Here is the fix.", "Done." }, sentences);
+        Assert.DoesNotContain("DockPanel", string.Join(" ", sentences));
     }
 
     [Fact]
@@ -67,8 +69,10 @@ public class TtsProseExtractorTests
 
         var sentences = TtsProseExtractor.Extract(markdown);
 
-        sentences.Should().Equal("Summary below.", "That is all.");
-        string.Join(" ", sentences).Should().NotContain("Repo").And.NotContain("|");
+        Assert.Equal(new[] { "Summary below.", "That is all." }, sentences);
+        var joined = string.Join(" ", sentences);
+        Assert.DoesNotContain("Repo", joined);
+        Assert.DoesNotContain("|", joined);
     }
 
     [Fact]
@@ -78,7 +82,7 @@ public class TtsProseExtractorTests
 
         var sentences = TtsProseExtractor.Extract(markdown);
 
-        sentences.Should().Equal("What changed.", "Fixed the layout bug.", "Added a test.");
+        Assert.Equal(new[] { "What changed.", "Fixed the layout bug.", "Added a test." }, sentences);
     }
 
     [Fact]
@@ -86,7 +90,7 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("This is **bold** and `code` and *italic*.");
 
-        sentences.Should().Equal("This is bold and code and italic.");
+        Assert.Equal(new[] { "This is bold and code and italic." }, sentences);
     }
 
     [Fact]
@@ -94,8 +98,11 @@ public class TtsProseExtractorTests
     {
         var sentences = TtsProseExtractor.Extract("I edited `C:\\Users\\raymo\\Notes.md` — see https://example.com/docs for the /home/raymond/config path.");
 
-        sentences.Should().ContainSingle();
-        sentences[0].Should().NotContain("C:\\").And.NotContain("https://").And.NotContain("/home/raymond");
-        sentences[0].Should().Contain("a path").And.Contain("a link");
+        Assert.Single(sentences);
+        Assert.DoesNotContain("C:\\", sentences[0]);
+        Assert.DoesNotContain("https://", sentences[0]);
+        Assert.DoesNotContain("/home/raymond", sentences[0]);
+        Assert.Contains("a path", sentences[0]);
+        Assert.Contains("a link", sentences[0]);
     }
 }

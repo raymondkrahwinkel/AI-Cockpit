@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Delegation;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -29,7 +28,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: null));
 
-        servers.Should().BeEquivalentTo("filesystem", "youtrack");
+        Assert.Equivalent(new object[] { "filesystem", "youtrack" }, servers);
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", "git"]));
 
-        servers.Should().BeEquivalentTo("filesystem", "git");
+        Assert.Equivalent(new object[] { "filesystem", "git" }, servers);
     }
 
     [Fact]
@@ -51,7 +50,7 @@ public class DelegationMcpSelectionTests
         // "youtrack" is disabled and "ghost" unknown — a stale saved selection must not reach either.
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", "youtrack", "ghost"]));
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: ["FileSystem"]));
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -71,7 +70,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: []));
 
-        servers.Should().BeEmpty();
+        Assert.Empty(servers);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", Orchestrator]));
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class DelegationMcpSelectionTests
         var servers = await service._ToolsForAsync(
             _Profile(selection: ["filesystem", Orchestrator], mayDelegateFurther: true));
 
-        servers.Should().BeEquivalentTo("filesystem", Orchestrator);
+        Assert.Equivalent(new object[] { "filesystem", Orchestrator }, servers);
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class DelegationMcpSelectionTests
         var servers = await service._ToolsForAsync(
             _Profile(selection: ["filesystem"], mayDelegateFurther: true));
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -118,7 +117,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", "youtrack"]), ["filesystem"]);
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -130,7 +129,7 @@ public class DelegationMcpSelectionTests
 
         var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem"]), ["filesystem", "git"]);
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -143,7 +142,7 @@ public class DelegationMcpSelectionTests
         var servers = await service._ToolsForAsync(
             _Profile(selection: ["filesystem", Orchestrator]), [Orchestrator, "filesystem"]);
 
-        servers.Should().BeEquivalentTo("filesystem");
+        Assert.Equivalent(new object[] { "filesystem" }, servers);
     }
 
     [Fact]
@@ -154,7 +153,7 @@ public class DelegationMcpSelectionTests
         var servers = await service._ToolsForAsync(
             _Profile(selection: ["filesystem", Orchestrator], mayDelegateFurther: true), [Orchestrator]);
 
-        servers.Should().BeEquivalentTo(Orchestrator);
+        Assert.Equivalent(new object[] { Orchestrator }, servers);
     }
 
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };

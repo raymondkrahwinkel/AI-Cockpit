@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -32,10 +31,10 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(zip, HostMajor);
 
-        result.IsSuccess.Should().BeTrue();
-        result.FolderId.Should().Be("github-issues");
-        File.Exists(Path.Combine(_pluginsRoot, "github-issues", "plugin.json")).Should().BeTrue();
-        File.Exists(Path.Combine(_pluginsRoot, "github-issues", "Plugin.dll")).Should().BeTrue();
+        Assert.True(result.IsSuccess);
+        Assert.Equal("github-issues", result.FolderId);
+        Assert.True(File.Exists(Path.Combine(_pluginsRoot, "github-issues", "plugin.json")));
+        Assert.True(File.Exists(Path.Combine(_pluginsRoot, "github-issues", "Plugin.dll")));
     }
 
     [Fact]
@@ -49,8 +48,8 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(zip, HostMajor);
 
-        result.IsSuccess.Should().BeFalse();
-        Directory.Exists(Path.Combine(_pluginsRoot, "x")).Should().BeFalse();
+        Assert.False(result.IsSuccess);
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "x")));
     }
 
     [Fact]
@@ -60,8 +59,8 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(zip, HostMajor);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("plugin.json");
+        Assert.False(result.IsSuccess);
+        Assert.Contains("plugin.json", result.Error);
     }
 
     [Fact]
@@ -71,8 +70,8 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(zip, HostMajor);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Plugin.dll");
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Plugin.dll", result.Error);
     }
 
     [Fact]
@@ -89,8 +88,8 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(zip, HostMajor);
 
-        result.IsSuccess.Should().BeFalse();
-        File.Exists(Path.Combine(_tempDir, "escape.txt")).Should().BeFalse();
+        Assert.False(result.IsSuccess);
+        Assert.False(File.Exists(Path.Combine(_tempDir, "escape.txt")));
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class PluginInstallerTests : IDisposable
         await _installer.MarkForRemovalAsync("gone");
         await _installer.SweepRemovalsAsync();
 
-        Directory.Exists(Path.Combine(_pluginsRoot, "gone")).Should().BeFalse();
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "gone")));
     }
 
     [Fact]
@@ -116,11 +115,11 @@ public class PluginInstallerTests : IDisposable
 
         var result = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
 
-        result.IsSuccess.Should().BeTrue();
-        result.FolderId.Should().Be("acme");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("acme", result.FolderId);
         // The live install is untouched (its assembly may be loaded/locked); the new version waits in staging.
-        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))).Should().Be("MZ-v1");
-        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, ".pending-updates", "acme", "Plugin.dll"))).Should().Be("MZ-v2");
+        Assert.Equal("MZ-v1", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))));
+        Assert.Equal("MZ-v2", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, ".pending-updates", "acme", "Plugin.dll"))));
     }
 
     [Fact]
@@ -131,13 +130,13 @@ public class PluginInstallerTests : IDisposable
         var v1 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
         var v2 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
 
-        v1.Sha256.Should().NotBeNullOrEmpty();
-        v2.Sha256.Should().NotBeNullOrEmpty();
-        v2.Sha256.Should().NotBe(v1.Sha256);
+        Assert.False(string.IsNullOrEmpty(v1.Sha256));
+        Assert.False(string.IsNullOrEmpty(v2.Sha256));
+        Assert.NotEqual(v1.Sha256, v2.Sha256);
 
         // v1 is a fresh install (not staged); v2 is an update over it (staged to .pending-updates).
-        v1.Staged.Should().BeFalse();
-        v2.Staged.Should().BeTrue();
+        Assert.False(v1.Staged);
+        Assert.True(v2.Staged);
     }
 
     [Fact]
@@ -148,8 +147,8 @@ public class PluginInstallerTests : IDisposable
 
         await _installer.SweepPendingUpdatesAsync();
 
-        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))).Should().Be("MZ-v2");
-        Directory.Exists(Path.Combine(_pluginsRoot, ".pending-updates")).Should().BeFalse();
+        Assert.Equal("MZ-v2", (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))));
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, ".pending-updates")));
     }
 
     private string _PluginZip(string id, string dll) => _CreateZip(new()

@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -24,35 +23,31 @@ public class DictationNoiseFilterTests
     [InlineData("")]
     public void Strip_NothingButNoise_ReturnsEmpty(string input)
     {
-        DictationNoiseFilter.Strip(input).Should().BeEmpty();
+        Assert.Empty(DictationNoiseFilter.Strip(input));
     }
 
     [Fact]
     public void Strip_ThroatClearBeforeSpeech_KeepsOnlyTheSpeech()
     {
-        DictationNoiseFilter.Strip("*Clears throat* open the settings dialog")
-            .Should().Be("open the settings dialog");
+        Assert.Equal("open the settings dialog", DictationNoiseFilter.Strip("*Clears throat* open the settings dialog"));
     }
 
     [Fact]
     public void Strip_LeadingFiller_DropsItAndTheOrphanComma()
     {
-        DictationNoiseFilter.Strip("Um, so I think we should ship it")
-            .Should().Be("so I think we should ship it");
+        Assert.Equal("so I think we should ship it", DictationNoiseFilter.Strip("Um, so I think we should ship it"));
     }
 
     [Fact]
     public void Strip_MidSentenceFiller_DoesNotLeaveADoubleComma()
     {
-        DictationNoiseFilter.Strip("I think, um, we should ship it")
-            .Should().Be("I think, we should ship it");
+        Assert.Equal("I think, we should ship it", DictationNoiseFilter.Strip("I think, um, we should ship it"));
     }
 
     [Fact]
     public void Strip_InlineNonSpeechTag_RemovesOnlyTheTag()
     {
-        DictationNoiseFilter.Strip("Open the file [clears throat] and run the tests")
-            .Should().Be("Open the file and run the tests");
+        Assert.Equal("Open the file and run the tests", DictationNoiseFilter.Strip("Open the file [clears throat] and run the tests"));
     }
 
     [Theory]
@@ -60,7 +55,7 @@ public class DictationNoiseFilterTests
     [InlineData("summary")]
     public void Strip_WordsThatMerelyContainAFiller_AreLeftIntact(string input)
     {
-        DictationNoiseFilter.Strip(input).Should().Be(input);
+        Assert.Equal(input, DictationNoiseFilter.Strip(input));
     }
 
     [Fact]
@@ -68,21 +63,19 @@ public class DictationNoiseFilterTests
     {
         // Whisper's parenthesised cues are single words ("(coughs)"); a multi-word parenthesis is a person actually
         // speaking, so it must survive — only the single-token form is treated as noise.
-        DictationNoiseFilter.Strip("the result (about ten percent) is fine")
-            .Should().Be("the result (about ten percent) is fine");
+        Assert.Equal("the result (about ten percent) is fine", DictationNoiseFilter.Strip("the result (about ten percent) is fine"));
     }
 
     [Fact]
     public void Strip_DutchWordEr_IsNotTreatedAsAFiller()
     {
         // "er" is a real Dutch word ("there") — the filler set deliberately excludes it.
-        DictationNoiseFilter.Strip("er is een probleem").Should().Be("er is een probleem");
+        Assert.Equal("er is een probleem", DictationNoiseFilter.Strip("er is een probleem"));
     }
 
     [Fact]
     public void Strip_PlainSentence_IsUnchanged()
     {
-        DictationNoiseFilter.Strip("Open the settings dialog for me")
-            .Should().Be("Open the settings dialog for me");
+        Assert.Equal("Open the settings dialog for me", DictationNoiseFilter.Strip("Open the settings dialog for me"));
     }
 }

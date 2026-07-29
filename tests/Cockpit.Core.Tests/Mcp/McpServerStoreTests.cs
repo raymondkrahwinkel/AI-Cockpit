@@ -2,7 +2,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Core.Layout;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -24,7 +23,7 @@ public class McpServerStoreTests : IDisposable
     {
         var store = new McpServerStore(_configFilePath);
 
-        (await store.LoadAsync()).Should().BeEmpty();
+        Assert.Empty(await store.LoadAsync());
     }
 
     [Fact]
@@ -41,7 +40,7 @@ public class McpServerStoreTests : IDisposable
         await store.SaveAsync(servers);
         var loaded = await store.LoadAsync();
 
-        loaded.Should().BeEquivalentTo(servers);
+        Assert.Equivalent(servers, loaded);
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class McpServerStoreTests : IDisposable
         var mcpStore = new McpServerStore(_configFilePath);
         await mcpStore.SaveAsync([new McpServerConfig { Name = "fs", Command = "npx" }]);
 
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
-        (await mcpStore.LoadAsync()).Should().ContainSingle().Which.Name.Should().Be("fs");
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
+        Assert.Equal("fs", Assert.Single(await mcpStore.LoadAsync()).Name);
     }
 
     public void Dispose()

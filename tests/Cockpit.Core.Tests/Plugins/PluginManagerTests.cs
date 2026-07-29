@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -35,8 +34,8 @@ public class PluginManagerTests
             return plugins[candidate.FolderId] = new FakePlugin(candidate.FolderId);
         });
 
-        activated.Should().Equal("keep");
-        plugins["keep"].ConfigureCount.Should().Be(1);
+        Assert.Equal(new[] { "keep" }, activated);
+        Assert.Equal(1, plugins["keep"].ConfigureCount);
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public class PluginManagerTests
 
         manager.Initialize(_ => host);
 
-        plugin.InitializeCount.Should().Be(1);
-        plugin.ReceivedHost.Should().BeSameAs(host);
+        Assert.Equal(1, plugin.InitializeCount);
+        Assert.Same(host, plugin.ReceivedHost);
     }
 
     [Fact]
@@ -67,9 +66,9 @@ public class PluginManagerTests
             candidate => candidate.FolderId == "faulty" ? faultyPlugin : healthyPlugin);
         manager.Initialize(_ => Substitute.For<ICockpitHost>());
 
-        faultyPlugin.DisposeCount.Should().Be(1);
-        faultyPlugin.InitializeCount.Should().Be(0);
-        healthyPlugin.InitializeCount.Should().Be(1);
+        Assert.Equal(1, faultyPlugin.DisposeCount);
+        Assert.Equal(0, faultyPlugin.InitializeCount);
+        Assert.Equal(1, healthyPlugin.InitializeCount);
     }
 
     [Fact]
@@ -85,8 +84,8 @@ public class PluginManagerTests
 
         manager.Dispose();
 
-        first.DisposeCount.Should().Be(1);
-        second.DisposeCount.Should().Be(1);
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal(1, second.DisposeCount);
     }
 
     [Fact]
@@ -103,12 +102,12 @@ public class PluginManagerTests
         manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("ahead"));
 
         // Loaded despite the drift — an older app running a newer plugin usually works …
-        manager.Loaded.Select(plugin => plugin.FolderId).Should().Equal("ahead");
+        Assert.Equal(new[] { "ahead" }, manager.Loaded.Select(plugin => plugin.FolderId));
         // … but it is said out loud, as a warning rather than a load failure.
         var issue = diagnostics.ForFolder("ahead");
-        issue.Should().NotBeNull();
-        issue!.Severity.Should().Be(PluginIssueSeverity.Warning);
-        issue.Phase.Should().Be("compatibility");
+        Assert.NotNull(issue);
+        Assert.Equal(PluginIssueSeverity.Warning, issue!.Severity);
+        Assert.Equal("compatibility", issue.Phase);
     }
 
     [Theory]
@@ -126,8 +125,8 @@ public class PluginManagerTests
 
         manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("fine"));
 
-        manager.Loaded.Select(plugin => plugin.FolderId).Should().Equal("fine");
-        diagnostics.Failures.Should().BeEmpty();
+        Assert.Equal(new[] { "fine" }, manager.Loaded.Select(plugin => plugin.FolderId));
+        Assert.Empty(diagnostics.Failures);
     }
 
     [Fact]
@@ -141,12 +140,12 @@ public class PluginManagerTests
 
         // AC-208: awaiting-approval is recorded so the startup banner and the plugin-store badge can count it …
         var pending = diagnostics.PendingApprovals;
-        pending.Should().ContainSingle();
-        pending[0].FolderId.Should().Be("consent");
-        pending[0].DisplayName.Should().Be("consent");
+        Assert.Single(pending);
+        Assert.Equal("consent", pending[0].FolderId);
+        Assert.Equal("consent", pending[0].DisplayName);
         // … but it is not a load failure — the plugin simply has not been reviewed yet.
-        diagnostics.Failures.Should().BeEmpty();
-        manager.Loaded.Should().BeEmpty();
+        Assert.Empty(diagnostics.Failures);
+        Assert.Empty(manager.Loaded);
     }
 
     private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());

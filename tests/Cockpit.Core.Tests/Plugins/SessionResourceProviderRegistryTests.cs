@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -25,10 +24,10 @@ public class SessionResourceProviderRegistryTests
         var registry = new SessionResourceProviderRegistry();
         var provider = new StubProvider();
 
-        registry.Register(provider).Should().BeTrue();
-        registry.Register(provider).Should().BeFalse();
+        Assert.True(registry.Register(provider));
+        Assert.False(registry.Register(provider));
 
-        registry.Providers.Should().ContainSingle();
+        Assert.Single(registry.Providers);
     }
 
     [Fact]
@@ -38,10 +37,10 @@ public class SessionResourceProviderRegistryTests
         // variables and there is no key to collide on.
         var registry = new SessionResourceProviderRegistry();
 
-        registry.Register(new StubProvider()).Should().BeTrue();
-        registry.Register(new StubProvider()).Should().BeTrue();
+        Assert.True(registry.Register(new StubProvider()));
+        Assert.True(registry.Register(new StubProvider()));
 
-        registry.Providers.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(registry.Providers));
     }
 
     [Fact]
@@ -55,7 +54,7 @@ public class SessionResourceProviderRegistryTests
         registry.Register(first);
         registry.Register(second);
 
-        registry.Providers.Should().Equal(first, second);
+        Assert.Equal(new[] { first, second }, registry.Providers);
     }
 
     [Fact]
@@ -67,8 +66,7 @@ public class SessionResourceProviderRegistryTests
         var services = new ServiceCollection();
         services.AddServices(typeof(SessionResourceProviderRegistry).Assembly);
 
-        services.BuildServiceProvider().GetService<ISessionResourceProviderRegistry>()
-            .Should().BeOfType<SessionResourceProviderRegistry>();
+        Assert.IsType<SessionResourceProviderRegistry>(services.BuildServiceProvider().GetService<ISessionResourceProviderRegistry>());
     }
 
     [Fact]
@@ -81,7 +79,6 @@ public class SessionResourceProviderRegistryTests
         services.AddLogging();
         services.AddServices(typeof(SessionResourceProviderRegistry).Assembly);
 
-        services.BuildServiceProvider().GetService<ISessionResourceResolver>()
-            .Should().BeOfType<SessionResourceResolver>();
+        Assert.IsType<SessionResourceResolver>(services.BuildServiceProvider().GetService<ISessionResourceResolver>());
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
@@ -36,7 +35,7 @@ public class CredentialFilePermissionTests : IDisposable
 
         await store.SaveAsync([new McpServerConfig { Name = "YouTrack", Transport = McpTransport.Http, Url = "https://example.invalid" }]);
 
-        File.GetUnixFileMode(path).Should().Be(OwnerOnly);
+        Assert.Equal(OwnerOnly, File.GetUnixFileMode(path));
     }
 
     [Fact]
@@ -54,8 +53,7 @@ public class CredentialFilePermissionTests : IDisposable
 
         await new McpServerStore(path).SaveAsync([]);
 
-        File.GetUnixFileMode(path).Should().Be(OwnerOnly,
-            "an operator should not have to hand-fix the permissions of a file we wrote wrong");
+        Assert.Equal(OwnerOnly, File.GetUnixFileMode(path));
     }
 
     [Fact]
@@ -64,8 +62,8 @@ public class CredentialFilePermissionTests : IDisposable
         // The file carries the registry's bearer headers, and the temp directory is world-readable (1777).
         var temporaryDirectory = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
 
-        Path.GetFullPath(TtyMcpConfigFile.DefaultDirectory).TrimEnd(Path.DirectorySeparatorChar)
-            .Should().NotBe(temporaryDirectory);
+        Assert.NotEqual(temporaryDirectory,
+            Path.GetFullPath(TtyMcpConfigFile.DefaultDirectory).TrimEnd(Path.DirectorySeparatorChar));
     }
 
     [Fact]
@@ -80,10 +78,10 @@ public class CredentialFilePermissionTests : IDisposable
 
         using (var session = new TtyProcessOwningSessionFiles(new FakeConPtyProcess(), [path]))
         {
-            File.Exists(path).Should().BeTrue("the CLI reads it while the session is alive");
+            Assert.True(File.Exists(path), "the CLI reads it while the session is alive");
         }
 
-        File.Exists(path).Should().BeFalse("a credential must not outlive the session that needed it");
+        Assert.False(File.Exists(path), "a credential must not outlive the session that needed it");
     }
 
     [Fact]
@@ -103,9 +101,9 @@ public class CredentialFilePermissionTests : IDisposable
 
         TtyMcpConfigFile.SweepStale(_directory, temporaryDirectory);
 
-        File.Exists(ours).Should().BeFalse("a killed session leaves its config behind");
-        File.Exists(legacy).Should().BeFalse("the previous implementation's files are the ones holding a live token today");
-        File.Exists(unrelated).Should().BeTrue("the sweep only claims its own files");
+        Assert.False(File.Exists(ours), "a killed session leaves its config behind");
+        Assert.False(File.Exists(legacy), "the previous implementation's files are the ones holding a live token today");
+        Assert.True(File.Exists(unrelated), "the sweep only claims its own files");
     }
 
     public void Dispose()

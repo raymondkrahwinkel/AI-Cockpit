@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -21,7 +20,7 @@ public class PluginStoreTemplatesViewTests
 
         var dialog = new PluginStoreDialogViewModel(manager);
 
-        dialog.SidebarItems.Should().Contain(item => item.Label == "Workflow templates (2)" && item.IsEnabled);
+        Assert.Contains(dialog.SidebarItems, item => item.Label == "Workflow templates (2)" && item.IsEnabled);
     }
 
     // A store that offers none still lists the entry, greyed out — the same rule the Installed/Updates entries follow.
@@ -31,7 +30,7 @@ public class PluginStoreTemplatesViewTests
     {
         var dialog = new PluginStoreDialogViewModel(new PluginManagerViewModel());
 
-        dialog.SidebarItems.Should().Contain(item => item.Label == "Workflow templates (0)" && !item.IsEnabled);
+        Assert.Contains(dialog.SidebarItems, item => item.Label == "Workflow templates (0)" && !item.IsEnabled);
     }
 
     // The templates arrive after the plugins do, and the sidebar was only counting them when the plugin list changed —
@@ -44,7 +43,7 @@ public class PluginStoreTemplatesViewTests
 
         manager.AvailableTemplates.Add(_Template("cockpit.morning-briefing", "Morning briefing"));
 
-        dialog.SidebarItems.Should().Contain(item => item.Label == "Workflow templates (1)" && item.IsEnabled);
+        Assert.Contains(dialog.SidebarItems, item => item.Label == "Workflow templates (1)" && item.IsEnabled);
     }
 
     [Fact]
@@ -56,9 +55,9 @@ public class PluginStoreTemplatesViewTests
 
         dialog.SelectedSidebarItem = dialog.SidebarItems.Single(item => item.Filter == PluginStoreFilter.Templates);
 
-        dialog.IsTemplatesView.Should().BeTrue();
-        dialog.IsInstalledView.Should().BeFalse();
-        dialog.FilteredTemplates.Should().ContainSingle();
+        Assert.True(dialog.IsTemplatesView);
+        Assert.False(dialog.IsInstalledView);
+        Assert.Single(dialog.FilteredTemplates);
     }
 
     // Whoever searches for "review" has that word in the description more often than in the name.
@@ -72,7 +71,7 @@ public class PluginStoreTemplatesViewTests
 
         dialog.SearchText = "diff";
 
-        dialog.FilteredTemplates.Should().ContainSingle().Which.Id.Should().Be("cockpit.delegate-review");
+        Assert.Equal("cockpit.delegate-review", Assert.Single(dialog.FilteredTemplates).Id);
     }
 
     private static StoreTemplateRowViewModel _Template(string id, string name, string description = "A flow.") =>

@@ -1,5 +1,4 @@
 using Cockpit.Core.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
@@ -15,28 +14,24 @@ public class SessionIdleDecisionTests
     [Fact]
     public void Finished_AndQuietPastTheThreshold_BecomesIdle()
     {
-        SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddMinutes(-6), Now, TimeSpan.FromMinutes(5))
-            .Should().BeTrue();
+        Assert.True(SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddMinutes(-6), Now, TimeSpan.FromMinutes(5)));
     }
 
     [Fact]
     public void Finished_ButQuietForLessThanTheThreshold_StaysDone()
     {
-        SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddMinutes(-4), Now, TimeSpan.FromMinutes(5))
-            .Should().BeFalse();
+        Assert.False(SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddMinutes(-4), Now, TimeSpan.FromMinutes(5)));
     }
 
     [Fact]
     public void NotFinished_NeverBecomesIdle_HoweverLongItHasBeenQuiet()
     {
-        SessionIdleDecision.BecomesIdle(isFinished: false, Now.AddHours(-3), Now, TimeSpan.FromMinutes(5))
-            .Should().BeFalse();
+        Assert.False(SessionIdleDecision.BecomesIdle(isFinished: false, Now.AddHours(-3), Now, TimeSpan.FromMinutes(5)));
     }
 
     [Fact]
     public void ZeroThreshold_TurnsTheRuleOff()
     {
-        SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddHours(-3), Now, TimeSpan.Zero)
-            .Should().BeFalse();
+        Assert.False(SessionIdleDecision.BecomesIdle(isFinished: true, Now.AddHours(-3), Now, TimeSpan.Zero));
     }
 }

@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -40,8 +39,8 @@ public class TtySessionProviderResolverTests
 
         var resolved = resolver.Resolve(profile);
 
-        resolved.Should().BeOfType<PluginTtySessionProviderAdapter>();
-        resolved!.ProviderId.Should().Be(ClaudePluginProfile.ProviderId);
+        Assert.IsType<PluginTtySessionProviderAdapter>(resolved);
+        Assert.Equal(ClaudePluginProfile.ProviderId, resolved!.ProviderId);
     }
 
     [Fact]
@@ -51,8 +50,8 @@ public class TtySessionProviderResolverTests
 
         var resolved = resolver.Resolve(null);
 
-        resolved.Should().BeOfType<PluginTtySessionProviderAdapter>();
-        resolved!.ProviderId.Should().Be(ClaudePluginProfile.ProviderId);
+        Assert.IsType<PluginTtySessionProviderAdapter>(resolved);
+        Assert.Equal(ClaudePluginProfile.ProviderId, resolved!.ProviderId);
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class TtySessionProviderResolverTests
         var resolver = _CreateResolver();
         var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
-        resolver.Resolve(profile).Should().BeNull();
+        Assert.Null(resolver.Resolve(profile));
     }
 
     [Fact]
@@ -70,7 +69,7 @@ public class TtySessionProviderResolverTests
         var resolver = _CreateResolver();
         var profile = new SessionProfile("local", new LmStudioConfig("http://localhost:1234", "some-model"));
 
-        resolver.Resolve(profile).Should().BeNull();
+        Assert.Null(resolver.Resolve(profile));
     }
 
     [Fact]
@@ -86,8 +85,8 @@ public class TtySessionProviderResolverTests
 
         var resolved = resolver.Resolve(profile);
 
-        resolved.Should().BeOfType<PluginTtySessionProviderAdapter>();
-        resolved!.ProviderId.Should().Be("cli-agent-provider.codex");
+        Assert.IsType<PluginTtySessionProviderAdapter>(resolved);
+        Assert.Equal("cli-agent-provider.codex", resolved!.ProviderId);
     }
 
     [Fact]
@@ -98,6 +97,6 @@ public class TtySessionProviderResolverTests
         var resolver = _CreateResolver(registry);
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
 
-        resolver.Resolve(profile).Should().BeNull();
+        Assert.Null(resolver.Resolve(profile));
     }
 }

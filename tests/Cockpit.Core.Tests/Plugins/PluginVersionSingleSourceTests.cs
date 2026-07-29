@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -20,16 +19,16 @@ public partial class PluginVersionSingleSourceTests
     public void EveryPlugin_StatesItsVersionInItsManifestOnly()
     {
         var plugins = _DiscoverPluginSources().ToList();
-        plugins.Should().HaveCountGreaterThan(15, "the repo ships twenty plugins — finding almost none means the walk broke, not that the rule holds");
+        Assert.True(System.Linq.Enumerable.Count(plugins) > 15);
 
         foreach (var (name, version, entrySourcePath) in plugins)
         {
-            version.Should().NotBeNullOrWhiteSpace($"{name} states its version in plugin.json");
+            Assert.False(string.IsNullOrWhiteSpace(version));
 
             var metadata = _MetadataInitializer(File.ReadAllText(entrySourcePath));
-            metadata.Should().NotBeEmpty($"{name}'s entry class has to declare its PluginMetadata for this to check anything");
+            Assert.NotEmpty(metadata);
 
-            MetadataVersionRegex().IsMatch(metadata).Should().BeFalse(
+            Assert.False(MetadataVersionRegex().IsMatch(metadata),
                 $"{name} declares a version in {Path.GetFileName(entrySourcePath)} as well as in plugin.json — " +
                 "two sources drift, and the host only ever reads the manifest");
         }

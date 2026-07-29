@@ -3,7 +3,6 @@ using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.TranscriptDisplay;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Infrastructure.UsagePill;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.UsagePill;
 
@@ -31,7 +30,7 @@ public class UsagePillSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.VisibleFields.Should().Equal(UsagePillField.Context);
+        Assert.Equal(new[] { UsagePillField.Context }, settings.VisibleFields);
     }
 
     [Fact]
@@ -45,7 +44,9 @@ public class UsagePillSettingsStoreTests : IDisposable
         });
         var loaded = await store.LoadAsync();
 
-        loaded.VisibleFields.Should().Equal(UsagePillField.WeeklyWindow, UsagePillField.Context, UsagePillField.SessionUsage);
+        Assert.Equal(
+            new[] { UsagePillField.WeeklyWindow, UsagePillField.Context, UsagePillField.SessionUsage },
+            loaded.VisibleFields);
     }
 
     [Fact]
@@ -53,7 +54,7 @@ public class UsagePillSettingsStoreTests : IDisposable
     {
         var entry = new UsagePillSettingsEntry { VisibleFields = ["Context", "SomethingRemovedSince", "WeeklyWindow"] };
 
-        entry.ToDomain().VisibleFields.Should().Equal(UsagePillField.Context, UsagePillField.WeeklyWindow);
+        Assert.Equal(new[] { UsagePillField.Context, UsagePillField.WeeklyWindow }, entry.ToDomain().VisibleFields);
     }
 
     [Fact]
@@ -68,8 +69,8 @@ public class UsagePillSettingsStoreTests : IDisposable
         var reloadedDisplay = await displayStore.LoadAsync();
         var reloadedUsagePill = await usagePillStore.LoadAsync();
 
-        reloadedDisplay.ShowTimestamps.Should().BeTrue();
-        reloadedUsagePill.VisibleFields.Should().Equal(UsagePillField.SessionUsage);
+        Assert.True(reloadedDisplay.ShowTimestamps);
+        Assert.Equal(new[] { UsagePillField.SessionUsage }, reloadedUsagePill.VisibleFields);
     }
 
     public void Dispose()

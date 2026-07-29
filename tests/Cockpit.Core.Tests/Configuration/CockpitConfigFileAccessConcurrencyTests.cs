@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Configuration;
 
@@ -57,7 +56,7 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         var contents = await File.ReadAllTextAsync(ConfigPath);
         var parse = () => JsonSerializer.Deserialize<JsonDocument>(contents);
 
-        parse.Should().NotThrow("a config the cockpit cannot read is a config the cockpit overwrites with an empty one");
+        parse();
     }
 
     [Fact]
@@ -81,8 +80,8 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
 
         var written = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
 
-        written.Should().NotBeNull();
-        written!.WindowBounds.Should().NotBeNull("the bounds store wrote them");
-        written.Profiles.Should().ContainSingle(profile => profile.Label == "written-by-the-profile-store", "the profile store wrote it");
+        Assert.NotNull(written);
+        Assert.NotNull(written.WindowBounds);
+        Assert.Single(written.Profiles, profile => profile.Label == "written-by-the-profile-store");
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -23,7 +22,7 @@ public class AlwaysMountedServerTests
     {
         var effective = McpServerRegistryFilter.ApplySessionSelection([Session, YouTrack], enabledServerNames: null);
 
-        effective.Select(server => server.Name).Should().Contain("cockpit-session");
+        Assert.Contains("cockpit-session", effective.Select(server => server.Name));
     }
 
     /// <summary>The case the flag exists for: a selection that names other servers must not silently drop it.</summary>
@@ -34,7 +33,7 @@ public class AlwaysMountedServerTests
 
         var effective = McpServerRegistryFilter.ApplySessionSelection([Session, YouTrack], selection);
 
-        effective.Select(server => server.Name).Should().BeEquivalentTo(["cockpit-session", "youtrack"]);
+        Assert.Equivalent(new object[] { "cockpit-session", "youtrack" }, effective.Select(server => server.Name));
     }
 
     [Fact]
@@ -42,7 +41,7 @@ public class AlwaysMountedServerTests
     {
         var effective = McpServerRegistryFilter.ApplySessionSelection([Session, YouTrack], new HashSet<string>());
 
-        effective.Select(server => server.Name).Should().Equal("cockpit-session");
+        Assert.Equal(new[] { "cockpit-session" }, effective.Select(server => server.Name));
     }
 
     /// <summary>Always-mounted is the opposite arrangement to internal, which stays out unless a launch names it.</summary>
@@ -51,6 +50,6 @@ public class AlwaysMountedServerTests
     {
         var effective = McpServerRegistryFilter.ApplySessionSelection([Session, AutopilotCeo], enabledServerNames: null);
 
-        effective.Select(server => server.Name).Should().Equal("cockpit-session");
+        Assert.Equal(new[] { "cockpit-session" }, effective.Select(server => server.Name));
     }
 }

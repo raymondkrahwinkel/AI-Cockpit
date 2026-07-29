@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -26,52 +25,52 @@ public class ReadingLevelTests
     public void AutoTool_IsHiddenInSimple_AndShownOtherwise()
     {
         var entry = AutoTool();
-        entry.RequiredApproval.Should().BeFalse();
-        entry.IsAutoTool.Should().BeTrue();
+        Assert.False(entry.RequiredApproval);
+        Assert.True(entry.IsAutoTool);
 
         entry.ReadingLevel = ReadingLevel.Developer;
-        entry.IsRowVisible.Should().BeTrue();
-        entry.ShowToolBlock.Should().BeTrue();
+        Assert.True(entry.IsRowVisible);
+        Assert.True(entry.ShowToolBlock);
 
         entry.ReadingLevel = ReadingLevel.Focus;
-        entry.IsRowVisible.Should().BeTrue();
-        entry.ShowToolBlock.Should().BeTrue();
+        Assert.True(entry.IsRowVisible);
+        Assert.True(entry.ShowToolBlock);
 
         entry.ReadingLevel = ReadingLevel.Simple;
-        entry.IsRowVisible.Should().BeFalse();
-        entry.ShowToolBlock.Should().BeFalse();
+        Assert.False(entry.IsRowVisible);
+        Assert.False(entry.ShowToolBlock);
     }
 
     [Fact]
     public void ConsentTool_StaysVisibleAtEveryLevel_AndSpeaksPlainlyInSimple()
     {
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "edit") { ToolName = "Edit", IsPendingPermission = true };
-        entry.RequiredApproval.Should().BeTrue();
+        Assert.True(entry.RequiredApproval);
 
         foreach (var level in new[] { ReadingLevel.Developer, ReadingLevel.Focus, ReadingLevel.Simple })
         {
             entry.ReadingLevel = level;
-            entry.IsRowVisible.Should().BeTrue($"a consent tool must stay visible at {level}");
+            Assert.True(entry.IsRowVisible, $"a consent tool must stay visible at {level}");
         }
 
         entry.ReadingLevel = ReadingLevel.Simple;
-        entry.ShowHumanToolLine.Should().BeTrue();
-        entry.ShowToolBlock.Should().BeFalse();
-        entry.HumanToolText.Should().Be("Changed a file — waiting for your approval");
+        Assert.True(entry.ShowHumanToolLine);
+        Assert.False(entry.ShowToolBlock);
+        Assert.Equal("Changed a file — waiting for your approval", entry.HumanToolText);
 
         entry.ReadingLevel = ReadingLevel.Developer;
-        entry.ShowHumanToolLine.Should().BeFalse();
-        entry.ShowToolBlock.Should().BeTrue();
+        Assert.False(entry.ShowHumanToolLine);
+        Assert.True(entry.ShowToolBlock);
     }
 
     [Fact]
     public void ResolvedConsent_ReadsApprovedOrDeclined_InSimple()
     {
         var allowed = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "edit") { ToolName = "Edit", PermissionDecision = "Allowed", ReadingLevel = ReadingLevel.Simple };
-        allowed.HumanToolText.Should().Be("✓ Changed a file — you approved this");
+        Assert.Equal("✓ Changed a file — you approved this", allowed.HumanToolText);
 
         var denied = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "bash") { ToolName = "Bash", PermissionDecision = "Denied", ReadingLevel = ReadingLevel.Simple };
-        denied.HumanToolText.Should().Be("✕ Ran a command — you declined this");
+        Assert.Equal("✕ Ran a command — you declined this", denied.HumanToolText);
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class ReadingLevelTests
         foreach (var level in new[] { ReadingLevel.Developer, ReadingLevel.Focus, ReadingLevel.Simple })
         {
             entry.ReadingLevel = level;
-            entry.IsRowVisible.Should().BeTrue();
+            Assert.True(entry.IsRowVisible);
         }
     }
 
@@ -91,13 +90,13 @@ public class ReadingLevelTests
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, "Pondering...");
 
         entry.ReadingLevel = ReadingLevel.Developer;
-        entry.IsRowVisible.Should().BeTrue("thinking is restored at the developer surface (AC-213)");
+        Assert.True(entry.IsRowVisible, "thinking is restored at the developer surface (AC-213)");
 
         entry.ReadingLevel = ReadingLevel.Focus;
-        entry.IsRowVisible.Should().BeFalse("Focus stays calm (AC-138)");
+        Assert.False(entry.IsRowVisible, "Focus stays calm (AC-138)");
 
         entry.ReadingLevel = ReadingLevel.Simple;
-        entry.IsRowVisible.Should().BeFalse("Simple stays calm (AC-138)");
+        Assert.False(entry.IsRowVisible, "Simple stays calm (AC-138)");
     }
 
     [Fact]
@@ -106,10 +105,10 @@ public class ReadingLevelTests
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, "reasoning");
 
         // It renders in its own dimmed section, so it must not also match the assistant-markdown or plain-text templates.
-        entry.IsThinking.Should().BeTrue();
-        entry.IsAssistantMarkdown.Should().BeFalse();
-        entry.IsPlainNonMarkdown.Should().BeFalse();
-        entry.IsTopTimestampRow.Should().BeFalse();
+        Assert.True(entry.IsThinking);
+        Assert.False(entry.IsAssistantMarkdown);
+        Assert.False(entry.IsPlainNonMarkdown);
+        Assert.False(entry.IsTopTimestampRow);
     }
 
     [Fact]
@@ -119,17 +118,17 @@ public class ReadingLevelTests
         vm.ReadingLevel = ReadingLevel.Focus;
         var rows = AddAutoRuns(vm, 3);
 
-        rows[0].IsGroupAnchor.Should().BeTrue();
-        rows[0].IsInGroup.Should().BeTrue();
-        rows[0].GroupCount.Should().Be(3);
-        rows[0].ShowGroupSummary.Should().BeTrue();
-        rows[0].GroupSummaryText.Should().Be("3 steps run");
-        rows[0].IsRowVisible.Should().BeTrue();
+        Assert.True(rows[0].IsGroupAnchor);
+        Assert.True(rows[0].IsInGroup);
+        Assert.Equal(3, rows[0].GroupCount);
+        Assert.True(rows[0].ShowGroupSummary);
+        Assert.Equal("3 steps run", rows[0].GroupSummaryText);
+        Assert.True(rows[0].IsRowVisible);
 
-        rows[1].IsInGroup.Should().BeTrue();
-        rows[1].IsGroupAnchor.Should().BeFalse();
-        rows[1].IsRowVisible.Should().BeFalse("a folded member hides until the run is expanded");
-        rows[2].IsRowVisible.Should().BeFalse();
+        Assert.True(rows[1].IsInGroup);
+        Assert.False(rows[1].IsGroupAnchor);
+        Assert.False(rows[1].IsRowVisible, "a folded member hides until the run is expanded");
+        Assert.False(rows[2].IsRowVisible);
     }
 
     [Fact]
@@ -141,9 +140,9 @@ public class ReadingLevelTests
 
         rows[0].GroupToggleRequested!.Invoke();
 
-        rows.Should().OnlyContain(row => row.IsGroupExpanded);
-        rows[1].IsRowVisible.Should().BeTrue();
-        rows[0].ShowToolBlock.Should().BeTrue();
+        Assert.All(rows, row => Assert.True(row.IsGroupExpanded));
+        Assert.True(rows[1].IsRowVisible);
+        Assert.True(rows[0].ShowToolBlock);
     }
 
     [Fact]
@@ -155,7 +154,7 @@ public class ReadingLevelTests
         vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "edit") { ToolName = "Edit", IsPendingPermission = true });
         vm.Transcript.Add(AutoTool("Grep"));
 
-        vm.Transcript.Should().OnlyContain(row => !row.IsInGroup);
+        Assert.All(vm.Transcript, row => Assert.False(row.IsInGroup));
     }
 
     [Fact]
@@ -164,7 +163,7 @@ public class ReadingLevelTests
         var vm = NewSession();
         var rows = AddAutoRuns(vm, 3);
 
-        rows.Should().OnlyContain(row => !row.IsInGroup && row.IsRowVisible);
+        Assert.All(rows, row => Assert.True(!row.IsInGroup && row.IsRowVisible));
     }
 
     [Fact]
@@ -173,14 +172,14 @@ public class ReadingLevelTests
         var vm = NewSession();
         vm.ReadingLevel = ReadingLevel.Focus;
         var rows = AddAutoRuns(vm, 2);
-        rows[1].IsInGroup.Should().BeTrue();
+        Assert.True(rows[1].IsInGroup);
 
         // The permission request lands after the tool-use event; the row must fall out of the auto-fold run.
         rows[1].IsPendingPermission = true;
 
-        rows[0].IsInGroup.Should().BeFalse();
-        rows[1].IsInGroup.Should().BeFalse();
-        rows[1].IsRowVisible.Should().BeTrue();
+        Assert.False(rows[0].IsInGroup);
+        Assert.False(rows[1].IsInGroup);
+        Assert.True(rows[1].IsRowVisible);
     }
 
     [Fact]
@@ -191,7 +190,7 @@ public class ReadingLevelTests
 
         await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.ReadingLevel.Should().Be(ReadingLevel.Simple);
+        Assert.Equal(ReadingLevel.Simple, vm.ReadingLevel);
     }
 
     [Fact]
@@ -202,7 +201,7 @@ public class ReadingLevelTests
 
         await vm.StartConfiguredAsync(profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort, readingLevel: ReadingLevel.Simple);
 
-        vm.ReadingLevel.Should().Be(ReadingLevel.Simple);
+        Assert.Equal(ReadingLevel.Simple, vm.ReadingLevel);
     }
 
     private static IReadOnlyList<TranscriptEntryViewModel> AddAutoRuns(SessionViewModel vm, int count)

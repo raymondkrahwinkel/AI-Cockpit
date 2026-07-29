@@ -21,7 +21,6 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -48,7 +47,7 @@ public class CockpitViewModelProjectStartTests
 
         await dialogs.Received(1).ShowNewSessionDialogAsync(
             Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>(), Arg.Is<Project?>(passed => passed == project));
-        vm.Sessions.Should().BeEmpty();
+        Assert.Empty(vm.Sessions);
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public class CockpitViewModelProjectStartTests
 
         await vm.NewSessionForProjectCommand.ExecuteAsync(project);
 
-        vm.Sessions.Should().ContainSingle();
+        Assert.Single(vm.Sessions);
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public class CockpitViewModelProjectStartTests
         await vm.StartProjectSessionCommand.ExecuteAsync(project);
 
         // Two rows both reading "Cockpit" is exactly what the dialog's own numbering avoids when it generates a name.
-        vm.Sessions.Select(session => session.Title).Should().Equal("Cockpit", "Cockpit 2");
+        Assert.Equal(new[] { "Cockpit", "Cockpit 2" }, vm.Sessions.Select(session => session.Title));
     }
 
     [Fact]
@@ -116,9 +115,9 @@ public class CockpitViewModelProjectStartTests
         // "Cockpit" is composed here from the project, not typed by anyone, so linking a ticket to this session may
         // still label it — the same as a session that was never named at all (#AC-310).
         var session = vm.Sessions.Single();
-        session.Title.Should().Be("Cockpit");
-        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeTrue();
-        session.Title.Should().Be("AC-310");
+        Assert.Equal("Cockpit", session.Title);
+        Assert.True(vm.SuggestSessionName(session.PaneId, "AC-310"));
+        Assert.Equal("AC-310", session.Title);
     }
 
     [Fact]
@@ -158,8 +157,8 @@ public class CockpitViewModelProjectStartTests
         await vm.StartSessionForPluginAsync(profile, prompt: null, workingDirectory: null);
 
         var session = vm.Sessions.Single();
-        vm.SuggestSessionName(session.PaneId, "AC-312").Should().BeTrue();
-        session.Title.Should().Be("AC-312");
+        Assert.True(vm.SuggestSessionName(session.PaneId, "AC-312"));
+        Assert.Equal("AC-312", session.Title);
     }
 
     [Fact]
@@ -172,9 +171,9 @@ public class CockpitViewModelProjectStartTests
 
         // A name the caller passed is a decision, so a ticket offers its own rather than taking this one.
         var session = vm.Sessions.Single();
-        session.Title.Should().Be("release work");
-        vm.SuggestSessionName(session.PaneId, "AC-312").Should().BeFalse();
-        session.Title.Should().Be("release work");
+        Assert.Equal("release work", session.Title);
+        Assert.False(vm.SuggestSessionName(session.PaneId, "AC-312"));
+        Assert.Equal("release work", session.Title);
     }
 
     [Fact]
@@ -184,8 +183,8 @@ public class CockpitViewModelProjectStartTests
 
         await vm.OpenProjectsWorkspaceCommand.ExecuteAsync(null);
 
-        vm.Workspaces.IsProjectsActive.Should().BeTrue();
-        vm.Workspaces.Active!.Name.Should().Be("Projects");
+        Assert.True(vm.Workspaces.IsProjectsActive);
+        Assert.Equal("Projects", vm.Workspaces.Active!.Name);
     }
 
     [Fact]

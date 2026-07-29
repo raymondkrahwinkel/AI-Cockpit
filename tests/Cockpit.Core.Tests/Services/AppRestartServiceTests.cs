@@ -1,5 +1,4 @@
 using Cockpit.App.Services;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Services;
 
@@ -21,7 +20,7 @@ public class AppRestartServiceTests
 
         service.Restart();
 
-        callOrder.Should().Equal("launch", "shutdown");
+        Assert.Equal(new[] { "launch", "shutdown" }, callOrder);
     }
 
     [Fact]
@@ -35,8 +34,8 @@ public class AppRestartServiceTests
 
         service.Restart();
 
-        launchCalls.Should().Be(1);
-        shutdownCalls.Should().Be(1);
+        Assert.Equal(1, launchCalls);
+        Assert.Equal(1, shutdownCalls);
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class AppRestartServiceTests
 
         service.Restart();
 
-        shutdownCalls.Should().Be(1);
+        Assert.Equal(1, shutdownCalls);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class AppRestartServiceTests
     {
         var arguments = AppRestartService.BuildLaunchArguments(["--screenshot", "out.png"]);
 
-        arguments.Should().Equal("--screenshot", "out.png", AppRestartService.RestartArgument);
+        Assert.Equal(new[] { "--screenshot", "out.png", AppRestartService.RestartArgument }, arguments);
     }
 
     [Fact]
@@ -70,6 +69,6 @@ public class AppRestartServiceTests
         // first the list would gain one on every restart and grow without bound.
         var arguments = AppRestartService.BuildLaunchArguments(["--flag", AppRestartService.RestartArgument]);
 
-        arguments.Should().Equal("--flag", AppRestartService.RestartArgument);
+        Assert.Equal(new[] { "--flag", AppRestartService.RestartArgument }, arguments);
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -17,12 +16,12 @@ public class SessionCapabilitiesTests
         var capabilities = new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: true, SupportsPlanMode: true, SupportsThinking: true);
 
-        capabilities.SupportsVision.Should().BeFalse();
+        Assert.False(capabilities.SupportsVision);
     }
 
     [Fact]
     public void ClaudeCli_SupportsVision_IsTrue()
     {
-        SessionCapabilities.ClaudeCli.SupportsVision.Should().BeTrue();
+        Assert.True(SessionCapabilities.ClaudeCli.SupportsVision);
     }
 }

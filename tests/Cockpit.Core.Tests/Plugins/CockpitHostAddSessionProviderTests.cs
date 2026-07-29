@@ -3,7 +3,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -39,6 +38,6 @@ public class CockpitHostAddSessionProviderTests
 
         host.AddSessionProvider(registration);
 
-        registry.Resolve("gemini-provider.gemini").Should().Be(registration);
+        Assert.Equal(registration, registry.Resolve("gemini-provider.gemini"));
     }
 }

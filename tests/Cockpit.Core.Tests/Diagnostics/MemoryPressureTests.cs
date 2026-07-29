@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -22,8 +21,8 @@ public class MemoryPressureTests
     {
         var decision = MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, warned: false);
 
-        decision.Warn.Should().BeTrue();
-        decision.Warned.Should().BeTrue("so the next sample does not say it again");
+        Assert.True(decision.Warn);
+        Assert.True(decision.Warned, "so the next sample does not say it again");
     }
 
     [Fact]
@@ -31,8 +30,8 @@ public class MemoryPressureTests
     {
         var decision = MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 16 * Gb, warned: true);
 
-        decision.Warn.Should().BeFalse("a warning every ten seconds is a warning you turn off");
-        decision.Warned.Should().BeTrue();
+        Assert.False(decision.Warn, "a warning every ten seconds is a warning you turn off");
+        Assert.True(decision.Warned);
     }
 
     [Fact]
@@ -40,51 +39,52 @@ public class MemoryPressureTests
     {
         var calm = MemoryPressure.Decide(usedBytes: 8 * Gb, totalBytes: 16 * Gb, warned: true);
 
-        calm.Warn.Should().BeFalse();
-        calm.Warned.Should().BeFalse("it is let off the hook, so a real climb later is heard");
+        Assert.False(calm.Warn);
+        Assert.False(calm.Warned, "it is let off the hook, so a real climb later is heard");
 
-        MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, calm.Warned).Warn.Should().BeTrue();
+        Assert.True(MemoryPressure.Decide(usedBytes: 11 * Gb, totalBytes: 16 * Gb, calm.Warned).Warn);
     }
 
     [Fact]
     public void JustDippingUnderTheLine_DoesNotResetIt()
     {
         // Otherwise a session that breathes in and out around the threshold warns you twice a minute.
-        MemoryPressure.Decide(usedBytes: (long)(10.4 * Gb), totalBytes: 16 * Gb, warned: true)
-            .Should().Be(new MemoryPressureDecision(false, true));
+        Assert.Equal(
+            new MemoryPressureDecision(false, true),
+            MemoryPressure.Decide(usedBytes: (long)(10.4 * Gb), totalBytes: 16 * Gb, warned: true));
     }
 
     [Fact]
     public void OnASmallMachine_ASmallNumberIsNotAWarning()
     {
         // Two thirds of 4 GB is reached by opening a browser. Below the floor, nothing is said whatever the share.
-        MemoryPressure.Decide(usedBytes: (long)(2.8 * Gb), totalBytes: 4 * Gb, warned: false).Warn.Should().BeFalse();
+        Assert.False(MemoryPressure.Decide(usedBytes: (long)(2.8 * Gb), totalBytes: 4 * Gb, warned: false).Warn);
     }
 
     [Fact]
     public void WhenTheMachinesMemoryIsUnknown_NothingIsWarnedAbout() =>
         // A share of an unknown total is not a fact.
-        MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 0, warned: false).Warn.Should().BeFalse();
+        Assert.False(MemoryPressure.Decide(usedBytes: 12 * Gb, totalBytes: 0, warned: false).Warn);
 
     [Fact]
     public void AnIdleCockpit_SaysNothing() =>
-        MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, warned: false).Warn.Should().BeFalse();
+        Assert.False(MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, warned: false).Warn);
 
     [Fact]
     public void TheFigureTurnsAmberBeforeAnybodyIsInterrupted() =>
         // A colour is something you can act on quietly. A toast is an interruption, and it is only worth one when the
         // machine is actually close to killing something.
-        MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.Elevated);
+        Assert.Equal(MemoryPressureLevel.Elevated, MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb));
 
     [Fact]
     public void AtThePointTheWarningFires_TheFigureIsRed() =>
-        MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.High);
+        Assert.Equal(MemoryPressureLevel.High, MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb));
 
     [Fact]
     public void AnIdleCockpit_ReadsAsCalm() =>
-        MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.Calm);
+        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb));
 
     [Fact]
     public void WithNoMachineToCompareAgainst_ItReadsAsCalm_RatherThanAsAlarm() =>
-        MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0).Should().Be(MemoryPressureLevel.Calm);
+        Assert.Equal(MemoryPressureLevel.Calm, MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0));
 }

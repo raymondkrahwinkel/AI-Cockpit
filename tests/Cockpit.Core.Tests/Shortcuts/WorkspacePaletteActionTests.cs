@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -21,10 +20,10 @@ public class WorkspacePaletteActionTests
     [InlineData(ShortcutAction.CloseWorkspace)]
     public void TheWorkspaceActions_AreInTheCatalogAndUnboundByDefault(ShortcutAction action)
     {
-        var descriptor = ShortcutCatalog.All.Should().ContainSingle(entry => entry.Action == action).Subject;
+        var descriptor = Assert.Single(ShortcutCatalog.All, entry => entry.Action == action);
 
-        descriptor.DefaultGesture.Should().BeEmpty();
-        descriptor.Label.Should().NotBeEmpty();
+        Assert.Empty(descriptor.DefaultGesture);
+        Assert.NotEmpty(descriptor.Label);
     }
 
     /// <summary>They open dialogs and change what is on screen, so they stay out of the way while a TUI has the keyboard.</summary>
@@ -34,15 +33,16 @@ public class WorkspacePaletteActionTests
     [InlineData(ShortcutAction.CloseWorkspace)]
     public void TheWorkspaceActions_DoNotStayActiveInATerminal(ShortcutAction action)
     {
-        ShortcutCatalog.StaysActiveInTerminal(action).Should().BeFalse();
+        Assert.False(ShortcutCatalog.StaysActiveInTerminal(action));
     }
 
     /// <summary>Every action in the catalog has to be reachable, or it is a row in Options that does nothing.</summary>
     [Fact]
     public void EveryCatalogAction_HasADescriptor()
     {
-        ShortcutCatalog.All.Select(descriptor => descriptor.Action)
-            .Should().BeEquivalentTo(Enum.GetValues<ShortcutAction>());
+        Assert.Equivalent(
+            Enum.GetValues<ShortcutAction>(),
+            ShortcutCatalog.All.Select(descriptor => descriptor.Action));
     }
 
     /// <summary>Every workspace command reaches the palette — that is the only place they can be found at all, being unbound.</summary>
@@ -51,15 +51,18 @@ public class WorkspacePaletteActionTests
     {
         var titles = new CockpitViewModel().BuildPaletteCommands().Select(command => command.Title).ToList();
 
-        titles.Should().Contain(["New sessions workspace", "New dashboard workspace", "Close workspace"]);
+        Assert.All(
+            new[] { "New sessions workspace", "New dashboard workspace", "Close workspace" },
+            title => Assert.Contains(title, titles));
     }
 
     /// <summary>The palette opens itself; listing it inside itself would be a row that does nothing you did not just do.</summary>
     [Fact]
     public void ThePalette_DoesNotOfferItself()
     {
-        new CockpitViewModel().BuildPaletteCommands()
-            .Should().NotContain(command => command.Title == "Command palette");
+        Assert.DoesNotContain(
+            new CockpitViewModel().BuildPaletteCommands(),
+            command => command.Title == "Command palette");
     }
 
     /// <summary>
@@ -72,6 +75,6 @@ public class WorkspacePaletteActionTests
         var vm = new CockpitViewModel();
         vm.Workspaces.EnsureSessionWorkspace();
 
-        vm.BuildPaletteCommands().Should().NotContain(command => command.Title.StartsWith("Add widget:"));
+        Assert.DoesNotContain(vm.BuildPaletteCommands(), command => command.Title.StartsWith("Add widget:"));
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -18,7 +17,7 @@ public class TextMarkTests
     [InlineData(0xFFF4C150, 0xFF000000u)]
     public void ThePlateIsTheOppositeOfTheLetters(uint colour, uint expected)
     {
-        _Note(colour, 10, 10).Plate.Should().Be(expected);
+        Assert.Equal(expected, _Note(colour, 10, 10).Plate);
     }
 
     /// <summary>
@@ -30,14 +29,15 @@ public class TextMarkTests
     {
         var clipped = _Note(Accent, 150, 180).ClipTo(new CaptureRect(100, 100, 500, 400));
 
-        clipped.Should().BeOfType<TextMark>().Which.At.Should().Be(new CapturePoint(50, 80));
+        var textClipped = Assert.IsType<TextMark>(clipped);
+        Assert.Equal(new CapturePoint(50, 80), textClipped.At);
     }
 
     /// <summary>A note whose corner is past the region is a note on something that is not being sent.</summary>
     [Fact]
     public void ANoteOutsideTheRegion_IsNotCarried()
     {
-        _Note(Accent, 700, 700).ClipTo(new CaptureRect(0, 0, 500, 500)).Should().BeNull();
+        Assert.Null(_Note(Accent, 700, 700).ClipTo(new CaptureRect(0, 0, 500, 500)));
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ public class TextMarkTests
     [Fact]
     public void ANoteThatStartsInsideAndRunsOff_IsKept()
     {
-        _Note(Accent, 480, 200).ClipTo(new CaptureRect(0, 0, 500, 500)).Should().NotBeNull();
+        Assert.NotNull(_Note(Accent, 480, 200).ClipTo(new CaptureRect(0, 0, 500, 500)));
     }
 
     private static TextMark _Note(uint colour, int x, int y) =>

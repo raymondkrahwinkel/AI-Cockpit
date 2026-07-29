@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Terminal;
 
@@ -24,15 +23,15 @@ public class ShellTtySessionProviderTests
         var shell = new ShellDescriptor("pwsh", "PowerShell", @"C:\pwsh\pwsh.exe", ["-NoLogo"]);
         var provider = new ShellTtySessionProvider(shell);
 
-        provider.ProviderId.Should().Be("shell");
+        Assert.Equal("shell", provider.ProviderId);
 
         var spec = provider.BuildLaunch(Context(@"C:\work\project"));
 
-        spec.ExecutablePath.Should().Be(@"C:\pwsh\pwsh.exe");
-        spec.Arguments.Should().Equal("-NoLogo");
-        spec.WorkingDirectory.Should().Be(@"C:\work\project");
-        spec.EnvironmentOverlay.Should().BeEmpty();
-        spec.SessionScopedFiles.Should().BeEmpty();
-        spec.StatusFile.Should().BeNull("a shell has no rate limits or context window to relay");
+        Assert.Equal(@"C:\pwsh\pwsh.exe", spec.ExecutablePath);
+        Assert.Equal(new[] { "-NoLogo" }, spec.Arguments);
+        Assert.Equal(@"C:\work\project", spec.WorkingDirectory);
+        Assert.Empty(spec.EnvironmentOverlay);
+        Assert.Empty(spec.SessionScopedFiles);
+        Assert.Null(spec.StatusFile);
     }
 }

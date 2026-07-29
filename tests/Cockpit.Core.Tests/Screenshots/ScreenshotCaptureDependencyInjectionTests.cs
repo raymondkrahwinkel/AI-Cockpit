@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -27,8 +26,8 @@ public class ScreenshotCaptureDependencyInjectionTests
 
         var capture = provider.GetService<IScreenshotCapture>();
 
-        capture.Should().NotBeNull();
-        capture.Should().BeOfType(_ExpectedForThisPlatform());
+        Assert.NotNull(capture);
+        Assert.IsType(_ExpectedForThisPlatform(), capture);
     }
 
     private static Type _ExpectedForThisPlatform()

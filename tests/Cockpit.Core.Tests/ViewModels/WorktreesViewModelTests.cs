@@ -2,7 +2,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -62,8 +61,8 @@ public class WorktreesViewModelTests
 
         await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
 
-        viewModel.RemoveFailure.Should().Contain("is not a working tree");
-        viewModel.HasRemoveFailure.Should().BeTrue();
+        Assert.Contains("is not a working tree", viewModel.RemoveFailure);
+        Assert.True(viewModel.HasRemoveFailure);
     }
 
     /// <summary>
@@ -78,7 +77,9 @@ public class WorktreesViewModelTests
 
         await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
 
-        viewModel.RemoveFailure.Should().NotContainAny("\n", "\r").And.Contain("containing submodules");
+        Assert.DoesNotContain("\n", viewModel.RemoveFailure, StringComparison.Ordinal);
+        Assert.DoesNotContain("\r", viewModel.RemoveFailure, StringComparison.Ordinal);
+        Assert.Contains("containing submodules", viewModel.RemoveFailure);
     }
 
     [Fact]
@@ -91,8 +92,8 @@ public class WorktreesViewModelTests
         manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
 
-        viewModel.RemoveFailure.Should().BeNull();
-        viewModel.HasRemoveFailure.Should().BeFalse();
+        Assert.Null(viewModel.RemoveFailure);
+        Assert.False(viewModel.HasRemoveFailure);
     }
 
     [Fact]
@@ -104,7 +105,8 @@ public class WorktreesViewModelTests
 
         await viewModel.CleanUpFinishedCommand.ExecuteAsync(null);
 
-        viewModel.RemoveFailure.Should().Contain("cockpit/x").And.Contain("is not a working tree");
+        Assert.Contains("cockpit/x", viewModel.RemoveFailure);
+        Assert.Contains("is not a working tree", viewModel.RemoveFailure);
     }
 
     [Fact]

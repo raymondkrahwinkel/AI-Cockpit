@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 
@@ -33,7 +32,7 @@ public class SessionProfileStoreTests : IDisposable
 
         var profiles = await store.LoadAsync();
 
-        profiles.Should().NotBeNull();
+        Assert.NotNull(profiles);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class SessionProfileStoreTests : IDisposable
         await store.SaveAsync(profiles);
         var loaded = await store.LoadAsync();
 
-        loaded.Should().BeEquivalentTo(profiles);
+        Assert.Equivalent(profiles, loaded);
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class SessionProfileStoreTests : IDisposable
 
         // The first profile's defaults survive the round-trip; the second keeps null defaults
         // (no defaults section written), so the two are not conflated.
-        loaded.Should().BeEquivalentTo(profiles);
+        Assert.Equivalent(profiles, loaded);
     }
 
     [Fact]
@@ -98,9 +97,9 @@ public class SessionProfileStoreTests : IDisposable
 
         // Explicitly opted-in survives, and the (default) false of the second profile is not flipped to
         // true by the round-trip — the two are not conflated.
-        loaded.Should().BeEquivalentTo(profiles);
-        loaded[0].Defaults!.AutoApproveTools.Should().BeTrue();
-        loaded[1].Defaults!.AutoApproveTools.Should().BeFalse();
+        Assert.Equivalent(profiles, loaded);
+        Assert.True(loaded[0].Defaults!.AutoApproveTools);
+        Assert.False(loaded[1].Defaults!.AutoApproveTools);
     }
 
     [Fact]
@@ -117,10 +116,10 @@ public class SessionProfileStoreTests : IDisposable
         await store.SaveAsync(profiles);
         var loaded = await store.LoadAsync();
 
-        loaded.Should().BeEquivalentTo(profiles);
-        loaded[0].Provider.Should().Be(SessionProvider.Plugin);
-        loaded[1].Provider.Should().Be(SessionProvider.Ollama);
-        loaded[2].Provider.Should().Be(SessionProvider.LmStudio);
+        Assert.Equivalent(profiles, loaded);
+        Assert.Equal(SessionProvider.Plugin, loaded[0].Provider);
+        Assert.Equal(SessionProvider.Ollama, loaded[1].Provider);
+        Assert.Equal(SessionProvider.LmStudio, loaded[2].Provider);
     }
 
     [Fact]
@@ -131,7 +130,7 @@ public class SessionProfileStoreTests : IDisposable
 
         await store.SaveAsync([new SessionProfile("default", new ClaudeConfig(@"C:\Users\raymo\.claude"))]);
 
-        File.Exists(nestedConfigPath).Should().BeTrue();
+        Assert.True(File.Exists(nestedConfigPath));
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public class SessionProfileStoreTests : IDisposable
 
         // Empty persisted list is treated the same as "no config yet" — falls back to
         // auto-detect rather than returning an empty cockpit with no profiles at all.
-        profiles.Should().NotBeNull();
+        Assert.NotNull(profiles);
     }
 
     [Fact]
@@ -181,17 +180,16 @@ public class SessionProfileStoreTests : IDisposable
 
         var profiles = await store.LoadAsync();
 
-        profiles.Should().HaveCount(2);
-        profiles[0].Label.Should().Be("work");
+        Assert.Equal(2, System.Linq.Enumerable.Count(profiles));
+        Assert.Equal("work", profiles[0].Label);
         // A provider-less legacy Claude entry is migrated to the bundled Claude provider plugin on load (Fase 4),
         // its top-level ConfigDir carried into the plugin config.
-        profiles[0].ProviderConfig.Should().Be(ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
-        profiles[0].Purpose.Should().Be("Work account");
-        profiles[0].Provider.Should().Be(SessionProvider.Plugin);
-        profiles[0].Defaults.Should().NotBeNull();
-        profiles[1].Provider.Should().Be(SessionProvider.Ollama);
-        profiles[1].ProviderConfig.Should().BeOfType<OllamaConfig>()
-            .Which.Model.Should().Be("llama3.1");
+        Assert.Equal(ClaudePluginProfile.Create("/home/raymond/.claude-work", null), profiles[0].ProviderConfig);
+        Assert.Equal("Work account", profiles[0].Purpose);
+        Assert.Equal(SessionProvider.Plugin, profiles[0].Provider);
+        Assert.NotNull(profiles[0].Defaults);
+        Assert.Equal(SessionProvider.Ollama, profiles[1].Provider);
+        Assert.Equal("llama3.1", Assert.IsType<OllamaConfig>(profiles[1].ProviderConfig).Model);
     }
 
     public void Dispose()

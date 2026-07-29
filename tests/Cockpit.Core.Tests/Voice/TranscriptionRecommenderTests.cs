@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -24,10 +23,12 @@ public class TranscriptionRecommenderTests
 
         var recommendation = TranscriptionRecommender.Recommend(VulkanCaps, gpu, WhisperHostPlatform.Windows);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Vulkan);
-        recommendation.Model.Should().Be("large-v3-turbo");
-        recommendation.Reason.Should().ContainAll("screen", "calibration");
-        recommendation.Badges.Should().Contain("drives display").And.Contain("no CUDA");
+        Assert.Equal(VoiceBackendPreference.Vulkan, recommendation.Backend);
+        Assert.Equal("large-v3-turbo", recommendation.Model);
+        Assert.Contains("screen", recommendation.Reason);
+        Assert.Contains("calibration", recommendation.Reason);
+        Assert.Contains("drives display", recommendation.Badges);
+        Assert.Contains("no CUDA", recommendation.Badges);
     }
 
     [Fact]
@@ -37,9 +38,9 @@ public class TranscriptionRecommenderTests
 
         var recommendation = TranscriptionRecommender.Recommend(CudaCaps, gpu, WhisperHostPlatform.Windows);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Cuda);
-        recommendation.Model.Should().Be("large-v3-turbo");
-        recommendation.Badges.Should().Contain("CUDA");
+        Assert.Equal(VoiceBackendPreference.Cuda, recommendation.Backend);
+        Assert.Equal("large-v3-turbo", recommendation.Model);
+        Assert.Contains("CUDA", recommendation.Badges);
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public class TranscriptionRecommenderTests
 
         var recommendation = TranscriptionRecommender.Recommend(VulkanCaps, gpu, WhisperHostPlatform.Windows);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Vulkan);
+        Assert.Equal(VoiceBackendPreference.Vulkan, recommendation.Backend);
     }
 
     [Fact]
@@ -61,9 +62,9 @@ public class TranscriptionRecommenderTests
             new GpuHardware(GpuVendor.Apple, "Apple Silicon", DrivesDisplay: true, VideoMemoryBytes: 0),
             WhisperHostPlatform.MacOs);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Cpu);
-        recommendation.Reason.Should().Contain("Metal");
-        recommendation.Badges.Should().Contain("Metal");
+        Assert.Equal(VoiceBackendPreference.Cpu, recommendation.Backend);
+        Assert.Contains("Metal", recommendation.Reason);
+        Assert.Contains("Metal", recommendation.Badges);
     }
 
     [Fact]
@@ -72,8 +73,8 @@ public class TranscriptionRecommenderTests
         var recommendation = TranscriptionRecommender.Recommend(
             TranscriptionCapabilities.CpuOnly, GpuHardware.None, WhisperHostPlatform.Windows);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Cpu);
-        recommendation.Model.Should().Be("small");
+        Assert.Equal(VoiceBackendPreference.Cpu, recommendation.Backend);
+        Assert.Equal("small", recommendation.Model);
     }
 
     [Fact]
@@ -83,7 +84,8 @@ public class TranscriptionRecommenderTests
         // is still the guess (the runtime falls to the CPU tail if it cannot load, and calibration measures reality).
         var gpu = new GpuHardware(GpuVendor.Nvidia, "NVIDIA GeForce MX150", DrivesDisplay: true, VideoMemoryBytes: 2L * 1024 * 1024 * 1024);
 
-        TranscriptionRecommender.Recommend(CudaCaps, gpu, WhisperHostPlatform.Windows)
-            .Backend.Should().Be(VoiceBackendPreference.Cuda);
+        Assert.Equal(
+            VoiceBackendPreference.Cuda,
+            TranscriptionRecommender.Recommend(CudaCaps, gpu, WhisperHostPlatform.Windows).Backend);
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
@@ -19,7 +18,7 @@ public class ProjectSettingsTests
             ],
         };
 
-        settings.Normalized().Projects.Should().ContainSingle().Which.Name.Should().Be("Cockpit");
+        Assert.Equal("Cockpit", Assert.Single(settings.Normalized().Projects).Name);
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public class ProjectSettingsTests
             Projects = [new Project("same", "first"), new Project("same", "second")],
         };
 
-        settings.Normalized().Projects.Should().ContainSingle().Which.Name.Should().Be("first");
+        Assert.Equal("first", Assert.Single(settings.Normalized().Projects).Name);
     }
 
     [Fact]
@@ -51,11 +50,11 @@ public class ProjectSettingsTests
             ],
         };
 
-        var info = settings.Normalized().Projects.Should().ContainSingle().Subject.AdditionalInfo;
+        var info = Assert.Single(settings.Normalized().Projects).AdditionalInfo;
 
-        info.Should().ContainSingle("an empty row carries nothing and would draw a blank line on the card");
-        info[0].Label.Should().Be("Repository");
-        info[0].Value.Should().Be("https://github.com/example/repo");
+        Assert.Single(info);
+        Assert.Equal("Repository", info[0].Label);
+        Assert.Equal("https://github.com/example/repo", info[0].Value);
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public class ProjectSettingsTests
         };
         var settings = ProjectSettings.Empty.WithProject(project);
 
-        settings.Normalized().Should().BeSameAs(settings, "the common case must not allocate a new list every load");
+        Assert.Same(settings, settings.Normalized());
     }
 
     [Fact]
@@ -75,8 +74,8 @@ public class ProjectSettingsTests
     {
         var settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit"));
 
-        settings.Find("gone").Should().BeNull("a session can outlive the project it was started under");
-        settings.Find(null).Should().BeNull();
+        Assert.Null(settings.Find("gone"));
+        Assert.Null(settings.Find(null));
     }
 
     [Fact]
@@ -87,7 +86,7 @@ public class ProjectSettingsTests
 
         var renamed = settings.WithUpdated(project with { Name = "AI-Cockpit" });
 
-        renamed.Projects.Should().ContainSingle().Which.Name.Should().Be("AI-Cockpit");
+        Assert.Equal("AI-Cockpit", Assert.Single(renamed.Projects).Name);
     }
 
     [Fact]
@@ -97,6 +96,6 @@ public class ProjectSettingsTests
         var removed = Project.Create("Depot");
         var settings = ProjectSettings.Empty.WithProject(kept).WithProject(removed);
 
-        settings.WithoutProject(removed.Id).Projects.Should().ContainSingle().Which.Id.Should().Be(kept.Id);
+        Assert.Equal(kept.Id, Assert.Single(settings.WithoutProject(removed.Id).Projects).Id);
     }
 }

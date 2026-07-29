@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
@@ -17,9 +16,10 @@ public class ProjectInfoFieldTests
             IsSharedWithSessions = true,
         };
 
-        secret.ReachesSessions.Should().BeFalse("a credential is never told to a session");
-        new ProjectInfoField("Repository", "https://example.test") { IsSharedWithSessions = true }
-            .ReachesSessions.Should().BeTrue("an ordinary shared row still is");
+        Assert.False(secret.ReachesSessions, "a credential is never told to a session");
+        Assert.True(
+            new ProjectInfoField("Repository", "https://example.test") { IsSharedWithSessions = true }.ReachesSessions,
+            "an ordinary shared row still is");
     }
 
     [Fact]
@@ -27,28 +27,30 @@ public class ProjectInfoFieldTests
     {
         // A secret that happens to parse as a URL would otherwise get a link carrying the value in its tooltip, and a
         // click would put it in the browser's history.
-        new ProjectInfoField("Webhook", "https://hooks.example.test/T0K3N") { IsSecret = true }
-            .IsWebLink.Should().BeFalse();
+        Assert.False(new ProjectInfoField("Webhook", "https://hooks.example.test/T0K3N") { IsSecret = true }.IsWebLink);
     }
 
     [Fact]
     public void ASecretRow_IsNotShownAsPlainText()
     {
-        new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true }.ShowsPlainValue.Should().BeFalse();
-        new ProjectInfoField("Customer", "Acme BV").ShowsPlainValue.Should().BeTrue();
-        new ProjectInfoField("Repository", "https://example.test").ShowsPlainValue
-            .Should().BeFalse("a web address is drawn as a link instead");
+        Assert.False(new ProjectInfoField("Deploy token", "s3cr3t") { IsSecret = true }.ShowsPlainValue);
+        Assert.True(new ProjectInfoField("Customer", "Acme BV").ShowsPlainValue);
+        Assert.False(
+            new ProjectInfoField("Repository", "https://example.test").ShowsPlainValue,
+            "a web address is drawn as a link instead");
     }
 
     [Fact]
     public void IsBlank_OnlyWhenBothHalvesAreEmpty()
     {
-        new ProjectInfoField("  ", "\t").IsBlank.Should().BeTrue("an untouched row the editor added carries nothing");
-        new ProjectInfoField("Repository", "").IsBlank.Should().BeFalse();
-        new ProjectInfoField("", "https://example.com").IsBlank
-            .Should().BeFalse("a pasted link with no label yet is still information");
-        new ProjectInfoField("   ", "https://example.com").IsBlank
-            .Should().BeFalse("a label of nothing but spaces is the same as no label — the value still counts");
+        Assert.True(new ProjectInfoField("  ", "\t").IsBlank, "an untouched row the editor added carries nothing");
+        Assert.False(new ProjectInfoField("Repository", "").IsBlank);
+        Assert.False(
+            new ProjectInfoField("", "https://example.com").IsBlank,
+            "a pasted link with no label yet is still information");
+        Assert.False(
+            new ProjectInfoField("   ", "https://example.com").IsBlank,
+            "a label of nothing but spaces is the same as no label — the value still counts");
     }
 
     [Fact]
@@ -65,15 +67,17 @@ public class ProjectInfoFieldTests
             ],
         });
 
-        settings.Normalized().Projects.Should().ContainSingle()
-            .Which.AdditionalInfo.Select(field => field.Value).Should().Equal("Acme BV service desk", "Acme BV account manager");
+        var project = Assert.Single(settings.Normalized().Projects);
+        Assert.Equal(
+            new[] { "Acme BV service desk", "Acme BV account manager" },
+            project.AdditionalInfo.Select(field => field.Value));
     }
 
     [Theory]
     [InlineData("https://github.com/example/repo")]
     [InlineData("http://example.test")]
     public void IsWebLink_TrueForHttpAndHttps(string value) =>
-        new ProjectInfoField("Repository", value).IsWebLink.Should().BeTrue();
+        Assert.True(new ProjectInfoField("Repository", value).IsWebLink);
 
     [Theory]
     [InlineData("github.com/example/repo")]
@@ -83,16 +87,17 @@ public class ProjectInfoFieldTests
     [InlineData("")]
     [InlineData("Ask the service desk, they sign off on it")]
     public void IsWebLink_FalseForAnythingElse(string value) =>
-        new ProjectInfoField("Note", value).IsWebLink
-            .Should().BeFalse("only http(s) is ever handed to the shell, so only http(s) may look followable");
+        Assert.False(
+            new ProjectInfoField("Note", value).IsWebLink,
+            "only http(s) is ever handed to the shell, so only http(s) may look followable");
 
     [Fact]
     public void Tidied_TrimsTheLabelAndFoldsThePastedValueOntoOneLine()
     {
         var tidied = new ProjectInfoField("  Contact  ", "Acme BV\r\n  service desk\n\n").Tidied();
 
-        tidied.Label.Should().Be("Contact");
-        tidied.Value.Should().Be("Acme BV service desk");
+        Assert.Equal("Contact", tidied.Label);
+        Assert.Equal("Acme BV service desk", tidied.Value);
     }
 
     [Theory]
@@ -110,7 +115,7 @@ public class ProjectInfoFieldTests
         // single character from this set leaves that crash reachable, so each one gets its own case.
         var pasted = "Acme BV" + (char)codePoint + "Amsterdam";
 
-        new ProjectInfoField("Customer", pasted).Tidied().Value.Should().Be("Acme BV Amsterdam");
+        Assert.Equal("Acme BV Amsterdam", new ProjectInfoField("Customer", pasted).Tidied().Value);
     }
 
     [Fact]
@@ -122,8 +127,8 @@ public class ProjectInfoFieldTests
 
         var tidied = new ProjectInfoField("Repository" + (char)0x200E, deceptive).Tidied();
 
-        tidied.Value.Should().Be("https://example.test/gnp.evil");
-        tidied.Label.Should().Be("Repository");
+        Assert.Equal("https://example.test/gnp.evil", tidied.Value);
+        Assert.Equal("Repository", tidied.Label);
     }
 
     [Fact]
@@ -136,7 +141,7 @@ public class ProjectInfoFieldTests
             IsSharedWithSessions = true,
         };
 
-        shared.Tidied().IsSharedWithSessions.Should().BeTrue("tidying a row must not change what it is for");
+        Assert.True(shared.Tidied().IsSharedWithSessions, "tidying a row must not change what it is for");
     }
 
     [Fact]
@@ -144,7 +149,7 @@ public class ProjectInfoFieldTests
     {
         // These rows arrived as reference material for the operator (AC-295). Sharing them by default would change what
         // already-entered rows do without anyone asking.
-        new ProjectInfoField("Customer", "Acme BV").IsSharedWithSessions.Should().BeFalse();
+        Assert.False(new ProjectInfoField("Customer", "Acme BV").IsSharedWithSessions);
     }
 
     [Fact]
@@ -152,6 +157,6 @@ public class ProjectInfoFieldTests
     {
         var field = new ProjectInfoField("Repository", "https://github.com/example/repo");
 
-        field.Tidied().Should().Be(field);
+        Assert.Equal(field, field.Tidied());
     }
 }

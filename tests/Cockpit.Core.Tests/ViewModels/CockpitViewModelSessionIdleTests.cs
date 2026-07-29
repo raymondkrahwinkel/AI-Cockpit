@@ -14,7 +14,6 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -75,7 +74,7 @@ public class CockpitViewModelSessionIdleTests
 
         vm.SweepIdleSessions(Quiet(session, TimeSpan.FromMinutes(30)));
 
-        session.SessionStatus.Should().Be(SessionStatus.Idle);
+        Assert.Equal(SessionStatus.Idle, session.SessionStatus);
         await _attentionNotifier.Received(1).NotifySessionIdleAsync(
             Arg.Is<AttentionNotification>(notification => notification.Title == session.Title),
             Arg.Any<CancellationToken>());
@@ -92,7 +91,7 @@ public class CockpitViewModelSessionIdleTests
 
         vm.SweepIdleSessions(Quiet(session, TimeSpan.FromHours(3)));
 
-        session.SessionStatus.Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, session.SessionStatus);
     }
 
     [Fact]
@@ -139,7 +138,7 @@ public class CockpitViewModelSessionIdleTests
 
         vm.SweepIdleSessions(Quiet(session, TimeSpan.FromHours(3)));
 
-        session.SessionStatus.Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, session.SessionStatus);
         await _attentionNotifier.DidNotReceiveWithAnyArgs().NotifySessionIdleAsync(default!, default);
     }
 

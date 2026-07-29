@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
@@ -26,7 +25,7 @@ public class ProjectStoreTests : IDisposable
     {
         var projects = await new ProjectStore(_configFilePath).LoadAsync();
 
-        projects.Projects.Should().BeEmpty("a cockpit without projects starts sessions exactly as it did before");
+        Assert.Empty(projects.Projects);
     }
 
     [Fact]
@@ -63,7 +62,8 @@ public class ProjectStoreTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Should().BeEquivalentTo(project);
+        var savedProject = Assert.Single(loaded.Projects);
+        Assert.Equivalent(project, savedProject);
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class ProjectStoreTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.McpOverlay.IsEmpty.Should().BeTrue();
+        Assert.True(Assert.Single(loaded.Projects).McpOverlay.IsEmpty);
     }
 
     /// <summary>
@@ -98,14 +98,14 @@ public class ProjectStoreTests : IDisposable
         await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(project));
         var written = await File.ReadAllTextAsync(_configFilePath);
 
-        written.Should().Contain("SecretValue", "the field's name is what routes it through encryption");
-        written.Should().Contain("https://github.com/example/repo", "an ordinary value stays readable on purpose");
+        Assert.Contains("SecretValue", written);
+        Assert.Contains("https://github.com/example/repo", written);
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
-        var rows = loaded.Projects.Should().ContainSingle().Subject.AdditionalInfo;
-        rows[0].IsSecret.Should().BeTrue("which field carried the value is what says it is a secret");
-        rows[0].Value.Should().Be("s3cr3t-value");
-        rows[1].IsSecret.Should().BeFalse();
+        var rows = Assert.Single(loaded.Projects).AdditionalInfo;
+        Assert.True(rows[0].IsSecret, "which field carried the value is what says it is a secret");
+        Assert.Equal("s3cr3t-value", rows[0].Value);
+        Assert.False(rows[1].IsSecret);
     }
 
     /// <summary>Most projects keep no information of their own; their entry should not gain an empty array for it.</summary>
@@ -115,7 +115,7 @@ public class ProjectStoreTests : IDisposable
         await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Admin")));
 
         var written = await File.ReadAllTextAsync(_configFilePath);
-        written.Should().NotContain("AdditionalInfo");
+        Assert.DoesNotContain("AdditionalInfo", written);
     }
 
     /// <summary>
@@ -136,9 +136,9 @@ public class ProjectStoreTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        var project = loaded.Projects.Should().ContainSingle().Subject;
-        project.Id.Should().Be("kept");
-        project.AdditionalInfo.Should().ContainSingle().Which.Label.Should().Be("Repository");
+        var project = Assert.Single(loaded.Projects);
+        Assert.Equal("kept", project.Id);
+        Assert.Equal("Repository", Assert.Single(project.AdditionalInfo).Label);
     }
 
     /// <summary>A section written by hand, or by a newer build, should cost the operator the bad entry rather than the whole list.</summary>
@@ -151,7 +151,7 @@ public class ProjectStoreTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Id.Should().Be("kept");
+        Assert.Equal("kept", Assert.Single(loaded.Projects).Id);
     }
 
     /// <summary>The store owns one section: writing projects must not clobber a sibling the same file carries.</summary>
@@ -163,7 +163,7 @@ public class ProjectStoreTests : IDisposable
         await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(Project.Create("Cockpit")));
 
         var written = await File.ReadAllTextAsync(_configFilePath);
-        written.Should().Contain("personal");
+        Assert.Contains("personal", written);
     }
 
     public void Dispose()

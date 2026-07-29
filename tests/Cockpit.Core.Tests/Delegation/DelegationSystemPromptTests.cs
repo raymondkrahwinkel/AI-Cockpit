@@ -1,5 +1,4 @@
 using Cockpit.Core.Delegation;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Delegation;
 
@@ -16,8 +15,8 @@ public class DelegationSystemPromptTests
     {
         // The profiles and what they are good for live in the cockpit's settings and change there; restating them
         // in the prompt would hand the model a second copy that goes stale the moment a profile is edited.
-        DelegationSystemPrompt.Default.Should().Contain("list_profiles");
-        DelegationSystemPrompt.Default.Should().Contain("delegate_task");
-        DelegationSystemPrompt.Default.Should().Contain("get_task_result");
+        Assert.Contains("list_profiles", DelegationSystemPrompt.Default);
+        Assert.Contains("delegate_task", DelegationSystemPrompt.Default);
+        Assert.Contains("get_task_result", DelegationSystemPrompt.Default);
     }
 }

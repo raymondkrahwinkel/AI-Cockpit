@@ -1,6 +1,5 @@
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -23,7 +22,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(Path.Combine(_root, "does-not-exist"), Empty, HostMajor);
 
-        found.Should().BeEmpty();
+        Assert.Empty(found);
     }
 
     [Fact]
@@ -34,11 +33,11 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
 
-        found.Should().ContainSingle();
-        found[0].FolderId.Should().Be("github-issues");
-        found[0].Manifest.Name.Should().Be("github-issues-name");
-        found[0].Decision.Should().Be(PluginLoadDecision.NeedsConsent);
-        found[0].Sha256.Should().MatchRegex("^[0-9a-f]{64}$");
+        Assert.Single(found);
+        Assert.Equal("github-issues", found[0].FolderId);
+        Assert.Equal("github-issues-name", found[0].Manifest.Name);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, found[0].Decision);
+        Assert.Matches("^[0-9a-f]{64}$", found[0].Sha256);
     }
 
     [Fact]
@@ -51,7 +50,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(_root, saved, HostMajor);
 
-        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, Assert.Single(found).Decision);
     }
 
     [Fact]
@@ -69,7 +68,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await new PluginDiscovery().DiscoverAsync(_root, saved, HostMajor);
 
-        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.NeedsConsent);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, Assert.Single(found).Decision);
     }
 
     [Fact]
@@ -84,14 +83,14 @@ public class PluginDiscoveryTests : IDisposable
         var beforeConsent = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: legacyEntryOnlyPin) };
 
         var found = await new PluginDiscovery().DiscoverAsync(_root, beforeConsent, HostMajor);
-        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.NeedsConsent);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, Assert.Single(found).Decision);
 
         // ...and once re-consented (the pin becomes the closure), it loads and stays put on the next launch.
         var closurePin = await PluginClosureHash.OfInstalledFolderAsync(folder);
         var afterConsent = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: closurePin) };
 
         var reloaded = await new PluginDiscovery().DiscoverAsync(_root, afterConsent, HostMajor);
-        reloaded.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, Assert.Single(reloaded).Decision);
     }
 
     [Fact]
@@ -102,7 +101,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
 
-        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.AbstractionsMajorMismatch);
+        Assert.Equal(PluginLoadDecision.AbstractionsMajorMismatch, Assert.Single(found).Decision);
     }
 
     [Fact]
@@ -123,7 +122,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
 
-        found.Should().BeEmpty();
+        Assert.Empty(found);
     }
 
     [Fact]
@@ -136,7 +135,7 @@ public class PluginDiscoveryTests : IDisposable
 
         var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
 
-        found.Should().BeEmpty();
+        Assert.Empty(found);
     }
 
     private string WritePlugin(string folderId, string entryAssembly, int abstractionsVersion)

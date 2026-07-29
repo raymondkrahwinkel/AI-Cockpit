@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -36,11 +35,11 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().Equal("transcript-search");
-        File.Exists(Path.Combine(_plugins, "transcript-search", "plugin.json")).Should().BeTrue();
-        _registrations.Saved["transcript-search"].Enabled.Should().BeTrue();
-        _registrations.Saved["transcript-search"].PinnedSha256.Should().NotBeEmpty();
-        _registrations.Seeded.Should().Contain("transcript-search", "a seeded plugin is recorded so it is never seeded again");
+        Assert.Equal(new[] { "transcript-search" }, installed);
+        Assert.True(File.Exists(Path.Combine(_plugins, "transcript-search", "plugin.json")));
+        Assert.True(_registrations.Saved["transcript-search"].Enabled);
+        Assert.NotEmpty(_registrations.Saved["transcript-search"].PinnedSha256);
+        Assert.Contains("transcript-search", _registrations.Seeded);
     }
 
     // The store owns every version after the first seed: a newer bundled build arriving in a later app version
@@ -54,10 +53,10 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _InstalledVersion("transcript-search").Should().Be("1.0.0");
-        _registrations.Saved["transcript-search"].PinnedSha256.Should().Be("old");
-        _registrations.Seeded.Should().Contain("transcript-search", "an existing install is adopted into the ledger");
+        Assert.Empty(installed);
+        Assert.Equal("1.0.0", _InstalledVersion("transcript-search"));
+        Assert.Equal("old", _registrations.Saved["transcript-search"].PinnedSha256);
+        Assert.Contains("transcript-search", _registrations.Seeded);
     }
 
     // The operator updated it from the store past what we ship; a new app build must not drag them back.
@@ -70,9 +69,9 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _InstalledVersion("transcript-search").Should().Be("2.0.0");
-        _registrations.Saved["transcript-search"].PinnedSha256.Should().Be("theirs");
+        Assert.Empty(installed);
+        Assert.Equal("2.0.0", _InstalledVersion("transcript-search"));
+        Assert.Equal("theirs", _registrations.Saved["transcript-search"].PinnedSha256);
     }
 
     // Turning a plugin off is a decision. Shipping a build is not a reason to undo it.
@@ -85,9 +84,9 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _InstalledVersion("git-status").Should().Be("1.1.0");
-        _registrations.Saved["git-status"].Should().Be(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"));
+        Assert.Empty(installed);
+        Assert.Equal("1.1.0", _InstalledVersion("git-status"));
+        Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["git-status"]);
     }
 
     /// <summary>
@@ -104,10 +103,10 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _InstalledAssembly("clock").Should().Be("clock-1.0.0", "the bundle does not overwrite an install it already seeded");
-        _registrations.Saved["clock"].PinnedSha256.Should().Be("the-old-bytes");
-        _registrations.Seeded.Should().Contain("clock");
+        Assert.Empty(installed);
+        Assert.Equal("clock-1.0.0", _InstalledAssembly("clock"));
+        Assert.Equal("the-old-bytes", _registrations.Saved["clock"].PinnedSha256);
+        Assert.Contains("clock", _registrations.Seeded);
     }
 
     /// <summary>An identical, already-installed plugin is adopted into the ledger but its bytes and pin are untouched.</summary>
@@ -120,8 +119,8 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _registrations.Saved["clock"].PinnedSha256.Should().Be("pinned");
+        Assert.Empty(installed);
+        Assert.Equal("pinned", _registrations.Saved["clock"].PinnedSha256);
     }
 
     [Fact]
@@ -132,7 +131,7 @@ public class BundledPluginInstallerTests : IDisposable
 
         var second = await NewSut().InstallAsync(_bundled, _plugins);
 
-        second.Should().BeEmpty();
+        Assert.Empty(second);
     }
 
     // The point of the seed ledger: seeding is a first-appearance event, not a "is it on disk" check. A plugin
@@ -141,7 +140,7 @@ public class BundledPluginInstallerTests : IDisposable
     public async Task AnUninstalledBundledPlugin_IsNotReSeeded()
     {
         _WriteBundled("transcript-search", "1.1.0");
-        (await NewSut().InstallAsync(_bundled, _plugins)).Should().Equal("transcript-search");
+        Assert.Equal(new[] { "transcript-search" }, (await NewSut().InstallAsync(_bundled, _plugins)));
 
         // Simulate an uninstall: the folder and the registration go, but the seed ledger remembers it was here.
         Directory.Delete(Path.Combine(_plugins, "transcript-search"), recursive: true);
@@ -149,8 +148,8 @@ public class BundledPluginInstallerTests : IDisposable
 
         var second = await NewSut().InstallAsync(_bundled, _plugins);
 
-        second.Should().BeEmpty();
-        Directory.Exists(Path.Combine(_plugins, "transcript-search")).Should().BeFalse("an uninstalled bundled plugin does not silently return");
+        Assert.Empty(second);
+        Assert.False(Directory.Exists(Path.Combine(_plugins, "transcript-search")), "an uninstalled bundled plugin does not silently return");
     }
 
     // Existing installs from before the ledger existed (or ones the operator installed themselves) are adopted:
@@ -164,10 +163,10 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().BeEmpty();
-        _InstalledAssembly("git-status").Should().Be("git-status-1.0.0", "adoption records the seed but does not rewrite the install");
-        _registrations.Saved["git-status"].PinnedSha256.Should().Be("theirs");
-        _registrations.Seeded.Should().Contain("git-status");
+        Assert.Empty(installed);
+        Assert.Equal("git-status-1.0.0", _InstalledAssembly("git-status"));
+        Assert.Equal("theirs", _registrations.Saved["git-status"].PinnedSha256);
+        Assert.Contains("git-status", _registrations.Seeded);
     }
 
     [Fact]
@@ -175,7 +174,7 @@ public class BundledPluginInstallerTests : IDisposable
     {
         var installed = await NewSut().InstallAsync(Path.Combine(_root, "does-not-exist"), _plugins);
 
-        installed.Should().BeEmpty();
+        Assert.Empty(installed);
     }
 
     private BundledPluginInstaller NewSut() => new(_registrations);
@@ -183,7 +182,7 @@ public class BundledPluginInstallerTests : IDisposable
     private string _InstalledVersion(string id)
     {
         var json = File.ReadAllText(Path.Combine(_plugins, id, "plugin.json"));
-        PluginManifest.TryParse(json, out var manifest, out _).Should().BeTrue();
+        Assert.True(PluginManifest.TryParse(json, out var manifest, out _));
         return manifest is null ? throw new InvalidOperationException($"'{id}' has no readable manifest.") : manifest.Version;
     }
 

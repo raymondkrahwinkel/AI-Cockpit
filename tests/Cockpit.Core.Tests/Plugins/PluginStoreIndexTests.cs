@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -28,30 +27,30 @@ public class PluginStoreIndexTests
         }
         """;
 
-        PluginStoreIndex.TryParse(json, out var index, out _).Should().BeTrue();
-        index!.Name.Should().Be("My Store");
-        index.Plugins.Should().ContainSingle();
+        Assert.True(PluginStoreIndex.TryParse(json, out var index, out _));
+        Assert.Equal("My Store", index!.Name);
+        Assert.Single(index.Plugins);
 
         var entry = index.Plugins[0];
-        entry.Id.Should().Be("github-issues");
-        entry.LatestVersion.Should().Be("1.2.0");
-        entry.Versions.Should().HaveCount(2);
-        entry.Versions[0].Path.Should().Be("github-issues/gh-1.2.0.zip");
-        entry.Versions[0].Sha256.Should().Be("abc");
+        Assert.Equal("github-issues", entry.Id);
+        Assert.Equal("1.2.0", entry.LatestVersion);
+        Assert.Equal(2, System.Linq.Enumerable.Count(entry.Versions));
+        Assert.Equal("github-issues/gh-1.2.0.zip", entry.Versions[0].Path);
+        Assert.Equal("abc", entry.Versions[0].Sha256);
     }
 
     [Fact]
     public void TryParse_MissingPluginsArray_YieldsEmpty()
     {
-        PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _).Should().BeTrue();
-        index!.Plugins.Should().BeEmpty();
+        Assert.True(PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _));
+        Assert.Empty(index!.Plugins);
     }
 
     [Fact]
     public void TryParse_InvalidJson_Fails()
     {
-        PluginStoreIndex.TryParse("{ not json", out _, out var error).Should().BeFalse();
-        error.Should().NotBeNullOrEmpty();
+        Assert.False(PluginStoreIndex.TryParse("{ not json", out _, out var error));
+        Assert.False(string.IsNullOrEmpty(error));
     }
 
     [Fact]
@@ -81,14 +80,14 @@ public class PluginStoreIndexTests
         }
         """;
 
-        PluginStoreIndex.TryParse(json, out var index, out _).Should().BeTrue();
+        Assert.True(PluginStoreIndex.TryParse(json, out var index, out _));
         var entry = index!.Plugins[0];
-        entry.Category.Should().Be("Issue trackers");
-        entry.Icon.Should().Be("🐛");
-        entry.Homepage.Should().Be("https://example.com/github-issues");
-        entry.Repository.Should().Be("https://github.com/example/plugins");
-        entry.Featured.Should().BeTrue();
-        entry.Published.Should().Be("2026-05-12");
+        Assert.Equal("Issue trackers", entry.Category);
+        Assert.Equal("🐛", entry.Icon);
+        Assert.Equal("https://example.com/github-issues", entry.Homepage);
+        Assert.Equal("https://github.com/example/plugins", entry.Repository);
+        Assert.True(entry.Featured);
+        Assert.Equal("2026-05-12", entry.Published);
     }
 
     [Fact]
@@ -113,13 +112,13 @@ public class PluginStoreIndexTests
         }
         """;
 
-        PluginStoreIndex.TryParse(json, out var index, out _).Should().BeTrue();
+        Assert.True(PluginStoreIndex.TryParse(json, out var index, out _));
         var entry = index!.Plugins[0];
-        entry.Category.Should().BeNull();
-        entry.Icon.Should().BeNull();
-        entry.Homepage.Should().BeNull();
-        entry.Repository.Should().BeNull();
-        entry.Featured.Should().BeFalse();
-        entry.Published.Should().BeNull();
+        Assert.Null(entry.Category);
+        Assert.Null(entry.Icon);
+        Assert.Null(entry.Homepage);
+        Assert.Null(entry.Repository);
+        Assert.False(entry.Featured);
+        Assert.Null(entry.Published);
     }
 }

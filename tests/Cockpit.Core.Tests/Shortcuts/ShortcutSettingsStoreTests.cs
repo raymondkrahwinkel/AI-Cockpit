@@ -2,7 +2,6 @@ using Cockpit.Core.Notifications;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -29,7 +28,7 @@ public class ShortcutSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
+        Assert.Equal("Ctrl+N", settings.GestureFor(ShortcutAction.NewSession));
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class ShortcutSettingsStoreTests : IDisposable
         await store.SaveAsync(ShortcutSettings.Default.With(ShortcutAction.Options, "Ctrl+Shift+O"));
         var loaded = await store.LoadAsync();
 
-        loaded.GestureFor(ShortcutAction.Options).Should().Be("Ctrl+Shift+O");
+        Assert.Equal("Ctrl+Shift+O", loaded.GestureFor(ShortcutAction.Options));
     }
 
     [Fact]
@@ -54,8 +53,8 @@ public class ShortcutSettingsStoreTests : IDisposable
 
         var loaded = await store.LoadAsync();
 
-        loaded.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+Alt+N");
-        loaded.GestureFor(ShortcutAction.ToggleZoom).Should().Be(ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom));
+        Assert.Equal("Ctrl+Alt+N", loaded.GestureFor(ShortcutAction.NewSession));
+        Assert.Equal(ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom), loaded.GestureFor(ShortcutAction.ToggleZoom));
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public class ShortcutSettingsStoreTests : IDisposable
         await store.SaveAsync(ShortcutSettings.Default.WithPlugin("youtrack.open", "Ctrl+Y"));
         var loaded = await store.LoadAsync();
 
-        loaded.GestureForPlugin("youtrack.open", "Shift+Y").Should().Be("Ctrl+Y");
+        Assert.Equal("Ctrl+Y", loaded.GestureForPlugin("youtrack.open", "Shift+Y"));
     }
 
     [Fact]
@@ -78,8 +77,8 @@ public class ShortcutSettingsStoreTests : IDisposable
         var store = new ShortcutSettingsStore(_configFilePath);
         await store.SaveAsync(ShortcutSettings.Default.With(ShortcutAction.About, "Shift+A"));
 
-        (await notificationStore.LoadAsync()).WebhookUrl.Should().Be("https://example/webhook");
-        (await store.LoadAsync()).GestureFor(ShortcutAction.About).Should().Be("Shift+A");
+        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
+        Assert.Equal("Shift+A", (await store.LoadAsync()).GestureFor(ShortcutAction.About));
     }
 
     public void Dispose()

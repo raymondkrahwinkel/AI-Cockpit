@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Infrastructure.Delegation;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -34,9 +33,9 @@ public class DelegationAuditLogTests : IDisposable
         var reopened = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
         var entries = await reopened.ReadRecentAsync();
 
-        entries.Should().HaveCount(2);
-        entries[0].Action.Should().Be(DelegationAuditAction.Completed, "the newest entry comes first");
-        entries[1].Action.Should().Be(DelegationAuditAction.Delegated);
+        Assert.Equal(2, System.Linq.Enumerable.Count(entries));
+        Assert.Equal(DelegationAuditAction.Completed, entries[0].Action);
+        Assert.Equal(DelegationAuditAction.Delegated, entries[1].Action);
     }
 
     [Fact]
@@ -53,9 +52,9 @@ public class DelegationAuditLogTests : IDisposable
 
         var entries = await log.ReadRecentAsync();
 
-        entries.Should().ContainSingle();
-        entries[0].Action.Should().Be(DelegationAuditAction.Refused);
-        entries[0].Reason.Should().Contain("not available as a delegation target");
+        Assert.Single(entries);
+        Assert.Equal(DelegationAuditAction.Refused, entries[0].Action);
+        Assert.Contains("not available as a delegation target", entries[0].Reason);
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public class DelegationAuditLogTests : IDisposable
 
         var entries = await log.ReadRecentAsync();
 
-        entries[0].Prompt!.Length.Should().BeLessThan(500);
+        Assert.True(entries[0].Prompt!.Length < 500);
     }
 
     [Fact]
@@ -79,7 +78,8 @@ public class DelegationAuditLogTests : IDisposable
 
         var entries = await log.ReadRecentAsync();
 
-        entries.Should().ContainSingle().Which.Action.Should().Be(DelegationAuditAction.Completed);
+        var entry = Assert.Single(entries);
+        Assert.Equal(DelegationAuditAction.Completed, entry.Action);
     }
 
     [Fact]
@@ -94,7 +94,8 @@ public class DelegationAuditLogTests : IDisposable
 
         var entries = await log.ReadRecentAsync();
 
-        entries[0].Prompt.Should().NotContain("�").And.EndWith("…");
+        Assert.DoesNotContain("�", entries[0].Prompt);
+        Assert.EndsWith("…", entries[0].Prompt);
     }
 
     [Fact]
@@ -104,7 +105,7 @@ public class DelegationAuditLogTests : IDisposable
 
         var entries = await log.ReadRecentAsync();
 
-        entries.Should().BeEmpty();
+        Assert.Empty(entries);
     }
 
     private static DelegationAuditEntry _Entry(DelegationAuditAction action, string? taskId) => new(

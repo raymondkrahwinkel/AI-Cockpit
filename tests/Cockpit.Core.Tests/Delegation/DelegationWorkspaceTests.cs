@@ -7,7 +7,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -32,7 +31,7 @@ public class DelegationWorkspaceTests
         var task = await service.DelegateAsync(
             new DelegationRequest("qwen", "review the frontend diff", WorkingDirectory: "/home/you/projects/webshop"));
 
-        task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
     }
 
     [Fact]
@@ -45,7 +44,7 @@ public class DelegationWorkspaceTests
         var task = await service.DelegateAsync(
             new DelegationRequest("qwen", "look at the frontend", WorkingDirectory: "/home/you/projects/webshop/src"));
 
-        task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
     }
 
     // The grant is the caller's own reach, not a way around the policy: somewhere no session of yours is, and the
@@ -60,7 +59,8 @@ public class DelegationWorkspaceTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*does not allow a task to run in*");
+        var thrown1 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("does not allow a task to run in", thrown1.Message);
     }
 
     // A refusal has to say where the caller *may* go — it cannot read the profile's dirs or the active-session
@@ -75,8 +75,8 @@ public class DelegationWorkspaceTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
 
-        (await delegate_.Should().ThrowAsync<DelegationRejectedException>())
-            .WithMessage("*webshop*");
+        var thrown2 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("webshop", thrown2.Message);
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public class DelegationWorkspaceTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/anywhere"));
 
-        (await delegate_.Should().ThrowAsync<DelegationRejectedException>())
-            .WithMessage("*no allowed working directories*");
+        var thrown3 = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("no allowed working directories", thrown3.Message);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class DelegationWorkspaceTests
         var task = await service.DelegateAsync(
             new DelegationRequest("qwen", "work", WorkingDirectory: "/home/you/projects/webshop"));
 
-        task.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, task.Status);
     }
 
     private static SessionProfile _Target(string label, Func<DelegationPolicy, DelegationPolicy>? tune = null)

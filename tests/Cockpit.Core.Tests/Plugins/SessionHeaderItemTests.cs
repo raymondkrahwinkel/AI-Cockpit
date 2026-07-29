@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -35,7 +34,7 @@ public class SessionHeaderItemTests
 
         var register = () => ((ICockpitHost)host).AddSessionHeaderItem(_ => new TextBlock());
 
-        register.Should().NotThrow();
+        register();
     }
 
     private static ICockpitHost NewHost(IPluginContributionSink sink) =>

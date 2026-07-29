@@ -5,7 +5,6 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Views;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -26,9 +25,9 @@ public class CockpitHostCreateMarkdownViewTests
 
         var view = host.CreateMarkdownView("## Not rendered\n\nJust the raw text.");
 
-        var text = view.Should().BeOfType<SelectableTextBlock>().Subject;
-        text.Text.Should().Be("## Not rendered\n\nJust the raw text.");
-        text.TextWrapping.Should().Be(TextWrapping.Wrap);
+        var text = Assert.IsType<SelectableTextBlock>(view);
+        Assert.Equal("## Not rendered\n\nJust the raw text.", text.Text);
+        Assert.Equal(TextWrapping.Wrap, text.TextWrapping);
     }
 
     [Fact]
@@ -38,10 +37,11 @@ public class CockpitHostCreateMarkdownViewTests
 
         var view = host.CreateMarkdownView("## Heading\n\nBody text.");
 
-        view.Should().BeOfType<MarkdownView>();
+        Assert.IsType<MarkdownView>(view);
         var texts = _CollectText((Control)view).ToList();
-        texts.Should().Contain("Heading").And.Contain("Body text.");
-        texts.Should().NotContain(text => text.Contains("##"));
+        Assert.Contains("Heading", texts);
+        Assert.Contains("Body text.", texts);
+        Assert.DoesNotContain(texts, text => text.Contains("##"));
     }
 
     [Fact]
@@ -52,8 +52,8 @@ public class CockpitHostCreateMarkdownViewTests
         var view = _BuildHost().CreateMarkdownView(body);
 
         var texts = _CollectText((Control)view).ToList();
-        texts.Should().Contain("Paragraph 200.");
-        texts.Should().NotContain(text => text.Contains("truncated"));
+        Assert.Contains("Paragraph 200.", texts);
+        Assert.DoesNotContain(texts, text => text.Contains("truncated"));
     }
 
     /// <summary>
@@ -69,8 +69,8 @@ public class CockpitHostCreateMarkdownViewTests
         var view = _BuildHost().CreateMarkdownView(body);
 
         var texts = _CollectText((Control)view).ToList();
-        texts.Sum(text => text.Length).Should().BeLessThan(70_000, "the point of the cap is that the oversized part never becomes controls");
-        texts.Should().Contain(text => text.Contains("truncated"));
+        Assert.True(texts.Sum(text => text.Length) < 70_000);
+        Assert.Contains(texts, text => text.Contains("truncated"));
     }
 
     private static IEnumerable<string> _CollectText(Control? control)

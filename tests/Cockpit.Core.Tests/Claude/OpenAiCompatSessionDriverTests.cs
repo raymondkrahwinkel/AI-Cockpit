@@ -9,7 +9,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -37,9 +36,9 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Be("Hello world.");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
-        events.Should().ContainSingle(evt => evt is SessionInitialized);
+        Assert.Equal("Hello world.", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
+        Assert.Single(events, evt => evt is SessionInitialized);
     }
 
     [Fact]
@@ -49,12 +48,12 @@ public class OpenAiCompatSessionDriverTests
 
         await driver.StartAsync(LocalProfile);
 
-        driver.SessionId.Should().NotBeNullOrEmpty();
-        driver.Capabilities.SupportsTools.Should().BeFalse();
-        driver.Capabilities.SupportsPermissions.Should().BeFalse();
+        Assert.False(string.IsNullOrEmpty(driver.SessionId));
+        Assert.False(driver.Capabilities.SupportsTools);
+        Assert.False(driver.Capabilities.SupportsPermissions);
         // SendUserMessageAsync ignores the images parameter entirely (#64) — advertising vision support
         // here would be the exact dead promise the capability model exists to prevent.
-        driver.Capabilities.SupportsVision.Should().BeFalse();
+        Assert.False(driver.Capabilities.SupportsVision);
     }
 
     [Fact]
@@ -69,8 +68,8 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.Should().ContainSingle(evt => evt is SessionError);
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Single(events, evt => evt is SessionError);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -88,10 +87,10 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.Should().ContainSingle(evt => evt is SessionError);
-        var turn = events.OfType<TurnCompleted>().Should().ContainSingle().Subject;
-        turn.IsError.Should().BeTrue();
-        turn.Subtype.Should().NotBe("interrupted");
+        Assert.Single(events, evt => evt is SessionError);
+        var turn = Assert.Single(events.OfType<TurnCompleted>());
+        Assert.True(turn.IsError);
+        Assert.NotEqual("interrupted", turn.Subtype);
     }
 
     [Fact]
@@ -123,8 +122,8 @@ public class OpenAiCompatSessionDriverTests
             }
         }
 
-        events.Should().NotContain(evt => evt is SessionError);
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.Subtype.Should().Be("interrupted");
+        Assert.DoesNotContain(events, evt => evt is SessionError);
+        Assert.Equal("interrupted", Assert.Single(events.OfType<TurnCompleted>()).Subtype);
     }
 
     [Fact]
@@ -141,15 +140,16 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Contains("no response", Assert.Single(events.OfType<SessionError>()).Message);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
     public void DescribeError_WithAPlainException_ReturnsItsMessage()
     {
-        OpenAiCompatSessionDriver._DescribeError(new HttpRequestException("server unreachable"))
-            .Should().Be("server unreachable");
+        var described = OpenAiCompatSessionDriver._DescribeError(new HttpRequestException("server unreachable"));
+
+        Assert.Equal("server unreachable", described);
     }
 
     [Fact]
@@ -164,8 +164,8 @@ public class OpenAiCompatSessionDriverTests
 
         var described = OpenAiCompatSessionDriver._DescribeError(error);
 
-        described.Should().Contain("exceed_context_size_error");
-        described.Should().Contain("29078 tokens exceeds 8192");
+        Assert.Contains("exceed_context_size_error", described);
+        Assert.Contains("29078 tokens exceeds 8192", described);
     }
 
     [Fact]
@@ -179,8 +179,8 @@ public class OpenAiCompatSessionDriverTests
 
         var described = OpenAiCompatSessionDriver._DescribeError(error);
 
-        described.Should().Contain("… (truncated)");
-        described.Length.Should().BeLessThan(5_000);
+        Assert.Contains("… (truncated)", described);
+        Assert.True(described.Length < 5_000);
     }
 
     [Theory]
@@ -194,7 +194,7 @@ public class OpenAiCompatSessionDriverTests
     [InlineData("Invalid request: tool call id 'abc' must be 9 alphanumeric characters", false)]
     public void IsToolTemplateError_DetectsAToolOrTemplateRejection_NotAnOrdinaryError(string message, bool expected)
     {
-        OpenAiCompatSessionDriver._IsToolTemplateError(message).Should().Be(expected);
+        Assert.Equal(expected, OpenAiCompatSessionDriver._IsToolTemplateError(message));
     }
 
     [Fact]
@@ -211,17 +211,17 @@ public class OpenAiCompatSessionDriverTests
         var driver = _CreateDriver(chatClient, echo);
 
         await driver.StartAsync(LocalProfile);
-        driver.Capabilities.SupportsTools.Should().BeTrue();
+        Assert.True(driver.Capabilities.SupportsTools);
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         // The note rides as assistant text (not a SessionError, which would end the turn mid-retry), so the bubble
         // holds the note and then the tool-less answer; the retry must have carried no tools.
         var text = string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text));
-        text.Should().Contain("does not support tool-calling");
-        text.Should().Contain("Answer without tools.");
-        events.OfType<SessionError>().Should().BeEmpty();
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        Assert.Contains("does not support tool-calling", text);
+        Assert.Contains("Answer without tools.", text);
+        Assert.Empty(events.OfType<SessionError>());
+        Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         chatClient.Received().GetStreamingResponseAsync(
             Arg.Any<IEnumerable<ChatMessage>>(), Arg.Is<ChatOptions>(options => options.Tools == null), Arg.Any<CancellationToken>());
     }
@@ -242,9 +242,9 @@ public class OpenAiCompatSessionDriverTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         // The note (assistant text) plus the retry's own error — the turn still ends visibly, not silently.
-        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Contain("does not support tool-calling");
-        events.OfType<SessionError>().Should().ContainSingle();
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Contains("does not support tool-calling", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Single(events.OfType<SessionError>());
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -264,8 +264,8 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Contains("no response", Assert.Single(events.OfType<SessionError>()).Message);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -281,10 +281,10 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        var error = events.OfType<SessionError>().Should().ContainSingle().Subject;
-        error.Message.Should().Contain("exceed_context_size_error");
-        error.Message.Should().NotContain("does not support tool-calling");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        var error = Assert.Single(events.OfType<SessionError>());
+        Assert.Contains("exceed_context_size_error", error.Message);
+        Assert.DoesNotContain("does not support tool-calling", error.Message);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         chatClient.Received(1).GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>());
     }
 
@@ -302,8 +302,8 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Contains("no response", Assert.Single(events.OfType<SessionError>()).Message);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -323,9 +323,9 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         await _CollectUntilTurnCompletedAsync(driver);
 
-        captured.Should().NotBeNull();
-        captured![0].Role.Should().Be(ChatRole.System);
-        captured[0].Text.Should().Be("You are a pirate.");
+        Assert.NotNull(captured);
+        Assert.Equal(ChatRole.System, captured![0].Role);
+        Assert.Equal("You are a pirate.", captured[0].Text);
     }
 
     [Fact]
@@ -338,11 +338,11 @@ public class OpenAiCompatSessionDriverTests
         var approval = gate.RequestApprovalAsync("tool_1", "read_file", """{"path":"x"}""", CancellationToken.None);
         var events = await _CollectUntilAsync(driver, evt => evt is PermissionRequested);
 
-        events.OfType<PermissionRequested>().Should().ContainSingle().Which.ToolName.Should().Be("read_file");
-        events.Should().Contain(evt => evt is ToolUseRequested);
+        Assert.Equal("read_file", Assert.Single(events.OfType<PermissionRequested>()).ToolName);
+        Assert.Contains(events, evt => evt is ToolUseRequested);
 
         await driver.RespondToPermissionAsync("tool_1", allow: true);
-        (await approval).Approved.Should().BeTrue();
+        Assert.True((await approval).Approved);
     }
 
     [Fact]
@@ -361,9 +361,9 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("go");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<PermissionRequested>().Should().BeEmpty();
-        events.OfType<ToolResult>().Should().ContainSingle().Which.IsError.Should().BeFalse();
-        events.OfType<ToolResult>().Single().Content.Should().Contain("echoed:hi");
+        Assert.Empty(events.OfType<PermissionRequested>());
+        Assert.False(Assert.Single(events.OfType<ToolResult>()).IsError);
+        Assert.Contains("echoed:hi", events.OfType<ToolResult>().Single().Content);
     }
 
     [Fact]
@@ -382,10 +382,10 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("go");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<PermissionRequested>().Should().BeEmpty();
-        var result = events.OfType<ToolResult>().Should().ContainSingle().Subject;
-        result.IsError.Should().BeTrue();
-        result.Content.Should().NotContain("echoed:hi", "the denied tool must not actually run");
+        Assert.Empty(events.OfType<PermissionRequested>());
+        var result = Assert.Single(events.OfType<ToolResult>());
+        Assert.True(result.IsError);
+        Assert.DoesNotContain("echoed:hi", result.Content);
     }
 
     [Fact]
@@ -401,8 +401,8 @@ public class OpenAiCompatSessionDriverTests
         await denied.SendUserMessageAsync("go");
         var deniedEvents = await _CollectUntilTurnCompletedAsync(denied);
 
-        deniedEvents.OfType<PermissionRequested>().Should().BeEmpty();
-        deniedEvents.OfType<ToolResult>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Empty(deniedEvents.OfType<PermissionRequested>());
+        Assert.True(Assert.Single(deniedEvents.OfType<ToolResult>()).IsError);
 
         // ...but runs when the operator listed it, even under the most restrictive ceiling.
         var allowedClient = Substitute.For<IChatClient>();
@@ -414,8 +414,8 @@ public class OpenAiCompatSessionDriverTests
         await allowed.SendUserMessageAsync("go");
         var allowedEvents = await _CollectUntilTurnCompletedAsync(allowed);
 
-        allowedEvents.OfType<PermissionRequested>().Should().BeEmpty();
-        allowedEvents.OfType<ToolResult>().Should().ContainSingle().Which.Content.Should().Contain("echoed:hi");
+        Assert.Empty(allowedEvents.OfType<PermissionRequested>());
+        Assert.Contains("echoed:hi", Assert.Single(allowedEvents.OfType<ToolResult>()).Content);
     }
 
     [Fact]
@@ -430,7 +430,7 @@ public class OpenAiCompatSessionDriverTests
         var driver = _CreateDriver(chatClient, echo);
 
         await driver.StartAsync(LocalProfile);
-        driver.Capabilities.SupportsTools.Should().BeTrue();
+        Assert.True(driver.Capabilities.SupportsTools);
         await driver.SendUserMessageAsync("use the tool");
 
         var events = new List<SessionEvent>();
@@ -451,9 +451,9 @@ public class OpenAiCompatSessionDriverTests
 
         // The tool call and its result surface as their own events, so the UI can render tool rows for a
         // local model exactly as it does for Claude.
-        events.OfType<ToolUseRequested>().Should().ContainSingle().Which.ToolName.Should().Be("echo");
-        events.OfType<ToolResult>().Should().ContainSingle().Which.Content.Should().Contain("echoed:hi");
-        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Be("done");
+        Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
+        Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
+        Assert.Equal("done", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
     }
 
     [Fact]
@@ -471,9 +471,9 @@ public class OpenAiCompatSessionDriverTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         // The tool still surfaces, but no approval was requested — the "allow all tools" convenience.
-        events.OfType<ToolUseRequested>().Should().ContainSingle();
-        events.OfType<ToolResult>().Should().ContainSingle();
-        events.OfType<PermissionRequested>().Should().BeEmpty();
+        Assert.Single(events.OfType<ToolUseRequested>());
+        Assert.Single(events.OfType<ToolResult>());
+        Assert.Empty(events.OfType<PermissionRequested>());
     }
 
     [Fact]
@@ -493,10 +493,10 @@ public class OpenAiCompatSessionDriverTests
         await driver.SendUserMessageAsync("go");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<PermissionRequested>().Should().BeEmpty();
-        var result = events.OfType<ToolResult>().Should().ContainSingle().Subject;
-        result.IsError.Should().BeTrue();
-        result.Content.Should().NotContain("echoed:hi");
+        Assert.Empty(events.OfType<PermissionRequested>());
+        var result = Assert.Single(events.OfType<ToolResult>());
+        Assert.True(result.IsError);
+        Assert.DoesNotContain("echoed:hi", result.Content);
     }
 
     [Fact]
@@ -524,7 +524,7 @@ public class OpenAiCompatSessionDriverTests
         // than every server. Proven red before EffectiveSessionSelection, when ConnectAsync received null.
         await driver.StartAsync(profile);
 
-        captured.Should().BeEquivalentTo(["cockpit-youtrack", "cockpit-session"]);
+        Assert.Equivalent(new object[] { "cockpit-youtrack", "cockpit-session" }, captured);
     }
 
     [Fact]
@@ -553,7 +553,7 @@ public class OpenAiCompatSessionDriverTests
             [WellKnownPluginSessionOptions.PaneId] = "task-42",
         });
 
-        captured.Should().Be("task-42");
+        Assert.Equal("task-42", captured);
     }
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>

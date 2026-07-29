@@ -3,7 +3,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
@@ -30,8 +29,8 @@ public class WidgetContributionTests
             DefaultColumnSpan = 2,
         });
 
-        host.Widgets.Should().ContainSingle().Which.Id.Should().Be("system-monitor.usage");
-        registry.Widgets.Should().ContainSingle().Which.DefaultColumnSpan.Should().Be(2);
+        Assert.Equal("system-monitor.usage", Assert.Single(host.Widgets).Id);
+        Assert.Equal(2, Assert.Single(registry.Widgets).DefaultColumnSpan);
     }
 
     [Fact]
@@ -39,17 +38,17 @@ public class WidgetContributionTests
     {
         var registration = new WidgetRegistration("plugin.clock", "Clock", _ => new Border());
 
-        registration.Icon.Should().Be("🧩");
-        registration.DefaultColumnSpan.Should().Be(1);
-        registration.DefaultRowSpan.Should().Be(1);
-        registration.Description.Should().BeEmpty();
+        Assert.Equal("🧩", registration.Icon);
+        Assert.Equal(1, registration.DefaultColumnSpan);
+        Assert.Equal(1, registration.DefaultRowSpan);
+        Assert.Empty(registration.Description);
     }
 
     // No widget-providing plugin installed is the normal case: the gallery is simply empty.
     [Fact]
     public void WithNoWidgetPluginInstalled_TheGalleryIsEmpty()
     {
-        new WidgetRegistry().Widgets.Should().BeEmpty();
+        Assert.Empty(new WidgetRegistry().Widgets);
     }
 
     /// <summary>
@@ -66,7 +65,7 @@ public class WidgetContributionTests
         NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
         NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock (the other one)", _ => new Border()));
 
-        registry.Widgets.Should().ContainSingle().Which.Title.Should().Be("Clock");
+        Assert.Equal("Clock", Assert.Single(registry.Widgets).Title);
     }
 
     /// <summary>A refused registration is not fatal: the plugin is told, and whatever else it registers still stands.</summary>
@@ -83,8 +82,8 @@ public class WidgetContributionTests
             second.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", _ => new Border()));
         };
 
-        act.Should().NotThrow();
-        registry.Widgets.Select(widget => widget.Id).Should().Equal("widgets.clock", "widgets.system-monitor");
+        act();
+        Assert.Equal(new[] { "widgets.clock", "widgets.system-monitor" }, registry.Widgets.Select(widget => widget.Id));
     }
 
     private static ICockpitHost NewHost(IWidgetRegistry registry)

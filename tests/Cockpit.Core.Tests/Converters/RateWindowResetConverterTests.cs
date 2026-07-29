@@ -1,6 +1,5 @@
 using System.Globalization;
 using Cockpit.App.Converters;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Converters;
 
@@ -17,13 +16,13 @@ public class RateWindowResetConverterTests
     [Fact]
     public void Null_IsEmpty()
     {
-        Convert(null).Should().BeEmpty();
+        Assert.Empty(Convert(null));
     }
 
     [Fact]
     public void ANonDateValue_IsEmpty()
     {
-        Convert("not a date").Should().BeEmpty();
+        Assert.Empty(Convert("not a date"));
     }
 
     [Fact]
@@ -33,9 +32,9 @@ public class RateWindowResetConverterTests
 
         var text = Convert(resetsAt);
 
-        text.Should().StartWith("resets in ");
-        text.Should().Contain("2h");     // ~2h14m out — the hours are stable even if the minute ticks
-        text.Should().Contain(" · ");    // the absolute time follows the relative one
+        Assert.StartsWith("resets in ", text);
+        Assert.Contains("2h", text);     // ~2h14m out — the hours are stable even if the minute ticks
+        Assert.Contains(" · ", text);    // the absolute time follows the relative one
     }
 
     [Fact]
@@ -43,8 +42,8 @@ public class RateWindowResetConverterTests
     {
         var text = Convert(DateTimeOffset.Now.AddDays(6).AddHours(14));
 
-        text.Should().Contain("6d");
-        text.Should().Contain("h");
+        Assert.Contains("6d", text);
+        Assert.Contains("h", text);
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class RateWindowResetConverterTests
     {
         var text = Convert(DateTimeOffset.Now.AddMinutes(-5));
 
-        text.Should().StartWith("resetting");
-        text.Should().NotContain("-");
+        Assert.StartsWith("resetting", text);
+        Assert.DoesNotContain("-", text);
     }
 }

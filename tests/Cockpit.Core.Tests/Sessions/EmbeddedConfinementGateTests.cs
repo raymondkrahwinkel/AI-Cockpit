@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -38,19 +37,19 @@ public class EmbeddedConfinementGateTests
     {
         // An ordinary embedded session (the CEO planning round) asks for no confinement, so a non-confining provider is
         // its operator's own choice to make — the gate must not turn every plain embed into a refusal.
-        _Refusal(new EmbeddedSessionRequest(), isSessionReady: Ready, confinesFileAccess: false).Should().BeNull();
+        Assert.Null(_Refusal(new EmbeddedSessionRequest(), isSessionReady: Ready, confinesFileAccess: false));
     }
 
     [Fact]
     public void AnIsolatedRun_OnAConfiningProvider_Proceeds()
     {
-        _Refusal(_Isolated()).Should().BeNull();
+        Assert.Null(_Refusal(_Isolated()));
     }
 
     [Fact]
     public void AConfinedRunWithoutAWorktree_OnAConfiningProvider_Proceeds()
     {
-        _Refusal(_Confined()).Should().BeNull();
+        Assert.Null(_Refusal(_Confined()));
     }
 
     [Fact]
@@ -58,14 +57,16 @@ public class EmbeddedConfinementGateTests
     {
         var refusal = _Refusal(_Isolated(), confinesFileAccess: false);
 
-        refusal.Should().NotBeNull();
+        Assert.NotNull(refusal);
         // The operator has to be able to act on this: which profile refused, and what to do about it. The way out names
         // both routes a bypass mode arrives by — a step's autonomy mode and the profile a CEO runs on — because a
         // refusal that names only one sends half of them looking in the wrong place.
-        refusal.Should().Contain(Profile).And.Contain("bypassPermissions");
-        refusal.Should().Contain("the profile, or the Autopilot autonomy mode");
+        Assert.Contains(Profile, refusal);
+        Assert.Contains("bypassPermissions", refusal);
+        Assert.Contains("the profile, or the Autopilot autonomy mode", refusal);
         // An isolated run is refused in terms of the worktree it would have had, and the checkout it would have hit.
-        refusal.Should().Contain("to the worktree").And.Contain("edit your real checkout");
+        Assert.Contains("to the worktree", refusal);
+        Assert.Contains("edit your real checkout", refusal);
     }
 
     [Fact]
@@ -76,12 +77,13 @@ public class EmbeddedConfinementGateTests
         // isolate route is — otherwise the flag is a promise nobody checks.
         var refusal = _Refusal(_Confined(), confinesFileAccess: false);
 
-        refusal.Should().NotBeNull();
-        refusal.Should().Contain(Profile);
+        Assert.NotNull(refusal);
+        Assert.Contains(Profile, refusal);
         // No worktree exists on this path, so the refusal talks about the folder the run was pointed at instead — it
         // must not tell the operator about a worktree and a checkout that were never part of what they set up.
-        refusal.Should().Contain("outside the folder it was given");
-        refusal.Should().NotContain("real checkout").And.NotContain("worktree");
+        Assert.Contains("outside the folder it was given", refusal);
+        Assert.DoesNotContain("real checkout", refusal);
+        Assert.DoesNotContain("worktree", refusal);
     }
 
     [Fact]
@@ -92,8 +94,8 @@ public class EmbeddedConfinementGateTests
         // would wave through a run roaming the operator's disk. Refused before the capability is even consulted.
         var refusal = _Refusal(new EmbeddedSessionRequest { ConfineFileToolsToWorkingDirectory = true });
 
-        refusal.Should().NotBeNull();
-        refusal.Should().Contain("was given none");
+        Assert.NotNull(refusal);
+        Assert.Contains("was given none", refusal);
     }
 
     [Theory]
@@ -113,8 +115,8 @@ public class EmbeddedConfinementGateTests
 
         var refusal = _Refusal(request, isSessionReady: false, confinesFileAccess: Confines);
 
-        refusal.Should().NotBeNull();
-        refusal.Should().Contain("its session did not start");
+        Assert.NotNull(refusal);
+        Assert.Contains("its session did not start", refusal);
     }
 
     [Fact]
@@ -130,6 +132,6 @@ public class EmbeddedConfinementGateTests
             WorkingDirectory = Folder,
         };
 
-        _Refusal(request, confinesFileAccess: false).Should().Contain("to the worktree");
+        Assert.Contains("to the worktree", _Refusal(request, confinesFileAccess: false));
     }
 }

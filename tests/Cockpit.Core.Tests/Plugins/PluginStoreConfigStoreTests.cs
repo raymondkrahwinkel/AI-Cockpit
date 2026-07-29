@@ -2,7 +2,6 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -27,11 +26,11 @@ public class PluginStoreConfigStoreTests : IDisposable
         await store.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
         await store.AddAsync(PluginStoreConfig.Remote("https://example.com/store/index.json"));
 
-        (await store.LoadAsync()).Should().BeEquivalentTo(new[]
+        Assert.Equivalent(new[]
         {
             PluginStoreConfig.Remote("https://github.com/a/b"),
             PluginStoreConfig.Remote("https://example.com/store/index.json"),
-        });
+        }, await store.LoadAsync());
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class PluginStoreConfigStoreTests : IDisposable
         await store.AddAsync(PluginStoreConfig.Remote("https://GitHub.com/a/b".Replace("GitHub", "github")));
         await store.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
 
-        (await store.LoadAsync()).Should().ContainSingle();
+        Assert.Single((await store.LoadAsync()));
     }
 
     [Fact]
@@ -55,8 +54,8 @@ public class PluginStoreConfigStoreTests : IDisposable
         await store.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b", "new-token"));
 
         var stores = await store.LoadAsync();
-        stores.Should().ContainSingle();
-        stores[0].Token.Should().Be("new-token");
+        Assert.Single(stores);
+        Assert.Equal("new-token", stores[0].Token);
     }
 
     [Fact]
@@ -67,9 +66,9 @@ public class PluginStoreConfigStoreTests : IDisposable
         await store.AddAsync(PluginStoreConfig.Local("/home/raymond/my-plugins"));
 
         var stores = await store.LoadAsync();
-        stores.Should().ContainSingle();
-        stores[0].Kind.Should().Be(PluginStoreKind.Local);
-        stores[0].Location.Should().Be("/home/raymond/my-plugins");
+        Assert.Single(stores);
+        Assert.Equal(PluginStoreKind.Local, stores[0].Kind);
+        Assert.Equal("/home/raymond/my-plugins", stores[0].Location);
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class PluginStoreConfigStoreTests : IDisposable
         await store.AddAsync(PluginStoreConfig.Local("/home/me/Plugins"));
         await store.AddAsync(PluginStoreConfig.Local("/home/me/plugins"));
 
-        (await store.LoadAsync()).Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count((await store.LoadAsync())));
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class PluginStoreConfigStoreTests : IDisposable
 
         await store.RemoveAsync(PluginStoreConfig.Remote("https://one"));
 
-        (await store.LoadAsync()).Should().BeEquivalentTo(new[] { PluginStoreConfig.Remote("https://two") });
+        Assert.Equivalent(new[] { PluginStoreConfig.Remote("https://two") }, (await store.LoadAsync()));
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class PluginStoreConfigStoreTests : IDisposable
         // The remove request carries no token, but it is the same store.
         await store.RemoveAsync(PluginStoreConfig.Remote("https://one"));
 
-        (await store.LoadAsync()).Should().NotContain(existing => existing.Location == "https://one");
+        Assert.DoesNotContain((await store.LoadAsync()), existing => existing.Location == "https://one");
     }
 
     [Fact]
@@ -118,8 +117,8 @@ public class PluginStoreConfigStoreTests : IDisposable
         var storeConfig = new PluginStoreConfigStore(_configFilePath);
         await storeConfig.AddAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
 
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
-        (await storeConfig.LoadAsync()).Should().ContainSingle();
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
+        Assert.Single((await storeConfig.LoadAsync()));
     }
 
     [Fact]
@@ -129,11 +128,11 @@ public class PluginStoreConfigStoreTests : IDisposable
 
         var stores = await store.LoadAsync();
 
-        stores.Should().BeEquivalentTo(new[] { PluginStoreConfig.Remote(PluginStoreConfigStore.DefaultStoreUrl) });
+        Assert.Equivalent(new[] { PluginStoreConfig.Remote(PluginStoreConfigStore.DefaultStoreUrl) }, stores);
 
         // Persisted, not just an in-memory return value — round-trips on a fresh instance too.
         var reloaded = new PluginStoreConfigStore(_configFilePath);
-        (await reloaded.LoadAsync()).Should().BeEquivalentTo(new[] { PluginStoreConfig.Remote(PluginStoreConfigStore.DefaultStoreUrl) });
+        Assert.Equivalent(new[] { PluginStoreConfig.Remote(PluginStoreConfigStore.DefaultStoreUrl) }, (await reloaded.LoadAsync()));
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public class PluginStoreConfigStoreTests : IDisposable
 
         await store.RemoveAsync(PluginStoreConfig.Remote(PluginStoreConfigStore.DefaultStoreUrl));
 
-        (await store.LoadAsync()).Should().BeEmpty();
+        Assert.Empty((await store.LoadAsync()));
     }
 
     [Fact]
@@ -158,8 +157,8 @@ public class PluginStoreConfigStoreTests : IDisposable
         var store = new PluginStoreConfigStore(_configFilePath);
 
         var stores = await store.LoadAsync();
-        stores.Should().ContainSingle();
-        stores[0].Should().Be(PluginStoreConfig.Remote("https://github.com/a/b"));
+        Assert.Single(stores);
+        Assert.Equal(PluginStoreConfig.Remote("https://github.com/a/b"), stores[0]);
     }
 
     [Fact]
@@ -171,11 +170,11 @@ public class PluginStoreConfigStoreTests : IDisposable
 
         var stores = await store.LoadAsync();
 
-        stores.Should().BeEquivalentTo(new[] { PluginStoreConfig.Remote("https://github.com/a/b") });
+        Assert.Equivalent(new[] { PluginStoreConfig.Remote("https://github.com/a/b") }, stores);
 
         // Marker is now set, so emptying the list afterwards must not seed the default either.
         await store.RemoveAsync(PluginStoreConfig.Remote("https://github.com/a/b"));
-        (await store.LoadAsync()).Should().BeEmpty();
+        Assert.Empty((await store.LoadAsync()));
     }
 
     public void Dispose()

@@ -5,7 +5,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -22,11 +21,11 @@ public class GeminiProviderPluginLoadTests
     public void ActivatesAndRegistersBothSessionProviders_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
-        folder.Should().NotBeNull("the Gemini/OpenAI provider plugin is built as a test dependency");
+        Assert.NotNull(folder);
 
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        PluginManifest.TryParse(manifestJson, out var manifest, out _).Should().BeTrue();
-        manifest.Should().NotBeNull();
+        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
+        Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "gemini-provider", manifest, hash, PluginLoadDecision.Load);
@@ -35,18 +34,18 @@ public class GeminiProviderPluginLoadTests
         var plugin = activator.Activate(discovered);
 
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
-        plugin.Should().NotBeNull();
-        plugin!.Metadata.Id.Should().Be("gemini-provider");
-        plugin.Metadata.DisplayName.Should().Be("Gemini / OpenAI Provider");
+        Assert.NotNull(plugin);
+        Assert.Equal("gemini-provider", plugin!.Metadata.Id);
+        Assert.Equal("Gemini / OpenAI Provider", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        host.SessionProviders.Should().HaveCount(2);
-        host.SessionProviders.Should().Contain(registration => registration.ProviderId == "gemini-provider.gemini" && registration.DisplayName == "Gemini (OpenAI-compatible)");
-        host.SessionProviders.Should().Contain(registration => registration.ProviderId == "gemini-provider.openai" && registration.DisplayName == "OpenAI");
+        Assert.Equal(2, System.Linq.Enumerable.Count(host.SessionProviders));
+        Assert.Contains(host.SessionProviders, registration => registration.ProviderId == "gemini-provider.gemini" && registration.DisplayName == "Gemini (OpenAI-compatible)");
+        Assert.Contains(host.SessionProviders, registration => registration.ProviderId == "gemini-provider.openai" && registration.DisplayName == "OpenAI");
 
         // Each registration's driver factory is usable through the narrow plugin contract without the host
         // ever seeing this plugin's concrete types. CreateConfigView is not exercised here — it builds a real
@@ -57,7 +56,7 @@ public class GeminiProviderPluginLoadTests
         {
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"test-model","BaseUrl":"https://example.invalid/v1"}""");
-            driver.Should().NotBeNull();
+            Assert.NotNull(driver);
         }
 
         plugin.Dispose();

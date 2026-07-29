@@ -1,5 +1,4 @@
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Profiles;
 
@@ -16,7 +15,7 @@ public class ProfileEnvironmentVariableTests
     [InlineData("x")]
     public void IsValidKey_AcceptsPosixStyleNames(string key)
     {
-        ProfileEnvironmentVariable.IsValidKey(key).Should().BeTrue();
+        Assert.True(ProfileEnvironmentVariable.IsValidKey(key));
     }
 
     [Theory]
@@ -28,7 +27,7 @@ public class ProfileEnvironmentVariableTests
     [InlineData(null)]
     public void IsValidKey_RefusesWhatAShellCouldNotSetEither(string? key)
     {
-        ProfileEnvironmentVariable.IsValidKey(key).Should().BeFalse();
+        Assert.False(ProfileEnvironmentVariable.IsValidKey(key));
     }
 
     [Fact]
@@ -40,11 +39,13 @@ public class ProfileEnvironmentVariableTests
             new("MY_TOKEN", "s3cret", IsSecret: true),
         ]);
 
-        overlay.Should().Equal(new Dictionary<string, string?>
-        {
-            ["AI_OS_ROOT"] = "/home/raymond/AI-OS",
-            ["MY_TOKEN"] = "s3cret",
-        });
+        Assert.Equal(
+            new Dictionary<string, string?>
+            {
+                ["AI_OS_ROOT"] = "/home/raymond/AI-OS",
+                ["MY_TOKEN"] = "s3cret",
+            },
+            overlay);
     }
 
     [Fact]
@@ -56,7 +57,7 @@ public class ProfileEnvironmentVariableTests
             new("AI_OS_ROOT", "/second"),
         ]);
 
-        overlay["AI_OS_ROOT"].Should().Be("/second");
+        Assert.Equal("/second", overlay["AI_OS_ROOT"]);
     }
 
     // The spawn composition (TtyEnvironment, the Claude driver's environment) folds case-insensitively, so two
@@ -71,7 +72,7 @@ public class ProfileEnvironmentVariableTests
             new("MYVAR", "/second"),
         ]);
 
-        overlay.Should().HaveCount(1);
-        overlay.Should().ContainValue("/second");
+        Assert.Single(overlay);
+        Assert.Contains("/second", overlay.Values);
     }
 }

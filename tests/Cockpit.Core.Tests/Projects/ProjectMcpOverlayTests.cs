@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 
@@ -20,7 +19,7 @@ public class ProjectMcpOverlayTests
     [Fact]
     public void ApplyTo_EmptyOverlay_ReturnsTheRegistryUntouched()
     {
-        ProjectMcpOverlay.None.ApplyTo(Registry).Should().BeSameAs(Registry);
+        Assert.Same(Registry, ProjectMcpOverlay.None.ApplyTo(Registry));
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public class ProjectMcpOverlayTests
         // server whichever project is picked, and switching one off shows as an unticked box the operator can undo.
         var overlay = new ProjectMcpOverlay { DisabledServerNames = ["youtrack"] };
 
-        overlay.ApplyTo(Registry).Select(server => server.Name).Should().BeEquivalentTo("depot", "youtrack");
+        Assert.Equivalent(new object[] { "depot", "youtrack" }, overlay.ApplyTo(Registry).Select(server => server.Name));
     }
 
     [Fact]
@@ -38,14 +37,14 @@ public class ProjectMcpOverlayTests
     {
         var overlay = new ProjectMcpOverlay { DisabledServerNames = ["YouTrack"] };
 
-        overlay.IsSelectedByDefault("youtrack").Should().BeFalse();
-        overlay.IsSelectedByDefault("depot").Should().BeTrue();
+        Assert.False(overlay.IsSelectedByDefault("youtrack"));
+        Assert.True(overlay.IsSelectedByDefault("depot"));
     }
 
     [Fact]
     public void IsSelectedByDefault_WithNoChoicesMade_TicksEverything()
     {
-        ProjectMcpOverlay.None.IsSelectedByDefault("depot").Should().BeTrue();
+        Assert.True(ProjectMcpOverlay.None.IsSelectedByDefault("depot"));
     }
 
     [Fact]
@@ -56,8 +55,9 @@ public class ProjectMcpOverlayTests
             AdditionalServers = [new McpServerConfig { Name = "project-tools", Command = "uvx" }],
         };
 
-        overlay.ApplyTo(Registry).Select(server => server.Name)
-            .Should().Equal("youtrack", "depot", "project-tools");
+        Assert.Equal(
+            new[] { "youtrack", "depot", "project-tools" },
+            overlay.ApplyTo(Registry).Select(server => server.Name));
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class ProjectMcpOverlayTests
 
         var effective = overlay.ApplyTo(Registry);
 
-        effective.Should().HaveCount(2, "an override replaces the registry server rather than adding a second one of the same name");
-        effective.Single(server => server.Name == "depot").Url.Should().Be("https://project.example/mcp");
+        Assert.Equal(2, System.Linq.Enumerable.Count(effective));
+        Assert.Equal("https://project.example/mcp", effective.Single(server => server.Name == "depot").Url);
     }
 
     /// <summary>
@@ -87,8 +87,8 @@ public class ProjectMcpOverlayTests
             DisabledServerNames = ["project-tools"],
         };
 
-        overlay.ApplyTo(Registry).Should().Contain(server => server.Name == "project-tools");
-        overlay.IsSelectedByDefault("project-tools").Should().BeFalse();
+        Assert.Contains(overlay.ApplyTo(Registry), server => server.Name == "project-tools");
+        Assert.False(overlay.IsSelectedByDefault("project-tools"));
     }
 
     /// <summary>A hand-edited config that lists a server twice costs the operator the duplicate, not the whole load.</summary>
@@ -106,8 +106,8 @@ public class ProjectMcpOverlayTests
 
         var effective = overlay.ApplyTo(Registry);
 
-        effective.Should().ContainSingle(server => server.Name == "project-tools")
-            .Which.Command.Should().Be("first");
+        var match = Assert.Single(effective, server => server.Name == "project-tools");
+        Assert.Equal("first", match.Command);
     }
 
     [Fact]
@@ -121,6 +121,6 @@ public class ProjectMcpOverlayTests
             AdditionalServers = [new McpServerConfig { Name = "filesystem", Enabled = true, Command = "something-else" }],
         };
 
-        overlay.ApplyTo(registry).Should().ContainSingle().Which.Enabled.Should().BeFalse();
+        Assert.False(Assert.Single(overlay.ApplyTo(registry)).Enabled);
     }
 }

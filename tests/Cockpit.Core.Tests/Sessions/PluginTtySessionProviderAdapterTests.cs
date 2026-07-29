@@ -2,7 +2,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -133,7 +132,7 @@ public class PluginTtySessionProviderAdapterTests
     {
         var (adapter, _) = _CreateAdapter(providerId: "cli-agent-provider.codex");
 
-        adapter.ProviderId.Should().Be("cli-agent-provider.codex");
+        Assert.Equal("cli-agent-provider.codex", adapter.ProviderId);
     }
 
     [Fact]
@@ -178,12 +177,14 @@ public class PluginTtySessionProviderAdapterTests
 
         var spec = adapter.BuildLaunch(context);
 
-        spec.ExecutablePath.Should().Be("/usr/local/bin/codex");
-        spec.Arguments.Should().Equal("--sandbox", "read-only");
-        spec.EnvironmentOverlay.Should().ContainKey("CODEX_HOME").WhoseValue.Should().Be("/home/raymond/.codex-work");
-        spec.WorkingDirectory.Should().Be("/repo");
-        spec.SessionScopedFiles.Should().Equal(sessionFile);
-        spec.StatusFile.Should().BeNull("the plugin TTY contract has no status-file concept — only Claude's own provider reports limits");
+        Assert.Equal("/usr/local/bin/codex", spec.ExecutablePath);
+        Assert.Equal(new[] { "--sandbox", "read-only" }, spec.Arguments);
+        var environmentOverlay = spec.EnvironmentOverlay;
+        Assert.NotNull(environmentOverlay);
+        Assert.Equal("/home/raymond/.codex-work", environmentOverlay["CODEX_HOME"]);
+        Assert.Equal("/repo", spec.WorkingDirectory);
+        Assert.Equal(new[] { sessionFile }, spec.SessionScopedFiles);
+        Assert.Null(spec.StatusFile);
     }
 
     [Fact]

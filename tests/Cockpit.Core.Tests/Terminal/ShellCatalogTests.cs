@@ -1,5 +1,4 @@
 using Cockpit.Core.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Terminal;
 
@@ -45,9 +44,9 @@ public sealed class ShellCatalogTests : IDisposable
 
             var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
 
-            shells[0].Id.Should().Be("pwsh", "PowerShell 7 is the preferred Windows default");
-            shells[0].DisplayName.Should().Be("PowerShell");
-            shells[0].ExecutablePath.Should().Be(pwsh);
+            Assert.Equal("pwsh", shells[0].Id);
+            Assert.Equal("PowerShell", shells[0].DisplayName);
+            Assert.Equal(pwsh, shells[0].ExecutablePath);
         }
         else
         {
@@ -55,7 +54,7 @@ public sealed class ShellCatalogTests : IDisposable
 
             var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
 
-            shells.Should().Contain(s => s.Id == "bash" && s.ExecutablePath == bash);
+            Assert.Contains(shells, s => s.Id == "bash" && s.ExecutablePath == bash);
         }
     }
 
@@ -66,7 +65,7 @@ public sealed class ShellCatalogTests : IDisposable
         // dead path.
         var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
 
-        shells.Should().BeEmpty();
+        Assert.Empty(shells);
     }
 
     [Fact]
@@ -81,7 +80,8 @@ public sealed class ShellCatalogTests : IDisposable
 
         var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: cmd);
 
-        shells.Should().ContainSingle(s => s.Id == "cmd").Which.ExecutablePath.Should().Be(cmd);
+        var descriptor = Assert.Single(shells, s => s.Id == "cmd");
+        Assert.Equal(cmd, descriptor.ExecutablePath);
     }
 
     [Fact]
@@ -97,16 +97,16 @@ public sealed class ShellCatalogTests : IDisposable
 
         var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: bash, comSpec: null);
 
-        shells[0].Id.Should().Be("login");
-        shells[0].DisplayName.Should().Be("bash");
-        shells[0].ExecutablePath.Should().Be(bash);
-        shells.Where(s => s.ExecutablePath == bash).Should().ContainSingle("the login shell and the bash candidate are the same file");
+        Assert.Equal("login", shells[0].Id);
+        Assert.Equal("bash", shells[0].DisplayName);
+        Assert.Equal(bash, shells[0].ExecutablePath);
+        Assert.Single(shells, s => s.ExecutablePath == bash);
     }
 
     [Fact]
     public void ForCommand_Blank_ReturnsNull()
     {
-        ShellCatalog.ForCommand("   ").Should().BeNull();
+        Assert.Null(ShellCatalog.ForCommand("   "));
     }
 
     [Fact]
@@ -116,11 +116,11 @@ public sealed class ShellCatalogTests : IDisposable
 
         var descriptor = ShellCatalog.ForCommand(fish);
 
-        descriptor.Should().NotBeNull();
-        descriptor!.Id.Should().Be("custom");
-        descriptor.DisplayName.Should().Be("fish");
-        descriptor.ExecutablePath.Should().Be(fish);
-        descriptor.Arguments.Should().BeEmpty();
+        Assert.NotNull(descriptor);
+        Assert.Equal("custom", descriptor!.Id);
+        Assert.Equal("fish", descriptor.DisplayName);
+        Assert.Equal(fish, descriptor.ExecutablePath);
+        Assert.Empty(descriptor.Arguments);
     }
 
     [Fact]
@@ -132,8 +132,8 @@ public sealed class ShellCatalogTests : IDisposable
 
         var descriptor = ShellCatalog.ForCommand(missing);
 
-        descriptor.Should().NotBeNull();
-        descriptor!.ExecutablePath.Should().Be(missing);
-        descriptor.DisplayName.Should().Be("nope");
+        Assert.NotNull(descriptor);
+        Assert.Equal(missing, descriptor!.ExecutablePath);
+        Assert.Equal("nope", descriptor.DisplayName);
     }
 }

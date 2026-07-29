@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -11,13 +10,13 @@ public class PluginManagerViewModelBadgeTests
     public void HasUpdateBadge_ReflectsTheCount()
     {
         var vm = new PluginManagerViewModel();
-        vm.HasUpdateBadge.Should().BeFalse();
+        Assert.False(vm.HasUpdateBadge);
 
         vm.UpdateBadgeCount = 3;
-        vm.HasUpdateBadge.Should().BeTrue();
+        Assert.True(vm.HasUpdateBadge);
 
         vm.UpdateBadgeCount = 0;
-        vm.HasUpdateBadge.Should().BeFalse();
+        Assert.False(vm.HasUpdateBadge);
     }
 
     [Fact]
@@ -29,8 +28,8 @@ public class PluginManagerViewModelBadgeTests
 
         vm.UpdateBadgeCount = 2;
 
-        raised.Should().Contain(nameof(PluginManagerViewModel.UpdateBadgeCount));
-        raised.Should().Contain(nameof(PluginManagerViewModel.HasUpdateBadge));
+        Assert.Contains(nameof(PluginManagerViewModel.UpdateBadgeCount), raised);
+        Assert.Contains(nameof(PluginManagerViewModel.HasUpdateBadge), raised);
     }
 
     /// <summary>The AC-208 pending-approval badge: no rows at all, so no plugin can be awaiting approval.</summary>
@@ -39,8 +38,8 @@ public class PluginManagerViewModelBadgeTests
     {
         var vm = new PluginManagerViewModel();
 
-        vm.PendingApprovalCount.Should().Be(0);
-        vm.HasPendingApproval.Should().BeFalse();
+        Assert.Equal(0, vm.PendingApprovalCount);
+        Assert.False(vm.HasPendingApproval);
     }
 
     /// <summary>Only plugins at NeedsConsent count — Load/Disabled/incompatible rows do not inflate the badge.</summary>
@@ -53,8 +52,8 @@ public class PluginManagerViewModelBadgeTests
         vm.Plugins.Add(_Row("loaded", PluginLoadDecision.Load));
         vm.Plugins.Add(_Row("disabled", PluginLoadDecision.Disabled));
 
-        vm.PendingApprovalCount.Should().Be(2);
-        vm.HasPendingApproval.Should().BeTrue();
+        Assert.Equal(2, vm.PendingApprovalCount);
+        Assert.True(vm.HasPendingApproval);
     }
 
     /// <summary>The badge clears once every awaiting plugin has been dealt with — the next LoadAsync repopulates
@@ -64,13 +63,13 @@ public class PluginManagerViewModelBadgeTests
     {
         var vm = new PluginManagerViewModel();
         vm.Plugins.Add(_Row("consent", PluginLoadDecision.NeedsConsent));
-        vm.HasPendingApproval.Should().BeTrue();
+        Assert.True(vm.HasPendingApproval);
 
         vm.Plugins.Clear();
         vm.Plugins.Add(_Row("consent", PluginLoadDecision.Load));
 
-        vm.PendingApprovalCount.Should().Be(0);
-        vm.HasPendingApproval.Should().BeFalse();
+        Assert.Equal(0, vm.PendingApprovalCount);
+        Assert.False(vm.HasPendingApproval);
     }
 
     /// <summary>Rebuilding Plugins (as LoadAsync does) raises change notifications for both the count and the badge,
@@ -84,8 +83,8 @@ public class PluginManagerViewModelBadgeTests
 
         vm.Plugins.Add(_Row("consent", PluginLoadDecision.NeedsConsent));
 
-        raised.Should().Contain(nameof(PluginManagerViewModel.PendingApprovalCount));
-        raised.Should().Contain(nameof(PluginManagerViewModel.HasPendingApproval));
+        Assert.Contains(nameof(PluginManagerViewModel.PendingApprovalCount), raised);
+        Assert.Contains(nameof(PluginManagerViewModel.HasPendingApproval), raised);
     }
 
     /// <summary>
@@ -101,9 +100,9 @@ public class PluginManagerViewModelBadgeTests
 
         vm.SeedPendingApprovalCount(2);
 
-        vm.Plugins.Should().BeEmpty("LoadAsync has not run yet — this is the startup seed, not a real discovery");
-        vm.PendingApprovalCount.Should().Be(2);
-        vm.HasPendingApproval.Should().BeTrue();
+        Assert.Empty(vm.Plugins);
+        Assert.Equal(2, vm.PendingApprovalCount);
+        Assert.True(vm.HasPendingApproval);
     }
 
     /// <summary>The seed is only a snapshot from startup; once a real discovery finds nothing left at
@@ -118,8 +117,8 @@ public class PluginManagerViewModelBadgeTests
         // Stands in for LoadAsync repopulating Plugins after the operator approved everything.
         vm.Plugins.Add(_Row("now-approved", PluginLoadDecision.Load));
 
-        vm.PendingApprovalCount.Should().Be(0);
-        vm.HasPendingApproval.Should().BeFalse();
+        Assert.Equal(0, vm.PendingApprovalCount);
+        Assert.False(vm.HasPendingApproval);
     }
 
     /// <summary>Once a real discovery has run, the seed can no longer move the badge — the live count owns it.</summary>
@@ -131,7 +130,7 @@ public class PluginManagerViewModelBadgeTests
 
         vm.SeedPendingApprovalCount(99);
 
-        vm.PendingApprovalCount.Should().Be(1, "the live Plugins count must win once a real discovery has happened");
+        Assert.Equal(1, vm.PendingApprovalCount);
     }
 
     private static PluginRowViewModel _Row(string id, PluginLoadDecision decision) => new(new DiscoveredPlugin(

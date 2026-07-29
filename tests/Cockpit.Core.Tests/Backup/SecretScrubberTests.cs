@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using Cockpit.Core.Backup;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Backup;
 
@@ -18,8 +17,8 @@ public class SecretScrubberTests
 
         var removed = SecretScrubber.Scrub(settings);
 
-        settings["providers"]![0]!["apiKey"]!.ToString().Should().BeEmpty();
-        removed.Should().Equal("providers[0].apiKey");
+        Assert.Empty(settings["providers"]![0]!["apiKey"]!.ToString());
+        Assert.Equal(new[] { "providers[0].apiKey" }, removed);
     }
 
     [Fact]
@@ -42,8 +41,8 @@ public class SecretScrubberTests
 
         var removed = SecretScrubber.Scrub(settings);
 
-        settings.ToJsonString().Should().NotContain("perm:secret");
-        removed.Should().ContainSingle(path => path.Contains("instances"));
+        Assert.DoesNotContain("perm:secret", settings.ToJsonString());
+        Assert.Single(removed, path => path.Contains("instances"));
     }
 
     [Fact]
@@ -51,9 +50,10 @@ public class SecretScrubberTests
     {
         var settings = JsonNode.Parse("""{"notifications":{"discordWebhook":"https://discord.com/api/webhooks/1/x"},"smtp":{"password":"hunter2"}}""")!;
 
-        SecretScrubber.Scrub(settings).Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(SecretScrubber.Scrub(settings)));
 
-        settings.ToJsonString().Should().NotContain("hunter2").And.NotContain("webhooks/1/x");
+        Assert.DoesNotContain("hunter2", settings.ToJsonString());
+        Assert.DoesNotContain("webhooks/1/x", settings.ToJsonString());
     }
 
     [Fact]
@@ -63,10 +63,10 @@ public class SecretScrubberTests
         // cockpit would come back subtly wrong instead of visibly incomplete.
         var settings = JsonNode.Parse("""{"profiles":[{"label":"Work","configDir":"/home/raymond/.claude"}],"theme":"dark"}""")!;
 
-        SecretScrubber.Scrub(settings).Should().BeEmpty();
+        Assert.Empty(SecretScrubber.Scrub(settings));
 
-        settings["profiles"]![0]!["configDir"]!.ToString().Should().Be("/home/raymond/.claude");
-        settings["theme"]!.ToString().Should().Be("dark");
+        Assert.Equal("/home/raymond/.claude", settings["profiles"]![0]!["configDir"]!.ToString());
+        Assert.Equal("dark", settings["theme"]!.ToString());
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class SecretScrubberTests
         // noise, and a list nobody reads is a list that hides the one line that mattered.
         var settings = JsonNode.Parse("""{"provider":{"apiKey":""}}""")!;
 
-        SecretScrubber.Scrub(settings).Should().BeEmpty();
+        Assert.Empty(SecretScrubber.Scrub(settings));
     }
 
     [Theory]
@@ -89,7 +89,7 @@ public class SecretScrubberTests
     [InlineData("label", false)]
     [InlineData("configDir", false)]
     public void WhatCountsAsASecret_IsDecidedByTheFieldsName(string name, bool secret) =>
-        SecretScrubber.IsSecret(name).Should().Be(secret);
+        Assert.Equal(secret, SecretScrubber.IsSecret(name));
 
     [Fact]
     public void AWebhookInsideAWorkflowsStep_IsFoundToo()
@@ -112,7 +112,7 @@ public class SecretScrubberTests
 
         var removed = SecretScrubber.Scrub(settings);
 
-        settings.ToJsonString().Should().NotContain("POSTED-AS-YOU");
-        removed.Should().ContainSingle(path => path.Contains("workflows", StringComparison.Ordinal));
+        Assert.DoesNotContain("POSTED-AS-YOU", settings.ToJsonString());
+        Assert.Single(removed, path => path.Contains("workflows", StringComparison.Ordinal));
     }
 }

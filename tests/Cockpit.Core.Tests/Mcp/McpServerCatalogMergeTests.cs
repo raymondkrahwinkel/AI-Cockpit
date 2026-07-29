@@ -1,6 +1,5 @@
 using Cockpit.App.Plugins;
 using Cockpit.Core.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -19,7 +18,7 @@ public class McpServerCatalogMergeTests
 
         var merged = McpServerCatalog.Merge(registry, plugin);
 
-        merged.Select(server => server.Name).Should().Equal("filesystem", "cockpit-orchestrator", "YouTrack: Personal");
+        Assert.Equal(new[] { "filesystem", "cockpit-orchestrator", "YouTrack: Personal" }, merged.Select(server => server.Name));
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class McpServerCatalogMergeTests
 
         var merged = McpServerCatalog.Merge(registry, plugin);
 
-        merged.Should().ContainSingle().Which.Url.Should().Be("https://live.example/mcp");
+        Assert.Equal("https://live.example/mcp", Assert.Single(merged).Url);
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class McpServerCatalogMergeTests
     {
         var registry = new[] { _Server("filesystem") };
 
-        McpServerCatalog.Merge(registry, []).Should().BeEquivalentTo(registry);
+        Assert.Equivalent(registry, McpServerCatalog.Merge(registry, []));
     }
 
     private static McpServerConfig _Server(string name, string? url = null) =>

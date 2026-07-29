@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
@@ -22,7 +21,7 @@ public class ScreenshotButtonStateTests
     {
         var session = _CreateSdkSession();
 
-        session.CanCaptureScreenshot.Should().BeFalse("there is no picker to open in a design-time or test graph");
+        Assert.False(session.CanCaptureScreenshot, "there is no picker to open in a design-time or test graph");
     }
 
     [Fact]
@@ -31,8 +30,8 @@ public class ScreenshotButtonStateTests
         var session = _CreateSdkSession();
         session.ScreenshotCapture = _ => Task.CompletedTask;
 
-        session.CanCaptureScreenshot.Should().BeTrue();
-        session.ScreenshotTooltip.Should().Be("Take a screenshot into this session");
+        Assert.True(session.CanCaptureScreenshot);
+        Assert.Equal("Take a screenshot into this session", session.ScreenshotTooltip);
     }
 
     /// <summary>The grey button explains itself, rather than leaving the operator to guess why it will not click.</summary>
@@ -43,8 +42,8 @@ public class ScreenshotButtonStateTests
         session.ScreenshotCapture = _ => Task.CompletedTask;
         session.Capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false };
 
-        session.CanCaptureScreenshot.Should().BeFalse();
-        session.ScreenshotTooltip.Should().Contain("image input");
+        Assert.False(session.CanCaptureScreenshot);
+        Assert.Contains("image input", session.ScreenshotTooltip);
     }
 
     /// <summary>A terminal session can take one (AC-226) — its agent reads the file the path points at — so the button is live like any other.</summary>
@@ -54,7 +53,7 @@ public class ScreenshotButtonStateTests
         var session = _CreateTtySession();
         session.ScreenshotCapture = _ => Task.CompletedTask;
 
-        session.CanCaptureScreenshot.Should().BeTrue();
+        Assert.True(session.CanCaptureScreenshot);
     }
 
     /// <summary>A platform with no capture at all is the button's business too — macOS has the button and no hotkey, a hypothetical third OS has neither.</summary>
@@ -65,8 +64,8 @@ public class ScreenshotButtonStateTests
         session.ScreenshotCapture = _ => Task.CompletedTask;
         session.ScreenshotPlatformRefusal = "Screen capture is not available on this platform.";
 
-        session.CanCaptureScreenshot.Should().BeFalse();
-        session.ScreenshotTooltip.Should().Contain("platform");
+        Assert.False(session.CanCaptureScreenshot);
+        Assert.Contains("platform", session.ScreenshotTooltip);
     }
 
     /// <summary>
@@ -84,7 +83,7 @@ public class ScreenshotButtonStateTests
     {
         var session = _CreateSdkSession();
         session.ScreenshotCapture = _ => Task.CompletedTask;
-        session.CanCaptureScreenshot.Should().BeTrue("the Claude-CLI default is the starting point");
+        Assert.True(session.CanCaptureScreenshot, "the Claude-CLI default is the starting point");
         var canCaptureChanged = false;
         session.PropertyChanged += (_, e) =>
         {
@@ -96,8 +95,8 @@ public class ScreenshotButtonStateTests
 
         session.Capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false };
 
-        canCaptureChanged.Should().BeTrue("the button has to hear that the driver cannot see images");
-        session.CanCaptureScreenshot.Should().BeFalse();
+        Assert.True(canCaptureChanged, "the button has to hear that the driver cannot see images");
+        Assert.False(session.CanCaptureScreenshot);
     }
 
     private static SessionViewModel _CreateSdkSession()

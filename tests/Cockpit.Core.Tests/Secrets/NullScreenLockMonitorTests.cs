@@ -1,5 +1,4 @@
 using Cockpit.Core.Secrets;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Secrets;
 
@@ -21,6 +20,6 @@ public class NullScreenLockMonitorTests
         await monitor.StartAsync();
         monitor.Dispose();
 
-        fired.Should().BeFalse("the null monitor observes nothing, so it can raise nothing");
+        Assert.False(fired, "the null monitor observes nothing, so it can raise nothing");
     }
 }

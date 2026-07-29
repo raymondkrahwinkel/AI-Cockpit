@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -50,7 +49,7 @@ public class PluginSettingsAccessTests
         var onOpenSettings = (Func<Task>?)dialogHost.ReceivedCalls()
             .Single(call => call.GetMethodInfo().Name == nameof(IPluginDialogHost.ShowDialogAsync))
             .GetArguments()[4];
-        onOpenSettings.Should().NotBeNull();
+        Assert.NotNull(onOpenSettings);
 
         _ = onOpenSettings!();
 
@@ -72,7 +71,7 @@ public class PluginSettingsAccessTests
         var onOpenSettings = dialogHost.ReceivedCalls()
             .Single(call => call.GetMethodInfo().Name == nameof(IPluginDialogHost.ShowDialogAsync))
             .GetArguments()[4];
-        onOpenSettings.Should().BeNull();
+        Assert.Null(onOpenSettings);
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class PluginSettingsAccessTests
         var sink = Substitute.For<IPluginContributionSink>();
         sink.HasPluginSettings("test-plugin").Returns(true);
 
-        NewHost(sink).HasSettings.Should().BeTrue();
+        Assert.True(NewHost(sink).HasSettings);
     }
 
     // The default is a no-op, so a plugin built against this SDK still loads on a host that predates the
@@ -93,8 +92,8 @@ public class PluginSettingsAccessTests
 
         var open = () => host.ShowSettingsAsync();
 
-        await open.Should().NotThrowAsync();
-        host.HasSettings.Should().BeFalse();
+        await open();
+        Assert.False(host.HasSettings);
     }
 
     private static ICockpitHost NewHost(IPluginContributionSink sink, IPluginDialogHost? dialogHost = null) =>

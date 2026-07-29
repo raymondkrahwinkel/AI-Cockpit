@@ -1,5 +1,4 @@
 using Cockpit.Core.Projects;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Projects;
 
@@ -15,55 +14,60 @@ public class ProjectLinkMatchTests
         new(name.ToLowerInvariant(), name) { PluginFields = new Dictionary<string, string> { [key] = value } };
 
     [Fact]
-    public void For_TheProjectCarryingTheLink_IsThatProject() =>
-        ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, "AC")
-            .Should().NotBeNull().And.Subject.As<Project>().Name.Should().Be("Cockpit");
+    public void For_TheProjectCarryingTheLink_IsThatProject()
+    {
+        var match = ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, "AC");
+
+        Assert.NotNull(match);
+        Assert.Equal("Cockpit", match.Name);
+    }
 
     [Fact]
-    public void For_AmongProjectsLinkedElsewhere_PicksTheOneThatMatches() =>
-        ProjectLinkMatch.For(
-                [_Linked("Depot", Tracker, "DEP"), _Linked("Cockpit", Tracker, "AC")],
-                Tracker,
-                "AC")
-            .Should().NotBeNull().And.Subject.As<Project>().Name.Should().Be("Cockpit");
+    public void For_AmongProjectsLinkedElsewhere_PicksTheOneThatMatches()
+    {
+        var match = ProjectLinkMatch.For(
+            [_Linked("Depot", Tracker, "DEP"), _Linked("Cockpit", Tracker, "AC")],
+            Tracker,
+            "AC");
+
+        Assert.NotNull(match);
+        Assert.Equal("Cockpit", match.Name);
+    }
 
     [Fact]
     public void For_ALinkNoProjectDeclares_IsNoProject() =>
-        ProjectLinkMatch.For([_Linked("Depot", Tracker, "DEP")], Tracker, "AC").Should().BeNull();
+        Assert.Null(ProjectLinkMatch.For([_Linked("Depot", Tracker, "DEP")], Tracker, "AC"));
 
     [Fact]
     public void For_TheSameValueUnderAnotherKey_IsNotTheSameLink() =>
-        ProjectLinkMatch.For([_Linked("Cockpit", "github.repository", "AC")], Tracker, "AC").Should().BeNull();
+        Assert.Null(ProjectLinkMatch.For([_Linked("Cockpit", "github.repository", "AC")], Tracker, "AC"));
 
     [Fact]
     public void For_TwoProjectsCarryingTheLink_IsNoProject() =>
-        ProjectLinkMatch.For(
-                [_Linked("Cockpit", Tracker, "AC"), _Linked("Cockpit fork", Tracker, "AC")],
-                Tracker,
-                "AC")
-            .Should().BeNull("preselecting one of them would pick by storage order, and a wrong preselection is read as right");
+        Assert.Null(ProjectLinkMatch.For(
+            [_Linked("Cockpit", Tracker, "AC"), _Linked("Cockpit fork", Tracker, "AC")],
+            Tracker,
+            "AC"));
 
     [Fact]
     public void For_ValuesDifferingOnlyInCase_AreTheSameLinkTwice() =>
-        ProjectLinkMatch.For(
-                [_Linked("Cockpit", Tracker, "AC"), _Linked("Cockpit fork", Tracker, "ac")],
-                Tracker,
-                "AC")
-            .Should().BeNull();
+        Assert.Null(ProjectLinkMatch.For(
+            [_Linked("Cockpit", Tracker, "AC"), _Linked("Cockpit fork", Tracker, "ac")],
+            Tracker,
+            "AC"));
 
     [Fact]
     public void For_AValueInAnotherCase_StillMatches() =>
-        ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, "ac")
-            .Should().NotBeNull("a tracker short name is not a case-sensitive identifier");
+        Assert.NotNull(ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, "ac"));
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
     public void For_NoValueToMatchOn_IsNoProject(string? value) =>
-        ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, value).Should().BeNull();
+        Assert.Null(ProjectLinkMatch.For([_Linked("Cockpit", Tracker, "AC")], Tracker, value));
 
     [Fact]
     public void For_NoProjectsAtAll_IsNoProject() =>
-        ProjectLinkMatch.For([], Tracker, "AC").Should().BeNull();
+        Assert.Null(ProjectLinkMatch.For([], Tracker, "AC"));
 }

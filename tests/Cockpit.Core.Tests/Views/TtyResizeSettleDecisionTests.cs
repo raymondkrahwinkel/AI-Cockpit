@@ -1,5 +1,4 @@
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Views;
 
@@ -14,15 +13,17 @@ public class TtyResizeSettleDecisionTests
     [Fact]
     public void Decide_SizeChanged_ReturnsResize()
     {
-        TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 249, currentRows: 55)
-            .Should().Be(TtyResizeSettleAction.Resize);
+        Assert.Equal(
+            TtyResizeSettleAction.Resize,
+            TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 249, currentRows: 55));
     }
 
     [Fact]
     public void Decide_ColumnsChangedOnly_ReturnsResize()
     {
-        TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 240, currentRows: 56)
-            .Should().Be(TtyResizeSettleAction.Resize);
+        Assert.Equal(
+            TtyResizeSettleAction.Resize,
+            TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 240, currentRows: 56));
     }
 
     [Fact]
@@ -32,7 +33,8 @@ public class TtyResizeSettleDecisionTests
         // debounce window (e.g. 56 -> 55 -> 56), but the settled size is identical to what the pty
         // already has — resizing again would send an unchanged winsize, no SIGWINCH, claude never
         // repaints.
-        TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 249, currentRows: 56)
-            .Should().Be(TtyResizeSettleAction.Redraw);
+        Assert.Equal(
+            TtyResizeSettleAction.Redraw,
+            TtyResizeSettleDecision.Decide(lastSentColumns: 249, lastSentRows: 56, currentColumns: 249, currentRows: 56));
     }
 }

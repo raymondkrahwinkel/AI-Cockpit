@@ -4,7 +4,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -32,7 +31,7 @@ public class PermissionRuleStoreTests : IDisposable
 
         var rules = await store.LoadAsync("work");
 
-        rules.Should().BeEmpty();
+        Assert.Empty(rules);
     }
 
     [Fact]
@@ -42,7 +41,7 @@ public class PermissionRuleStoreTests : IDisposable
 
         var rules = await store.LoadAsync(profileLabel: null);
 
-        rules.Should().BeEmpty();
+        Assert.Empty(rules);
     }
 
     [Fact]
@@ -54,7 +53,7 @@ public class PermissionRuleStoreTests : IDisposable
         await store.AddAsync("work", rule);
         var rules = await store.LoadAsync("work");
 
-        rules.Should().ContainSingle().Which.Should().Be(rule);
+        Assert.Equal(rule, Assert.Single(rules));
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public class PermissionRuleStoreTests : IDisposable
         await store.AddAsync("work", rule);
         await store.AddAsync("work", rule);
 
-        (await store.LoadAsync("work")).Should().ContainSingle();
+        Assert.Single((await store.LoadAsync("work")));
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class PermissionRuleStoreTests : IDisposable
         await store.AddAsync("work", PermissionRule.ForWildcard("Bash"));
         await store.AddAsync("personal", PermissionRule.ForWildcard("Edit"));
 
-        (await store.LoadAsync("work")).Should().ContainSingle().Which.ToolName.Should().Be("Bash");
-        (await store.LoadAsync("personal")).Should().ContainSingle().Which.ToolName.Should().Be("Edit");
+        Assert.Equal("Bash", Assert.Single(await store.LoadAsync("work")).ToolName);
+        Assert.Equal("Edit", Assert.Single(await store.LoadAsync("personal")).ToolName);
     }
 
     [Fact]
@@ -88,7 +87,7 @@ public class PermissionRuleStoreTests : IDisposable
 
         await store.AddAsync(profileLabel: null, PermissionRule.ForWildcard("Bash"));
 
-        File.Exists(_configFilePath).Should().BeFalse();
+        Assert.False(File.Exists(_configFilePath));
     }
 
     [Fact]
@@ -102,9 +101,9 @@ public class PermissionRuleStoreTests : IDisposable
         var ruleStore = new PermissionRuleStore(_configFilePath);
         await ruleStore.AddAsync("work", PermissionRule.ForWildcard("Bash"));
 
-        (await profileStore.LoadAsync()).Should().ContainSingle().Which.Label.Should().Be("work");
-        (await notificationStore.LoadAsync()).WebhookUrl.Should().Be("https://example/webhook");
-        (await ruleStore.LoadAsync("work")).Should().ContainSingle();
+        Assert.Equal("work", Assert.Single(await profileStore.LoadAsync()).Label);
+        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
+        Assert.Single(await ruleStore.LoadAsync("work"));
     }
 
     public void Dispose()

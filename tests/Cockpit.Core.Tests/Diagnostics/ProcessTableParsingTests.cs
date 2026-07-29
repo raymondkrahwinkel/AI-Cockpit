@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -19,9 +18,9 @@ public class ProcessTableParsingTests
 
         var stat = ProcStatLine.Parse(line);
 
-        stat.Should().NotBeNull();
-        stat!.ParentProcessId.Should().Be(1000);
-        stat.TotalTicks.Should().Be(380);
+        Assert.NotNull(stat);
+        Assert.Equal(1000, stat.ParentProcessId);
+        Assert.Equal(380, stat.TotalTicks);
     }
 
     [Fact]
@@ -33,15 +32,16 @@ public class ProcessTableParsingTests
 
         var stat = ProcStatLine.Parse(line);
 
-        stat!.ParentProcessId.Should().Be(5);
-        stat.TotalTicks.Should().Be(15);
+        Assert.NotNull(stat);
+        Assert.Equal(5, stat.ParentProcessId);
+        Assert.Equal(15, stat.TotalTicks);
     }
 
     [Fact]
     public void ProcStat_OfSomethingThatIsNotAStatLine_IsNothing()
     {
-        ProcStatLine.Parse("nonsense").Should().BeNull();
-        ProcStatLine.Parse(string.Empty).Should().BeNull();
+        Assert.Null(ProcStatLine.Parse("nonsense"));
+        Assert.Null(ProcStatLine.Parse(string.Empty));
     }
 
     [Fact]
@@ -50,11 +50,11 @@ public class ProcessTableParsingTests
         // pid ppid time rss(kB)
         var row = PsLine.Parse("  501   1 12:34.56  204800");
 
-        row.Should().NotBeNull();
-        row!.ProcessId.Should().Be(501);
-        row.ParentProcessId.Should().Be(1);
-        row.CpuTime.Should().Be(TimeSpan.FromMinutes(12) + TimeSpan.FromSeconds(34.56));
-        row.WorkingSetBytes.Should().Be(204800L * 1024);
+        Assert.NotNull(row);
+        Assert.Equal(501, row.ProcessId);
+        Assert.Equal(1, row.ParentProcessId);
+        Assert.Equal(TimeSpan.FromMinutes(12) + TimeSpan.FromSeconds(34.56), row.CpuTime);
+        Assert.Equal(204800L * 1024, row.WorkingSetBytes);
     }
 
     [Theory]
@@ -67,13 +67,13 @@ public class ProcessTableParsingTests
         // would quietly under-report a long-running session by orders of magnitude.
         var expected = TimeSpan.FromHours(hours) + TimeSpan.FromMinutes(minutes) + TimeSpan.FromSeconds(seconds);
 
-        PsLine.ParseCpuTime(value).Should().Be(expected);
+        Assert.Equal(expected, PsLine.ParseCpuTime(value));
     }
 
     [Fact]
     public void PsLine_OfAHeaderOrRubbish_IsNothing()
     {
-        PsLine.Parse("PID PPID TIME RSS").Should().BeNull();
-        PsLine.Parse(string.Empty).Should().BeNull();
+        Assert.Null(PsLine.Parse("PID PPID TIME RSS"));
+        Assert.Null(PsLine.Parse(string.Empty));
     }
 }

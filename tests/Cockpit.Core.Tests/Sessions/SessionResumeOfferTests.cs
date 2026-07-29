@@ -3,7 +3,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -62,8 +61,8 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
 
-        session.CanOfferResume.Should().BeTrue();
-        session.ResumePrompt.Should().Be("continue", "the provider's own default fills the field");
+        Assert.True(session.CanOfferResume);
+        Assert.Equal("continue", session.ResumePrompt);
     }
 
     [Fact]
@@ -75,8 +74,8 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 96, DateTimeOffset.Now.AddHours(6))]);
 
-        session.HasUsageWarning.Should().BeTrue();
-        session.CanOfferResume.Should().BeFalse();
+        Assert.True(session.HasUsageWarning);
+        Assert.False(session.CanOfferResume);
     }
 
     [Fact]
@@ -89,7 +88,7 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, returns)]);
 
-        session.ResumeAt.Should().Be(returns.AddMinutes(1));
+        Assert.Equal(returns.AddMinutes(1), session.ResumeAt);
     }
 
     [Fact]
@@ -100,8 +99,8 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Context], [new PluginUsageReading("context", 100, null)]);
 
-        session.HasUsageWarning.Should().BeTrue();
-        session.CanOfferResume.Should().BeFalse();
+        Assert.True(session.HasUsageWarning);
+        Assert.False(session.CanOfferResume);
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([declared], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
 
-        session.CanOfferResume.Should().BeFalse();
+        Assert.False(session.CanOfferResume);
     }
 
     [Fact]
@@ -124,12 +123,12 @@ public class SessionResumeOfferTests
 
         await session.ScheduleResumeCommand.ExecuteAsync(null);
 
-        store.Saved.Should().ContainSingle();
-        store.Saved[0].DueAt.Should().Be(returns.AddMinutes(1));
-        store.Saved[0].Prompt.Should().Be("continue");
-        session.HasPendingResume.Should().BeTrue();
-        session.CanOfferResume.Should().BeFalse("one is already waiting");
-        session.HasUsageWarning.Should().BeFalse("the warning has been acted on");
+        Assert.Single(store.Saved);
+        Assert.Equal(returns.AddMinutes(1), store.Saved[0].DueAt);
+        Assert.Equal("continue", store.Saved[0].Prompt);
+        Assert.True(session.HasPendingResume);
+        Assert.False(session.CanOfferResume, "one is already waiting");
+        Assert.False(session.HasUsageWarning, "the warning has been acted on");
     }
 
     [Fact]
@@ -141,7 +140,7 @@ public class SessionResumeOfferTests
         session.ResumePrompt = "pick up the migration where you left it";
         await session.ScheduleResumeCommand.ExecuteAsync(null);
 
-        store.Saved[0].Prompt.Should().Be("pick up the migration where you left it");
+        Assert.Equal("pick up the migration where you left it", store.Saved[0].Prompt);
     }
 
     [Fact]
@@ -156,9 +155,9 @@ public class SessionResumeOfferTests
 
         await session.ChangeResumeMomentCommand.ExecuteAsync(null);
 
-        store.Saved.Should().ContainSingle();
-        store.Saved[0].DueAt.Should().Be(chosen);
-        store.Saved[0].Prompt.Should().Be("start with the review");
+        Assert.Single(store.Saved);
+        Assert.Equal(chosen, store.Saved[0].DueAt);
+        Assert.Equal("start with the review", store.Saved[0].Prompt);
     }
 
     [Fact]
@@ -170,9 +169,9 @@ public class SessionResumeOfferTests
 
         await session.ChangeResumeMomentCommand.ExecuteAsync(null);
 
-        store.Saved.Should().BeEmpty();
-        session.HasPendingResume.Should().BeFalse();
-        session.CanOfferResume.Should().BeTrue("the offer is still there to take");
+        Assert.Empty(store.Saved);
+        Assert.False(session.HasPendingResume);
+        Assert.True(session.CanOfferResume, "the offer is still there to take");
     }
 
     [Fact]
@@ -182,8 +181,8 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
 
-        session.CanOfferResume.Should().BeTrue();
-        session.CanChangeResumeMoment.Should().BeFalse("nothing was handed in to ask with");
+        Assert.True(session.CanOfferResume);
+        Assert.False(session.CanChangeResumeMoment, "nothing was handed in to ask with");
     }
 
     [Fact]
@@ -195,8 +194,8 @@ public class SessionResumeOfferTests
 
         await session.CancelResumeCommand.ExecuteAsync(null);
 
-        session.HasPendingResume.Should().BeFalse();
-        store.Saved.Should().BeEmpty();
+        Assert.False(session.HasPendingResume);
+        Assert.Empty(store.Saved);
     }
 
     [Fact]
@@ -210,7 +209,7 @@ public class SessionResumeOfferTests
 
         await session.SendPromptAsync("pick up the migration\nstart with the schema");
 
-        sent.Should().ContainSingle().Which.Should().Be("pick up the migration start with the schema\r");
+        Assert.Equal("pick up the migration start with the schema\r", Assert.Single(sent));
     }
 
     [Fact]
@@ -219,7 +218,7 @@ public class SessionResumeOfferTests
         // The caller reports a resume that could not be delivered rather than assuming it landed.
         var session = new TtyViewModel();
 
-        (await session.SendPromptAsync("continue")).Should().BeFalse();
+        Assert.False(await session.SendPromptAsync("continue"));
     }
 
     [Fact]
@@ -230,12 +229,8 @@ public class SessionResumeOfferTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 100, DateTimeOffset.Now.AddHours(6))]);
 
-        session.CanOfferResume.Should().BeFalse();
+        Assert.False(session.CanOfferResume);
     }
-
-    // The nine below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
-    // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
-    // here would only make that sweep bigger.
 
     [Fact]
     public void AnAllowanceThatClimbsToSpentAfterWarning_StillOffersTheResume()

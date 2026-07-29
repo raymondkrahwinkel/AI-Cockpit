@@ -18,7 +18,6 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -45,8 +44,8 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleHoldStarted();
 
-        overlay.State.Should().Be(VoiceOverlayState.Listening);
-        overlayPresenter.ShowCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
+        Assert.Equal(1, overlayPresenter.ShowCallCount);
         voicePushToTalk.Received(1).BeginHold();
     }
 
@@ -64,11 +63,11 @@ public class VoicePushToTalkCoordinatorTests
 
         var act = coordinator.HandleHoldStarted;
 
-        act.Should().NotThrow();
-        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
-        overlay.StatusText.Should().Be("No session selected");
-        overlay.IsListening.Should().BeFalse();
-        overlayPresenter.ShowCallCount.Should().Be(1);
+        act();
+        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
+        Assert.Equal("No session selected", overlay.StatusText);
+        Assert.False(overlay.IsListening);
+        Assert.Equal(1, overlayPresenter.ShowCallCount);
     }
 
     [Fact]
@@ -84,8 +83,8 @@ public class VoicePushToTalkCoordinatorTests
         await coordinator.HandleHoldEndedAsync();
 
         await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>());
-        overlay.State.Should().Be(VoiceOverlayState.Hidden);
-        overlayPresenter.HideCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+        Assert.Equal(1, overlayPresenter.HideCallCount);
     }
 
     /// <summary>A session whose voice is switched off declines the hold just as silently — and just as invisibly.</summary>
@@ -100,8 +99,8 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleHoldStarted();
 
-        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
-        overlay.StatusText.Should().Be("Voice is off for this session");
+        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
+        Assert.Equal("Voice is off for this session", overlay.StatusText);
     }
 
     /// <summary>
@@ -120,8 +119,8 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleHoldStarted();
 
-        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
-        overlay.StatusText.Should().Be("Open mic is on");
+        Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
+        Assert.Equal("Open mic is on", overlay.StatusText);
         voicePushToTalk.DidNotReceive().BeginHold();
     }
 
@@ -138,9 +137,9 @@ public class VoicePushToTalkCoordinatorTests
 
         await coordinator.HandleHoldEndedAsync();
 
-        overlay.State.Should().Be(VoiceOverlayState.Hidden);
-        overlay.IsTranscribing.Should().BeFalse();
-        overlayPresenter.HideCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+        Assert.False(overlay.IsTranscribing);
+        Assert.Equal(1, overlayPresenter.HideCallCount);
     }
 
     /// <summary>
@@ -157,10 +156,10 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandlePreparing(new VoicePreparationProgress("Downloading Vulkan runtime — 43% of 151 MB", 0.43));
 
-        overlay.State.Should().Be(VoiceOverlayState.Preparing);
-        overlay.StatusText.Should().Be("Downloading Vulkan runtime — 43% of 151 MB");
-        overlay.HasProgress.Should().BeTrue();
-        overlay.ProgressValue.Should().Be(0.43);
+        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
+        Assert.Equal("Downloading Vulkan runtime — 43% of 151 MB", overlay.StatusText);
+        Assert.True(overlay.HasProgress);
+        Assert.Equal(0.43, overlay.ProgressValue);
     }
 
     /// <summary>A step with nothing to measure against passes its missing fraction through, so the bar hides rather than invent one.</summary>
@@ -171,8 +170,8 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandlePreparing(new VoicePreparationProgress("Downloading speech model — 412 MB"));
 
-        overlay.State.Should().Be(VoiceOverlayState.Preparing);
-        overlay.HasProgress.Should().BeFalse();
+        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
+        Assert.False(overlay.HasProgress);
     }
 
     /// <summary>
@@ -187,8 +186,8 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandlePrepared();
 
-        overlay.State.Should().Be(VoiceOverlayState.Transcribing);
-        overlay.StatusText.Should().BeEmpty();
+        Assert.Equal(VoiceOverlayState.Transcribing, overlay.State);
+        Assert.Empty(overlay.StatusText);
     }
 
     [Fact]
@@ -223,7 +222,7 @@ public class VoicePushToTalkCoordinatorTests
 
         await coordinator.HandleHoldEndedAsync();
 
-        states.Should().Equal(VoiceOverlayState.Transcribing, VoiceOverlayState.Hidden);
+        Assert.Equal(new[] { VoiceOverlayState.Transcribing, VoiceOverlayState.Hidden }, states);
     }
 
     /// <summary>
@@ -243,7 +242,7 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleTriggerDescriptionsChanged();
 
-        cockpit.VoiceGlobalHotkeyTrigger.Should().Be("Meta+F9", "the compositor bound that, whatever the settings asked for");
+        Assert.Equal("Meta+F9", cockpit.VoiceGlobalHotkeyTrigger);
     }
 
     /// <summary>A desktop that binds nothing leaves the operator with a hotkey that never fires and no way to know why — so it says where to bind it.</summary>
@@ -257,7 +256,7 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleTriggerDescriptionsChanged();
 
-        cockpit.VoiceGlobalHotkeyTrigger.Should().NotBeEmpty();
+        Assert.NotEmpty(cockpit.VoiceGlobalHotkeyTrigger);
     }
 
     /// <summary>
@@ -277,7 +276,7 @@ public class VoicePushToTalkCoordinatorTests
 
         coordinator.HandleTriggerDescriptionsChanged();
 
-        cockpit.VoiceGlobalHotkeyTrigger.Should().BeEmpty();
+        Assert.Empty(cockpit.VoiceGlobalHotkeyTrigger);
     }
 
     /// <summary>A press of another feature's key reaches this coordinator too — it must ignore anything that is not its own.</summary>
@@ -321,7 +320,7 @@ public class VoicePushToTalkCoordinatorTests
         coordinator.HandleHoldStarted();
         coordinator.HandleHoldStarted();
 
-        pushToTalk.AudioLevelSubscriberCount.Should().Be(1);
+        Assert.Equal(1, pushToTalk.AudioLevelSubscriberCount);
     }
 
     /// <summary>The ordinary hold still leaves nothing behind — the detach must not cost the release its own.</summary>
@@ -334,7 +333,7 @@ public class VoicePushToTalkCoordinatorTests
         coordinator.HandleHoldStarted();
         await coordinator.HandleHoldEndedAsync();
 
-        pushToTalk.AudioLevelSubscriberCount.Should().Be(0);
+        Assert.Equal(0, pushToTalk.AudioLevelSubscriberCount);
     }
 
     /// <param name="pushToTalk">Given to both the coordinator and the selected session — one shared service reaches both in the real graph.</param>

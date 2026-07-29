@@ -1,6 +1,5 @@
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -19,7 +18,7 @@ public class PluginProviderRegistryTests
 
         registry.Register(registration);
 
-        registry.Resolve("gemini-provider.gemini").Should().Be(registration);
+        Assert.Equal(registration, registry.Resolve("gemini-provider.gemini"));
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class PluginProviderRegistryTests
     {
         var registry = new PluginProviderRegistry();
 
-        registry.Resolve("unknown").Should().BeNull();
+        Assert.Null(registry.Resolve("unknown"));
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class PluginProviderRegistryTests
         registry.Register(first);
         registry.Register(second);
 
-        registry.Registrations.Should().Equal(first, second);
+        Assert.Equal(new[] { first, second }, registry.Registrations);
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class PluginProviderRegistryTests
         registry.Register(original);
         registry.Register(replacement);
 
-        registry.Resolve("gemini-provider.gemini").Should().Be(replacement);
-        registry.Registrations.Should().ContainSingle();
+        Assert.Equal(replacement, registry.Resolve("gemini-provider.gemini"));
+        Assert.Single(registry.Registrations);
     }
 
     private static SessionProviderRegistration _Registration(string providerId, string displayName = "Test Provider") => new(

@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -28,7 +27,7 @@ public class ReadAloudTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
     }
 
     [Fact]
@@ -63,7 +62,7 @@ public class ReadAloudTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class ReadAloudTests
 
         vm.ReadAloudCommand.Execute(entry);
 
-        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
     }
 
     [Fact]
@@ -179,7 +178,7 @@ public class ReadAloudTests
             new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
         await _WaitUntilAsync(() => vm.VoiceEnabled);
 
-        vm.BeginVoiceHold().Should().BeTrue();
+        Assert.True(vm.BeginVoiceHold());
 
         voicePlaybackQueue.Received(1).StopAll();
     }
@@ -221,7 +220,7 @@ public class ReadAloudTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is a thought." });
         vm.Apply(new Question { SessionId = "S1", Text = "Which option do you prefer?" });
 
-        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
     }
 
     [Fact]

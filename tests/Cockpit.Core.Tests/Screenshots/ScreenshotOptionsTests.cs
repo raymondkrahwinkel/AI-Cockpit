@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Tests.Voice;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -20,7 +19,7 @@ public class ScreenshotOptionsTests
         cockpit.ScreenshotGlobalHotkeyEnabled = true;
         cockpit.ScreenshotHotkeyKeyName = "F8";
 
-        cockpit.HotkeyConflict.Should().BeEmpty();
+        Assert.Empty(cockpit.HotkeyConflict);
     }
 
     [Fact]
@@ -34,8 +33,8 @@ public class ScreenshotOptionsTests
 
         cockpit.ScreenshotHotkeyKeyName = "F9";
 
-        cockpit.HotkeyConflict.Should().NotBeEmpty();
-        cockpit.HotkeyConflict.Should().Contain("F9");
+        Assert.NotEmpty(cockpit.HotkeyConflict);
+        Assert.Contains("F9", cockpit.HotkeyConflict);
     }
 
     /// <summary>
@@ -52,7 +51,7 @@ public class ScreenshotOptionsTests
         cockpit.ScreenshotGlobalHotkeyEnabled = true;
         cockpit.ScreenshotHotkeyKeyName = "F9";
 
-        cockpit.HotkeyConflict.Should().BeEmpty();
+        Assert.Empty(cockpit.HotkeyConflict);
     }
 
     /// <summary>Switching voice itself off frees push-to-talk's key too — the binding is only contributed when both are on.</summary>
@@ -66,7 +65,7 @@ public class ScreenshotOptionsTests
         cockpit.ScreenshotGlobalHotkeyEnabled = true;
         cockpit.ScreenshotHotkeyKeyName = "F9";
 
-        cockpit.HotkeyConflict.Should().BeEmpty();
+        Assert.Empty(cockpit.HotkeyConflict);
     }
 
     /// <summary>The warning has to clear again when the operator fixes it, or it reads as a state they cannot get out of.</summary>
@@ -82,6 +81,6 @@ public class ScreenshotOptionsTests
 
         cockpit.ScreenshotHotkeyKeyName = "F8";
 
-        cockpit.HotkeyConflict.Should().BeEmpty();
+        Assert.Empty(cockpit.HotkeyConflict);
     }
 }

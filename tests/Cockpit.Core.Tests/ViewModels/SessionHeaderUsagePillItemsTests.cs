@@ -3,7 +3,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -19,7 +18,7 @@ public class SessionHeaderUsagePillItemsTests
     {
         var vm = new SessionViewModel { ContextUsedPercent = 42, UsagePillVisibleFields = [UsagePillField.Context] };
 
-        vm.UsagePillItems.Should().ContainSingle().Which.DisplayText.Should().Be("ctx 42%");
+        Assert.Equal("ctx 42%", Assert.Single(vm.UsagePillItems).DisplayText);
     }
 
     [Fact]
@@ -28,7 +27,7 @@ public class SessionHeaderUsagePillItemsTests
         var vm = new SessionViewModel { ContextUsedPercent = null, UsagePillVisibleFields = [UsagePillField.Context] };
         vm.RateLimits.Clear();
 
-        vm.UsagePillItems.Should().BeEmpty();
+        Assert.Empty(vm.UsagePillItems);
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class SessionHeaderUsagePillItemsTests
         vm.RateLimits.Add(new SessionRateWindow("5h", 64, null));
         vm.UsagePillVisibleFields = [UsagePillField.FiveHourWindow];
 
-        vm.UsagePillItems.Should().ContainSingle().Which.DisplayText.Should().Be("5h 64%");
+        Assert.Equal("5h 64%", Assert.Single(vm.UsagePillItems).DisplayText);
     }
 
     /// <summary>
@@ -54,7 +53,7 @@ public class SessionHeaderUsagePillItemsTests
     {
         var vm = new SessionViewModel { ContextUsedPercent = percent, UsagePillVisibleFields = [UsagePillField.Context] };
 
-        vm.UsagePillItems.Should().ContainSingle().Which.SeverityBrushKey.Should().Be(expectedKey);
+        Assert.Equal(expectedKey, Assert.Single(vm.UsagePillItems).SeverityBrushKey);
     }
 
     /// <summary>
@@ -70,7 +69,7 @@ public class SessionHeaderUsagePillItemsTests
 
         vm.ApplyUsage([context], [new PluginUsageReading("context", 70, null)]);
 
-        vm.UsagePillItems.Should().ContainSingle().Which.SeverityBrushKey.Should().Be("CockpitStatusWaitingBrush");
+        Assert.Equal("CockpitStatusWaitingBrush", Assert.Single(vm.UsagePillItems).SeverityBrushKey);
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public class SessionHeaderUsagePillItemsTests
             UsagePillVisibleFields = [UsagePillField.SessionUsage],
         };
 
-        var pill = vm.UsagePillItems.Should().ContainSingle().Which;
-        pill.DisplayText.Should().Be("45.2k tok · $0.01");
-        pill.SeverityBrushKey.Should().Be("CockpitTextSecondaryBrush");
+        var pill = Assert.Single(vm.UsagePillItems);
+        Assert.Equal("45.2k tok · $0.01", pill.DisplayText);
+        Assert.Equal("CockpitTextSecondaryBrush", pill.SeverityBrushKey);
     }
 
     [Fact]
@@ -102,18 +101,18 @@ public class SessionHeaderUsagePillItemsTests
         // hover must reflect the tooltip's later assignment, not lag a turn behind.
         vm.UsageTooltip = "Input 900 · Output 100 · 1 turn";
 
-        vm.UsagePillItems.Should().ContainSingle().Which.Tooltip.Should().Be("Input 900 · Output 100 · 1 turn");
+        Assert.Equal("Input 900 · Output 100 · 1 turn", Assert.Single(vm.UsagePillItems).Tooltip);
     }
 
     [Fact]
     public void SelectingSessionUsage_HidesTheStandaloneTokenMeter()
     {
         var vm = new SessionViewModel { HasUsage = true, UsageSummary = "1.0k tok" };
-        vm.ShowTokenMeter.Should().BeTrue("the standalone meter shows session usage by default");
+        Assert.True(vm.ShowTokenMeter, "the standalone meter shows session usage by default");
 
         vm.UsagePillVisibleFields = [UsagePillField.SessionUsage];
 
-        vm.ShowTokenMeter.Should().BeFalse("session usage now shows as a pill, so the meter yields to avoid a duplicate badge");
+        Assert.False(vm.ShowTokenMeter, "session usage now shows as a pill, so the meter yields to avoid a duplicate badge");
     }
 
     [Fact]
@@ -124,8 +123,8 @@ public class SessionHeaderUsagePillItemsTests
         vm.RateLimits.Add(new SessionRateWindow("wk", 80, null));
         vm.UsagePillVisibleFields = [UsagePillField.WeeklyWindow, UsagePillField.Context];
 
-        vm.UsagePillItems.Should().HaveCount(2);
-        vm.UsagePillItems[0].DisplayText.Should().Be("wk 80%");
-        vm.UsagePillItems[1].DisplayText.Should().Be("ctx 20%");
+        Assert.Equal(2, System.Linq.Enumerable.Count(vm.UsagePillItems));
+        Assert.Equal("wk 80%", vm.UsagePillItems[0].DisplayText);
+        Assert.Equal("ctx 20%", vm.UsagePillItems[1].DisplayText);
     }
 }

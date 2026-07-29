@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -33,7 +32,7 @@ public class TtyInjectedTextTests
 
         vm.InjectText("Fix the login bug.\r\nSteps:\rone\ntwo");
 
-        writes.Should().Equal("Fix the login bug. Steps: one two");
+        Assert.Equal(new[] { "Fix the login bug. Steps: one two" }, writes);
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class TtyInjectedTextTests
 
         vm.InjectText($"before{Interrupt}after{Tab}tab{Backspace}");
 
-        writes.Should().Equal("before after tab");
+        Assert.Equal(new[] { "before after tab" }, writes);
     }
 
     [Fact]
@@ -57,7 +56,7 @@ public class TtyInjectedTextTests
         // is dropped whole, payload included: an escape sequence separates nothing, so nothing takes its place.
         vm.InjectText($"{Escape}[31mred{Escape}[0m and {Escape}]0;pwned{Bell}plain{Escape}[200~");
 
-        writes.Should().Equal("red and plain");
+        Assert.Equal(new[] { "red and plain" }, writes);
     }
 
     [Fact]
@@ -68,7 +67,7 @@ public class TtyInjectedTextTests
 
         vm.InjectText("\r\n");
 
-        writes.Should().BeEmpty();
+        Assert.Empty(writes);
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class TtyInjectedTextTests
 
         // The text, then a carriage return of its own. Which of the two seams was called now decides whether the
         // session is submitted to, instead of whether the caller's text happened to carry a line break.
-        writes.Should().Equal("run the tests", "\r");
+        Assert.Equal(new[] { "run the tests", "\r" }, writes);
     }
 
     [Fact]
@@ -94,9 +93,9 @@ public class TtyInjectedTextTests
         var written = new List<string>();
         vm.PromptSink = text => written.Add(text);
 
-        (await vm.SendPromptAsync($"resume {Escape}[2J the\r\nreview")).Should().BeTrue();
+        Assert.True((await vm.SendPromptAsync($"resume {Escape}[2J the\r\nreview")));
 
-        written.Should().Equal("resume the review\r");
+        Assert.Equal(new[] { "resume the review\r" }, written);
     }
 
     /// <summary>A TTY panel that records into <paramref name="writes"/> every write it asks the view to make into the pty, in order.</summary>

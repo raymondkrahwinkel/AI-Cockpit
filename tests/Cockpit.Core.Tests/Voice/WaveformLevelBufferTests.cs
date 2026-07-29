@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -11,8 +10,8 @@ public class WaveformLevelBufferTests
     {
         var buffer = new WaveformLevelBuffer(4);
 
-        buffer.BarCount.Should().Be(4);
-        buffer.Levels.Should().Equal(0, 0, 0, 0);
+        Assert.Equal(4, buffer.BarCount);
+        Assert.Equal(new[] { 0.0, 0.0, 0.0, 0.0 }, buffer.Levels);
     }
 
     [Fact]
@@ -22,7 +21,7 @@ public class WaveformLevelBufferTests
 
         buffer.Push(0.5);
 
-        buffer.Levels.Should().Equal(0, 0, 0.5);
+        Assert.Equal(new[] { 0.0, 0.0, 0.5 }, buffer.Levels);
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class WaveformLevelBufferTests
         buffer.Push(0.3);
         buffer.Push(0.4);
 
-        buffer.Levels.Should().Equal(0.2, 0.3, 0.4);
+        Assert.Equal(new[] { 0.2, 0.3, 0.4 }, buffer.Levels);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class WaveformLevelBufferTests
         buffer.Push(1.5);
         buffer.Push(-0.5);
 
-        buffer.Levels.Should().Equal(1, 0);
+        Assert.Equal(new[] { 1.0, 0.0 }, buffer.Levels);
     }
 
     [Fact]
@@ -58,7 +57,7 @@ public class WaveformLevelBufferTests
 
         buffer.Reset();
 
-        buffer.Levels.Should().Equal(0, 0, 0);
+        Assert.Equal(new[] { 0.0, 0.0, 0.0 }, buffer.Levels);
     }
 
     [Fact]
@@ -66,6 +65,6 @@ public class WaveformLevelBufferTests
     {
         var act = () => new WaveformLevelBuffer(0);
 
-        act.Should().Throw<ArgumentOutOfRangeException>();
+        Assert.Throws<ArgumentOutOfRangeException>(act);
     }
 }

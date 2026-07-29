@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -38,8 +37,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(category: null), PluginStoreConfig.Remote("url"),null);
 
-        row.Category.Should().Be(StorePluginRowViewModel.OtherCategory);
-        row.HasCategory.Should().BeFalse();
+        Assert.Equal(StorePluginRowViewModel.OtherCategory, row.Category);
+        Assert.False(row.HasCategory);
     }
 
     [Fact]
@@ -47,8 +46,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(category: "Issue trackers"), PluginStoreConfig.Remote("url"),null);
 
-        row.Category.Should().Be("Issue trackers");
-        row.HasCategory.Should().BeTrue();
+        Assert.Equal("Issue trackers", row.Category);
+        Assert.True(row.HasCategory);
     }
 
     [Theory]
@@ -59,8 +58,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(category: category!), PluginStoreConfig.Remote("url"),null);
 
-        row.Category.Should().Be(StorePluginRowViewModel.OtherCategory);
-        row.HasCategory.Should().BeFalse();
+        Assert.Equal(StorePluginRowViewModel.OtherCategory, row.Category);
+        Assert.False(row.HasCategory);
     }
 
     [Fact]
@@ -68,7 +67,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(icon: "🐛"), PluginStoreConfig.Remote("url"),null);
 
-        row.IconGlyphOrNull.Should().Be("🐛");
+        Assert.Equal("🐛", row.IconGlyphOrNull);
     }
 
     [Fact]
@@ -76,8 +75,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(name: "gemini provider", icon: null), PluginStoreConfig.Remote("url"),null);
 
-        row.IconGlyphOrNull.Should().BeNull();
-        row.MonogramLetter.Should().Be("G");
+        Assert.Null(row.IconGlyphOrNull);
+        Assert.Equal("G", row.MonogramLetter);
     }
 
     [Fact]
@@ -86,17 +85,17 @@ public class StorePluginRowViewModelTests
         var withLinks = new StorePluginRowViewModel(_Entry(homepage: "https://x", repository: "https://y"), PluginStoreConfig.Remote("url"),null);
         var withoutLinks = new StorePluginRowViewModel(_Entry(), PluginStoreConfig.Remote("url"),null);
 
-        withLinks.HasHomepage.Should().BeTrue();
-        withLinks.HasRepository.Should().BeTrue();
-        withoutLinks.HasHomepage.Should().BeFalse();
-        withoutLinks.HasRepository.Should().BeFalse();
+        Assert.True(withLinks.HasHomepage);
+        Assert.True(withLinks.HasRepository);
+        Assert.False(withoutLinks.HasHomepage);
+        Assert.False(withoutLinks.HasRepository);
     }
 
     [Fact]
     public void IsFeatured_ReflectsTheEntryFlag()
     {
-        new StorePluginRowViewModel(_Entry(featured: true), PluginStoreConfig.Remote("url"),null).IsFeatured.Should().BeTrue();
-        new StorePluginRowViewModel(_Entry(featured: false), PluginStoreConfig.Remote("url"),null).IsFeatured.Should().BeFalse();
+        Assert.True(new StorePluginRowViewModel(_Entry(featured: true), PluginStoreConfig.Remote("url"),null).IsFeatured);
+        Assert.False(new StorePluginRowViewModel(_Entry(featured: false), PluginStoreConfig.Remote("url"),null).IsFeatured);
     }
 
     [Fact]
@@ -104,7 +103,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(published: "2026-05-12"), PluginStoreConfig.Remote("url"),null);
 
-        row.PublishedDate.Should().Be(new DateOnly(2026, 5, 12));
+        Assert.Equal(new DateOnly(2026, 5, 12), row.PublishedDate);
     }
 
     [Theory]
@@ -115,7 +114,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(published: published), PluginStoreConfig.Remote("url"),null);
 
-        row.PublishedDate.Should().BeNull();
+        Assert.Null(row.PublishedDate);
     }
 
     [Fact]
@@ -123,8 +122,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(), PluginStoreConfig.Remote("url"),null);
 
-        row.PrimaryActionLabel.Should().Be("Install");
-        row.CanTakePrimaryAction.Should().BeTrue();
+        Assert.Equal("Install", row.PrimaryActionLabel);
+        Assert.True(row.CanTakePrimaryAction);
     }
 
     [Fact]
@@ -132,8 +131,8 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(latestVersion: "2.0.0"), PluginStoreConfig.Remote("url"),"1.0.0");
 
-        row.PrimaryActionLabel.Should().Be("Update");
-        row.CanTakePrimaryAction.Should().BeTrue();
+        Assert.Equal("Update", row.PrimaryActionLabel);
+        Assert.True(row.CanTakePrimaryAction);
     }
 
     [Fact]
@@ -141,7 +140,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(latestVersion: "1.0.0"), PluginStoreConfig.Remote("url"),"1.0.0");
 
-        row.PrimaryActionLabel.Should().Be("Installed");
-        row.CanTakePrimaryAction.Should().BeFalse();
+        Assert.Equal("Installed", row.PrimaryActionLabel);
+        Assert.False(row.CanTakePrimaryAction);
     }
 }

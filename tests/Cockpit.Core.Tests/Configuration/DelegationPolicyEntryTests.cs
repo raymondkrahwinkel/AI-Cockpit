@@ -1,6 +1,5 @@
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Configuration;
 
@@ -20,8 +19,8 @@ public class DelegationPolicyEntryTests
 
         var restored = DelegationPolicyEntry.FromDomain(policy)!.ToDomain();
 
-        restored.PermissionCeiling.Should().Be("acceptEdits");
-        restored.AllowedTools.Should().BeEquivalentTo("get_current_user", "search_issues");
+        Assert.Equal("acceptEdits", restored.PermissionCeiling);
+        Assert.Equivalent(new object[] { "get_current_user", "search_issues" }, restored.AllowedTools);
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public class DelegationPolicyEntryTests
         // rather than becoming an empty list the decider would read differently.
         var entry = new DelegationPolicyEntry { AllowedAsTarget = true };
 
-        entry.ToDomain().AllowedTools.Should().BeNull();
+        Assert.Null(entry.ToDomain().AllowedTools);
     }
 
     [Theory]
@@ -44,6 +43,6 @@ public class DelegationPolicyEntryTests
         // hang it on a prompt nobody answers) — it coerces to the default ceiling.
         var entry = new DelegationPolicyEntry { AllowedAsTarget = true, PermissionCeiling = ceiling! };
 
-        entry.ToDomain().PermissionCeiling.Should().Be(DelegationPolicy.DefaultPermissionCeiling);
+        Assert.Equal(DelegationPolicy.DefaultPermissionCeiling, entry.ToDomain().PermissionCeiling);
     }
 }

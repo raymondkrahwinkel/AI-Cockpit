@@ -1,5 +1,4 @@
 using Cockpit.Core.WorkingPaths;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.WorkingPaths;
 
@@ -11,7 +10,7 @@ public class DirectoryPathTests
 {
     [Fact]
     public void Normalize_TrailingSeparatorsAndRelativeSegments_AreOneFolder() =>
-        DirectoryPath.Normalize("/repos/cockpit/src/../").Should().Be(DirectoryPath.Normalize("/repos/cockpit"));
+        Assert.Equal(DirectoryPath.Normalize("/repos/cockpit"), DirectoryPath.Normalize("/repos/cockpit/src/../"));
 
     [Theory]
     [InlineData(null)]
@@ -21,34 +20,34 @@ public class DirectoryPathTests
     public void Normalize_WhatNamesNoFolder_IsNull(string? path) =>
         // A path the platform itself rejects answers null rather than throwing: this runs on the way to starting a
         // session, and an unusable path is an answer, not a failure.
-        DirectoryPath.Normalize(path).Should().BeNull();
+        Assert.Null(DirectoryPath.Normalize(path));
 
     [Fact]
     public void IsWithin_TheFolderItself_Counts() =>
-        DirectoryPath.IsWithin("/repos/cockpit", "/repos/cockpit").Should().BeTrue();
+        Assert.True(DirectoryPath.IsWithin("/repos/cockpit", "/repos/cockpit"));
 
     [Fact]
     public void IsWithin_SomethingInside_Counts() =>
-        DirectoryPath.IsWithin("/repos/cockpit/src/Core", "/repos/cockpit").Should().BeTrue();
+        Assert.True(DirectoryPath.IsWithin("/repos/cockpit/src/Core", "/repos/cockpit"));
 
     [Fact]
     public void IsWithin_ASiblingSharingAPrefix_DoesNot() =>
-        DirectoryPath.IsWithin("/repos/cockpit-plugins", "/repos/cockpit").Should().BeFalse();
+        Assert.False(DirectoryPath.IsWithin("/repos/cockpit-plugins", "/repos/cockpit"));
 
     [Fact]
     public void IsWithin_ARootFolder_ContainsEverything() =>
         // A root keeps its separator through Normalize — a root without one is not a path — so the containment test
         // must not insist on a second one, or a project scoped to a drive would claim nothing at all.
-        DirectoryPath.IsWithin(Path.GetFullPath("/home/foo"), Path.GetFullPath("/")).Should().BeTrue();
+        Assert.True(DirectoryPath.IsWithin(Path.GetFullPath("/home/foo"), Path.GetFullPath("/")));
 
     [Fact]
     public void IsWithin_TheOtherWayRound_DoesNot() =>
-        DirectoryPath.IsWithin("/repos", "/repos/cockpit").Should().BeFalse();
+        Assert.False(DirectoryPath.IsWithin("/repos", "/repos/cockpit"));
 
     [Theory]
     [InlineData(null, "/repos/cockpit")]
     [InlineData("/repos/cockpit", null)]
     [InlineData("", "")]
     public void IsWithin_WithoutTwoRealFolders_IsNever(string? path, string? folder) =>
-        DirectoryPath.IsWithin(path, folder).Should().BeFalse();
+        Assert.False(DirectoryPath.IsWithin(path, folder));
 }

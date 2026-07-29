@@ -4,7 +4,6 @@ using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
-using FluentAssertions;
 using NSubstitute;
 using Avalonia.Controls;
 
@@ -24,7 +23,7 @@ public class WidgetDeclaredSecretsTests
 
         registry.Register(_Widget("tracker.issues"), _Storage(), _Sessions(), ["pat"]);
 
-        registry.DeclaredSecretKeys.Should().Equal("pat");
+        Assert.Equal(new[] { "pat" }, registry.DeclaredSecretKeys);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class WidgetDeclaredSecretsTests
         registry.Register(_Widget("a.one"), _Storage(), _Sessions(), ["pat"]);
         registry.Register(_Widget("b.two"), _Storage(), _Sessions(), ["credential", "PAT"]);
 
-        registry.DeclaredSecretKeys.Should().BeEquivalentTo(["pat", "credential"]);
+        Assert.Equivalent(new object[] { "pat", "credential" }, registry.DeclaredSecretKeys);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class WidgetDeclaredSecretsTests
         var registry = new WidgetRegistry();
         registry.Register(_Widget("clock.time"), _Storage(), _Sessions(), []);
 
-        registry.DeclaredSecretKeys.Should().BeEmpty();
+        Assert.Empty(registry.DeclaredSecretKeys);
     }
 
     [Fact]
@@ -67,9 +66,10 @@ public class WidgetDeclaredSecretsTests
 
         var export = DashboardExporter.ToExport(dashboard, _ => config, new SecretFields(registry.DeclaredSecretKeys));
 
-        export.Panes[0].Config.Should().ContainKey("repo");
-        export.Panes[0].Config.Should().NotContainKey("pat").And.NotContainKey("apiKey");
-        export.Panes[0].Config.Values.Should().NotContain(value => value.Contains("live") || value.Contains("ghp"));
+        Assert.Contains("repo", export.Panes[0].Config.Keys);
+        Assert.DoesNotContain("pat", export.Panes[0].Config.Keys);
+        Assert.DoesNotContain("apiKey", export.Panes[0].Config.Keys);
+        Assert.DoesNotContain(export.Panes[0].Config.Values, value => value.Contains("live") || value.Contains("ghp"));
     }
 
     private static WidgetRegistration _Widget(string id) => new(id, id, _ => new TextBlock());

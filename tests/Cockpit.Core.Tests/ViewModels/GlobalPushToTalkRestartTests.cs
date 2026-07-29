@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -17,26 +16,26 @@ public class GlobalPushToTalkRestartTests
     [InlineData(true, false)]   // on → off
     public void OnLinux_WhenTheSavedValueDiffersFromWhatIsRunning_OffersARestart(bool running, bool saved)
     {
-        CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, running, saved).Should().BeTrue();
+        Assert.True(CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, running, saved));
     }
 
     [Fact]
     public void OnLinux_WhenTheSavedValueMatchesWhatIsRunning_OffersNoRestart()
     {
         // Toggled and back, or saved without changing it — the running hotkey already matches.
-        CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, runningValue: true, savedValue: true).Should().BeFalse();
+        Assert.False(CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, runningValue: true, savedValue: true));
     }
 
     [Fact]
     public void OffLinux_NeverOffersARestart_BecauseTheChangeAppliesLive()
     {
-        CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: false, runningValue: false, savedValue: true).Should().BeFalse();
+        Assert.False(CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: false, runningValue: false, savedValue: true));
     }
 
     [Fact]
     public void BeforeTheRunningValueIsKnown_OffersNoRestart()
     {
         // Null baseline: settings were never loaded, so there is no startup value to have diverged from.
-        CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, runningValue: null, savedValue: true).Should().BeFalse();
+        Assert.False(CockpitViewModel.ShouldOfferGlobalPushToTalkRestart(isLinux: true, runningValue: null, savedValue: true));
     }
 }

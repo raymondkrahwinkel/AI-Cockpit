@@ -1,5 +1,4 @@
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Profiles;
 
@@ -16,9 +15,9 @@ public class ClaudePluginProfileTests
     {
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", "/usr/local/bin/claude"));
 
-        profile.Claude.Should().NotBeNull();
-        profile.Claude!.ConfigDir.Should().Be("/home/raymond/.claude-work");
-        profile.Claude!.ExecutablePath.Should().Be("/usr/local/bin/claude");
+        Assert.NotNull(profile.Claude);
+        Assert.Equal("/home/raymond/.claude-work", profile.Claude.ConfigDir);
+        Assert.Equal("/usr/local/bin/claude", profile.Claude.ExecutablePath);
     }
 
     [Fact]
@@ -26,7 +25,7 @@ public class ClaudePluginProfileTests
     {
         var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
-        profile.Claude.Should().BeNull();
+        Assert.Null(profile.Claude);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class ClaudePluginProfileTests
         // plugin resolves the transcript/credentials directory from this reconstructed ConfigDir.
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
 
-        profile.Claude!.ConfigDir.Should().Be("/home/raymond/.claude-work");
+        Assert.Equal("/home/raymond/.claude-work", profile.Claude!.ConfigDir);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class ClaudePluginProfileTests
         // it as blank rather than null keeps a default profile a real, resolvable Claude profile after migration.
         var profile = new SessionProfile("default", ClaudePluginProfile.Create(configDir: null, executablePath: null));
 
-        profile.Claude.Should().NotBeNull();
-        profile.Claude!.ConfigDir.Should().BeNullOrEmpty();
+        Assert.NotNull(profile.Claude);
+        Assert.True(string.IsNullOrEmpty(profile.Claude.ConfigDir));
     }
 }

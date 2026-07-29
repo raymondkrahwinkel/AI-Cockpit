@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -22,8 +21,8 @@ public class GatedToolTests
 
         var result = await tool.InvokeAsync();
 
-        calls.Should().Be(1);
-        result?.ToString().Should().Contain("the result");
+        Assert.Equal(1, calls);
+        Assert.Contains("the result", result?.ToString());
     }
 
     [Fact]
@@ -37,8 +36,8 @@ public class GatedToolTests
 
         var result = await tool.InvokeAsync();
 
-        calls.Should().Be(0);
-        result?.ToString().Should().Contain("denied");
+        Assert.Equal(0, calls);
+        Assert.Contains("denied", result?.ToString());
     }
 
     [Fact]
@@ -53,7 +52,7 @@ public class GatedToolTests
         // reported as an error, not thrown.
         var result = await tool.InvokeAsync();
 
-        result?.ToString().Should().Contain("bad path");
+        Assert.Contains("bad path", result?.ToString());
         gate.Received().ReportToolResult(Arg.Any<string>(), Arg.Is<string>(s => s.Contains("bad path")), true);
     }
 }

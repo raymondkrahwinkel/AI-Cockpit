@@ -4,7 +4,6 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.SessionBehavior;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Layout;
 
@@ -31,8 +30,8 @@ public class LayoutSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.SingleSessionLayout.Should().BeFalse();
-        settings.SidebarWidth.Should().Be(LayoutSettings.DefaultSidebarWidth);
+        Assert.False(settings.SingleSessionLayout);
+        Assert.Equal(LayoutSettings.DefaultSidebarWidth, settings.SidebarWidth);
     }
 
     [Fact]
@@ -43,10 +42,10 @@ public class LayoutSettingsStoreTests : IDisposable
         await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true, SidebarWidth = 260 });
         var loaded = await store.LoadAsync();
 
-        loaded.SingleSessionLayout.Should().BeTrue();
-        loaded.StackSessionsVertically.Should().BeTrue();
-        loaded.MinimizeToTrayOnClose.Should().BeTrue();
-        loaded.SidebarWidth.Should().Be(260);
+        Assert.True(loaded.SingleSessionLayout);
+        Assert.True(loaded.StackSessionsVertically);
+        Assert.True(loaded.MinimizeToTrayOnClose);
+        Assert.Equal(260, loaded.SidebarWidth);
     }
 
     [Theory]
@@ -59,7 +58,7 @@ public class LayoutSettingsStoreTests : IDisposable
         await store.SaveAsync(new LayoutSettings { SidebarWidth = requested });
         var loaded = await store.LoadAsync();
 
-        loaded.SidebarWidth.Should().Be(expected);
+        Assert.Equal(expected, loaded.SidebarWidth);
     }
 
     [Fact]
@@ -72,7 +71,7 @@ public class LayoutSettingsStoreTests : IDisposable
 
         var loaded = await store.LoadAsync();
 
-        loaded.SidebarWidth.Should().Be(LayoutSettings.MaxSidebarWidth);
+        Assert.Equal(LayoutSettings.MaxSidebarWidth, loaded.SidebarWidth);
     }
 
     [Fact]
@@ -87,9 +86,9 @@ public class LayoutSettingsStoreTests : IDisposable
         var layoutStore = new LayoutSettingsStore(_configFilePath);
         await layoutStore.SaveAsync(new LayoutSettings { SingleSessionLayout = true });
 
-        (await notificationStore.LoadAsync()).WebhookUrl.Should().Be("https://example/webhook");
-        (await behaviorStore.LoadAsync()).AutoCloseOnExit.Should().BeTrue();
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
+        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
+        Assert.True((await behaviorStore.LoadAsync()).AutoCloseOnExit);
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
     }
 
     public void Dispose()

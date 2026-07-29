@@ -1,6 +1,5 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -18,8 +17,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetOpenMic(VoiceOverlayState.Listening);
 
-        overlay.State.Should().Be(VoiceOverlayState.Listening);
-        presenter.ShowCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
+        Assert.Equal(1, presenter.ShowCallCount);
     }
 
     [Fact]
@@ -29,8 +28,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
-        overlay.State.Should().Be(VoiceOverlayState.Speaking);
-        presenter.ShowCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Speaking, overlay.State);
+        Assert.Equal(1, presenter.ShowCallCount);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetReadAloud(VoiceOverlayState.Preparing, "Preparing…");
 
-        overlay.State.Should().Be(VoiceOverlayState.Preparing);
-        overlay.StatusText.Should().Be("Preparing…");
+        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
+        Assert.Equal("Preparing…", overlay.StatusText);
     }
 
     /// <summary>Raymond's rule: what you are saying outranks what the cockpit is saying.</summary>
@@ -53,7 +52,7 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetPushToTalk(VoiceOverlayState.Listening);
 
-        overlay.State.Should().Be(VoiceOverlayState.Listening, "the hold is barge-in — it is the whole point of talking over it");
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetOpenMic(VoiceOverlayState.Listening);
 
-        overlay.State.Should().Be(VoiceOverlayState.Listening);
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
     }
 
     /// <summary>Both are dictation, but one of them you asked for by holding a key.</summary>
@@ -76,7 +75,7 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetPushToTalk(VoiceOverlayState.Listening);
 
-        overlay.State.Should().Be(VoiceOverlayState.Listening);
+        Assert.Equal(VoiceOverlayState.Listening, overlay.State);
     }
 
     /// <summary>
@@ -93,8 +92,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetPushToTalk(null);
 
-        overlay.State.Should().Be(VoiceOverlayState.Transcribing, "open-mic is still working — the hold ending says nothing about that");
-        presenter.HideCallCount.Should().Be(0);
+        Assert.Equal(VoiceOverlayState.Transcribing, overlay.State);
+        Assert.Equal(0, presenter.HideCallCount);
     }
 
     /// <summary>Same shape the other way: dictation ending hands the pill back to read-aloud rather than hiding it.</summary>
@@ -107,8 +106,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetPushToTalk(null);
 
-        overlay.State.Should().Be(VoiceOverlayState.Speaking);
-        presenter.HideCallCount.Should().Be(0);
+        Assert.Equal(VoiceOverlayState.Speaking, overlay.State);
+        Assert.Equal(0, presenter.HideCallCount);
     }
 
     [Fact]
@@ -119,8 +118,8 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetPushToTalk(null);
 
-        overlay.State.Should().Be(VoiceOverlayState.Hidden);
-        presenter.HideCallCount.Should().Be(1);
+        Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
+        Assert.Equal(1, presenter.HideCallCount);
     }
 
     /// <summary>
@@ -135,9 +134,9 @@ public class VoiceOverlayCoordinatorTests
 
         coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
-        overlay.State.Should().Be(VoiceOverlayState.Preparing);
-        overlay.StatusText.Should().Be("Downloading speech model — 41%");
-        overlay.ProgressValue.Should().Be(0.41);
+        Assert.Equal(VoiceOverlayState.Preparing, overlay.State);
+        Assert.Equal("Downloading speech model — 41%", overlay.StatusText);
+        Assert.Equal(0.41, overlay.ProgressValue);
     }
 
     private static VoiceOverlayCoordinator _Create(out VoiceOverlayViewModel overlay, out FakeVoiceOverlayPresenter presenter)

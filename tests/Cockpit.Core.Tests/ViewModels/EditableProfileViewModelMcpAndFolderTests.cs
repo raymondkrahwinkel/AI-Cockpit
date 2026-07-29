@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -26,8 +25,8 @@ public class EditableProfileViewModelMcpAndFolderTests
     {
         var editable = new EditableProfileViewModel(ClaudeProfile(defaultWorkingDirectory: "/home/r/App"), isLoggedIn: true);
 
-        editable.DefaultWorkingDirectory.Should().Be("/home/r/App");
-        editable.ToProfile().DefaultWorkingDirectory.Should().Be("/home/r/App");
+        Assert.Equal("/home/r/App", editable.DefaultWorkingDirectory);
+        Assert.Equal("/home/r/App", editable.ToProfile().DefaultWorkingDirectory);
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class EditableProfileViewModelMcpAndFolderTests
     {
         var editable = new EditableProfileViewModel(ClaudeProfile(), isLoggedIn: true) { DefaultWorkingDirectory = "   " };
 
-        editable.ToProfile().DefaultWorkingDirectory.Should().BeNull();
+        Assert.Null(editable.ToProfile().DefaultWorkingDirectory);
     }
 
     [Fact]
@@ -44,9 +43,9 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
 
-        editable.RestrictMcpServers.Should().BeFalse();
-        editable.HasMcpServers.Should().BeTrue();
-        editable.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+        Assert.False(editable.RestrictMcpServers);
+        Assert.True(editable.HasMcpServers);
+        Assert.All(editable.McpServers, server => Assert.True(server.IsEnabledForSession));
     }
 
     [Fact]
@@ -55,9 +54,9 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(enabledMcpServerNames: ["docker"]), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
 
-        editable.RestrictMcpServers.Should().BeTrue();
-        editable.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession.Should().BeFalse();
-        editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession.Should().BeTrue();
+        Assert.True(editable.RestrictMcpServers);
+        Assert.False(editable.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession);
+        Assert.True(editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession);
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(), isLoggedIn: true, availableMcpServerNames: ["youtrack", "docker"]);
 
-        editable.ToProfile().EnabledMcpServerNames.Should().BeNull();
+        Assert.Null(editable.ToProfile().EnabledMcpServerNames);
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class EditableProfileViewModelMcpAndFolderTests
         };
         editable.McpServers.Single(server => server.Name == "docker").IsEnabledForSession = false;
 
-        editable.ToProfile().EnabledMcpServerNames.Should().Equal("youtrack");
+        Assert.Equal(new[] { "youtrack" }, editable.ToProfile().EnabledMcpServerNames);
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: ["docker"]);
 
-        editable.ToProfile().EnabledMcpServerNames.Should().BeEquivalentTo("youtrack", "docker");
+        Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
     }
 
     [Fact]
@@ -100,6 +99,6 @@ public class EditableProfileViewModelMcpAndFolderTests
         var editable = new EditableProfileViewModel(
             ClaudeProfile(enabledMcpServerNames: ["youtrack", "docker"]), isLoggedIn: true, availableMcpServerNames: null);
 
-        editable.ToProfile().EnabledMcpServerNames.Should().BeEquivalentTo("youtrack", "docker");
+        Assert.Equivalent(new object[] { "youtrack", "docker" }, editable.ToProfile().EnabledMcpServerNames);
     }
 }

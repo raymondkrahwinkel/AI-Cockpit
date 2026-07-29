@@ -7,7 +7,6 @@ using Cockpit.Core.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -38,20 +37,21 @@ public class CockpitInternalMcpProviderTests
             loggerFactory: NullLoggerFactory.Instance);
 
         // Nothing mounted yet: the fan-out sees no cockpit-hosted server.
-        host.GetServers().Should().BeEmpty();
+        Assert.Empty(host.GetServers());
 
         var enabled = true;
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => enabled);
 
-        var mounted = host.GetServers().Should().ContainSingle().Subject;
-        mounted.Name.Should().Be("cockpit-probe");
-        mounted.CockpitHosted.Should().BeTrue();
-        mounted.Url.Should().StartWith("http://127.0.0.1:").And.EndWith("/mcp");
-        mounted.Enabled.Should().BeTrue();
+        var mounted = Assert.Single(host.GetServers());
+        Assert.Equal("cockpit-probe", mounted.Name);
+        Assert.True(mounted.CockpitHosted);
+        Assert.StartsWith("http://127.0.0.1:", mounted.Url);
+        Assert.EndsWith("/mcp", mounted.Url);
+        Assert.True(mounted.Enabled);
 
         // The gate is read on every call, so flipping the plugin's own setting changes the answer with no rebind.
         enabled = false;
-        host.GetServers().Should().ContainSingle().Which.Enabled.Should().BeFalse();
+        Assert.False(Assert.Single(host.GetServers()).Enabled);
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class CockpitInternalMcpProviderTests
         await host.MountAsync("cockpit-private", new ProbeTools(), isEnabled: () => true, isInternal: true);
 
         var servers = host.GetServers();
-        servers.Single(server => server.Name == "cockpit-public").Internal.Should().BeFalse();
-        servers.Single(server => server.Name == "cockpit-private").Internal.Should().BeTrue();
+        Assert.False(servers.Single(server => server.Name == "cockpit-public").Internal);
+        Assert.True(servers.Single(server => server.Name == "cockpit-private").Internal);
     }
 
     [Fact]
@@ -88,20 +88,20 @@ public class CockpitInternalMcpProviderTests
             NullLoggerFactory.Instance);
 
         // Before it has bound a port there is nothing to hand the fan-out.
-        server.GetServers().Should().BeEmpty();
+        Assert.Empty(server.GetServers());
 
         await server.StartAsync(default);
         try
         {
             // Startup honoured the persisted off-state, and the server names itself a cockpit-hosted endpoint.
-            var started = server.GetServers().Should().ContainSingle().Subject;
-            started.Name.Should().Be(OrchestratorMcpServer.ServerName);
-            started.CockpitHosted.Should().BeTrue();
-            started.Enabled.Should().BeFalse();
+            var started = Assert.Single(server.GetServers());
+            Assert.Equal(OrchestratorMcpServer.ServerName, started.Name);
+            Assert.True(started.CockpitHosted);
+            Assert.False(started.Enabled);
 
             await server.SetMcpEnabledAsync(true);
 
-            server.GetServers().Should().ContainSingle().Which.Enabled.Should().BeTrue();
+            Assert.True(Assert.Single(server.GetServers()).Enabled);
             await store.Received().SaveAsync(
                 Arg.Is<DelegationSettings>(settings => settings.McpEnabled), Arg.Any<CancellationToken>());
         }

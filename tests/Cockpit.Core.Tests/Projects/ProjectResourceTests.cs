@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
 
@@ -34,10 +33,9 @@ public class ProjectResourceTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        var project = loaded.Projects.Should().ContainSingle().Subject;
-        project.Resources.Should().ContainSingle()
-            .Which.Should().Be(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory));
-        project.MemoryRef.Should().Be("depot:ai-cockpit");
+        var project = Assert.Single(loaded.Projects);
+        Assert.Equal(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory), Assert.Single(project.Resources));
+        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
     }
 
     [Fact]
@@ -52,10 +50,9 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(loaded);
         var reloaded = await store.LoadAsync();
 
-        var project = reloaded.Projects.Should().ContainSingle().Subject;
-        project.MemoryRef.Should().Be("depot:ai-cockpit", "re-saving an unmodified project must not lose what it remembered");
-        project.Resources.Should().ContainSingle()
-            .Which.Should().Be(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory));
+        var project = Assert.Single(reloaded.Projects);
+        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
+        Assert.Equal(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory), Assert.Single(project.Resources));
 
         // The real contract of this save, pinned directly rather than by a "does the raw text contain a substring"
         // proxy: Resources is what a project's memory now lives under, and the legacy MemoryRef field is written
@@ -64,8 +61,8 @@ public class ProjectResourceTests : IDisposable
         // (the shape this test used to accept) must fail this, which "written.Should().Contain(\"Resources\")"
         // alone could not: that string appears whether or not MemoryRef is written beside it.
         var writtenEntry = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath))!["Projects"]![0]!;
-        writtenEntry["Resources"].Should().NotBeNull();
-        writtenEntry["MemoryRef"]!.GetValue<string>().Should().Be("depot:ai-cockpit", "the legacy field mirrors Resources, it does not go null on save");
+        Assert.NotNull(writtenEntry["Resources"]);
+        Assert.Equal("depot:ai-cockpit", writtenEntry["MemoryRef"]!.GetValue<string>());
     }
 
     // --- AC2: two rows with the same role round-trip in order ------------------------------------------------------
@@ -86,7 +83,7 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Resources.Should().Equal(project.Resources);
+        Assert.Equal(project.Resources, Assert.Single(loaded.Projects).Resources);
     }
 
     // --- AC3: a resource whose plugin is not installed is written through untouched --------------------------------
@@ -114,8 +111,9 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Resources.Should().ContainSingle()
-            .Which.Should().Be(new ProjectResource("somepluginnotinstalled:whatever-it-means", ProjectResourceRole.Reference));
+        Assert.Equal(
+            new ProjectResource("somepluginnotinstalled:whatever-it-means", ProjectResourceRole.Reference),
+            Assert.Single(Assert.Single(loaded.Projects).Resources));
     }
 
     // --- AC4: a blank/empty Reference yields no row -----------------------------------------------------------------
@@ -137,8 +135,7 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Resources.Should().ContainSingle()
-            .Which.Reference.Should().Be("ok");
+        Assert.Equal("ok", Assert.Single(Assert.Single(loaded.Projects).Resources).Reference);
     }
 
     [Fact]
@@ -149,7 +146,7 @@ public class ProjectResourceTests : IDisposable
             Projects = [Project.Create("Cockpit") with { Resources = [new ProjectResource("  ", ProjectResourceRole.Memory)] }],
         };
 
-        settings.Normalized().Projects.Single().Resources.Should().BeEmpty();
+        Assert.Empty(settings.Normalized().Projects.Single().Resources);
     }
 
     // --- AC5: Label and ReachesSessions round-trip; ReachesSessions defaults to true ---------------------------------
@@ -173,14 +170,14 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        var resource = loaded.Projects.Should().ContainSingle().Subject.Resources.Should().ContainSingle().Subject;
-        resource.Label.Should().Be("Working notes");
-        resource.ReachesSessions.Should().BeFalse();
+        var resource = Assert.Single(Assert.Single(loaded.Projects).Resources);
+        Assert.Equal("Working notes", resource.Label);
+        Assert.False(resource.ReachesSessions);
     }
 
     [Fact]
     public void ProjectResource_WithNoReachesSessionsSet_DefaultsToTrue() =>
-        new ProjectResource("x", ProjectResourceRole.Memory).ReachesSessions.Should().BeTrue();
+        Assert.True(new ProjectResource("x", ProjectResourceRole.Memory).ReachesSessions);
 
     // A "true survives the round trip" test used to sit here. Removed: it could not fail. ProjectResource's own
     // default and ProjectResourceEntry's own default are both true, so the assertion would hold even if nothing in
@@ -192,7 +189,7 @@ public class ProjectResourceTests : IDisposable
 
     [Fact]
     public void MemoryRef_AProjectWithNoResources_IsNull() =>
-        Project.Create("Cockpit").MemoryRef.Should().BeNull();
+        Assert.Null(Project.Create("Cockpit").MemoryRef);
 
     [Fact]
     public void MemoryRef_TheFirstMemoryRowAmongOthers_IsWhatItReturns()
@@ -207,7 +204,7 @@ public class ProjectResourceTests : IDisposable
             ],
         };
 
-        project.MemoryRef.Should().Be("depot:ai-cockpit", "the first Memory row, not the first row overall or the last Memory row");
+        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
     }
 
     [Fact]
@@ -215,9 +212,8 @@ public class ProjectResourceTests : IDisposable
     {
         var project = Project.Create("Cockpit") with { MemoryRef = "depot:ai-cockpit" };
 
-        project.MemoryRef.Should().Be("depot:ai-cockpit");
-        project.Resources.Should().ContainSingle()
-            .Which.Should().Be(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory));
+        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
+        Assert.Equal(new ProjectResource("depot:ai-cockpit", ProjectResourceRole.Memory), Assert.Single(project.Resources));
     }
 
     [Fact]
@@ -227,8 +223,8 @@ public class ProjectResourceTests : IDisposable
 
         var cleared = project with { MemoryRef = null };
 
-        cleared.MemoryRef.Should().BeNull();
-        cleared.Resources.Should().BeEmpty();
+        Assert.Null(cleared.MemoryRef);
+        Assert.Empty(cleared.Resources);
     }
 
     /// <summary>
@@ -253,8 +249,8 @@ public class ProjectResourceTests : IDisposable
 
         var cleared = project with { MemoryRef = null };
 
-        cleared.MemoryRef.Should().BeNull();
-        cleared.Resources.Should().Equal(reference);
+        Assert.Null(cleared.MemoryRef);
+        Assert.Equal(new[] { reference }, cleared.Resources);
     }
 
     /// <summary>
@@ -272,8 +268,8 @@ public class ProjectResourceTests : IDisposable
             Resources = [new ProjectResource("D:\\Notes", ProjectResourceRole.Memory)],
         };
 
-        project.MemoryRef.Should().Be("D:\\Notes", "the later initializer overwrote what the earlier one folded in");
-        project.Resources.Should().ContainSingle();
+        Assert.Equal("D:\\Notes", project.MemoryRef);
+        Assert.Single(project.Resources);
     }
 
     [Fact]
@@ -285,8 +281,8 @@ public class ProjectResourceTests : IDisposable
             MemoryRef = "depot:ai-cockpit",
         };
 
-        project.MemoryRef.Should().Be("depot:ai-cockpit");
-        project.Resources.Should().ContainSingle("the write folded into the existing memory row rather than adding one");
+        Assert.Equal("depot:ai-cockpit", project.MemoryRef);
+        Assert.Single(project.Resources);
     }
 
     // --- MUST-FIX 2: a missing or unrecognised Role never resolves to Memory, and never costs the whole file --------
@@ -305,8 +301,7 @@ public class ProjectResourceTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Resources.Should().ContainSingle()
-            .Which.Role.Should().Be(ProjectResourceRole.Reference);
+        Assert.Equal(ProjectResourceRole.Reference, Assert.Single(Assert.Single(loaded.Projects).Resources).Role);
     }
 
     /// <summary>
@@ -333,10 +328,11 @@ public class ProjectResourceTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        loaded.Projects.Should().HaveCount(2, "one bad row must not cost the rest of the document");
-        loaded.Projects.Single(project => project.Id == "p").Resources.Should().ContainSingle()
-            .Which.Role.Should().Be(ProjectResourceRole.Reference);
-        loaded.Projects.Single(project => project.Id == "q").Name.Should().Be("Second project");
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Projects));
+        Assert.Equal(
+            ProjectResourceRole.Reference,
+            Assert.Single(loaded.Projects.Single(project => project.Id == "p").Resources).Role);
+        Assert.Equal("Second project", loaded.Projects.Single(project => project.Id == "q").Name);
     }
 
     // --- FIX 7: cases the review found missing ------------------------------------------------------------------------
@@ -358,10 +354,9 @@ public class ProjectResourceTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        var project = loaded.Projects.Should().ContainSingle().Subject;
-        project.Resources.Should().ContainSingle()
-            .Which.Should().Be(new ProjectResource("depot:current", ProjectResourceRole.Memory));
-        project.MemoryRef.Should().Be("depot:current", "Resources is the fuller answer; the stale legacy value beside it loses");
+        var project = Assert.Single(loaded.Projects);
+        Assert.Equal(new ProjectResource("depot:current", ProjectResourceRole.Memory), Assert.Single(project.Resources));
+        Assert.Equal("depot:current", project.MemoryRef);
     }
 
     /// <summary>
@@ -380,9 +375,9 @@ public class ProjectResourceTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        var project = loaded.Projects.Should().ContainSingle().Subject;
-        project.Resources.Should().BeEmpty("an explicit empty list is not the same as Resources being absent");
-        project.MemoryRef.Should().BeNull();
+        var project = Assert.Single(loaded.Projects);
+        Assert.Empty(project.Resources);
+        Assert.Null(project.MemoryRef);
     }
 
     /// <summary>A row with a name but no location — the operator typed a label and never filled in the reference.</summary>
@@ -398,8 +393,7 @@ public class ProjectResourceTests : IDisposable
         await store.SaveAsync(ProjectSettings.Empty.WithProject(project));
         var loaded = await store.LoadAsync();
 
-        loaded.Projects.Should().ContainSingle().Which.Resources.Should().BeEmpty(
-            "a label with no reference names nothing a session could go read");
+        Assert.Empty(Assert.Single(loaded.Projects).Resources);
     }
 
     public void Dispose()

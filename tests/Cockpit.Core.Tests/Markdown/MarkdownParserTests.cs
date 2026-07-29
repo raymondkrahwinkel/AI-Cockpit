@@ -1,5 +1,4 @@
 using Cockpit.Core.Markdown;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Markdown;
 
@@ -14,9 +13,9 @@ public class MarkdownParserTests
     {
         var block = MarkdownParser.Parse("## Wat er is").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.Heading);
-        block.HeadingLevel.Should().Be(2);
-        block.Inlines.Single().Should().Be(MarkdownInline.PlainText("Wat er is"));
+        Assert.Equal(MarkdownBlockKind.Heading, block.Kind);
+        Assert.Equal(2, block.HeadingLevel);
+        Assert.Equal(MarkdownInline.PlainText("Wat er is"), block.Inlines.Single());
     }
 
     [Fact]
@@ -24,8 +23,8 @@ public class MarkdownParserTests
     {
         var block = MarkdownParser.Parse("first line\nsecond line").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.Paragraph);
-        block.Inlines.Single().Text.Should().Be("first line second line");
+        Assert.Equal(MarkdownBlockKind.Paragraph, block.Kind);
+        Assert.Equal("first line second line", block.Inlines.Single().Text);
     }
 
     [Fact]
@@ -33,9 +32,9 @@ public class MarkdownParserTests
     {
         var block = MarkdownParser.Parse("```csharp\nvar x = 1;\nreturn x;\n```").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.CodeBlock);
-        block.Language.Should().Be("csharp");
-        block.Code.Should().Be("var x = 1;\nreturn x;");
+        Assert.Equal(MarkdownBlockKind.CodeBlock, block.Kind);
+        Assert.Equal("csharp", block.Language);
+        Assert.Equal("var x = 1;\nreturn x;", block.Code);
     }
 
     [Fact]
@@ -43,9 +42,9 @@ public class MarkdownParserTests
     {
         var block = MarkdownParser.Parse("- one\n- two\n- three").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.List);
-        block.Ordered.Should().BeFalse();
-        block.Items.Select(item => item.Single().Text).Should().Equal("one", "two", "three");
+        Assert.Equal(MarkdownBlockKind.List, block.Kind);
+        Assert.False(block.Ordered);
+        Assert.Equal(new[] { "one", "two", "three" }, block.Items.Select(item => item.Single().Text));
     }
 
     [Fact]
@@ -53,9 +52,9 @@ public class MarkdownParserTests
     {
         var block = MarkdownParser.Parse("1. first\n2. second").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.List);
-        block.Ordered.Should().BeTrue();
-        block.Items.Should().HaveCount(2);
+        Assert.Equal(MarkdownBlockKind.List, block.Kind);
+        Assert.True(block.Ordered);
+        Assert.Equal(2, System.Linq.Enumerable.Count(block.Items));
     }
 
     [Fact]
@@ -64,10 +63,10 @@ public class MarkdownParserTests
         var block = MarkdownParser.Parse(
             "| Repo | Status |\n|------|--------|\n| private | your work |\n| public | official |").Single();
 
-        block.Kind.Should().Be(MarkdownBlockKind.Table);
-        block.Items.Select(cell => cell.Single().Text).Should().Equal("Repo", "Status");
-        block.Rows.Should().HaveCount(2);
-        block.Rows[0].Select(cell => cell.Single().Text).Should().Equal("private", "your work");
+        Assert.Equal(MarkdownBlockKind.Table, block.Kind);
+        Assert.Equal(new[] { "Repo", "Status" }, block.Items.Select(cell => cell.Single().Text));
+        Assert.Equal(2, System.Linq.Enumerable.Count(block.Rows));
+        Assert.Equal(new[] { "private", "your work" }, block.Rows[0].Select(cell => cell.Single().Text));
     }
 
     [Fact]
@@ -75,16 +74,17 @@ public class MarkdownParserTests
     {
         var runs = MarkdownParser.ParseInlines("plain **bold** and *italic* and `code` and [text](https://x.io).");
 
-        runs.Should().SatisfyRespectively(
-            r => { r.Kind.Should().Be(MarkdownInlineKind.Text); r.Text.Should().Be("plain "); },
-            r => { r.Kind.Should().Be(MarkdownInlineKind.Bold); r.Text.Should().Be("bold"); },
-            r => r.Text.Should().Be(" and "),
-            r => { r.Kind.Should().Be(MarkdownInlineKind.Italic); r.Text.Should().Be("italic"); },
-            r => r.Text.Should().Be(" and "),
-            r => { r.Kind.Should().Be(MarkdownInlineKind.Code); r.Text.Should().Be("code"); },
-            r => r.Text.Should().Be(" and "),
-            r => { r.Kind.Should().Be(MarkdownInlineKind.Link); r.Text.Should().Be("text"); r.Url.Should().Be("https://x.io"); },
-            r => r.Text.Should().Be("."));
+        Assert.Collection(
+            runs,
+            r => { Assert.Equal(MarkdownInlineKind.Text, r.Kind); Assert.Equal("plain ", r.Text); },
+            r => { Assert.Equal(MarkdownInlineKind.Bold, r.Kind); Assert.Equal("bold", r.Text); },
+            r => Assert.Equal(" and ", r.Text),
+            r => { Assert.Equal(MarkdownInlineKind.Italic, r.Kind); Assert.Equal("italic", r.Text); },
+            r => Assert.Equal(" and ", r.Text),
+            r => { Assert.Equal(MarkdownInlineKind.Code, r.Kind); Assert.Equal("code", r.Text); },
+            r => Assert.Equal(" and ", r.Text),
+            r => { Assert.Equal(MarkdownInlineKind.Link, r.Kind); Assert.Equal("text", r.Text); Assert.Equal("https://x.io", r.Url); },
+            r => Assert.Equal(".", r.Text));
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public class MarkdownParserTests
     {
         var runs = MarkdownParser.ParseInlines("2 * 3 = 6 and a lone ` tick");
 
-        string.Concat(runs.Select(r => r.Text)).Should().Be("2 * 3 = 6 and a lone ` tick");
-        runs.Should().OnlyContain(r => r.Kind == MarkdownInlineKind.Text);
+        Assert.Equal("2 * 3 = 6 and a lone ` tick", string.Concat(runs.Select(r => r.Text)));
+        Assert.All(runs, r => Assert.True(r.Kind == MarkdownInlineKind.Text));
     }
 
     /// <summary>
@@ -121,11 +121,12 @@ public class MarkdownParserTests
         var wide = _FastestParseTicks(Wide);
         var growth = (double)wide / narrow;
 
-        growth.Should().BeLessThan(
-            8,
-            "an issue body is third-party text parsed synchronously on the UI thread, and {0}x the input took {1:F1}x the work",
-            Wide / Narrow,
-            growth);
+        Assert.True(
+            growth < 8,
+            string.Format(
+                "an issue body is third-party text parsed synchronously on the UI thread, and {0}x the input took {1:F1}x the work",
+                Wide / Narrow,
+                growth));
     }
 
     // The quickest of several runs. Noise only ever adds time, so the fastest attempt is the one least disturbed by
@@ -152,10 +153,14 @@ public class MarkdownParserTests
         var blocks = MarkdownParser.Parse(
             "## Title\n\nA paragraph.\n\n- item one\n- item two\n\n```\ncode\n```");
 
-        blocks.Select(b => b.Kind).Should().Equal(
-            MarkdownBlockKind.Heading,
-            MarkdownBlockKind.Paragraph,
-            MarkdownBlockKind.List,
-            MarkdownBlockKind.CodeBlock);
+        Assert.Equal(
+            new[]
+            {
+                MarkdownBlockKind.Heading,
+                MarkdownBlockKind.Paragraph,
+                MarkdownBlockKind.List,
+                MarkdownBlockKind.CodeBlock,
+            },
+            blocks.Select(b => b.Kind));
     }
 }

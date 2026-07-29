@@ -6,7 +6,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -32,15 +31,15 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Profiles.Should().ContainSingle();
+        Assert.Single(vm.Profiles);
         var row = vm.Profiles[0];
-        row.Label.Should().Be("work");
-        row.ConfigDir.Should().Be("/home/r/.claude-work");
+        Assert.Equal("work", row.Label);
+        Assert.Equal("/home/r/.claude-work", row.ConfigDir);
         // The per-profile permission/model/effort defaults are read generically from OptionDefaults now (covered by
         // EditableProfileViewModelPluginProviderTests), not the retired typed selections — this covers the row mapping
         // and login status.
-        row.IsLoggedIn.Should().BeTrue();
-        vm.SelectedProfile.Should().Be(row);
+        Assert.True(row.IsLoggedIn);
+        Assert.Equal(row, vm.SelectedProfile);
     }
 
     [Fact]
@@ -65,7 +64,7 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Profiles[0].McpServers.Select(server => server.Name).Should().Equal("server-a");
+        Assert.Equal(new[] { "server-a" }, vm.Profiles[0].McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -75,9 +74,9 @@ public class ManageProfilesDialogViewModelTests
 
         vm.AddProfileCommand.Execute(null);
 
-        vm.Profiles.Should().ContainSingle();
-        vm.SelectedProfile.Should().Be(vm.Profiles[0]);
-        vm.RemoveProfileCommand.CanExecute(null).Should().BeTrue();
+        Assert.Single(vm.Profiles);
+        Assert.Equal(vm.Profiles[0], vm.SelectedProfile);
+        Assert.True(vm.RemoveProfileCommand.CanExecute(null));
     }
 
     [Fact]
@@ -89,9 +88,9 @@ public class ManageProfilesDialogViewModelTests
 
         vm.RemoveProfileCommand.Execute(null);
 
-        vm.IsConfirmingRemove.Should().BeTrue();
-        vm.PendingRemovalLabel.Should().Be(target!.Label);
-        vm.Profiles.Should().Contain(target); // not dropped until confirmed
+        Assert.True(vm.IsConfirmingRemove);
+        Assert.Equal(target!.Label, vm.PendingRemovalLabel);
+        Assert.Contains(target, vm.Profiles); // not dropped until confirmed
     }
 
     [Fact]
@@ -110,8 +109,8 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.ConfirmRemoveCommand.ExecuteAsync(null);
 
-        vm.IsConfirmingRemove.Should().BeFalse();
-        vm.Profiles.Should().ContainSingle().Which.Label.Should().Be("personal");
+        Assert.False(vm.IsConfirmingRemove);
+        Assert.Equal("personal", Assert.Single(vm.Profiles).Label);
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<SessionProfile>>(list => list.Count == 1 && list[0].Label == "personal"),
             Arg.Any<CancellationToken>());
@@ -163,8 +162,8 @@ public class ManageProfilesDialogViewModelTests
 
         vm.CancelRemoveCommand.Execute(null);
 
-        vm.IsConfirmingRemove.Should().BeFalse();
-        vm.Profiles.Should().Contain(target!);
+        Assert.False(vm.IsConfirmingRemove);
+        Assert.Contains(target!, vm.Profiles);
     }
 
     [Fact]
@@ -188,7 +187,7 @@ public class ManageProfilesDialogViewModelTests
                 list[0].Label == "local-renamed" &&
                 list[0].Defaults!.AutoApproveTools),
             Arg.Any<CancellationToken>());
-        closed.Should().BeTrue();
+        Assert.True(closed);
     }
 
     [Fact]
@@ -204,7 +203,7 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Profiles.Should().ContainSingle().Which.AutoApproveTools.Should().BeTrue();
+        Assert.True(Assert.Single(vm.Profiles).AutoApproveTools);
     }
 
     [Fact]
@@ -244,9 +243,13 @@ public class ManageProfilesDialogViewModelTests
 
         var saved = row.ToProfile();
 
-        saved.EnvironmentVariables.Should().Equal(
-            new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
-            new ProfileEnvironmentVariable("MY_TOKEN", "s3cret", IsSecret: true));
+        Assert.Equal(
+            new[]
+            {
+                new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
+                new ProfileEnvironmentVariable("MY_TOKEN", "s3cret", IsSecret: true),
+            },
+            saved.EnvironmentVariables);
     }
 
     // The env-row gates are proven on a profile that is otherwise valid (an Ollama profile with base URL and
@@ -261,10 +264,10 @@ public class ManageProfilesDialogViewModelTests
     public void IsValid_AnEnvironmentVariableWithAnUnsettableName_GatesTheSave(string key)
     {
         var row = _ValidLocalRow();
-        row.IsValid.Should().BeTrue("the gate below must be attributable to the row, not to an incomplete profile");
+        Assert.True(row.IsValid, "the gate below must be attributable to the row, not to an incomplete profile");
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(key, "value"));
 
-        row.IsValid.Should().BeFalse();
+        Assert.False(row.IsValid);
     }
 
     [Fact]
@@ -274,7 +277,7 @@ public class ManageProfilesDialogViewModelTests
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/first"));
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/second"));
 
-        row.IsValid.Should().BeFalse();
+        Assert.False(row.IsValid);
     }
 
     // The spawn composition folds case-insensitively (TtyEnvironment, the Claude driver), so two case-variant
@@ -287,7 +290,7 @@ public class ManageProfilesDialogViewModelTests
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MyVar", "/first"));
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MYVAR", "/second"));
 
-        row.IsValid.Should().BeFalse();
+        Assert.False(row.IsValid);
     }
 
     [Fact]
@@ -302,8 +305,8 @@ public class ManageProfilesDialogViewModelTests
         var incapable = new EditableProfileViewModel(
             new SessionProfile("b", new PluginProviderConfig("env-less", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
 
-        capable.SupportsEnvVars.Should().BeTrue();
-        incapable.SupportsEnvVars.Should().BeFalse();
+        Assert.True(capable.SupportsEnvVars);
+        Assert.False(incapable.SupportsEnvVars);
     }
 
     [Fact]
@@ -312,7 +315,7 @@ public class ManageProfilesDialogViewModelTests
         var row = new EditableProfileViewModel(
             new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
 
-        row.SupportsEnvVars.Should().BeFalse();
+        Assert.False(row.SupportsEnvVars);
     }
 
     private static SessionProviderRegistration _Registration(string providerId, bool supportsEnvVars) => new(
@@ -332,7 +335,7 @@ public class ManageProfilesDialogViewModelTests
         await vm.SaveCommand.ExecuteAsync(null);
 
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
-        vm.StatusMessage.Should().NotBeNullOrEmpty();
+        Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
     }
 
     [Fact]
@@ -343,7 +346,7 @@ public class ManageProfilesDialogViewModelTests
 
         vm.AddProfileCommand.Execute(null);
 
-        vm.Profiles[0].CanChooseProvider.Should().BeTrue();
+        Assert.True(vm.Profiles[0].CanChooseProvider);
     }
 
     [Fact]
@@ -355,7 +358,7 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Profiles[0].CanChooseProvider.Should().BeFalse();
+        Assert.False(vm.Profiles[0].CanChooseProvider);
     }
 
     [Fact]
@@ -393,7 +396,7 @@ public class ManageProfilesDialogViewModelTests
         await vm.SaveCommand.ExecuteAsync(null);
 
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<SessionProfile>>(), Arg.Any<CancellationToken>());
-        vm.StatusMessage.Should().NotBeNullOrEmpty();
+        Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
     }
 
     [Fact]
@@ -409,8 +412,8 @@ public class ManageProfilesDialogViewModelTests
 
         await vm.RefreshModelsCommand.ExecuteAsync(null);
 
-        row.AvailableModels.Should().Equal("llama3.1", "qwen2.5-7b-instruct");
-        vm.ModelFetchStatus.Should().Contain("2");
+        Assert.Equal(new[] { "llama3.1", "qwen2.5-7b-instruct" }, row.AvailableModels);
+        Assert.Contains("2", vm.ModelFetchStatus);
     }
 
     [Fact]
@@ -425,7 +428,7 @@ public class ManageProfilesDialogViewModelTests
 
         var profile = editable.ToProfile();
 
-        profile.Purpose.Should().BeNull();
-        profile.Defaults.Should().NotBeNull();
+        Assert.Null(profile.Purpose);
+        Assert.NotNull(profile.Defaults);
     }
 }

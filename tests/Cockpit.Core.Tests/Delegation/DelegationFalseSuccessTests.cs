@@ -8,7 +8,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -34,10 +33,10 @@ public class DelegationFalseSuccessTests
         await _WaitUntilAsync(() => _IsFinished(service.GetTask(task.TaskId)!.Status));
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Failed, "a run that landed no tool call produced nothing");
-        finished.Error.Should().Contain("No-op run");
+        Assert.Equal(DelegatedTaskStatus.Failed, finished.Status);
+        Assert.Contains("No-op run", finished.Error);
         // The model's own reply is still preserved so the caller can see what it said, not just that it failed.
-        finished.Result.Should().Be("I can't create files.");
+        Assert.Equal("I can't create files.", finished.Result);
     }
 
     [Fact]
@@ -51,8 +50,8 @@ public class DelegationFalseSuccessTests
         await _WaitUntilAsync(() => _IsFinished(service.GetTask(task.TaskId)!.Status));
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Completed);
-        finished.Error.Should().BeNull();
+        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
+        Assert.Null(finished.Error);
     }
 
     [Fact]
@@ -66,9 +65,9 @@ public class DelegationFalseSuccessTests
         await _WaitUntilAsync(() => _IsFinished(service.GetTask(task.TaskId)!.Status));
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Completed);
-        finished.Error.Should().BeNull();
-        finished.Result.Should().Be("The answer is 42.");
+        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
+        Assert.Null(finished.Error);
+        Assert.Equal("The answer is 42.", finished.Result);
     }
 
     [Fact]
@@ -84,8 +83,8 @@ public class DelegationFalseSuccessTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 2);
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Completed, "the second, tool-less turn stands on its own");
-        finished.Error.Should().BeNull();
+        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
+        Assert.Null(finished.Error);
     }
 
     [Fact]
@@ -101,7 +100,7 @@ public class DelegationFalseSuccessTests
         var task = await service.DelegateAsync(new DelegationRequest("local", "write then write"));
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 2);
 
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Failed);
+        Assert.Equal(DelegatedTaskStatus.Failed, service.GetTask(task.TaskId)!.Status);
     }
 
     private static DelegationService _Service(ISessionDriver driver)

@@ -1,6 +1,5 @@
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -25,8 +24,8 @@ public class PluginIntentRegistryTests
 
         var result = await registry.Dispatch(Intent("youtrack", "autopilot", "start", ("issue", "AC-95")));
 
-        result.Should().NotBeNull();
-        result!["session"].Should().Be("pane-AC-95");
+        Assert.NotNull(result);
+        Assert.Equal("pane-AC-95", result!["session"]);
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public class PluginIntentRegistryTests
 
         var result = await registry.Dispatch(Intent("youtrack", "autopilot", "start"));
 
-        result.Should().BeNull();
+        Assert.Null(result);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class PluginIntentRegistryTests
 
         var result = await registry.Dispatch(Intent("youtrack", "autopilot", "stop"));
 
-        result.Should().BeNull();
+        Assert.Null(result);
     }
 
     [Fact]
@@ -56,9 +55,9 @@ public class PluginIntentRegistryTests
         var registry = new PluginIntentRegistry();
         registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
 
-        registry.HasHandler("autopilot", "start").Should().BeTrue();
-        registry.HasHandler("autopilot", "stop").Should().BeFalse();
-        registry.HasHandler("something-else", "start").Should().BeFalse();
+        Assert.True(registry.HasHandler("autopilot", "start"));
+        Assert.False(registry.HasHandler("autopilot", "stop"));
+        Assert.False(registry.HasHandler("something-else", "start"));
     }
 
     [Fact]
@@ -69,7 +68,8 @@ public class PluginIntentRegistryTests
 
         var act = () => registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*already registered*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("already registered", ex.Message);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class PluginIntentRegistryTests
         registry.Register("autopilot", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string> { ["who"] = "autopilot" }));
         registry.Register("scripted", "start", _ => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string> { ["who"] = "scripted" }));
 
-        (await registry.Dispatch(Intent("youtrack", "autopilot", "start")))!["who"].Should().Be("autopilot");
-        (await registry.Dispatch(Intent("youtrack", "scripted", "start")))!["who"].Should().Be("scripted");
+        Assert.Equal("autopilot", (await registry.Dispatch(Intent("youtrack", "autopilot", "start")))!["who"]);
+        Assert.Equal("scripted", (await registry.Dispatch(Intent("youtrack", "scripted", "start")))!["who"]);
     }
 }

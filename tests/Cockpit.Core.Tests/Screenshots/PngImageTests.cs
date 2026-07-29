@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using FluentAssertions;
 using Cockpit.Core.Screenshots;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -14,10 +13,10 @@ public class PngImageTests
     [Fact]
     public void TheHeadersDimensions_AreRead()
     {
-        PngImage.TryReadSize(Png(2880, 1620), out var width, out var height).Should().BeTrue();
+        Assert.True(PngImage.TryReadSize(Png(2880, 1620), out var width, out var height));
 
-        width.Should().Be(2880);
-        height.Should().Be(1620);
+        Assert.Equal(2880, width);
+        Assert.Equal(1620, height);
     }
 
     /// <summary>The image is a desktop's worth of pixels; the answer is twenty-four bytes in and the rest is never touched.</summary>
@@ -26,8 +25,8 @@ public class PngImageTests
     {
         var png = Png(1920, 1080).Concat(Enumerable.Repeat((byte)0x42, 4096)).ToArray();
 
-        PngImage.TryReadSize(png, out var width, out _).Should().BeTrue();
-        width.Should().Be(1920);
+        Assert.True(PngImage.TryReadSize(png, out var width, out _));
+        Assert.Equal(1920, width);
     }
 
     /// <summary>A JPEG, an error page, a truncated write — none of them are the capture, and reporting a size for one would put a nonsense rectangle into the layout.</summary>
@@ -36,7 +35,7 @@ public class PngImageTests
     [InlineData("\x89PNG\r\n\x1a\n")]
     public void BytesThatAreNotAPng_HaveNoSize(string content)
     {
-        PngImage.TryReadSize(System.Text.Encoding.Latin1.GetBytes(content), out _, out _).Should().BeFalse();
+        Assert.False(PngImage.TryReadSize(System.Text.Encoding.Latin1.GetBytes(content), out _, out _));
     }
 
     /// <summary>
@@ -50,7 +49,7 @@ public class PngImageTests
         var png = Png(1920, 1080);
         png[0] = 0xFF;
 
-        PngImage.TryReadSize(png, out _, out _).Should().BeFalse();
+        Assert.False(PngImage.TryReadSize(png, out _, out _));
     }
 
     /// <summary>
@@ -64,14 +63,14 @@ public class PngImageTests
         var png = Png(1920, 1080);
         "sRGB"u8.CopyTo(png.AsSpan(12));
 
-        PngImage.TryReadSize(png, out _, out _).Should().BeFalse();
+        Assert.False(PngImage.TryReadSize(png, out _, out _));
     }
 
     /// <summary>The spec forbids a zero dimension, so a zero is a big-endian read of something that was never a size.</summary>
     [Fact]
     public void APngClaimingNoWidth_IsRefused()
     {
-        PngImage.TryReadSize(Png(0, 1080), out _, out _).Should().BeFalse();
+        Assert.False(PngImage.TryReadSize(Png(0, 1080), out _, out _));
     }
 
     /// <summary>

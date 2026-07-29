@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -24,8 +23,8 @@ public class StdioServerEnvironmentAnthropicCredentialTests
 
         var environment = StdioServerEnvironment.Build(inherited);
 
-        environment.Should().NotContainKey("ANTHROPIC_API_KEY");
-        environment.Should().Contain("PATH", "/usr/bin");
-        environment.Should().Contain("HOME", "/home/raymond");
+        Assert.DoesNotContain("ANTHROPIC_API_KEY", environment);
+        Assert.Contains(new KeyValuePair<string, string?>("PATH", "/usr/bin"), environment);
+        Assert.Contains(new KeyValuePair<string, string?>("HOME", "/home/raymond"), environment);
     }
 }

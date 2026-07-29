@@ -1,5 +1,4 @@
 using Cockpit.App.Controls;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Controls;
 
@@ -15,8 +14,8 @@ public class DialogScreenClampTests
     {
         var (width, height) = DialogScreenClamp.Fit(860, 680, minWidth: 620, minHeight: 480, availableWidth: 1920, availableHeight: 1080);
 
-        width.Should().Be(860);
-        height.Should().Be(680);
+        Assert.Equal(860, width);
+        Assert.Equal(680, height);
     }
 
     [Fact]
@@ -24,8 +23,8 @@ public class DialogScreenClampTests
     {
         var (width, height) = DialogScreenClamp.Fit(1200, 820, minWidth: 760, minHeight: 480, availableWidth: 1280, availableHeight: 720);
 
-        width.Should().Be(1280 * 0.9);
-        height.Should().Be(720 * 0.9);
+        Assert.Equal(1280 * 0.9, width);
+        Assert.Equal(720 * 0.9, height);
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class DialogScreenClampTests
     {
         var (width, height) = DialogScreenClamp.Fit(860, 680, minWidth: 620, minHeight: 480, availableWidth: 600, availableHeight: 400);
 
-        width.Should().Be(620);
-        height.Should().Be(480);
+        Assert.Equal(620, width);
+        Assert.Equal(480, height);
     }
 }

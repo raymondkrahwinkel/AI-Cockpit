@@ -14,7 +14,6 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -36,8 +35,8 @@ public class CockpitViewModelPendingApprovalBannerTests
 
         vm.RefreshPluginFailures();
 
-        vm.HasPendingApprovals.Should().BeFalse();
-        vm.PendingApprovalBanner.Should().BeEmpty();
+        Assert.False(vm.HasPendingApprovals);
+        Assert.Empty(vm.PendingApprovalBanner);
     }
 
     [Fact]
@@ -49,9 +48,9 @@ public class CockpitViewModelPendingApprovalBannerTests
 
         vm.RefreshPluginFailures();
 
-        vm.HasPendingApprovals.Should().BeTrue();
-        vm.PendingApprovalBanner.Should().Contain("Git Status");
-        vm.PendingApprovalBanner.Should().Contain("Plugin store");
+        Assert.True(vm.HasPendingApprovals);
+        Assert.Contains("Git Status", vm.PendingApprovalBanner);
+        Assert.Contains("Plugin store", vm.PendingApprovalBanner);
     }
 
     [Fact]
@@ -64,8 +63,8 @@ public class CockpitViewModelPendingApprovalBannerTests
 
         vm.RefreshPluginFailures();
 
-        vm.HasPendingApprovals.Should().BeTrue();
-        vm.PendingApprovalBanner.Should().Contain("2 plugins");
+        Assert.True(vm.HasPendingApprovals);
+        Assert.Contains("2 plugins", vm.PendingApprovalBanner);
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class CockpitViewModelPendingApprovalBannerTests
 
         vm.DismissPendingApprovalsCommand.Execute(null);
 
-        vm.HasPendingApprovals.Should().BeFalse();
+        Assert.False(vm.HasPendingApprovals);
     }
 
     /// <summary>
@@ -97,9 +96,9 @@ public class CockpitViewModelPendingApprovalBannerTests
 
         vm.RefreshPluginFailures();
 
-        vm.Plugins.Plugins.Should().BeEmpty("the manager's own LoadAsync has not run — this is the startup path");
-        vm.Plugins.PendingApprovalCount.Should().Be(2);
-        vm.Plugins.HasPendingApproval.Should().BeTrue();
+        Assert.Empty(vm.Plugins.Plugins);
+        Assert.Equal(2, vm.Plugins.PendingApprovalCount);
+        Assert.True(vm.Plugins.HasPendingApproval);
     }
 
     [Fact]
@@ -112,8 +111,8 @@ public class CockpitViewModelPendingApprovalBannerTests
         vm.RefreshPluginFailures();
 
         // Awaiting approval is an everyday state, not a load failure — the two banners are independent.
-        vm.HasPluginFailures.Should().BeFalse();
-        vm.PluginFailureBanner.Should().BeEmpty();
+        Assert.False(vm.HasPluginFailures);
+        Assert.Empty(vm.PluginFailureBanner);
     }
 
     private static CockpitViewModel NewVm(PluginDiagnostics diagnostics)

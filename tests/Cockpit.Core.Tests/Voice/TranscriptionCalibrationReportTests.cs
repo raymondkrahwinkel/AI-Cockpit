@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -22,7 +21,7 @@ public class TranscriptionCalibrationReportTests
     [InlineData(16, true)]
     [InlineData(41, false)]
     public void IsSmooth_TurnsOnTheOneFrameThreshold(double hitchMs, bool expected) =>
-        TranscriptionCalibrationReport.IsSmooth(Cpu(800, hitchMs)).Should().Be(expected);
+        Assert.Equal(expected, TranscriptionCalibrationReport.IsSmooth(Cpu(800, hitchMs)));
 
     [Fact]
     public void CpuIsPreferred_WhenItIsCloseToTheGpuAndTheGpuIsSmooth()
@@ -30,8 +29,8 @@ public class TranscriptionCalibrationReportTests
         // CPU only ~25% slower than a smooth GPU: keep the desktop perfectly smooth for a negligible speed cost.
         var (backend, rationale) = TranscriptionCalibrationReport.Decide([Cpu(2500), Gpu(2000, hitchMs: 4)]);
 
-        backend.Should().Be(VoiceBackendPreference.Cpu);
-        rationale.Should().Contain("smooth");
+        Assert.Equal(VoiceBackendPreference.Cpu, backend);
+        Assert.Contains("smooth", rationale);
     }
 
     [Fact]
@@ -40,33 +39,32 @@ public class TranscriptionCalibrationReportTests
         // The pathological AMD case that started this: 35s on the CPU is unusable next to a 3s GPU.
         var (backend, rationale) = TranscriptionCalibrationReport.Decide([Cpu(35000), Gpu(3000, hitchMs: 6)]);
 
-        backend.Should().Be(VoiceBackendPreference.Vulkan);
-        rationale.Should().Contain("faster");
+        Assert.Equal(VoiceBackendPreference.Vulkan, backend);
+        Assert.Contains("faster", rationale);
     }
 
     [Fact]
     public void AHitchingGpu_WidensTheCpuPreference()
     {
         // CPU is 2.5x slower than the GPU, but the GPU hitches the desktop: the wider margin (3x) keeps the CPU.
-        TranscriptionCalibrationReport.Decide([Cpu(5000), Gpu(2000, hitchMs: 40)])
-            .Backend.Should().Be(VoiceBackendPreference.Cpu);
+        Assert.Equal(VoiceBackendPreference.Cpu, TranscriptionCalibrationReport.Decide([Cpu(5000), Gpu(2000, hitchMs: 40)]).Backend);
 
         // The same speed gap with a smooth GPU falls outside the tighter margin (1.5x): the GPU wins.
-        TranscriptionCalibrationReport.Decide([Cpu(5000), Gpu(2000, hitchMs: 4)])
-            .Backend.Should().Be(VoiceBackendPreference.Vulkan);
+        Assert.Equal(VoiceBackendPreference.Vulkan, TranscriptionCalibrationReport.Decide([Cpu(5000), Gpu(2000, hitchMs: 4)]).Backend);
     }
 
     [Fact]
     public void WithOnlyTheCpuMeasured_ItIsChosen()
     {
-        TranscriptionCalibrationReport.Decide([Cpu(4200)]).Backend.Should().Be(VoiceBackendPreference.Cpu);
+        Assert.Equal(VoiceBackendPreference.Cpu, TranscriptionCalibrationReport.Decide([Cpu(4200)]).Backend);
     }
 
     [Fact]
     public void RationaleForACpuChoice_NamesBothTimes()
     {
-        TranscriptionCalibrationReport.Decide([Cpu(2200), Gpu(2000, hitchMs: 3)])
-            .Rationale.Should().ContainAll("CPU", "GPU");
+        var rationale = TranscriptionCalibrationReport.Decide([Cpu(2200), Gpu(2000, hitchMs: 3)]).Rationale;
+        Assert.Contains("CPU", rationale);
+        Assert.Contains("GPU", rationale);
     }
 
     [Fact]
@@ -81,7 +79,7 @@ public class TranscriptionCalibrationReportTests
             new ModelMeasurement("tiny", 60),
         };
 
-        TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("large-v3-turbo");
+        Assert.Equal("large-v3-turbo", TranscriptionCalibrationReport.RecommendModel(ladder).Model);
     }
 
     [Fact]
@@ -97,7 +95,7 @@ public class TranscriptionCalibrationReportTests
         };
 
         // base (2.8s) is the most accurate model still under the 3s budget; turbo/small are too slow.
-        TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("base");
+        Assert.Equal("base", TranscriptionCalibrationReport.RecommendModel(ladder).Model);
     }
 
     [Fact]
@@ -110,7 +108,7 @@ public class TranscriptionCalibrationReportTests
             new ModelMeasurement("tiny", 6000),
         };
 
-        TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("tiny");
+        Assert.Equal("tiny", TranscriptionCalibrationReport.RecommendModel(ladder).Model);
     }
 
     [Fact]
@@ -123,6 +121,6 @@ public class TranscriptionCalibrationReportTests
             new ModelMeasurement("my-custom-q5", 100),
         };
 
-        TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("large-v3-turbo");
+        Assert.Equal("large-v3-turbo", TranscriptionCalibrationReport.RecommendModel(ladder).Model);
     }
 }

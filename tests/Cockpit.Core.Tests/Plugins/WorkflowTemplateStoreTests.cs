@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -36,13 +35,13 @@ public class WorkflowTemplateStoreTests
         }
         """;
 
-        PluginStoreIndex.TryParse(json, out var index, out var error).Should().BeTrue(error);
+        Assert.True(PluginStoreIndex.TryParse(json, out var index, out var error), error);
 
         var template = index!.Templates!.Single();
-        template.Id.Should().Be("raymond.ticket-to-agent");
-        template.Path.Should().Be("templates/ticket-to-agent.json");
-        template.Sha256.Should().Be("abc123");
-        template.Requires.Should().Equal("youtrack");
+        Assert.Equal("raymond.ticket-to-agent", template.Id);
+        Assert.Equal("templates/ticket-to-agent.json", template.Path);
+        Assert.Equal("abc123", template.Sha256);
+        Assert.Equal(new[] { "youtrack" }, template.Requires);
     }
 
     // Every store published before templates existed has no "templates" key. It must still parse — the plugins it
@@ -59,18 +58,18 @@ public class WorkflowTemplateStoreTests
         }
         """;
 
-        PluginStoreIndex.TryParse(json, out var index, out var error).Should().BeTrue(error);
+        Assert.True(PluginStoreIndex.TryParse(json, out var index, out var error), error);
 
-        index!.Plugins.Should().ContainSingle();
-        index.Templates.Should().BeEmpty();
+        Assert.Single(index!.Plugins);
+        Assert.Empty(index.Templates!);
     }
 
     [Fact]
     public void AnIndexWithNeitherPluginsNorTemplates_ParsesToEmptyLists_RatherThanNulls()
     {
-        PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _).Should().BeTrue();
+        Assert.True(PluginStoreIndex.TryParse("""{ "name": "Empty" }""", out var index, out _));
 
-        index!.Plugins.Should().BeEmpty();
-        index.Templates.Should().BeEmpty();
+        Assert.Empty(index!.Plugins);
+        Assert.Empty(index.Templates!);
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -19,7 +18,7 @@ public class WhisperBackendPlannerTests
     {
         var order = WhisperBackendPlanner.BuildOrder(VoiceBackendPreference.Cpu, platform);
 
-        order.Should().Equal(WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx);
+        Assert.Equal(new[] { WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx }, order);
     }
 
     [Theory]
@@ -29,9 +28,11 @@ public class WhisperBackendPlannerTests
     {
         var order = WhisperBackendPlanner.BuildOrder(VoiceBackendPreference.Cuda, platform);
 
-        order.Should().Equal(
+        Assert.Equal(new[]
+        {
             WhisperRuntimeBackend.Cuda, WhisperRuntimeBackend.Cuda12,
-            WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx);
+            WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx,
+        }, order);
     }
 
     /// <summary>
@@ -46,7 +47,7 @@ public class WhisperBackendPlannerTests
     {
         var order = WhisperBackendPlanner.BuildOrder(VoiceBackendPreference.Vulkan, platform);
 
-        order.Should().Equal(WhisperRuntimeBackend.Vulkan, WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx);
+        Assert.Equal(new[] { WhisperRuntimeBackend.Vulkan, WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx }, order);
     }
 
     /// <summary>The AMD-on-Linux case that used to end on the CPU: Auto has to reach Vulkan there.</summary>
@@ -57,9 +58,11 @@ public class WhisperBackendPlannerTests
     {
         var order = WhisperBackendPlanner.BuildOrder(VoiceBackendPreference.Auto, platform);
 
-        order.Should().Equal(
+        Assert.Equal(new[]
+        {
             WhisperRuntimeBackend.Cuda, WhisperRuntimeBackend.Cuda12, WhisperRuntimeBackend.Vulkan,
-            WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx);
+            WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx,
+        }, order);
     }
 
     /// <summary>
@@ -76,7 +79,7 @@ public class WhisperBackendPlannerTests
     {
         var order = WhisperBackendPlanner.BuildOrder(preference, WhisperHostPlatform.MacOs);
 
-        order.Should().Equal(WhisperRuntimeBackend.Cpu);
+        Assert.Equal(new[] { WhisperRuntimeBackend.Cpu }, order);
     }
 
     /// <summary>
@@ -88,8 +91,7 @@ public class WhisperBackendPlannerTests
     {
         foreach (var preference in Enum.GetValues<VoiceBackendPreference>())
         {
-            WhisperBackendPlanner.BuildOrder(preference, WhisperHostPlatform.MacOs)
-                .Should().NotContain(WhisperRuntimeBackend.CpuNoAvx, $"preference={preference}");
+            Assert.DoesNotContain(WhisperRuntimeBackend.CpuNoAvx, WhisperBackendPlanner.BuildOrder(preference, WhisperHostPlatform.MacOs));
         }
     }
 
@@ -102,9 +104,8 @@ public class WhisperBackendPlannerTests
             {
                 var order = WhisperBackendPlanner.BuildOrder(preference, platform);
 
-                order.Should().Contain(WhisperRuntimeBackend.Cpu,
-                    $"preference={preference}, platform={platform} must always have a CPU fallback");
-                order[^1].Should().BeOneOf(WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx);
+                Assert.Contains(WhisperRuntimeBackend.Cpu, order);
+                Assert.Contains(order[^1], new[] { WhisperRuntimeBackend.Cpu, WhisperRuntimeBackend.CpuNoAvx });
             }
         }
     }

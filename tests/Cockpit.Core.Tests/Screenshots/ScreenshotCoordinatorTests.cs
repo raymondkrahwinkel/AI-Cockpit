@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
@@ -44,7 +43,8 @@ public class ScreenshotCoordinatorTests
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
-        session.InjectedScreenshots.Should().ContainSingle().Which.Should().Equal(Png);
+        var injected = Assert.Single(session.InjectedScreenshots);
+        Assert.Equal(Png, injected);
         toasts.DidNotReceiveWithAnyArgs().Show(default!, default);
     }
 
@@ -57,7 +57,7 @@ public class ScreenshotCoordinatorTests
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
-        session.InjectedScreenshots.Should().BeEmpty();
+        Assert.Empty(session.InjectedScreenshots);
         toasts.DidNotReceiveWithAnyArgs().Show(default!, default);
     }
 
@@ -74,7 +74,7 @@ public class ScreenshotCoordinatorTests
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
-        capture.CaptureCallCount.Should().Be(0);
+        Assert.Equal(0, capture.CaptureCallCount);
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("session")), ToastSeverity.Warning);
     }
 
@@ -99,9 +99,8 @@ public class ScreenshotCoordinatorTests
             new RecordingSession(),
             out var toasts);
 
-        var act = async () => await coordinator.CaptureIntoSelectedSessionAsync();
+        await coordinator.CaptureIntoSelectedSessionAsync();
 
-        await act.Should().NotThrowAsync("both callers discard the task");
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("the portal said no")), ToastSeverity.Error);
     }
 
@@ -124,8 +123,8 @@ public class ScreenshotCoordinatorTests
 
         await coordinator.CaptureIntoSelectedSessionAsync();
 
-        capture.CaptureCallCount.Should().Be(1);
-        session.InjectedScreenshots.Should().ContainSingle();
+        Assert.Equal(1, capture.CaptureCallCount);
+        Assert.Single(session.InjectedScreenshots);
     }
 
     /// <summary>The button reads this to disable itself with a reason rather than offering a capture the platform cannot do.</summary>
@@ -134,7 +133,7 @@ public class ScreenshotCoordinatorTests
     {
         var coordinator = _Create(new FakeScreenshotCapture { IsSupported = false }, session: null, out _);
 
-        coordinator.IsSupported.Should().BeFalse();
+        Assert.False(coordinator.IsSupported);
     }
 
     private static ScreenshotCoordinator _Create(

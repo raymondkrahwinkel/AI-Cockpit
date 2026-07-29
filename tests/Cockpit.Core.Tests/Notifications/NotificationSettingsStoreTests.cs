@@ -2,7 +2,6 @@ using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
@@ -29,10 +28,10 @@ public class NotificationSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.LocalEnabled.Should().BeTrue();
-        settings.DiscordEnabled.Should().BeFalse();
-        settings.WebhookUrl.Should().BeNull();
-        settings.IdleThreshold.Should().Be(NotificationSettings.DefaultIdleThreshold);
+        Assert.True(settings.LocalEnabled);
+        Assert.False(settings.DiscordEnabled);
+        Assert.Null(settings.WebhookUrl);
+        Assert.Equal(NotificationSettings.DefaultIdleThreshold, settings.IdleThreshold);
     }
 
     [Fact]
@@ -54,7 +53,7 @@ public class NotificationSettingsStoreTests : IDisposable
         await store.SaveAsync(settings);
         var loaded = await store.LoadAsync();
 
-        loaded.Should().BeEquivalentTo(settings);
+        Assert.Equivalent(settings, loaded);
     }
 
     // 0 minutes means "never let a session go idle" — a real choice, so it must survive the round-trip instead of
@@ -67,7 +66,7 @@ public class NotificationSettingsStoreTests : IDisposable
         await store.SaveAsync(new NotificationSettings { SessionIdleThreshold = TimeSpan.Zero });
         var loaded = await store.LoadAsync();
 
-        loaded.SessionIdleThreshold.Should().Be(TimeSpan.Zero);
+        Assert.Equal(TimeSpan.Zero, loaded.SessionIdleThreshold);
     }
 
     [Fact]
@@ -85,8 +84,8 @@ public class NotificationSettingsStoreTests : IDisposable
         var reloadedProfiles = await profileStore.LoadAsync();
         var reloadedSettings = await notificationStore.LoadAsync();
 
-        reloadedProfiles.Should().BeEquivalentTo(profiles);
-        reloadedSettings.WebhookUrl.Should().Be("https://example/webhook");
+        Assert.Equivalent(profiles, reloadedProfiles);
+        Assert.Equal("https://example/webhook", reloadedSettings.WebhookUrl);
     }
 
     public void Dispose()

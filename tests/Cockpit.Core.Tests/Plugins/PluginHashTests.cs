@@ -1,6 +1,5 @@
 using System.Text;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -15,15 +14,14 @@ public class PluginHashTests
         var first = PluginHash.Compute(bytes);
         var second = PluginHash.Compute(bytes);
 
-        first.Should().Be(second);
-        first.Should().MatchRegex("^[0-9a-f]{64}$");
+        Assert.Equal(second, first);
+        Assert.Matches("^[0-9a-f]{64}$", first);
     }
 
     [Fact]
     public void Compute_DifferentBytes_DifferentHash()
     {
-        PluginHash.Compute(Encoding.UTF8.GetBytes("v1"))
-            .Should().NotBe(PluginHash.Compute(Encoding.UTF8.GetBytes("v2")));
+        Assert.NotEqual(PluginHash.Compute(Encoding.UTF8.GetBytes("v2")), PluginHash.Compute(Encoding.UTF8.GetBytes("v1")));
     }
 
     [Fact]
@@ -40,7 +38,8 @@ public class PluginHashTests
             new PluginClosureFile("Plugin.dll", "aaaa"),
         ]);
 
-        a.Should().Be(reordered).And.MatchRegex("^[0-9a-f]{64}$");
+        Assert.Equal(reordered, a);
+        Assert.Matches("^[0-9a-f]{64}$", a);
     }
 
     [Fact]
@@ -51,7 +50,7 @@ public class PluginHashTests
         var depChanged = PluginHash.ComputeClosure(
             [new PluginClosureFile("Plugin.dll", "entry"), new PluginClosureFile("Dep.dll", "dep-v2")]);
 
-        depChanged.Should().NotBe(original);
+        Assert.NotEqual(original, depChanged);
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class PluginHashTests
         var swapped = PluginHash.ComputeClosure(
             [new PluginClosureFile("a.dll", "y"), new PluginClosureFile("b.dll", "x")]);
 
-        swapped.Should().NotBe(one);
+        Assert.NotEqual(one, swapped);
     }
 
     [Fact]
@@ -78,6 +77,6 @@ public class PluginHashTests
         var forged = PluginHash.ComputeClosure(
             [new PluginClosureFile("a\n2  b", "1")]);
 
-        forged.Should().NotBe(honest);
+        Assert.NotEqual(honest, forged);
     }
 }

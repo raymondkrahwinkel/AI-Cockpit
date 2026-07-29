@@ -14,7 +14,6 @@ using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -45,9 +44,9 @@ public class DelegationWorktreeCleanupTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/delegated"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
-        result.RootElement.GetProperty("error").GetString().Should().Contain("still running");
-        _Removals(manager).Should().BeEmpty();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("still running", result.RootElement.GetProperty("error").GetString());
+        Assert.Empty(_Removals(manager));
     }
 
     [Fact]
@@ -69,8 +68,8 @@ public class DelegationWorktreeCleanupTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/delegated"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
-        _Removals(manager).Should().Equal((record, false));
+        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal(new[] { (record, false) }, _Removals(manager));
     }
 
     [Fact]
@@ -85,7 +84,7 @@ public class DelegationWorktreeCleanupTests
 
         // Nor has it been handed back — the reap does that, not the answer. Asserted here rather than in the test
         // that exercises the reap, because a five-minute window leaves no doubt about which side of it we are on.
-        _ReleasedSessions(worktrees).Should().BeEmpty();
+        Assert.Empty(_ReleasedSessions(worktrees));
 
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record(task.TaskId, "/wt/answered");
@@ -94,8 +93,8 @@ public class DelegationWorktreeCleanupTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/answered"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
-        _Removals(manager).Should().BeEmpty();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Empty(_Removals(manager));
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class DelegationWorktreeCleanupTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Failed);
         await Task.Delay(150);
 
-        _ReleasedSessions(worktrees).Should().BeEmpty();
+        Assert.Empty(_ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -135,9 +134,9 @@ public class DelegationWorktreeCleanupTests
 
         var task = await service.DelegateAsync(new DelegationRequest("local", "never gets going"));
 
-        service.GetTask(task.TaskId)!.Error.Should().Contain("could not be reached");
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Failed);
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Contains("could not be reached", service.GetTask(task.TaskId)!.Error);
+        Assert.Equal(DelegatedTaskStatus.Failed, service.GetTask(task.TaskId)!.Status);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -153,7 +152,7 @@ public class DelegationWorktreeCleanupTests
         await service.StopAsync(task.TaskId);
         await service.StopAsync(task.TaskId);
 
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -168,7 +167,7 @@ public class DelegationWorktreeCleanupTests
 
         await service.StopAsync(task.TaskId);
 
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -180,7 +179,7 @@ public class DelegationWorktreeCleanupTests
 
         await Task.Delay(150);
 
-        _ReleasedSessions(worktrees).Should().BeEmpty();
+        Assert.Empty(_ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -194,7 +193,7 @@ public class DelegationWorktreeCleanupTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Completed);
 
         await _WaitUntilAsync(() => worktrees.ReceivedCalls().Any(), attempts: 200);
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -209,7 +208,7 @@ public class DelegationWorktreeCleanupTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Failed);
 
         await _WaitUntilAsync(() => worktrees.ReceivedCalls().Any());
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -243,7 +242,7 @@ public class DelegationWorktreeCleanupTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Running);
         await service.StopAsync(task.TaskId);
 
-        _ReleasedSessions(worktrees).Should().Equal(task.TaskId);
+        Assert.Equal(new[] { task.TaskId }, _ReleasedSessions(worktrees));
     }
 
     [Fact]
@@ -256,7 +255,7 @@ public class DelegationWorktreeCleanupTests
         var registry = new LiveSessionRegistry([delegated]);
         registry.SetSource(() => new HashSet<string>(StringComparer.Ordinal) { "pane-1" });
 
-        registry.LiveSessionIds.Should().BeEquivalentTo(["pane-1", "task-1"]);
+        Assert.Equivalent(new object[] { "pane-1", "task-1" }, registry.LiveSessionIds);
     }
 
     // startFailure makes the session fail to start, by way of a factory that cannot produce a driver — a real class

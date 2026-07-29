@@ -4,7 +4,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -34,10 +33,10 @@ public class VoiceInjectionTests
         };
         await _WaitForVoiceSettingsToLoadAsync(() => vm.VoiceEnabled);
 
-        vm.BeginVoiceHold().Should().BeTrue();
+        Assert.True(vm.BeginVoiceHold());
         await vm.EndVoiceHoldAsync(applyCleanup: true);
 
-        vm.InputText.Should().Be("before  Open the settings dialog.");
+        Assert.Equal("before  Open the settings dialog.", vm.InputText);
         await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>());
     }
 
@@ -56,10 +55,10 @@ public class VoiceInjectionTests
         string? rawTranscript = null;
         vm.VoiceTranscriptReady += text => rawTranscript = text;
 
-        vm.BeginVoiceHold().Should().BeTrue();
+        Assert.True(vm.BeginVoiceHold());
         await vm.EndVoiceHoldAsync(applyCleanup: false);
 
-        rawTranscript.Should().Be("open the settings dialog");
+        Assert.Equal("open the settings dialog", rawTranscript);
         await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>());
     }
 
@@ -84,11 +83,11 @@ public class VoiceInjectionTests
         // without a real timer — the point under test is that the CR is a separate write that follows the text.
         vm.SetAutoSubmitScheduler(submit => submit());
 
-        vm.BeginVoiceHold().Should().BeTrue();
+        Assert.True(vm.BeginVoiceHold());
         await vm.EndVoiceHoldAsync(applyCleanup: false);
 
         // The transcript first, then a lone carriage return — the byte a physical Enter sends into the pty.
-        writes.Should().Equal("open the settings dialog", "\r");
+        Assert.Equal(new[] { "open the settings dialog", "\r" }, writes);
     }
 
     [Fact]
@@ -101,7 +100,7 @@ public class VoiceInjectionTests
         var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore);
         await _WaitForVoiceSettingsToLoadAsync(() => !vm.VoiceEnabled);
 
-        vm.BeginVoiceHold().Should().BeFalse();
+        Assert.False(vm.BeginVoiceHold());
         voicePushToTalk.DidNotReceiveWithAnyArgs().BeginHold();
     }
 

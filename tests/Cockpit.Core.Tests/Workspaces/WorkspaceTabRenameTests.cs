@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -18,8 +17,8 @@ public class WorkspaceTabRenameTests
 
         tab.BeginRename();
 
-        tab.IsRenaming.Should().BeTrue();
-        tab.EditName.Should().Be("Work");
+        Assert.True(tab.IsRenaming);
+        Assert.Equal("Work", tab.EditName);
     }
 
     [Fact]
@@ -31,9 +30,9 @@ public class WorkspaceTabRenameTests
 
         var committed = tab.CommitRename();
 
-        committed.Should().Be("Client work");
-        tab.Name.Should().Be("Client work", "the strip updates before the rebuilt tabs arrive from the store");
-        tab.IsRenaming.Should().BeFalse();
+        Assert.Equal("Client work", committed);
+        Assert.Equal("Client work", tab.Name);
+        Assert.False(tab.IsRenaming);
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class WorkspaceTabRenameTests
         tab.BeginRename();
         tab.EditName = "  Client work  ";
 
-        tab.CommitRename().Should().Be("Client work");
+        Assert.Equal("Client work", tab.CommitRename());
     }
 
     [Fact]
@@ -53,9 +52,9 @@ public class WorkspaceTabRenameTests
         tab.BeginRename();
         tab.EditName = "   ";
 
-        tab.CommitRename().Should().BeNull();
-        tab.Name.Should().Be("Work");
-        tab.IsRenaming.Should().BeFalse("the edit still ends — it just changes nothing");
+        Assert.Null(tab.CommitRename());
+        Assert.Equal("Work", tab.Name);
+        Assert.False(tab.IsRenaming, "the edit still ends — it just changes nothing");
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class WorkspaceTabRenameTests
         var tab = _Tab("Work");
         tab.BeginRename();
 
-        tab.CommitRename().Should().BeNull();
+        Assert.Null(tab.CommitRename());
     }
 
     [Fact]
@@ -76,8 +75,8 @@ public class WorkspaceTabRenameTests
 
         tab.CancelRename();
 
-        tab.IsRenaming.Should().BeFalse();
-        tab.Name.Should().Be("Work");
+        Assert.False(tab.IsRenaming);
+        Assert.Equal("Work", tab.Name);
     }
 
     private static WorkspaceTabViewModel _Tab(string name) =>

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -39,7 +38,7 @@ public class ScreenCaptureTests
     [Fact]
     public void APointOnTheScaledDisplay_LandsOnItsPixelInTheImage()
     {
-        MixedScaling.ToImagePixel(new CapturePoint(100, 50)).Should().Be(new CapturePoint(150, 75));
+        Assert.Equal(new CapturePoint(150, 75), MixedScaling.ToImagePixel(new CapturePoint(100, 50)));
     }
 
     /// <summary>
@@ -49,7 +48,7 @@ public class ScreenCaptureTests
     [Fact]
     public void APointOnTheUnscaledDisplay_LandsPastThePixelsTheScaledOneContributed()
     {
-        MixedScaling.ToImagePixel(new CapturePoint(2020, 10)).Should().Be(new CapturePoint(2980, 10));
+        Assert.Equal(new CapturePoint(2980, 10), MixedScaling.ToImagePixel(new CapturePoint(2020, 10)));
     }
 
     /// <summary>
@@ -65,7 +64,7 @@ public class ScreenCaptureTests
     [InlineData(1919, 2879)]
     public void AFractionalOffsetOnTheScaledDisplay_TakesTheFirstPixelThatBelongsToIt(int desktopX, int imageX)
     {
-        MixedScaling.ToImagePixel(new CapturePoint(desktopX, 0)).Should().Be(new CapturePoint(imageX, 0));
+        Assert.Equal(new CapturePoint(imageX, 0), MixedScaling.ToImagePixel(new CapturePoint(desktopX, 0)));
     }
 
     [Theory]
@@ -82,7 +81,7 @@ public class ScreenCaptureTests
         var imagePixel = MixedScaling.ToImagePixel(desktopPoint);
 
         Assert.NotNull(imagePixel);
-        MixedScaling.ToDesktopPoint(imagePixel.Value).Should().Be(desktopPoint);
+        Assert.Equal(desktopPoint, MixedScaling.ToDesktopPoint(imagePixel.Value));
     }
 
     /// <summary>
@@ -92,15 +91,15 @@ public class ScreenCaptureTests
     [Fact]
     public void ThePointWhereTheDisplaysMeet_BelongsToTheSecondOne()
     {
-        MixedScaling.DisplayAt(new CapturePoint(1919, 0)).Should().Be(Laptop);
-        MixedScaling.DisplayAt(new CapturePoint(1920, 0)).Should().Be(Monitor);
+        Assert.Equal(Laptop, MixedScaling.DisplayAt(new CapturePoint(1919, 0)));
+        Assert.Equal(Monitor, MixedScaling.DisplayAt(new CapturePoint(1920, 0)));
     }
 
     [Fact]
     public void ThePixelWhereTheDisplaysMeetInTheImage_BelongsToTheSecondOne()
     {
-        MixedScaling.ToDesktopPoint(new CapturePoint(2879, 0)).Should().Be(new CapturePoint(1919, 0));
-        MixedScaling.ToDesktopPoint(new CapturePoint(2880, 0)).Should().Be(new CapturePoint(1920, 0));
+        Assert.Equal(new CapturePoint(1919, 0), MixedScaling.ToDesktopPoint(new CapturePoint(2879, 0)));
+        Assert.Equal(new CapturePoint(1920, 0), MixedScaling.ToDesktopPoint(new CapturePoint(2880, 0)));
     }
 
     /// <summary>
@@ -125,22 +124,22 @@ public class ScreenCaptureTests
             ],
         };
 
-        capture.ToImagePixel(new CapturePoint(-1820, 40)).Should().Be(new CapturePoint(100, 40));
-        capture.ToDesktopPoint(new CapturePoint(100, 40)).Should().Be(new CapturePoint(-1820, 40));
+        Assert.Equal(new CapturePoint(100, 40), capture.ToImagePixel(new CapturePoint(-1820, 40)));
+        Assert.Equal(new CapturePoint(-1820, 40), capture.ToDesktopPoint(new CapturePoint(100, 40)));
     }
 
     /// <summary>Two displays of different heights leave a corner of the desktop's bounding box on no screen at all.</summary>
     [Fact]
     public void APointOnNoDisplay_MapsToNothing()
     {
-        MixedScaling.DisplayAt(new CapturePoint(2000, 2000)).Should().BeNull();
-        MixedScaling.ToImagePixel(new CapturePoint(2000, 2000)).Should().BeNull();
+        Assert.Null(MixedScaling.DisplayAt(new CapturePoint(2000, 2000)));
+        Assert.Null(MixedScaling.ToImagePixel(new CapturePoint(2000, 2000)));
     }
 
     [Fact]
     public void APixelOnNoDisplay_MapsToNothing()
     {
-        MixedScaling.ToDesktopPoint(new CapturePoint(4800, 0)).Should().BeNull();
+        Assert.Null(MixedScaling.ToDesktopPoint(new CapturePoint(4800, 0)));
     }
 
     /// <summary>
@@ -155,9 +154,9 @@ public class ScreenCaptureTests
 
         var capture = new ScreenCapture { Image = png, Displays = [] };
 
-        capture.Image.Should().Equal(png);
-        capture.Displays.Should().BeEmpty();
-        capture.ToImagePixel(new CapturePoint(0, 0)).Should().BeNull();
-        capture.ToDesktopPoint(new CapturePoint(0, 0)).Should().BeNull();
+        Assert.Equal(png, capture.Image);
+        Assert.Empty(capture.Displays);
+        Assert.Null(capture.ToImagePixel(new CapturePoint(0, 0)));
+        Assert.Null(capture.ToDesktopPoint(new CapturePoint(0, 0)));
     }
 }

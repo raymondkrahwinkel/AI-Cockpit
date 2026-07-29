@@ -1,5 +1,4 @@
 using Cockpit.App.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -14,8 +13,8 @@ public class PluginStorageTests
         storage.Set("token", "ghp_secret");
         storage.Set("count", 42);
 
-        storage.Get<string>("token").Should().Be("ghp_secret");
-        storage.Get<int>("count").Should().Be(42);
+        Assert.Equal("ghp_secret", storage.Get<string>("token"));
+        Assert.Equal(42, storage.Get<int>("count"));
     }
 
     [Fact]
@@ -23,8 +22,8 @@ public class PluginStorageTests
     {
         var storage = new PluginStorage(new Dictionary<string, string>(), _ => { });
 
-        storage.Get<string>("nope").Should().BeNull();
-        storage.Get<int>("nope").Should().Be(0);
+        Assert.Null(storage.Get<string>("nope"));
+        Assert.Equal(0, storage.Get<int>("nope"));
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class PluginStorageTests
     {
         var storage = new PluginStorage(new Dictionary<string, string> { ["repo"] = "\"owner/name\"" }, _ => { });
 
-        storage.Get<string>("repo").Should().Be("owner/name");
+        Assert.Equal("owner/name", storage.Get<string>("repo"));
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class PluginStorageTests
 
         storage.Set("k", "v");
 
-        persisted.Should().NotBeNull();
-        persisted!.Should().ContainKey("k");
+        Assert.NotNull(persisted);
+        Assert.Contains("k", persisted.Keys);
     }
 }

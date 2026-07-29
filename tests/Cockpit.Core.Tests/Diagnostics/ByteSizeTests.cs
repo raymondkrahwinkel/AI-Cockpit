@@ -1,6 +1,5 @@
 using System.Globalization;
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -17,23 +16,23 @@ public class ByteSizeTests
     [InlineData(1024, "1.0 KB")]
     [InlineData(1536, "1.5 KB")]
     public void Human_SmallValues_KeepTheirDetail(long bytes, string expected) =>
-        ByteSize.Human(bytes).Should().Be(expected);
+        Assert.Equal(expected, ByteSize.Human(bytes));
 
     [Fact]
     public void Human_TheResidentFigureThatMatters_ReadsAsMegabytes() =>
-        ByteSize.Human(680L * 1024 * 1024).Should().Be("680 MB");
+        Assert.Equal("680 MB", ByteSize.Human(680L * 1024 * 1024));
 
     // The reservation that started the "62 GB" panic: shown honestly as a large size, still one figure the eye can take in.
     [Fact]
     public void Human_TheVirtualReservation_KeepsOneDecimalInGigabytes() =>
-        ByteSize.Human(79_000_000_000).Should().Be("73.6 GB");
+        Assert.Equal("73.6 GB", ByteSize.Human(79_000_000_000));
 
     // Below 100 keeps a decimal; at or above it, the fraction is dropped as noise.
     [Fact]
     public void Human_CrossesToNoDecimal_AtOneHundred()
     {
-        ByteSize.Human(99L * 1024 * 1024).Should().Be("99.0 MB");
-        ByteSize.Human(100L * 1024 * 1024).Should().Be("100 MB");
+        Assert.Equal("99.0 MB", ByteSize.Human(99L * 1024 * 1024));
+        Assert.Equal("100 MB", ByteSize.Human(100L * 1024 * 1024));
     }
 
     // The formatter must not follow a comma-decimal locale, or the copied report would read "73,6 GB" on a Dutch machine.
@@ -44,7 +43,7 @@ public class ByteSizeTests
         try
         {
             CultureInfo.CurrentCulture = new CultureInfo("nl-NL");
-            ByteSize.Human(79_000_000_000).Should().Be("73.6 GB");
+            Assert.Equal("73.6 GB", ByteSize.Human(79_000_000_000));
         }
         finally
         {

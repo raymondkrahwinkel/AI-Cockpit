@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 
@@ -40,8 +39,8 @@ public class ConfigDurabilityTests : IDisposable
         await Store().SaveAsync([Server("first")]);
         await Store().SaveAsync([Server("second")]);
 
-        File.Exists(_configPath + ".bak").Should().BeTrue();
-        (await File.ReadAllTextAsync(_configPath + ".bak")).Should().Contain("first");
+        Assert.True(File.Exists(_configPath + ".bak"));
+        Assert.Contains("first", await File.ReadAllTextAsync(_configPath + ".bak"));
     }
 
     [Fact]
@@ -55,9 +54,8 @@ public class ConfigDurabilityTests : IDisposable
 
         var servers = await Store().LoadAsync();
 
-        servers.Should().ContainSingle().Which.Name.Should().Be("first", "the last version that read cleanly");
-        Directory.EnumerateFiles(_directory, "cockpit.json.damaged-*").Should().ContainSingle(
-            "the unreadable file is kept, not deleted — it is the operator's, and it may be the only copy of something");
+        Assert.Equal("first", Assert.Single(servers).Name);
+        Assert.Single(Directory.EnumerateFiles(_directory, "cockpit.json.damaged-*"));
     }
 
     [Fact]
@@ -70,8 +68,8 @@ public class ConfigDurabilityTests : IDisposable
 
         var act = async () => await Store().LoadAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        (await File.ReadAllTextAsync(_configPath)).Should().Be("{ this is not json", "the file is left exactly as it was");
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Equal("{ this is not json", await File.ReadAllTextAsync(_configPath));
     }
 
     [Fact]
@@ -80,8 +78,8 @@ public class ConfigDurabilityTests : IDisposable
         await Store().SaveAsync([Server("first")]);
 
         // The sibling the write goes to first must not survive it: a leftover .new means the rename never happened.
-        File.Exists(_configPath + ".new").Should().BeFalse();
-        (await Store().LoadAsync()).Should().ContainSingle();
+        Assert.False(File.Exists(_configPath + ".new"));
+        Assert.Single(await Store().LoadAsync());
     }
 
     public void Dispose()

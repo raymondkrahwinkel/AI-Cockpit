@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -20,10 +19,10 @@ public class ProjectFieldRegistryTests
     {
         var registry = new ProjectFieldRegistry();
 
-        registry.Register(Field("github.repository", "GitHub repository")).Should().BeTrue();
-        registry.Register(Field("github.repository", "Repository")).Should().BeFalse();
+        Assert.True(registry.Register(Field("github.repository", "GitHub repository")));
+        Assert.False(registry.Register(Field("github.repository", "Repository")));
 
-        registry.Fields.Should().ContainSingle().Which.Title.Should().Be("GitHub repository");
+        Assert.Equal("GitHub repository", Assert.Single(registry.Fields).Title);
     }
 
     [Fact]
@@ -33,10 +32,10 @@ public class ProjectFieldRegistryTests
         // editor one field whose saved value the other plugin could never find.
         var registry = new ProjectFieldRegistry();
 
-        registry.Register(Field("github.repository", "GitHub repository")).Should().BeTrue();
-        registry.Register(Field("GitHub.Repository", "Repository")).Should().BeTrue();
+        Assert.True(registry.Register(Field("github.repository", "GitHub repository")));
+        Assert.True(registry.Register(Field("GitHub.Repository", "Repository")));
 
-        registry.Fields.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(registry.Fields));
     }
 
     [Fact]
@@ -45,9 +44,9 @@ public class ProjectFieldRegistryTests
         // There is nothing to store it under, so the field would draw a box whose value went nowhere.
         var registry = new ProjectFieldRegistry();
 
-        registry.Register(Field("  ", "Nameless")).Should().BeFalse();
+        Assert.False(registry.Register(Field("  ", "Nameless")));
 
-        registry.Fields.Should().BeEmpty();
+        Assert.Empty(registry.Fields);
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class ProjectFieldRegistryTests
         var services = new ServiceCollection();
         services.AddServices(typeof(ProjectFieldRegistry).Assembly);
 
-        services.BuildServiceProvider().GetService<IProjectFieldRegistry>().Should().BeOfType<ProjectFieldRegistry>();
+        Assert.IsType<ProjectFieldRegistry>(services.BuildServiceProvider().GetService<IProjectFieldRegistry>());
     }
 
     [Fact]
@@ -69,6 +68,6 @@ public class ProjectFieldRegistryTests
         registry.Register(Field("youtrack.project", "YouTrack project"));
         registry.Register(Field("github.repository", "GitHub repository"));
 
-        registry.Fields.Select(field => field.Key).Should().Equal("youtrack.project", "github.repository");
+        Assert.Equal(new[] { "youtrack.project", "github.repository" }, registry.Fields.Select(field => field.Key));
     }
 }

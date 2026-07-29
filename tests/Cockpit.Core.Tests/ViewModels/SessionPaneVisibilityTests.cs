@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -19,8 +18,7 @@ public class SessionPaneVisibilityTests
 
         vm.GlobalSingleSessionLayout = true;
 
-        vm.Sessions.Where(session => session.IsPaneVisible).Should().ContainSingle()
-            .Which.Should().BeSameAs(vm.Sessions[0]);
+        Assert.Same(vm.Sessions[0], Assert.Single(vm.Sessions, session => session.IsPaneVisible));
     }
 
     [Fact]
@@ -32,7 +30,7 @@ public class SessionPaneVisibilityTests
 
         vm.GlobalSingleSessionLayout = false;
 
-        vm.Sessions.Should().OnlyContain(session => session.IsPaneVisible);
+        Assert.All(vm.Sessions, session => Assert.True(session.IsPaneVisible));
     }
 
     [Fact]
@@ -44,7 +42,6 @@ public class SessionPaneVisibilityTests
 
         vm.SelectedSession = vm.Sessions[1];
 
-        vm.Sessions.Where(session => session.IsPaneVisible).Should().ContainSingle()
-            .Which.Should().BeSameAs(vm.Sessions[1]);
+        Assert.Same(vm.Sessions[1], Assert.Single(vm.Sessions, session => session.IsPaneVisible));
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -30,7 +29,7 @@ public class WorkspaceTests
     [MemberData(nameof(AcceptsCases))]
     public void Accepts_MatchesTheTypedWorkspaceRule(WorkspaceType type, PaneKind kind, bool expected)
     {
-        WorkspaceTypeRules.Accepts(type, kind).Should().Be(expected);
+        Assert.Equal(expected, WorkspaceTypeRules.Accepts(type, kind));
     }
 
     [Fact]
@@ -38,9 +37,9 @@ public class WorkspaceTests
     {
         var pluginType = new WorkspaceType("autopilot.run");
 
-        WorkspaceTypeRules.Accepts(pluginType, PaneKind.AiSession).Should().BeFalse();
-        WorkspaceTypeRules.Accepts(pluginType, PaneKind.Widget).Should().BeFalse();
-        WorkspaceTypeRules.Accepts(pluginType, PaneKind.Terminal).Should().BeFalse();
+        Assert.False(WorkspaceTypeRules.Accepts(pluginType, PaneKind.AiSession));
+        Assert.False(WorkspaceTypeRules.Accepts(pluginType, PaneKind.Widget));
+        Assert.False(WorkspaceTypeRules.Accepts(pluginType, PaneKind.Terminal));
     }
 
     [Theory]
@@ -51,8 +50,8 @@ public class WorkspaceTests
     {
         var type = WorkspaceType.FromId(id);
 
-        type.Should().Be(WorkspaceType.Sessions);
-        type.IsBuiltIn.Should().BeTrue();
+        Assert.Equal(WorkspaceType.Sessions, type);
+        Assert.True(type.IsBuiltIn);
     }
 
     [Theory]
@@ -61,7 +60,7 @@ public class WorkspaceTests
     [InlineData("   ")]
     public void FromId_ABlankId_FallsBackToSessions(string? id)
     {
-        WorkspaceType.FromId(id).Should().Be(WorkspaceType.Sessions);
+        Assert.Equal(WorkspaceType.Sessions, WorkspaceType.FromId(id));
     }
 
     [Theory]
@@ -71,8 +70,8 @@ public class WorkspaceTests
     {
         var type = WorkspaceType.FromId(id);
 
-        type.Should().Be(WorkspaceType.Projects);
-        type.IsBuiltIn.Should().BeTrue("a saved projects workspace must not come back as an unknown plugin type");
+        Assert.Equal(WorkspaceType.Projects, type);
+        Assert.True(type.IsBuiltIn, "a saved projects workspace must not come back as an unknown plugin type");
     }
 
     [Fact]
@@ -80,8 +79,8 @@ public class WorkspaceTests
     {
         var type = WorkspaceType.FromId("autopilot.run");
 
-        type.Id.Should().Be("autopilot.run");
-        type.IsBuiltIn.Should().BeFalse();
+        Assert.Equal("autopilot.run", type.Id);
+        Assert.False(type.IsBuiltIn);
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public class WorkspaceTests
 
         var updated = dashboard.WithPane(new WorkspacePane("p1", PaneKind.Widget) { WidgetId = "clock.time" });
 
-        updated.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("clock.time");
+        Assert.Equal("clock.time", Assert.Single(updated.Panes).WidgetId);
     }
 
     [Fact]
@@ -101,7 +100,7 @@ public class WorkspaceTests
 
         var act = () => dashboard.WithPane(new WorkspacePane("p1", PaneKind.AiSession));
 
-        act.Should().Throw<ArgumentException>();
+        Assert.Throws<ArgumentException>(act);
     }
 
     [Fact]
@@ -111,7 +110,7 @@ public class WorkspaceTests
 
         dashboard.WithPane(new WorkspacePane("p1", PaneKind.Widget));
 
-        dashboard.Panes.Should().BeEmpty();
+        Assert.Empty(dashboard.Panes);
     }
 
     [Fact]
@@ -121,7 +120,7 @@ public class WorkspaceTests
             .WithPane(new WorkspacePane("p1", PaneKind.Widget))
             .WithPane(new WorkspacePane("p2", PaneKind.Widget));
 
-        dashboard.WithoutPane("p1").Panes.Should().ContainSingle().Which.Id.Should().Be("p2");
+        Assert.Equal("p2", Assert.Single(dashboard.WithoutPane("p1").Panes).Id);
     }
 
     [Fact]
@@ -129,7 +128,7 @@ public class WorkspaceTests
     {
         var dashboard = Workspace.Create("D", WorkspaceType.Dashboard).WithPane(new WorkspacePane("p1", PaneKind.Widget));
 
-        dashboard.WithoutPane("gone").Panes.Should().HaveCount(1);
+        Assert.Single(dashboard.WithoutPane("gone").Panes);
     }
 
     [Fact]
@@ -141,14 +140,13 @@ public class WorkspaceTests
 
         var moved = dashboard.WithPaneMoved("p1", new GridCell(0, 3));
 
-        moved.Panes.Single(pane => pane.Id == "p1").Cell.Should().Be(new GridCell(0, 3));
-        moved.Panes.Single(pane => pane.Id == "p2").Cell.Should().Be(new GridCell(1, 0));
+        Assert.Equal(new GridCell(0, 3), moved.Panes.Single(pane => pane.Id == "p1").Cell);
+        Assert.Equal(new GridCell(1, 0), moved.Panes.Single(pane => pane.Id == "p2").Cell);
     }
 
     [Fact]
     public void Create_GivesEachWorkspaceItsOwnId()
     {
-        Workspace.Create("A", WorkspaceType.Sessions).Id
-            .Should().NotBe(Workspace.Create("A", WorkspaceType.Sessions).Id);
+        Assert.NotEqual(Workspace.Create("A", WorkspaceType.Sessions).Id, Workspace.Create("A", WorkspaceType.Sessions).Id);
     }
 }

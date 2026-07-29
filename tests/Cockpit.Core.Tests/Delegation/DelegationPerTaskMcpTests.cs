@@ -8,7 +8,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -71,7 +70,8 @@ public class DelegationPerTaskMcpTests
         var refuse = async () => await service.DelegateAsync(
             new DelegationRequest("local", "work", McpServers: ["git"]));
 
-        Assert.Contains("git", (await Assert.ThrowsAsync<DelegationRejectedException>(refuse)).Message);
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(refuse);
+        Assert.Contains("git", thrown.Message);
         await driver.DidNotReceive().StartAsync(
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
@@ -107,7 +107,8 @@ public class DelegationPerTaskMcpTests
 
         var targets = await service.ListTargetsAsync();
 
-        Assert.Single(targets).McpServers.Should().BeEquivalentTo("filesystem", "youtrack");
+        var target = Assert.Single(targets);
+        Assert.Equivalent(new object[] { "filesystem", "youtrack" }, target.McpServers);
     }
 
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };

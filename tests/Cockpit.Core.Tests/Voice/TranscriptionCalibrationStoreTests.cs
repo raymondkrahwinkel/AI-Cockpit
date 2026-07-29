@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -28,7 +27,7 @@ public class TranscriptionCalibrationStoreTests : IDisposable
     {
         var store = new TranscriptionCalibrationStore(_configFilePath, "desktop-A");
 
-        (await store.LoadAsync()).Should().BeNull();
+        Assert.Null((await store.LoadAsync()));
     }
 
     private static TranscriptionCalibration Calibration(VoiceBackendPreference chosen, string model = "large-v3-turbo") =>
@@ -53,7 +52,7 @@ public class TranscriptionCalibrationStoreTests : IDisposable
 
         await store.SaveAsync(calibration);
 
-        (await store.LoadAsync()).Should().BeEquivalentTo(calibration);
+        Assert.Equivalent(calibration, await store.LoadAsync());
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public class TranscriptionCalibrationStoreTests : IDisposable
         await new TranscriptionCalibrationStore(_configFilePath, "desktop-A")
             .SaveAsync(Calibration(VoiceBackendPreference.Vulkan));
 
-        (await new TranscriptionCalibrationStore(_configFilePath, "laptop-B").LoadAsync()).Should().BeNull();
+        Assert.Null((await new TranscriptionCalibrationStore(_configFilePath, "laptop-B").LoadAsync()));
     }
 
     [Fact]
@@ -75,7 +74,7 @@ public class TranscriptionCalibrationStoreTests : IDisposable
         await desktop.SaveAsync(desktopResult);
         await laptop.SaveAsync(Calibration(VoiceBackendPreference.Vulkan, "small"));
 
-        (await desktop.LoadAsync()).Should().BeEquivalentTo(desktopResult, "the laptop's save must not clobber the desktop's entry");
+        Assert.Equivalent(desktopResult, await desktop.LoadAsync());
     }
 
     public void Dispose()

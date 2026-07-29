@@ -1,6 +1,5 @@
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -29,8 +28,8 @@ public class PluginMenuPreferenceTests : IDisposable
 
         var registration = (await store.LoadAllAsync())["youtrack"];
 
-        registration.MenuOrder.Should().Be(0);
-        registration.HiddenInMenu.Should().BeFalse();
+        Assert.Equal(0, registration.MenuOrder);
+        Assert.False(registration.HiddenInMenu);
     }
 
     [Fact]
@@ -42,8 +41,8 @@ public class PluginMenuPreferenceTests : IDisposable
         await store.SaveMenuPreferenceAsync("youtrack", menuOrder: 3, hiddenInMenu: true);
         var registration = (await store.LoadAllAsync())["youtrack"];
 
-        registration.MenuOrder.Should().Be(3);
-        registration.HiddenInMenu.Should().BeTrue();
+        Assert.Equal(3, registration.MenuOrder);
+        Assert.True(registration.HiddenInMenu);
     }
 
     [Fact]
@@ -57,8 +56,8 @@ public class PluginMenuPreferenceTests : IDisposable
 
         // Hiding a plugin from the menu is not a quieter way of disabling it: it keeps running, and it keeps the
         // consent the operator gave it.
-        registration.Enabled.Should().BeTrue();
-        registration.PinnedSha256.Should().Be("the-consented-hash");
+        Assert.True(registration.Enabled);
+        Assert.Equal("the-consented-hash", registration.PinnedSha256);
     }
 
     [Fact]
@@ -72,9 +71,9 @@ public class PluginMenuPreferenceTests : IDisposable
         await store.SaveAsync("youtrack", new PluginRegistration(Enabled: false, PinnedSha256: "abc"));
         var registration = (await store.LoadAllAsync())["youtrack"];
 
-        registration.Enabled.Should().BeFalse();
-        registration.MenuOrder.Should().Be(4);
-        registration.HiddenInMenu.Should().BeTrue();
+        Assert.False(registration.Enabled);
+        Assert.Equal(4, registration.MenuOrder);
+        Assert.True(registration.HiddenInMenu);
     }
 
     [Fact]
@@ -85,7 +84,8 @@ public class PluginMenuPreferenceTests : IDisposable
 
         await store.SaveMenuPreferenceAsync("youtrack", menuOrder: 1, hiddenInMenu: false);
 
-        (await store.LoadDataAsync("youtrack")).Should().ContainKey("token");
+        var data = await store.LoadDataAsync("youtrack");
+        Assert.Contains("token", data.Keys);
     }
 
     public void Dispose()

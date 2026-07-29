@@ -2,7 +2,6 @@ using System.Net;
 using Cockpit.Core.Notifications;
 using Cockpit.TestSupport;
 using Cockpit.Infrastructure.Notifications;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Notifications;
@@ -36,12 +35,12 @@ public class DiscordWebhookNotifierTests
 
         var request = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        request.Method.Should().Be("POST");
-        request.Path.Should().Be("/webhook/");
-        request.ContentType.Should().StartWith("application/json");
-        request.Body.Should().Contain("\"content\"");
-        request.Body.Should().Contain("Claude 3");
-        request.Body.Should().Contain("Needs attention");
+        Assert.Equal("POST", request.Method);
+        Assert.Equal("/webhook/", request.Path);
+        Assert.StartsWith("application/json", request.ContentType);
+        Assert.Contains("\"content\"", request.Body);
+        Assert.Contains("Claude 3", request.Body);
+        Assert.Contains("Needs attention", request.Body);
     }
 
     private sealed record CapturedRequest(string Method, string Path, string? ContentType, string Body);

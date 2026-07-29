@@ -1,5 +1,4 @@
 using Cockpit.Core.Backup;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Backup;
 
@@ -18,15 +17,15 @@ public class BackupContentsTests
     [InlineData("models\\piper\\nl.onnx", false)]
     [InlineData("logs/cockpit.log", false)]
     public void TheModelsAndTheLogs_StayOut_EverythingElseGoesIn(string path, bool included) =>
-        BackupContents.Includes(path).Should().Be(included);
+        Assert.Equal(included, BackupContents.Includes(path));
 
     [Fact]
     public void AFileMerelyNamedLikeAnExcludedFolder_IsNotMistakenForOne() =>
-        BackupContents.Includes("models.json").Should().BeTrue();
+        Assert.True(BackupContents.Includes("models.json"));
 
     [Fact]
     public void ABackupTakesNoCredentialsUnlessAsked() =>
-        new BackupOptions().Should().BeEquivalentTo(new BackupOptions(IncludeCredentials: false, IncludeProfileConfigs: false));
+        Assert.Equivalent(new BackupOptions(IncludeCredentials: false, IncludeProfileConfigs: false), new BackupOptions());
 
     [Fact]
     public void ABackupFromAFutureCockpit_IsRefused_RatherThanHalfApplied()
@@ -40,6 +39,6 @@ public class BackupContentsTests
             ProfileConfigDirectories: new Dictionary<string, string>(),
             Plugins: new Dictionary<string, string>());
 
-        manifest.CanRestore.Should().BeFalse();
+        Assert.False(manifest.CanRestore);
     }
 }

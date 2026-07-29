@@ -2,7 +2,6 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Projects;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Projects;
 
@@ -47,12 +46,12 @@ public class ProjectSecretRowReachesTheEncryptionTests : IDisposable
         // Exactly what the encryption layer and the backup scrubber both do to the settings.
         var rewritten = SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED");
 
-        rewritten.Should().ContainSingle("the credential is the one secret-named field in this config")
-            .Which.Should().Contain("AdditionalInfo", "and it was found at the row's own path, two arrays deep");
+        var path = Assert.Single(rewritten);
+        Assert.Contains("AdditionalInfo", path);
 
         var scrubbed = config.ToJsonString();
-        scrubbed.Should().NotContain(credential, "a credential the traversal missed would ship in every backup");
-        scrubbed.Should().Contain("https://github.com/example/repo", "an ordinary row is left readable on purpose");
+        Assert.DoesNotContain(credential, scrubbed);
+        Assert.Contains("https://github.com/example/repo", scrubbed);
     }
 
     [Fact]
@@ -68,8 +67,7 @@ public class ProjectSecretRowReachesTheEncryptionTests : IDisposable
         await new ProjectStore(_configFilePath).SaveAsync(ProjectSettings.Empty.WithProject(project));
         var config = JsonNode.Parse(await File.ReadAllTextAsync(_configFilePath))!;
 
-        SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED")
-            .Should().BeEmpty("nothing in a project without a secret row is credential-named");
+        Assert.Empty(SecretJsonWalker.Transform(config, SecretFields.ByName, (_, _) => "REDACTED"));
     }
 
     public void Dispose()

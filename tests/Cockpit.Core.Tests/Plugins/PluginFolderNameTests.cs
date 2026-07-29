@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -14,7 +13,7 @@ public class PluginFolderNameTests
     [InlineData("UPPER", "upper")]
     public void Normalize_ProducesLowercaseSlug(string input, string expected)
     {
-        PluginFolderName.Normalize(input).Should().Be(expected);
+        Assert.Equal(expected, PluginFolderName.Normalize(input));
     }
 
     [Theory]
@@ -24,6 +23,6 @@ public class PluginFolderNameTests
     [InlineData("---")]
     public void Normalize_NothingUsable_ReturnsEmpty(string input)
     {
-        PluginFolderName.Normalize(input).Should().BeEmpty();
+        Assert.Empty(PluginFolderName.Normalize(input));
     }
 }

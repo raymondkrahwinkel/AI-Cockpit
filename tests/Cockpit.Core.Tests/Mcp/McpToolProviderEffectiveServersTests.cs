@@ -1,6 +1,5 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -15,8 +14,8 @@ public class McpToolProviderEffectiveServersTests
     {
         var effective = McpToolProvider._EffectiveServers([]);
 
-        effective.Select(server => server.Name).Should().Contain("filesystem");
-        effective.Should().BeEquivalentTo(McpServerPresets.LocalDefaults);
+        Assert.Contains("filesystem", effective.Select(server => server.Name));
+        Assert.Equivalent(McpServerPresets.LocalDefaults, effective);
     }
 
     [Fact]
@@ -27,8 +26,8 @@ public class McpToolProviderEffectiveServersTests
         var effective = McpToolProvider._EffectiveServers([custom]);
 
         // One filesystem, and it is the registry's (retargeted) one, not the default user-folder root.
-        effective.Where(server => server.Name == "filesystem").Should().ContainSingle()
-            .Which.Args.Should().Contain("D:\\only-this");
+        var single = Assert.Single(effective, server => server.Name == "filesystem");
+        Assert.Contains("D:\\only-this", single.Args);
     }
 
     [Fact]
@@ -38,6 +37,6 @@ public class McpToolProviderEffectiveServersTests
 
         var effective = McpToolProvider._EffectiveServers([claudeOnly]);
 
-        effective.Should().NotContain(server => server.Name == "claude-thing");
+        Assert.DoesNotContain(effective, server => server.Name == "claude-thing");
     }
 }

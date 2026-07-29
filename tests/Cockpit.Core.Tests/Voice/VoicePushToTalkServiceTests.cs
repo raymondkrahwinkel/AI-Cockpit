@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -25,7 +24,7 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         var result = await service.EndHoldAsync(applyCleanup: false);
 
-        result.Should().BeEmpty();
+        Assert.Empty(result);
         await speechToText.DidNotReceiveWithAnyArgs().TranscribeAsync(default!, default);
     }
 
@@ -40,7 +39,7 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         var result = await service.EndHoldAsync(applyCleanup: false);
 
-        result.Should().Be("open the file");
+        Assert.Equal("open the file", result);
         await cleanup.DidNotReceiveWithAnyArgs().CleanupAsync(default!, default);
     }
 
@@ -56,7 +55,7 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         var result = await service.EndHoldAsync(applyCleanup: true);
 
-        result.Should().Be("Open the file.");
+        Assert.Equal("Open the file.", result);
     }
 
     [Fact]
@@ -74,8 +73,9 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         var act = () => service.EndHoldAsync(applyCleanup: false);
 
-        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
-        logger.Entries.Should().Contain(entry => entry.Level == LogLevel.Error && entry.Exception == boom);
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Same(boom, thrown);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Exception == boom);
     }
 
     [Fact]
@@ -88,9 +88,9 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         await service.EndHoldAsync(applyCleanup: false);
 
-        levels.Should().HaveCount(3);
-        levels.Should().OnlyContain(level => level >= 0 && level <= 1);
-        levels[1].Should().BeGreaterThan(levels[0]);
+        Assert.Equal(3, System.Linq.Enumerable.Count(levels));
+        Assert.All(levels, level => Assert.True(level >= 0 && level <= 1));
+        Assert.True(levels[1] > levels[0]);
     }
 
     [Fact]
@@ -98,8 +98,8 @@ public class VoicePushToTalkServiceTests
     {
         var service = _CreateService(frames: [[1, 0]]);
 
-        service.BeginHold().Should().BeTrue();
-        service.BeginHold().Should().BeFalse();
+        Assert.True(service.BeginHold());
+        Assert.False(service.BeginHold());
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class VoicePushToTalkServiceTests
 
         var act = () => service.EndHoldAsync(applyCleanup: false);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class VoicePushToTalkServiceTests
         service.BeginHold();
         await service.EndHoldAsync(applyCleanup: false);
 
-        service.BeginHold().Should().BeTrue();
+        Assert.True(service.BeginHold());
     }
 
     private static VoicePushToTalkService _CreateService(

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -27,7 +26,7 @@ public class PluginHostVersionGateTests
             Manifest("2.0.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(1, 5, 0));
 
-        decision.Should().Be(PluginLoadDecision.HostTooOld);
+        Assert.Equal(PluginLoadDecision.HostTooOld, decision);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class PluginHostVersionGateTests
             Manifest("1.0.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(1, 5, 0));
 
-        decision.Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, decision);
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class PluginHostVersionGateTests
             Manifest("1.0.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(0, 1, 0));
 
-        decision.Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, decision);
     }
 
     [Theory]
@@ -65,7 +64,7 @@ public class PluginHostVersionGateTests
             Manifest(minHostVersion), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(1, 5, 0));
 
-        decision.Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, decision);
     }
 
     [Fact]
@@ -75,6 +74,6 @@ public class PluginHostVersionGateTests
             Manifest("9.0.0"), hostAbstractionsMajor: 2, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(1, 5, 0));
 
-        decision.Should().Be(PluginLoadDecision.AbstractionsMajorMismatch);
+        Assert.Equal(PluginLoadDecision.AbstractionsMajorMismatch, decision);
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -21,7 +20,7 @@ public class SessionResourceMergeTests
         var (resources, _) = SessionResourceMerge.Merge(
             [Contribution(("GH_REPO", "raymondkrahwinkel/AI-Cockpit")), Contribution(("GH_REPO", "someone/else"))]);
 
-        resources.EnvironmentVariables.Should().Contain("GH_REPO", "raymondkrahwinkel/AI-Cockpit");
+        Assert.Equal("raymondkrahwinkel/AI-Cockpit", resources.EnvironmentVariables["GH_REPO"]);
     }
 
     [Fact]
@@ -30,9 +29,9 @@ public class SessionResourceMergeTests
         var (resources, rejected) = SessionResourceMerge.Merge(
             [Contribution(("ANTHROPIC_API_KEY", "smuggled"), ("GH_REPO", "owner/repo"))]);
 
-        resources.EnvironmentVariables.Should().NotContainKey("ANTHROPIC_API_KEY");
-        resources.EnvironmentVariables.Should().Contain("GH_REPO", "owner/repo", "the rest of the contribution still applies");
-        rejected.Should().Equal("ANTHROPIC_API_KEY");
+        Assert.DoesNotContain("ANTHROPIC_API_KEY", resources.EnvironmentVariables);
+        Assert.Equal("owner/repo", resources.EnvironmentVariables["GH_REPO"]);
+        Assert.Equal(new[] { "ANTHROPIC_API_KEY" }, rejected);
     }
 
     [Fact]
@@ -42,8 +41,8 @@ public class SessionResourceMergeTests
         // an empty dictionary that reads as "a plugin contributed something".
         var (resources, rejected) = SessionResourceMerge.Merge([Contribution(("CLAUDECODE", "1"))]);
 
-        resources.IsEmpty.Should().BeTrue();
-        rejected.Should().Equal("CLAUDECODE");
+        Assert.True(resources.IsEmpty);
+        Assert.Equal(new[] { "CLAUDECODE" }, rejected);
     }
 
     [Fact]
@@ -51,8 +50,8 @@ public class SessionResourceMergeTests
     {
         var (resources, rejected) = SessionResourceMerge.Merge([]);
 
-        resources.Should().BeSameAs(SessionResources.Empty);
-        rejected.Should().BeEmpty();
+        Assert.Same(SessionResources.Empty, resources);
+        Assert.Empty(rejected);
     }
 
     [Fact]
@@ -64,6 +63,6 @@ public class SessionResourceMergeTests
         // doing — so a plugin contributing a lowercase key does not quietly lose it before the routes even see it.
         var (resources, _) = SessionResourceMerge.Merge([Contribution(("gh_repo", "one"), ("GH_REPO", "two"))]);
 
-        resources.EnvironmentVariables.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(resources.EnvironmentVariables));
     }
 }

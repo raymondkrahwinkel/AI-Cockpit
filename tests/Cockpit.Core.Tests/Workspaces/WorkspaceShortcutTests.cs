@@ -1,5 +1,4 @@
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -15,7 +14,7 @@ public class WorkspaceShortcutTests
     [InlineData(ShortcutAction.NextWorkspace, "Ctrl+Shift+Right")]
     public void WorkspaceSwitch_DefaultsToCtrlShiftArrow(ShortcutAction action, string expected)
     {
-        ShortcutCatalog.DefaultGesture(action).Should().Be(expected);
+        Assert.Equal(expected, ShortcutCatalog.DefaultGesture(action));
     }
 
     [Fact]
@@ -24,9 +23,9 @@ public class WorkspaceShortcutTests
         // The two switches are deliberately split by axis: sessions step a vertical sidebar, workspaces step a
         // horizontal tab strip. Rebinding one onto the other's gesture is the operator's business, but the
         // shipped defaults must not overlap.
-        var gestures = ShortcutCatalog.All.Select(descriptor => descriptor.DefaultGesture).Where(gesture => gesture.Length > 0);
+        var gestures = ShortcutCatalog.All.Select(descriptor => descriptor.DefaultGesture).Where(gesture => gesture.Length > 0).ToList();
 
-        gestures.Should().OnlyHaveUniqueItems();
+        Assert.Equal(gestures.Distinct().Count(), gestures.Count);
     }
 
     [Theory]
@@ -34,7 +33,7 @@ public class WorkspaceShortcutTests
     [InlineData(ShortcutAction.NextWorkspace)]
     public void WorkspaceSwitch_StaysActiveInTheTerminal_SinceThatIsWhereYouSwitchFrom(ShortcutAction action)
     {
-        ShortcutCatalog.StaysActiveInTerminal(action).Should().BeTrue();
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(action));
     }
 
     [Fact]
@@ -42,6 +41,6 @@ public class WorkspaceShortcutTests
     {
         var actions = Enum.GetValues<ShortcutAction>();
 
-        ShortcutCatalog.All.Select(descriptor => descriptor.Action).Should().BeEquivalentTo(actions);
+        Assert.Equivalent(actions, ShortcutCatalog.All.Select(descriptor => descriptor.Action));
     }
 }

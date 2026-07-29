@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -35,10 +34,10 @@ public class SessionUsageDisplayTests
             new PluginUsageReading("five-hour", 18.2, DateTimeOffset.Parse("2026-07-14T22:00:00Z")),
         ]);
 
-        session.ContextUsedPercent.Should().Be(42.5);
-        session.RateLimits.Should().ContainSingle();
-        session.RateLimits[0].Label.Should().Be("5h");
-        session.RateLimits[0].UsedPercent.Should().Be(18.2);
+        Assert.Equal(42.5, session.ContextUsedPercent);
+        Assert.Single(session.RateLimits);
+        Assert.Equal("5h", session.RateLimits[0].Label);
+        Assert.Equal(18.2, session.RateLimits[0].UsedPercent);
     }
 
     [Fact]
@@ -54,9 +53,9 @@ public class SessionUsageDisplayTests
         ]);
 
         // 42.5 rounds to 43, away from zero — .NET's default would say 42 and quietly under-report on the halves.
-        session.LimitsTooltip.Should().Contain("Context window: 43% used");
-        session.LimitsTooltip.Should().Contain("Session (5 hours): 18% used — resets");
-        session.LimitsTooltip.Should().Contain("Week: 7% used — resets");
+        Assert.Contains("Context window: 43% used", session.LimitsTooltip);
+        Assert.Contains("Session (5 hours): 18% used — resets", session.LimitsTooltip);
+        Assert.Contains("Week: 7% used — resets", session.LimitsTooltip);
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage([terse], [new PluginUsageReading("quota", 12, null)]);
 
-        session.LimitsTooltip.Should().Be("q: 12% used");
+        Assert.Equal("q: 12% used", session.LimitsTooltip);
     }
 
     [Fact]
@@ -79,9 +78,9 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage(Signals, [new PluginUsageReading("something-else", 99, null)]);
 
-        session.ContextUsedPercent.Should().BeNull();
-        session.RateLimits.Should().BeEmpty();
-        session.LimitsTooltip.Should().BeEmpty();
+        Assert.Null(session.ContextUsedPercent);
+        Assert.Empty(session.RateLimits);
+        Assert.Empty(session.LimitsTooltip);
     }
 
     [Fact]
@@ -92,13 +91,13 @@ public class SessionUsageDisplayTests
         var session = Build();
 
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 91, null)]);
-        session.HasUsageWarning.Should().BeTrue();
-        session.UsageWarning.Should().Contain("Week is 91% used");
+        Assert.True(session.HasUsageWarning);
+        Assert.Contains("Week is 91% used", session.UsageWarning);
 
         session.DismissUsageWarningCommand.Execute(null);
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 92, null)]);
 
-        session.HasUsageWarning.Should().BeFalse("the same crossing has already been announced");
+        Assert.False(session.HasUsageWarning, "the same crossing has already been announced");
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public class SessionUsageDisplayTests
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 12, null)]);
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 51, null)]);
 
-        session.HasUsageWarning.Should().BeTrue();
+        Assert.True(session.HasUsageWarning);
     }
 
     [Fact]
@@ -122,7 +121,7 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 49, null), new PluginUsageReading("weekly", 89, null)]);
 
-        session.HasUsageWarning.Should().BeFalse();
+        Assert.False(session.HasUsageWarning);
     }
 
     [Fact]
@@ -133,12 +132,8 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 95, DateTimeOffset.Now.AddHours(2))]);
 
-        session.UsageWarning.Should().Contain("back");
+        Assert.Contains("back", session.UsageWarning);
     }
-
-    // The ten below assert with xunit's own Assert rather than the FluentAssertions the rest of this file uses:
-    // that package is commercially licensed from v8 and is on its way out of the codebase (AC-372). Adding to it
-    // here would only make that sweep bigger.
 
     [Fact]
     public void AReadingBackUnderItsThreshold_TakesItsOwnWarningDownWithIt()
@@ -312,7 +307,7 @@ public class SessionUsageDisplayTests
 
         session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 20, null)]);
 
-        session.ContextUsedPercent.Should().BeNull();
-        session.RateLimits.Should().ContainSingle();
+        Assert.Null(session.ContextUsedPercent);
+        Assert.Single(session.RateLimits);
     }
 }

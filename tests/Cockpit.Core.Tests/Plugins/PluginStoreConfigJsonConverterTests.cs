@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -12,8 +11,8 @@ public class PluginStoreConfigJsonConverterTests
     {
         var store = JsonSerializer.Deserialize<PluginStoreConfig>("\"https://github.com/a/b\"");
 
-        store.Should().Be(PluginStoreConfig.Remote("https://github.com/a/b"));
-        store!.HasToken.Should().BeFalse();
+        Assert.Equal(PluginStoreConfig.Remote("https://github.com/a/b"), store);
+        Assert.False(store!.HasToken);
     }
 
     [Fact]
@@ -22,7 +21,7 @@ public class PluginStoreConfigJsonConverterTests
         var store = JsonSerializer.Deserialize<PluginStoreConfig>(
             """{ "kind": "remote", "location": "https://github.com/a/b", "token": "abc123" }""");
 
-        store.Should().Be(new PluginStoreConfig(PluginStoreKind.Remote, "https://github.com/a/b", "abc123"));
+        Assert.Equal(new PluginStoreConfig(PluginStoreKind.Remote, "https://github.com/a/b", "abc123"), store);
     }
 
     [Fact]
@@ -31,17 +30,15 @@ public class PluginStoreConfigJsonConverterTests
         var store = JsonSerializer.Deserialize<PluginStoreConfig>(
             """{ "kind": "local", "location": "/home/raymond/plugins" }""");
 
-        store!.Kind.Should().Be(PluginStoreKind.Local);
-        store.Location.Should().Be("/home/raymond/plugins");
+        Assert.Equal(PluginStoreKind.Local, store!.Kind);
+        Assert.Equal("/home/raymond/plugins", store.Location);
     }
 
     [Fact]
     public void Read_UrlOrPathAlias_ResolvesToLocation()
     {
-        JsonSerializer.Deserialize<PluginStoreConfig>("""{ "url": "https://x/index.json" }""")!
-            .Location.Should().Be("https://x/index.json");
-        JsonSerializer.Deserialize<PluginStoreConfig>("""{ "kind": "local", "path": "/tmp/store" }""")!
-            .Location.Should().Be("/tmp/store");
+        Assert.Equal("https://x/index.json", JsonSerializer.Deserialize<PluginStoreConfig>("""{ "url": "https://x/index.json" }""")!.Location);
+        Assert.Equal("/tmp/store", JsonSerializer.Deserialize<PluginStoreConfig>("""{ "kind": "local", "path": "/tmp/store" }""")!.Location);
     }
 
     [Fact]
@@ -49,17 +46,16 @@ public class PluginStoreConfigJsonConverterTests
     {
         var json = JsonSerializer.Serialize(PluginStoreConfig.Remote("https://github.com/a/b", "abc123"));
 
-        json.Should().Contain("\"kind\":\"remote\"");
-        json.Should().Contain("\"location\":\"https://github.com/a/b\"");
+        Assert.Contains("\"kind\":\"remote\"", json);
+        Assert.Contains("\"location\":\"https://github.com/a/b\"", json);
         // The field must be named "token" so the host's secret layer encrypts it at rest and scrubs it from backups.
-        json.Should().Contain("\"token\":\"abc123\"");
+        Assert.Contains("\"token\":\"abc123\"", json);
     }
 
     [Fact]
     public void Write_RemoteWithoutToken_OmitsTokenField()
     {
-        JsonSerializer.Serialize(PluginStoreConfig.Remote("https://github.com/a/b"))
-            .Should().NotContain("token");
+        Assert.DoesNotContain("token", JsonSerializer.Serialize(PluginStoreConfig.Remote("https://github.com/a/b")));
     }
 
     [Fact]
@@ -69,13 +65,14 @@ public class PluginStoreConfigJsonConverterTests
 
         var restored = JsonSerializer.Deserialize<PluginStoreConfig>(JsonSerializer.Serialize(original));
 
-        restored.Should().Be(original);
+        Assert.Equal(original, restored);
     }
 
     [Fact]
     public void ToString_RedactsToken()
     {
-        PluginStoreConfig.Remote("https://github.com/a/b", "s3cr3t").ToString()
-            .Should().NotContain("s3cr3t").And.Contain("***");
+        var text = PluginStoreConfig.Remote("https://github.com/a/b", "s3cr3t").ToString();
+        Assert.DoesNotContain("s3cr3t", text);
+        Assert.Contains("***", text);
     }
 }

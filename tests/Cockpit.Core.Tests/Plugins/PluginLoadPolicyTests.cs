@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -16,15 +15,13 @@ public class PluginLoadPolicyTests
     {
         var saved = new PluginRegistration(Enabled: true, PinnedSha256: "abc");
 
-        PluginLoadPolicy.Decide(Manifest(abstractionsVersion: 2), HostMajor, saved, "abc")
-            .Should().Be(PluginLoadDecision.AbstractionsMajorMismatch);
+        Assert.Equal(PluginLoadDecision.AbstractionsMajorMismatch, PluginLoadPolicy.Decide(Manifest(abstractionsVersion: 2), HostMajor, saved, "abc"));
     }
 
     [Fact]
     public void Decide_NeverSeen_NeedsConsent()
     {
-        PluginLoadPolicy.Decide(Manifest(), HostMajor, saved: null, "abc")
-            .Should().Be(PluginLoadDecision.NeedsConsent);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved: null, "abc"));
     }
 
     [Fact]
@@ -32,8 +29,7 @@ public class PluginLoadPolicyTests
     {
         var saved = new PluginRegistration(Enabled: false, PinnedSha256: "abc");
 
-        PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc")
-            .Should().Be(PluginLoadDecision.Disabled);
+        Assert.Equal(PluginLoadDecision.Disabled, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc"));
     }
 
     [Fact]
@@ -41,8 +37,7 @@ public class PluginLoadPolicyTests
     {
         var saved = new PluginRegistration(Enabled: true, PinnedSha256: "old-hash");
 
-        PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "new-hash")
-            .Should().Be(PluginLoadDecision.NeedsConsent);
+        Assert.Equal(PluginLoadDecision.NeedsConsent, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "new-hash"));
     }
 
     [Fact]
@@ -51,7 +46,6 @@ public class PluginLoadPolicyTests
         var saved = new PluginRegistration(Enabled: true, PinnedSha256: "ABC");
 
         // Hash comparison is case-insensitive (hex).
-        PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc")
-            .Should().Be(PluginLoadDecision.Load);
+        Assert.Equal(PluginLoadDecision.Load, PluginLoadPolicy.Decide(Manifest(), HostMajor, saved, "abc"));
     }
 }

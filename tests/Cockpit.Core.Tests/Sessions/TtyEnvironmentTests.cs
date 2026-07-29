@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -26,9 +25,9 @@ public class TtyEnvironmentTests
     {
         var environment = TtyEnvironment.BuildBase(BaseEnvironment);
 
-        environment["USERPROFILE"].Should().Be(UserProfileDir);
-        environment["PATH"].Should().Be(@"C:\Windows;C:\Windows\System32");
-        environment["APPDATA"].Should().Be(@"C:\Users\raymo\AppData\Roaming");
+        Assert.Equal(UserProfileDir, environment["USERPROFILE"]);
+        Assert.Equal(@"C:\Windows;C:\Windows\System32", environment["PATH"]);
+        Assert.Equal(@"C:\Users\raymo\AppData\Roaming", environment["APPDATA"]);
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public class TtyEnvironmentTests
     {
         var environment = TtyEnvironment.BuildBase(BaseEnvironment);
 
-        environment["TERM"].Should().Be("xterm-256color");
+        Assert.Equal("xterm-256color", environment["TERM"]);
     }
 
     [Fact]
@@ -46,8 +45,8 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.BuildBase(noUtf8);
 
-        environment["LC_ALL"].Should().Be("C.UTF-8");
-        environment["LANG"].Should().Be("C.UTF-8");
+        Assert.Equal("C.UTF-8", environment["LC_ALL"]);
+        Assert.Equal("C.UTF-8", environment["LANG"]);
     }
 
     [Fact]
@@ -55,7 +54,7 @@ public class TtyEnvironmentTests
     {
         var environment = TtyEnvironment.BuildBase(BaseEnvironment);
 
-        environment["LC_ALL"].Should().Be("C.UTF-8");
+        Assert.Equal("C.UTF-8", environment["LC_ALL"]);
     }
 
     [Theory]
@@ -69,8 +68,8 @@ public class TtyEnvironmentTests
         var environment = TtyEnvironment.BuildBase(env);
 
         // The already-working UTF-8 locale is preserved, and no C.UTF-8 fallback was forced over it.
-        environment[key].Should().Be(value);
-        environment.GetValueOrDefault("LC_ALL").Should().NotBe("C.UTF-8");
+        Assert.Equal(value, environment[key]);
+        Assert.NotEqual("C.UTF-8", environment.GetValueOrDefault("LC_ALL"));
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class TtyEnvironmentTests
     {
         var environment = TtyEnvironment.BuildBase(BaseEnvironment);
 
-        environment.ContainsKey("ANTHROPIC_API_KEY").Should().BeFalse();
+        Assert.False(environment.ContainsKey("ANTHROPIC_API_KEY"));
     }
 
     [Fact]
@@ -95,11 +94,11 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.BuildBase(baseWithMarkers);
 
-        environment.ContainsKey("CLAUDE_CODE_SESSION_ID").Should().BeFalse();
-        environment.ContainsKey("CLAUDECODE").Should().BeFalse();
-        environment.ContainsKey("CLAUDE_CODE_ENTRYPOINT").Should().BeFalse();
-        environment.ContainsKey("CLAUDE_AGENT_SDK_VERSION").Should().BeFalse();
-        environment["PATH"].Should().Be(@"C:\Windows");
+        Assert.False(environment.ContainsKey("CLAUDE_CODE_SESSION_ID"));
+        Assert.False(environment.ContainsKey("CLAUDECODE"));
+        Assert.False(environment.ContainsKey("CLAUDE_CODE_ENTRYPOINT"));
+        Assert.False(environment.ContainsKey("CLAUDE_AGENT_SDK_VERSION"));
+        Assert.Equal(@"C:\Windows", environment["PATH"]);
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.BuildBase(baseWithLowerTerm);
 
-        environment["TERM"].Should().Be("xterm-256color");
+        Assert.Equal("xterm-256color", environment["TERM"]);
     }
 
     [Fact]
@@ -130,13 +129,13 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.BuildBase(baseWithGhosttyMarkers);
 
-        environment.ContainsKey("TERM_PROGRAM").Should().BeFalse();
-        environment.ContainsKey("TERM_PROGRAM_VERSION").Should().BeFalse();
-        environment.ContainsKey("GHOSTTY_RESOURCES_DIR").Should().BeFalse();
-        environment.ContainsKey("GHOSTTY_BIN_DIR").Should().BeFalse();
-        environment["TERM"].Should().Be("xterm-256color");
-        environment["COLORTERM"].Should().Be("truecolor");
-        environment["PATH"].Should().Be(@"C:\Windows");
+        Assert.False(environment.ContainsKey("TERM_PROGRAM"));
+        Assert.False(environment.ContainsKey("TERM_PROGRAM_VERSION"));
+        Assert.False(environment.ContainsKey("GHOSTTY_RESOURCES_DIR"));
+        Assert.False(environment.ContainsKey("GHOSTTY_BIN_DIR"));
+        Assert.Equal("xterm-256color", environment["TERM"]);
+        Assert.Equal("truecolor", environment["COLORTERM"]);
+        Assert.Equal(@"C:\Windows", environment["PATH"]);
     }
 
     [Fact]
@@ -144,9 +143,9 @@ public class TtyEnvironmentTests
     {
         var environment = TtyEnvironment.BuildBase(BaseEnvironment);
 
-        environment["USERPROFILE"].Should().Be(UserProfileDir);
-        environment["PATH"].Should().Be(@"C:\Windows;C:\Windows\System32");
-        environment["APPDATA"].Should().Be(@"C:\Users\raymo\AppData\Roaming");
+        Assert.Equal(UserProfileDir, environment["USERPROFILE"]);
+        Assert.Equal(@"C:\Windows;C:\Windows\System32", environment["PATH"]);
+        Assert.Equal(@"C:\Users\raymo\AppData\Roaming", environment["APPDATA"]);
     }
 
     [Theory]
@@ -163,8 +162,8 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.BuildBase(inherited);
 
-        environment.Should().NotContainKey(variable);
-        environment.Should().ContainKey("PATH", "only the credential is dropped, not the rest of the environment");
+        Assert.DoesNotContain(variable, environment);
+        Assert.Contains("PATH", environment);
     }
 
     [Fact]
@@ -175,8 +174,8 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.Compose(baseEnvironment, overlay);
 
-        environment["CUSTOM_VAR"].Should().Be("custom-value");
-        environment["TERM"].Should().Be("xterm-256color", "the base is still there, not replaced by the overlay");
+        Assert.Equal("custom-value", environment["CUSTOM_VAR"]);
+        Assert.Equal("xterm-256color", environment["TERM"]);
     }
 
     [Fact]
@@ -191,7 +190,7 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.Compose(baseEnvironment, overlay);
 
-        environment.ContainsKey("CLAUDE_CONFIG_DIR").Should().BeFalse();
+        Assert.False(environment.ContainsKey("CLAUDE_CONFIG_DIR"));
     }
 
     [Fact]
@@ -201,7 +200,7 @@ public class TtyEnvironmentTests
 
         var environment = TtyEnvironment.Compose(baseEnvironment, new Dictionary<string, string?>());
 
-        environment["USERPROFILE"].Should().Be(UserProfileDir);
+        Assert.Equal(UserProfileDir, environment["USERPROFILE"]);
     }
 
     // A provider cannot reinstate what the host stripped: an overlay entry for a host-controlled key
@@ -216,12 +215,12 @@ public class TtyEnvironmentTests
             ["ANTHROPIC_API_KEY"] = "inherited-from-the-shell",
         };
         var baseEnvironment = TtyEnvironment.BuildBase(inherited);
-        baseEnvironment.ContainsKey("ANTHROPIC_API_KEY").Should().BeFalse("BuildBase already stripped it");
+        Assert.False(baseEnvironment.ContainsKey("ANTHROPIC_API_KEY"), "BuildBase already stripped it");
 
         var overlay = new Dictionary<string, string?> { ["ANTHROPIC_API_KEY"] = "set-deliberately-by-the-provider" };
         var environment = TtyEnvironment.Compose(baseEnvironment, overlay);
 
-        environment.ContainsKey("ANTHROPIC_API_KEY").Should().BeFalse("a provider does not get to put back what the host stripped");
+        Assert.False(environment.ContainsKey("ANTHROPIC_API_KEY"), "a provider does not get to put back what the host stripped");
     }
 
     // The pane id is who a session is, not a setting it may choose (AC-13, AC-165). A profile, a provider or a
@@ -233,8 +232,9 @@ public class TtyEnvironmentTests
         var baseEnvironment = TtyEnvironment.BuildBase(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         var overlay = new Dictionary<string, string?> { ["COCKPIT_PANE_ID"] = "someone-elses-pane" };
 
-        TtyEnvironment.Compose(baseEnvironment, overlay).ContainsKey("COCKPIT_PANE_ID")
-            .Should().BeFalse("nothing but the host gets to say which pane a session is");
+        Assert.False(
+            TtyEnvironment.Compose(baseEnvironment, overlay).ContainsKey("COCKPIT_PANE_ID"),
+            "nothing but the host gets to say which pane a session is");
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public class TtyEnvironmentTests
             ["COCKPIT_PANE_ID"] = "the-parent-pane",
         };
 
-        TtyEnvironment.BuildBase(inherited).ContainsKey("COCKPIT_PANE_ID").Should().BeFalse();
+        Assert.False(TtyEnvironment.BuildBase(inherited).ContainsKey("COCKPIT_PANE_ID"));
     }
 
     [Fact]
@@ -262,13 +262,13 @@ public class TtyEnvironmentTests
             ["CLAUDE_CONFIG_DIR"] = "/home/someone/.claude-work",
         };
         var baseEnvironment = TtyEnvironment.BuildBase(inherited);
-        baseEnvironment.Should().ContainKey("CLAUDE_CONFIG_DIR", "it is not host-controlled — a provider owns it");
+        Assert.Contains("CLAUDE_CONFIG_DIR", baseEnvironment);
 
         var overlay = new Dictionary<string, string?> { ["CLAUDE_CONFIG_DIR"] = null };
         var environment = TtyEnvironment.Compose(baseEnvironment, overlay);
 
-        environment.Should().NotContainKey("CLAUDE_CONFIG_DIR");
-        environment.Should().ContainKey("PATH", "only what the overlay names is touched");
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", environment);
+        Assert.Contains("PATH", environment);
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public class TtyEnvironmentTests
 
         var rejected = TtyEnvironment.RejectedOverlayKeys(overlay);
 
-        rejected.Should().Equal("ANTHROPIC_API_KEY");
+        Assert.Equal(new[] { "ANTHROPIC_API_KEY" }, rejected);
     }
 
     [Fact]
@@ -292,6 +292,6 @@ public class TtyEnvironmentTests
 
         var rejected = TtyEnvironment.RejectedOverlayKeys(overlay);
 
-        rejected.Should().BeEmpty();
+        Assert.Empty(rejected);
     }
 }

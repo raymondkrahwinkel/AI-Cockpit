@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -34,7 +33,8 @@ public class OpenMicListenerTests
         await _WaitUntilAsync(() => transcripts.Count >= 1);
         await listener.StopAsync();
 
-        transcripts.Should().ContainSingle().Which.Should().Be("open the file");
+        var transcript = Assert.Single(transcripts);
+        Assert.Equal("open the file", transcript);
     }
 
     [Fact]
@@ -83,6 +83,6 @@ public class OpenMicListenerTests
             await Task.Delay(10);
         }
 
-        condition().Should().BeTrue("the condition should become true within the poll window");
+        Assert.True(condition(), "the condition should become true within the poll window");
     }
 }

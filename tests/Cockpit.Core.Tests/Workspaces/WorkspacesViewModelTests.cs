@@ -9,7 +9,6 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Workspaces;
@@ -28,7 +27,7 @@ public class WorkspacesViewModelTests
         // the strip vanish, so a correct single deletion looked like it took both; and the workspace that was
         // there all along reappeared out of nowhere when a second one arrived. A tab says which desk you are on,
         // and it has to keep saying so when there is one.
-        new WorkspacesViewModel().ShowTabStrip.Should().BeTrue();
+        Assert.True(new WorkspacesViewModel().ShowTabStrip);
     }
 
     [Fact]
@@ -42,8 +41,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.CloseWorkspaceCommand.ExecuteAsync(dashboard.Id);
 
-        viewModel.Tabs.Should().HaveCount(2);
-        viewModel.ShowTabStrip.Should().BeTrue("the survivors must stay on screen — otherwise one deletion reads as more");
+        Assert.Equal(2, System.Linq.Enumerable.Count(viewModel.Tabs));
+        Assert.True(viewModel.ShowTabStrip, "the survivors must stay on screen — otherwise one deletion reads as more");
     }
 
     [Fact]
@@ -53,7 +52,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview were already there");
+        Assert.Equal(3, System.Linq.Enumerable.Count(viewModel.Tabs));
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class WorkspacesViewModelTests
     {
         var viewModel = _Create(out _);
 
-        viewModel.EnsureSessionWorkspace().Should().Be(viewModel.Active!.Id);
+        Assert.Equal(viewModel.Active!.Id, viewModel.EnsureSessionWorkspace());
     }
 
     [Fact]
@@ -71,8 +70,8 @@ public class WorkspacesViewModelTests
         var sessions = viewModel.Active!;
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.EnsureSessionWorkspace().Should().Be(sessions.Id);
-        viewModel.Active!.Id.Should().Be(sessions.Id, "the session has to appear where it was put");
+        Assert.Equal(sessions.Id, viewModel.EnsureSessionWorkspace());
+        Assert.Equal(sessions.Id, viewModel.Active!.Id);
     }
 
     [Fact]
@@ -82,12 +81,12 @@ public class WorkspacesViewModelTests
         var viewModel = _Create(out _);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
         await viewModel.CloseWorkspaceCommand.ExecuteAsync(viewModel.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Id);
-        viewModel.Settings.Workspaces.Should().NotContain(workspace => workspace.Type == WorkspaceType.Sessions);
+        Assert.DoesNotContain(viewModel.Settings.Workspaces, workspace => workspace.Type == WorkspaceType.Sessions);
 
         var created = viewModel.EnsureSessionWorkspace();
 
-        viewModel.Settings.Workspaces.Single(workspace => workspace.Id == created).Type.Should().Be(WorkspaceType.Sessions);
-        viewModel.Active!.Id.Should().Be(created);
+        Assert.Equal(WorkspaceType.Sessions, viewModel.Settings.Workspaces.Single(workspace => workspace.Id == created).Type);
+        Assert.Equal(created, viewModel.Active!.Id);
     }
 
     [Fact]
@@ -99,8 +98,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.OpenWorkspaceAsync("workspace.autopilot");
 
-        viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
-        viewModel.Active!.Name.Should().Be("Autopilot");
+        Assert.Equal("workspace.autopilot", viewModel.Active!.Type.Id);
+        Assert.Equal("Autopilot", viewModel.Active!.Name);
     }
 
     [Fact]
@@ -112,8 +111,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.OpenWorkspaceAsync("workspace.autopilot");
 
-        viewModel.Settings.Workspaces.Count(workspace => workspace.Type.Id == "workspace.autopilot").Should().Be(1);
-        viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
+        Assert.Equal(1, viewModel.Settings.Workspaces.Count(workspace => workspace.Type.Id == "workspace.autopilot"));
+        Assert.Equal("workspace.autopilot", viewModel.Active!.Type.Id);
     }
 
     [Fact]
@@ -123,7 +122,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.Active!.Type.Should().Be(WorkspaceType.Dashboard);
+        Assert.Equal(WorkspaceType.Dashboard, viewModel.Active!.Type);
         await store.Received().SaveAsync(Arg.Any<WorkspaceSettings>(), Arg.Any<CancellationToken>());
     }
 
@@ -135,7 +134,8 @@ public class WorkspacesViewModelTests
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.Settings.Workspaces.Select(workspace => workspace.Name).Should().OnlyHaveUniqueItems();
+        var names = viewModel.Settings.Workspaces.Select(workspace => workspace.Name).ToList();
+        Assert.Equal(names.Distinct().Count(), names.Count);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public class WorkspacesViewModelTests
         // Active is the dashboard (the one just added, i.e. the last tab); stepping forward wraps to the first.
         await viewModel.SelectNextWorkspaceCommand.ExecuteAsync(null);
 
-        viewModel.Active!.Id.Should().Be(first.Id);
+        Assert.Equal(first.Id, viewModel.Active!.Id);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.SelectPreviousWorkspaceCommand.ExecuteAsync(null);
 
-        viewModel.Active!.Id.Should().Be(dashboard.Id);
+        Assert.Equal(dashboard.Id, viewModel.Active!.Id);
     }
 
     [Fact]
@@ -196,11 +196,11 @@ public class WorkspacesViewModelTests
     public async Task IsDashboardActive_TracksTheActiveWorkspacesType_SoTheDashboardOnlyChromeCanGateOnIt()
     {
         var viewModel = _Create(out _);
-        viewModel.IsDashboardActive.Should().BeFalse();
+        Assert.False(viewModel.IsDashboardActive);
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.IsDashboardActive.Should().BeTrue();
+        Assert.True(viewModel.IsDashboardActive);
     }
 
     [Fact]
@@ -209,13 +209,13 @@ public class WorkspacesViewModelTests
         // The overview is a fixture that Default already carries, not something AddWorkspaceCommand can add a
         // second of — OpenWorkspaceAsync is how the sidebar (AC-162) brings the existing one to the front.
         var viewModel = _Create(out _);
-        viewModel.IsProjectsActive.Should().BeFalse();
+        Assert.False(viewModel.IsProjectsActive);
 
         await viewModel.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
-        viewModel.IsProjectsActive.Should().BeTrue();
-        viewModel.IsSessionsActive.Should().BeFalse("the grid and the overview share the content area");
-        viewModel.IsPluginWorkspaceActive.Should().BeFalse("the overview is the host's own surface, not a plugin's");
+        Assert.True(viewModel.IsProjectsActive);
+        Assert.False(viewModel.IsSessionsActive, "the grid and the overview share the content area");
+        Assert.False(viewModel.IsPluginWorkspaceActive, "the overview is the host's own surface, not a plugin's");
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class WorkspacesViewModelTests
         // on the one Default ships.
         var viewModel = _Create(out _);
 
-        viewModel.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects).Name.Should().Be("Projects");
+        Assert.Equal("Projects", viewModel.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects).Name);
     }
 
     [Fact]
@@ -236,9 +236,9 @@ public class WorkspacesViewModelTests
         var viewModel = _Create(out _);
         var offered = viewModel.WorkspaceMenuOptions.Select(option => option.Type).ToList();
 
-        offered.Should().Contain(WorkspaceType.Sessions);
-        offered.Should().Contain(WorkspaceType.Dashboard);
-        offered.Should().NotContain(WorkspaceType.Projects);
+        Assert.Contains(WorkspaceType.Sessions, offered);
+        Assert.Contains(WorkspaceType.Dashboard, offered);
+        Assert.DoesNotContain(WorkspaceType.Projects, offered);
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public class WorkspacesViewModelTests
         await viewModel.AddWidgetAsync("clock.time");
         await viewModel.AddWidgetAsync("system-monitor.usage");
 
-        viewModel.Active!.Panes.Select(pane => pane.Cell).Should().Equal(new GridCell(0, 0), new GridCell(1, 0));
+        Assert.Equal(new[] { new GridCell(0, 0), new GridCell(1, 0) }, viewModel.Active!.Panes.Select(pane => pane.Cell));
     }
 
     [Fact]
@@ -260,7 +260,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.AddWidgetAsync("clock.time");
 
-        viewModel.Active!.Panes.Should().BeEmpty();
+        Assert.Empty(viewModel.Active!.Panes);
     }
 
     [Fact]
@@ -273,10 +273,10 @@ public class WorkspacesViewModelTests
 
         await viewModel.MovePaneAsync(pane.Id, new GridCell(1, 1));
 
-        var moved = viewModel.Active!.Panes.Should().ContainSingle().Subject;
-        moved.Id.Should().Be(pane.Id);
-        moved.WidgetId.Should().Be("clock.time");
-        moved.Cell.Should().Be(new GridCell(1, 1));
+        var moved = Assert.Single(viewModel.Active!.Panes);
+        Assert.Equal(pane.Id, moved.Id);
+        Assert.Equal("clock.time", moved.WidgetId);
+        Assert.Equal(new GridCell(1, 1), moved.Cell);
     }
 
     [Fact]
@@ -288,7 +288,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.RemovePaneAsync(viewModel.Active!.Panes[0].Id);
 
-        viewModel.Active!.Panes.Should().BeEmpty();
+        Assert.Empty(viewModel.Active!.Panes);
     }
 
     [Fact]
@@ -299,8 +299,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.SetDashboardLayoutAsync(viewModel.Active!.Id, new DashboardLayout { Columns = 9999, Rows = 3 });
 
-        viewModel.Active!.Layout.Columns.Should().Be(DashboardLayout.MaxColumns);
-        viewModel.Active!.Layout.Rows.Should().Be(3);
+        Assert.Equal(DashboardLayout.MaxColumns, viewModel.Active!.Layout.Columns);
+        Assert.Equal(3, viewModel.Active!.Layout.Rows);
     }
 
     [Fact]
@@ -310,7 +310,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.SetDashboardLayoutAsync(viewModel.Active!.Id, new DashboardLayout { Columns = 4 });
 
-        viewModel.Active!.Layout.Columns.Should().Be(DashboardLayout.DefaultColumns);
+        Assert.Equal(DashboardLayout.DefaultColumns, viewModel.Active!.Layout.Columns);
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.RenameWorkspaceCommand.ExecuteAsync((viewModel.Active!.Id, "Client work"));
 
-        viewModel.Tabs[0].Name.Should().Be("Client work");
+        Assert.Equal("Client work", viewModel.Tabs[0].Name);
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.RenameWorkspaceCommand.ExecuteAsync((viewModel.Active!.Id, "   "));
 
-        viewModel.Active!.Name.Should().Be(original);
+        Assert.Equal(original, viewModel.Active!.Name);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.CloseWorkspaceCommand.ExecuteAsync(viewModel.Active!.Id);
 
-        viewModel.Settings.Workspaces.Should().ContainSingle();
+        Assert.Single(viewModel.Settings.Workspaces);
     }
 
     [Fact]
@@ -354,8 +354,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.InitializeAsync();
 
-        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview, plus the saved dashboard");
-        viewModel.Active!.Name.Should().Be("Monitoring");
+        Assert.Equal(3, System.Linq.Enumerable.Count(viewModel.Tabs));
+        Assert.Equal("Monitoring", viewModel.Active!.Name);
     }
 
     [Fact]
@@ -364,7 +364,7 @@ public class WorkspacesViewModelTests
         var viewModel = _Create(out _);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.Tabs.Count(tab => tab.IsActive).Should().Be(1);
+        Assert.Equal(1, viewModel.Tabs.Count(tab => tab.IsActive));
     }
 
     /// <summary>
@@ -387,8 +387,8 @@ public class WorkspacesViewModelTests
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        toasts.Toasts.Should().ContainSingle().Which.Severity.Should().Be(ToastSeverity.Error);
-        toasts.Toasts[0].Message.Should().Contain("the write lock could not be taken", "the reason is the point of saying anything at all");
+        Assert.Equal(ToastSeverity.Error, Assert.Single(toasts.Toasts).Severity);
+        Assert.Contains("the write lock could not be taken", toasts.Toasts[0].Message);
     }
 
     /// <summary>Its caller discards the task, so a throw out of the load lands on a task nobody observes.</summary>
@@ -403,8 +403,8 @@ public class WorkspacesViewModelTests
 
         var act = async () => await viewModel.InitializeAsync();
 
-        await act.Should().NotThrowAsync();
-        toasts.Toasts.Should().ContainSingle().Which.Severity.Should().Be(ToastSeverity.Error);
+        await act();
+        Assert.Equal(ToastSeverity.Error, Assert.Single(toasts.Toasts).Severity);
     }
 
     /// <summary>
@@ -454,8 +454,8 @@ public class WorkspacesViewModelTests
 
         var act = async () => await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        await act.Should().NotThrowAsync();
-        viewModel.Tabs.Should().HaveCount(3, "what the operator did is still on screen, beside Sessions and the fixed overview");
+        await act();
+        Assert.Equal(3, System.Linq.Enumerable.Count(viewModel.Tabs));
     }
 
     [Fact]
@@ -465,10 +465,10 @@ public class WorkspacesViewModelTests
 
         var import = await viewModel.ImportDashboardAsync(_ExportJson("{\"ShowCpu\":true}"));
 
-        import.Should().NotBeNull();
-        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview, plus the imported dashboard");
-        viewModel.Active!.Name.Should().Be("Monitoring");
-        viewModel.Active.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("w");
+        Assert.NotNull(import);
+        Assert.Equal(3, System.Linq.Enumerable.Count(viewModel.Tabs));
+        Assert.Equal("Monitoring", viewModel.Active!.Name);
+        Assert.Equal("w", Assert.Single(viewModel.Active.Panes).WidgetId);
     }
 
     /// <summary>
@@ -484,9 +484,9 @@ public class WorkspacesViewModelTests
 
         var import = await viewModel.ImportDashboardAsync(_ExportJson("{not json at all"));
 
-        import.Should().BeNull();
-        viewModel.Tabs.Should().HaveCount(2, "Sessions and the fixed overview — a file that cannot be read must not leave a dashboard behind");
-        viewModel.Settings.Workspaces.Should().HaveCount(2);
+        Assert.Null(import);
+        Assert.Equal(2, System.Linq.Enumerable.Count(viewModel.Tabs));
+        Assert.Equal(2, System.Linq.Enumerable.Count(viewModel.Settings.Workspaces));
     }
 
     /// <summary>A dashboard export carrying one widget of type "w", whose only setting holds <paramref name="configValue"/> verbatim.</summary>
