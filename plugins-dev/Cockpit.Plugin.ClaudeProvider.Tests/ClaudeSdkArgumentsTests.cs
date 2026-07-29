@@ -39,26 +39,27 @@ public class ClaudeSdkArgumentsTests
     }
 
     [Fact]
-    public void BuildArguments_FansTheMcpConfigWhenGiven_WithoutStrict()
+    public void BuildArguments_FansTheMcpConfigWhenGiven_WithStrict()
     {
         // The user's own cockpit-configured servers (#26/#44) ride --mcp-config, so an SDK session actually reaches
-        // them — dropping this is what left an SDK session with no registry servers. Non-strict, so they add on top
-        // of the CLI's own user/project config rather than replacing it.
+        // them — dropping this is what left an SDK session with no registry servers. Strict (AC-378, unlike the TTY
+        // route): a headless/delegated session must get EXACTLY the resolved servers, never the CLI's own
+        // user/project claude.ai-connectors unioned in on top.
         var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "/tmp/cockpit-mcp/abc.json");
 
         arguments.Should().ContainInOrder("--mcp-config", "/tmp/cockpit-mcp/abc.json");
-        arguments.Should().NotContain("--strict-mcp-config");
+        arguments.Should().Contain("--strict-mcp-config");
         // Still over the control protocol for approvals — the mcp-config is the user's servers, not a permission tool.
         arguments.Should().ContainInOrder("--permission-prompt-tool", "stdio");
     }
 
     [Fact]
-    public void BuildArguments_OmitsMcpConfig_WhenPathIsNullOrBlank()
+    public void BuildArguments_OmitsMcpConfigAndStrict_WhenPathIsNullOrBlank()
     {
         ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: null)
-            .Should().NotContain("--mcp-config");
+            .Should().NotContain("--mcp-config").And.NotContain("--strict-mcp-config");
         ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "   ")
-            .Should().NotContain("--mcp-config");
+            .Should().NotContain("--mcp-config").And.NotContain("--strict-mcp-config");
     }
 
     [Fact]
