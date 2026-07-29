@@ -49,6 +49,17 @@ public class ClaudeTtyProviderTests
         arguments.Should().ContainInOrder("--append-system-prompt", "delegate-prompt");
     }
 
+    // AC-378: the strict flag is a deliberate divergence on the headless/SDK route only (ClaudeSdkArguments) — the
+    // interactive TTY session the operator drives themselves keeps the union behaviour (cockpit servers add on top
+    // of the CLI's own user/project claude.ai-connectors) unchanged. A regression here would silently strip the
+    // operator's own connectors out of every interactive session.
+    [Fact]
+    public void BuildArguments_NeverAddsStrictMcpConfig_EvenWithAnMcpConfigPath()
+    {
+        ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", null, null, null)
+            .Should().NotContain("--strict-mcp-config");
+    }
+
     [Fact]
     public void BuildArguments_WithNothingSet_IsEmpty()
     {

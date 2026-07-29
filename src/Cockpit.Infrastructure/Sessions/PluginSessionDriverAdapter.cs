@@ -322,6 +322,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 {
                     servers.Add(mapped);
                 }
+                else
+                {
+                    // AC-378: the registry advertised this server as agent-eligible (enabled, in scope), but it has
+                    // no transport target this driver can mount (an Http entry with no Url, a Stdio entry with no
+                    // Command — a misconfigured "SQL Explorer" is the concrete case that surfaced this). Silently
+                    // dropping it here is what let a profile/narrowing resolution quietly end up with fewer servers
+                    // than advertised; logging it turns that into a line the operator can see instead of a session
+                    // that mysteriously has fewer tools than the profile listing promised.
+                    logger?.LogWarning(
+                        "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
+                        server.Name);
+                }
             }
 
             // Say what the session got and against which selection, so the next "why are my MCP servers missing?"

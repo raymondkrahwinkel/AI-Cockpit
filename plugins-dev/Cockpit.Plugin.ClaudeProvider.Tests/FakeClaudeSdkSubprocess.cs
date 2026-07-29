@@ -16,6 +16,9 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public IReadOnlyDictionary<string, string?>? EnvironmentVariables { get; private set; }
 
+    /// <summary>The argument list the driver actually spawned with — what AC-378's --strict-mcp-config tests assert on.</summary>
+    public IReadOnlyList<string>? Arguments { get; private set; }
+
     public bool Disposed { get; private set; }
 
     public int? ProcessId { get; set; } = 4242;
@@ -24,6 +27,7 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
+        Arguments = arguments;
         EnvironmentVariables = environmentVariables;
     }
 

@@ -293,6 +293,61 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir));
     }
 
+    // AC-378: with registry servers resolved, the spawn carries --strict-mcp-config alongside --mcp-config, so the
+    // CLI never unions in its own user/project claude.ai-connectors on top of what the resolution produced.
+    [Fact]
+    public async Task Start_WithMcpServers_SpawnsWithStrictMcpConfig()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null,
+            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
+            CancellationToken.None);
+
+        fake.Arguments.Should().Contain("--mcp-config");
+        fake.Arguments.Should().Contain("--strict-mcp-config");
+    }
+
+    // AC-378, criterion 4 — the empty-resolution trap: a narrowing that resolves to zero eligible servers must
+    // still spawn with an explicit (empty) --mcp-config and --strict-mcp-config, never with the flag dropped
+    // entirely (which would let the CLI fall back to its own full user/project config — MORE servers than an
+    // empty, narrowed resolution asked for).
+    [Fact]
+    public async Task Start_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null,
+            mcpServers: [],
+            CancellationToken.None);
+
+        fake.Arguments.Should().Contain("--mcp-config");
+        fake.Arguments.Should().Contain("--strict-mcp-config");
+
+        var mcpConfigIndex = fake.Arguments!.ToList().IndexOf("--mcp-config");
+        var path = fake.Arguments![mcpConfigIndex + 1];
+        File.Exists(path).Should().BeTrue("the strict path must write an explicit config file rather than dropping the flag");
+        System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+    }
+
+    // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
+    // exactly like an empty list, not fall back to dropping --mcp-config.
+    [Fact]
+    public async Task Start_WithNullMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        fake.Arguments.Should().Contain("--mcp-config");
+        fake.Arguments.Should().Contain("--strict-mcp-config");
+    }
+
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>
         // A temp config dir keeps StartAsync's workspace-trust write off the real ~/.claude.json.
         new(() => fake, new ClaudeProviderConfig(ConfigDir: _tempDir), executablePath: "claude");

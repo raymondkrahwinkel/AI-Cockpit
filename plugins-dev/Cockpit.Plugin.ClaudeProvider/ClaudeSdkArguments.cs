@@ -70,14 +70,20 @@ internal static class ClaudeSdkArguments
         }
 
         // Fan the shared MCP registry into the SDK spawn — the user's own cockpit-configured servers (#26/#44).
-        // Deliberately without --strict-mcp-config, so they add on top of the CLI's own user/project config rather
-        // than replacing it, exactly like the TTY route. This is independent of the permission wiring above: the
-        // permission MCP server is (correctly) absent because approvals ride the control protocol, but that is no
-        // reason to drop the operator's real servers — omitting this is what left an SDK session with none of them.
+        // Unlike the TTY route (ClaudeTtyProvider.BuildArguments), this one adds --strict-mcp-config (AC-378): a
+        // headless/delegated session is unattended, so it must get EXACTLY the servers the resolution produced,
+        // never the CLI's own user/project claude.ai-connectors (AI-OS-Brain, depot, Microsoft 365, …) unioned in
+        // on top. Without the strict flag, narrowing a delegated task DOWN to fewer servers could leave it with
+        // MORE (and different) ones than an unnarrowed task: a narrowing that resolves to nothing used to drop
+        // --mcp-config entirely (see ClaudeSdkSessionDriver, which now always writes an explicit — possibly
+        // empty — config file for this reason) and the session would inherit the full CLI config instead of
+        // getting none. The interactive TTY route deliberately keeps the union behaviour — that is the session
+        // the operator drives themselves, and Raymond does not want it to change.
         if (!string.IsNullOrWhiteSpace(mcpConfigPath))
         {
             arguments.Add("--mcp-config");
             arguments.Add(mcpConfigPath);
+            arguments.Add("--strict-mcp-config");
         }
 
         if (!string.IsNullOrWhiteSpace(model))

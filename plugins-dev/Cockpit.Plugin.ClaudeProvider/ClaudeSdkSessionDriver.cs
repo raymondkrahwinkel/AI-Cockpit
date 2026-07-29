@@ -56,10 +56,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
-    // The per-session --mcp-config file this launch wrote (the shared registry fanned in), or null when the session
-    // has no registry servers. Deleted on dispose: it can hold a user API-key server's bearer header, and a config
-    // for a session that has ended is nobody's business (the TTY route hands the same file to the host to clean up;
-    // the SDK driver owns its own process lifetime, so it owns this file's lifetime too).
+    // The per-session --mcp-config file this launch wrote (the shared registry fanned in) — always written on this
+    // route now (AC-378), even as an explicit empty file when there are no registry servers, so --strict-mcp-config
+    // always has a config to pair with. Deleted on dispose: it can hold a user API-key server's bearer header, and a
+    // config for a session that has ended is nobody's business (the TTY route hands the same file to the host to
+    // clean up; the SDK driver owns its own process lifetime, so it owns this file's lifetime too).
     private string? _mcpConfigPath;
 
     public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
@@ -126,9 +127,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, resolvedWorkingDirectory);
 
         // Fan the shared MCP registry (already narrowed to this session's selection by the host adapter) into a
-        // --mcp-config file, exactly as the TTY route does — without this the SDK session reaches none of the
-        // operator's cockpit-configured servers.
-        _mcpConfigPath = mcpServers is { Count: > 0 } servers ? ClaudeMcpConfig.Write(servers) : null;
+        // --mcp-config file. Unlike the TTY route, always writes one — even an explicit empty file when the
+        // resolution produced no servers (writeEmptyExplicit: true) — because ClaudeSdkArguments.BuildArguments
+        // pairs --mcp-config with --strict-mcp-config on this route (AC-378): a null path here would drop
+        // --mcp-config from the command line and let the CLI fall back to its own user/project config instead of
+        // the empty set the resolution actually produced, exactly the "narrowing to nothing looks like no
+        // narrowing" trap this ticket closes.
+        _mcpConfigPath = ClaudeMcpConfig.Write(mcpServers ?? [], writeEmptyExplicit: true);
 
         // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
         // (Autopilot's CEO). Applied at start through --append-system-prompt, so it needs no post-start turn.
