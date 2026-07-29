@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Configuration;
 
@@ -40,8 +41,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         _pluginsRoot = pluginsRoot;
     }
 
-    public async Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, int hostAbstractionsMajor, CancellationToken cancellationToken = default)
+    public async Task<PluginInstallResult> InstallFromZipAsync(
+        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default)
     {
+        hostVersion ??= HostVersionInfo.Current;
+
         if (!File.Exists(zipFilePath))
         {
             return PluginInstallResult.Failure("The selected file no longer exists.");
@@ -74,6 +78,15 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             {
                 return PluginInstallResult.Failure(
                     $"This plugin targets contract version {manifest.AbstractionsVersion}, but this cockpit provides version {hostAbstractionsMajor}.");
+            }
+
+            // AC-181: the same minHostVersion gate PluginLoadPolicy applies at load time, run here too — a plugin
+            // that would be refused on load must not be allowed to install in the first place and sit there
+            // reporting "installed" until the operator restarts and finds out otherwise.
+            if (!PluginLoadPolicy.MeetsMinHostVersion(manifest.MinHostVersion, hostVersion))
+            {
+                return PluginInstallResult.Failure(
+                    $"This plugin needs {CockpitProduct.DisplayName} {manifest.MinHostVersion} or later, but this cockpit is {hostVersion}.");
             }
 
             if (!File.Exists(Path.Combine(stagingDir, manifest.EntryAssembly)))

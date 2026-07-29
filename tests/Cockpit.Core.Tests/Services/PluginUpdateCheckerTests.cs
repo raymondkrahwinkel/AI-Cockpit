@@ -204,12 +204,50 @@ public class PluginUpdateCheckerTests
         toastService.Received(1).Show(Arg.Any<string>(), ToastSeverity.Information, Arg.Any<string?>(), Arg.Any<Action?>());
     }
 
+    // AC-181: an update this host cannot run must not toast or inflate the sidebar badge — the same reason
+    // PluginManagerViewModel.CanUpdate excludes it from "Update all".
+    [Fact]
+    public async Task CheckNowAsync_AnUpdateThisHostCannotRun_NeitherToastsNorBadges()
+    {
+        var toastService = Substitute.For<IToastService>();
+        var cockpit = TestCockpit.NewViewModel();
+        var checker = _CreateChecker(
+            installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
+            storeClient: _StoreClientReturning(_Entry("youtrack", "1.1.0", minHostVersion: "2.0.0")),
+            toastService: toastService,
+            cockpit: cockpit,
+            hostVersion: new Version(1, 5, 0));
+
+        await checker.CheckNowAsync();
+
+        toastService.DidNotReceiveWithAnyArgs().Show(default!, default, default, default);
+        Assert.Equal(0, cockpit.Plugins.UpdateBadgeCount);
+    }
+
+    [Fact]
+    public async Task CheckNowAsync_AnUpdateThisHostCanRun_StillSurfaces()
+    {
+        // The counterpart: the same shape of update, one this host meets, still surfaces — so the exclusion is
+        // the compatibility check, not a blanket suppression.
+        var toastService = Substitute.For<IToastService>();
+        var checker = _CreateChecker(
+            installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
+            storeClient: _StoreClientReturning(_Entry("youtrack", "1.1.0", minHostVersion: "1.0.0")),
+            toastService: toastService,
+            hostVersion: new Version(1, 5, 0));
+
+        await checker.CheckNowAsync();
+
+        toastService.Received(1).Show(Arg.Any<string>(), ToastSeverity.Information, Arg.Any<string?>(), Arg.Any<Action?>());
+    }
+
     private static PluginUpdateChecker _CreateChecker(
         IReadOnlyList<DiscoveredPlugin> installed,
         IPluginStoreClient storeClient,
         IToastService toastService,
         CockpitViewModel? cockpit = null,
-        Func<string, string, bool>? isStaged = null)
+        Func<string, string, bool>? isStaged = null,
+        Version? hostVersion = null)
     {
         var storeConfigStore = Substitute.For<IPluginStoreConfigStore>();
         storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<PluginStoreConfig>>([PluginStoreConfig.Remote(StoreUrl)]);
@@ -221,7 +259,8 @@ public class PluginUpdateCheckerTests
             toastService,
             cockpit ?? TestCockpit.NewViewModel(),
             NullLogger<PluginUpdateChecker>.Instance,
-            isUpdateStaged: isStaged);
+            isUpdateStaged: isStaged,
+            hostVersion: hostVersion);
     }
 
     private static IPluginStoreClient _StoreClientReturning(PluginStoreEntry entry)
@@ -232,8 +271,8 @@ public class PluginUpdateCheckerTests
         return storeClient;
     }
 
-    private static PluginStoreEntry _Entry(string id, string latestVersion) =>
-        new(id, id, null, null, latestVersion, []);
+    private static PluginStoreEntry _Entry(string id, string latestVersion, int abstractionsVersion = 1, string? minHostVersion = "1.0.0") =>
+        new(id, id, null, null, latestVersion, [new PluginStoreVersion(latestVersion, $"{id}/{latestVersion}.zip", abstractionsVersion, minHostVersion, "sha", null)]);
 
     private static DiscoveredPlugin _Plugin(string folderId, string name, string version) =>
         new(

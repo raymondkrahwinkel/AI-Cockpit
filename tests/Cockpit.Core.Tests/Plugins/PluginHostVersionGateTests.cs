@@ -40,14 +40,39 @@ public class PluginHostVersionGateTests
     }
 
     [Fact]
-    public void BeforeTheCockpitReachesOnePointZero_TheGateDoesNotBite()
+    public void BeforeTheCockpitReachesOnePointZero_ADeclaredOnePointZeroRequirement_DoesNotBite()
     {
-        // Every manifest in existence claims minHostVersion 1.0.0 — the template's default — while the host is
-        // 0.1.0. Enforcing the gate against a 0.x host would refuse every plugin including the bundled ones, over
-        // a number nobody meant. This is the test that keeps that from happening by accident.
+        // A manifest claiming minHostVersion 1.0.0 — the plugin template's default — while the host is 0.1.0 is
+        // the leftover artifact every manifest used to carry regardless of what it actually needed, not a real
+        // requirement. Enforcing it against a 0.x host would refuse every plugin including the bundled ones,
+        // over a number nobody meant.
         var decision = PluginLoadPolicy.Decide(
             Manifest("1.0.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
             hostVersion: new Version(0, 1, 0));
+
+        Assert.Equal(PluginLoadDecision.Load, decision);
+    }
+
+    // AC-181: manifests no longer carry the stale 1.0.0 template default — 21+ ship honest sub-1.0 values, each
+    // tied to a specific SDK member the host added at that version. That is a real, current requirement, and the
+    // gate must enforce it against a 0.x host exactly as it would against a 1.x one — this pins the fix for the
+    // bug the AC-181 review found: the pre-1.0 exemption used to suppress this too.
+    [Fact]
+    public void AnHonestSubOnePointZeroRequirement_IsEnforced_EvenOnASubOnePointZeroHost()
+    {
+        var decision = PluginLoadPolicy.Decide(
+            Manifest("0.14.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
+            hostVersion: new Version(0, 13, 0));
+
+        Assert.Equal(PluginLoadDecision.HostTooOld, decision);
+    }
+
+    [Fact]
+    public void AnHonestSubOnePointZeroRequirement_TheHostMeets_Loads()
+    {
+        var decision = PluginLoadPolicy.Decide(
+            Manifest("0.10.0"), hostAbstractionsMajor: 1, Consented("abc"), currentSha256: "abc",
+            hostVersion: new Version(0, 13, 0));
 
         Assert.Equal(PluginLoadDecision.Load, decision);
     }

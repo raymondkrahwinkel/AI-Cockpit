@@ -103,7 +103,7 @@ public class PluginManagerViewModelBusyGateTests
         download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
         await storeInstall;
 
-        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>());
         Assert.False(manager.IsBusy);
     }
 
@@ -125,7 +125,7 @@ public class PluginManagerViewModelBusyGateTests
         await manager.InstallFromStoreCommand.ExecuteAsync(row);
         await manager.InstallFromStoreCommand.ExecuteAsync(row);
 
-        await installer.Received(2).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await installer.Received(2).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>());
         Assert.False(manager.IsBusy);
     }
 
@@ -159,7 +159,7 @@ public class PluginManagerViewModelBusyGateTests
         download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
         await versionInstall;
 
-        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -191,7 +191,7 @@ public class PluginManagerViewModelBusyGateTests
         download.SetResult(new PluginStoreDownloadResult(true, null, _ZipPath));
         await batch;
 
-        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await installer.Received(1).InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -228,7 +228,7 @@ public class PluginManagerViewModelBusyGateTests
         var manager = _Manager(Substitute.For<IPluginStoreClient>(), installer, Substitute.For<IAppRestartService>(), dialogService);
 
         var duringTheZipInstall = new List<(bool Busy, bool StoreInstallOpen, bool ZipOpen, bool RestartOnOffer)>();
-        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        installer.InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 duringTheZipInstall.Add((
@@ -683,7 +683,7 @@ public class PluginManagerViewModelBusyGateTests
     // so the run never reaches PluginBootstrap and never touches the real plugins folder on disk.
     private static void _StagesTheUpdate(IPluginInstaller installer) =>
         installer
-            .InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .InstallFromZipAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<Version?>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(PluginInstallResult.Success("plugin-folder", "sha256-of-the-new-bytes", staged: true)));
 
     private static PluginManagerViewModel _Manager(

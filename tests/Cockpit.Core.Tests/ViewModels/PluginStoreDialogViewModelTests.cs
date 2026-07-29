@@ -20,19 +20,23 @@ public class PluginStoreDialogViewModelTests
         string? published = null,
         string? author = null,
         string? installedVersion = null,
-        string latestVersion = "1.0.0") => new(
+        string latestVersion = "1.0.0",
+        string? latestMinHostVersion = "1.0.0",
+        Version? hostVersion = null) => new(
         new PluginStoreEntry(
             Id: id,
             Name: name,
             Description: $"{name} description",
             Author: author,
             LatestVersion: latestVersion,
-            Versions: [new PluginStoreVersion(latestVersion, $"{id}/{latestVersion}.zip", 1, "1.0.0", "sha", null)],
+            Versions: [new PluginStoreVersion(latestVersion, $"{id}/{latestVersion}.zip", 1, latestMinHostVersion, "sha", null)],
             Category: category,
             Featured: featured,
             Published: published),
         PluginStoreConfig.Remote("https://store/index.json"),
-        installedVersion);
+        installedVersion,
+        hostAbstractionsMajor: 1,
+        hostVersion: hostVersion ?? new Version(1, 5, 0));
 
     /// <summary>
     /// The Installed list is grouped by the category the store gives each plugin (Raymond, 2026-07-15): one flat
@@ -168,6 +172,24 @@ public class PluginStoreDialogViewModelTests
 
         Assert.Contains(nameof(PluginManagerViewModel.HasAvailableUpdates), raised);
         Assert.False(manager.HasAvailableUpdates);
+    }
+
+    /// <summary>
+    /// The bug this guards (AC-181): an installed plugin whose newer store version needs a host this cockpit is
+    /// not yet must not inflate "Update all" — that update would only download and then be refused by the
+    /// installer, exactly the click-then-fail the store browse badge exists to avoid, one button over.
+    /// </summary>
+    [Fact]
+    public void AnUpdateThisHostCannotRun_IsNotCountedTowardsUpdateAll()
+    {
+        var manager = new PluginManagerViewModel();
+
+        manager.AvailablePlugins.Add(_Row(
+            "a", "Alpha", installedVersion: "1.0.0", latestVersion: "2.0.0",
+            latestMinHostVersion: "2.0.0", hostVersion: new Version(1, 5, 0)));
+
+        Assert.False(manager.HasAvailableUpdates);
+        Assert.Equal(0, manager.AvailableUpdateCount);
     }
 
     [Fact]

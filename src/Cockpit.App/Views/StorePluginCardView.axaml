@@ -44,7 +44,7 @@
                     <!-- A quiet outlined pill — green "Installed", amber "Update" — so install state reads at a
                          glance without hunting for the button's label. -->
                     <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="7,1" IsVisible="{Binding HasStateBadge}"
-                            BorderThickness="1" VerticalAlignment="Center"
+                            BorderThickness="1" VerticalAlignment="Center" ToolTip.Tip="{Binding StateBadgeTooltip}"
                             BorderBrush="{Binding StateBadgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
                         <TextBlock Text="{Binding StateBadgeText}" FontSize="10" FontWeight="SemiBold"
                                    Foreground="{Binding StateBadgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
