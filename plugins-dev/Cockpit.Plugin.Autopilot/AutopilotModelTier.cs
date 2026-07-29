@@ -5,9 +5,9 @@ namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
 /// The cost ceiling a plan clears before the operator ever approves it (AC-256). Until this existed the only thing
-/// steering model choice was brief text, and the pilot run put 88.9% of its tokens on a model near the expensive end
-/// while never once reaching for either of the two cheapest — a brief asks, it does not enforce, which is the same
-/// lesson AC-433 learned about review scope.
+/// steering model choice was brief text, and the pilot run put 88.9% of its tokens on the second-dearest model of the
+/// four on offer, the remainder on the second-cheapest, and never touched the cheapest at all — a brief asks, it does
+/// not enforce, which is the same lesson AC-433 learned about review scope.
 /// <para>
 /// Expressed purely as a position in the list the profile's own provider ranked
 /// (<see cref="PluginProfileInfo.ModelCostEstimatesCheapestFirst"/>), never as a model name: the CEO brief is
@@ -86,10 +86,19 @@ internal static class AutopilotModelTier
         }
 
         // Validate only returns a refusal once it has found the profile and a non-empty ranking, so both hold here.
-        var ranked = profiles.First(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal))
-            .ModelCostEstimatesCheapestFirst;
+        var profile = profiles.First(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
+        var ranked = profile.ModelCostEstimatesCheapestFirst;
 
-        return step.WithProfile(step.ProfileLabel, ranked[AllowedCount(ranked.Count, strategy) - 1].Model);
+        // The dearest the ceiling allows, but only one the profile actually offers: nothing stops a provider pricing a
+        // model it does not list, and moving the step onto that would swap a cost problem for a step that dies at
+        // launch on the profile check. Nothing offered within the ceiling leaves the step alone — a run that keeps
+        // going one tier over budget beats a run that cannot start this step at all.
+        var affordable = ranked
+            .Take(AllowedCount(ranked.Count, strategy))
+            .Select(estimate => estimate.Model)
+            .LastOrDefault(model => profile.ModelSuggestions.Contains(model, StringComparer.OrdinalIgnoreCase));
+
+        return affordable is null ? step : step.WithProfile(step.ProfileLabel, affordable);
     }
 
     /// <summary>Every step against the ceiling, returning the first refusal so the CEO fixes one thing at a time.</summary>

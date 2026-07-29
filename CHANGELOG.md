@@ -1001,10 +1001,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: the planning brief told the planner that a profile's model list ran from lighter and cheaper to heavier and
   more capable, while it actually ran the other way round. A planner following that instruction to "pick the cheapest
   model that can do the job" was reading the expensive end of the list — in a measured pilot run, 89% of every token
-  spent went to one of the pricier models and the two cheapest were never used at all. The roster now follows the
-  order the provider itself declares, and where a provider declares no order the brief says so rather than inventing
-  one.
-
+  spent went to the second-dearest of the four models on offer and the cheapest one was never reached for at all. The
+  roster now follows the order the provider itself declares, and where a provider declares no order the brief says so
+  rather than inventing one.
 - fixed: the cost shown for a session was far too high, because the session's whole spend was counted again on
   every turn. The figure the CLI reports alongside each answer is what the session has cost so far, not what
   that one answer cost, so adding those figures up charged every earlier turn a second time — a two-turn

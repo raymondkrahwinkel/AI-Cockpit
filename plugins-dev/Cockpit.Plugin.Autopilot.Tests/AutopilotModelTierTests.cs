@@ -115,6 +115,23 @@ public class AutopilotModelTierTests
     }
 
     [Fact]
+    public void HoldToCeiling_NeverMovesAStepOntoAModelTheProfileDoesNotOffer()
+    {
+        // A provider may price a model it does not list. Moving the step there would swap a cost problem for a step
+        // that dies at launch on the profile check, so it stays where it is instead.
+        IReadOnlyList<PluginProfileInfo> pricedButNotOffered =
+        [
+            new PluginProfileInfo("Claude", "Plugin", string.Empty)
+            {
+                ModelSuggestions = ["opus"],
+                ModelCostEstimatesCheapestFirst = [new PluginModelCostEstimate("haiku"), new PluginModelCostEstimate("opus")],
+            },
+        ];
+
+        Assert.Equal("opus", AutopilotModelTier.HoldToCeiling(Step("opus"), pricedButNotOffered, AutopilotCostStrategy.CostFirst).Model);
+    }
+
+    [Fact]
     public void HoldToCeiling_LeavesAnythingItCannotJudge()
     {
         IReadOnlyList<PluginProfileInfo> unranked = [new PluginProfileInfo("Codex", "Plugin", string.Empty) { ModelSuggestions = ["dear"] }];

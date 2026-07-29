@@ -157,7 +157,17 @@ internal sealed class AutopilotRunDriver(
             // a bare test graph, where there is no roster to hold anything to.
             if (holdToCostCeiling is not null)
             {
-                fixStep = await holdToCostCeiling(fixStep).ConfigureAwait(false);
+                try
+                {
+                    fixStep = await holdToCostCeiling(fixStep).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Reading the profile roster is the only thing that can fault in there, and it is the same
+                    // best-effort treatment the coordinator's own roster reads get. A run that dies silently because a
+                    // config file was briefly unreadable is a far worse outcome than one fix pass costing a tier more
+                    // than the ceiling wanted.
+                }
             }
 
             controller.InsertStep(fixStep);
