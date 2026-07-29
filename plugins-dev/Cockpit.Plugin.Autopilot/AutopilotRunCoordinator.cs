@@ -29,13 +29,19 @@ internal sealed class AutopilotRunCoordinator(
     AutopilotPlanController plan,
     TimeSpan? stepDoneReminderDelay = null,
     TimeSpan? stepStallTimeout = null,
-    IAutopilotPrPublisher? prPublisher = null)
+    IAutopilotPrPublisher? prPublisher = null,
+    IAutopilotEvidenceSource? evidenceSource = null)
 {
     private readonly Lock _lock = new();
 
     // Publishes a merge-ready code run's branch and opens its PR (AC-216); null in a bare test graph, where finalization
     // is skipped. The app supplies the real GitCliPrPublisher through AutopilotRunContext.
     private readonly IAutopilotPrPublisher? _prPublisher = prPublisher;
+
+    // Observes what a step actually changed, so the CEO validates against the harness's account instead of the agent's
+    // summary (AC-255); null in a bare test graph, and in every run the source cannot observe — both fall back to the
+    // deep inspection. The app supplies the real GitCliEvidenceSource through AutopilotRunContext.
+    private readonly IAutopilotEvidenceSource? _evidenceSource = evidenceSource;
 
     // AC-434: a review group's gates run concurrently, and more than one can reach the leftover-work safety commit
     // (below) at the same moment — two concurrent `git add`/`git commit` on the one shared run worktree can collide
@@ -655,6 +661,15 @@ internal sealed class AutopilotRunCoordinator(
                 }
             }
 
+            // AC-255: where the worktree stood before this step's agents touched it, so the harness can tell the CEO
+            // what this step changed instead of asking it to take the summary's word. It only has to be taken before
+            // the agents start — whether they commit their work or leave it lying is not this mark's problem, since
+            // the diff it is later measured against reaches the working tree. Only a step that runs in the run's
+            // shared worktree can be measured this way (stepWorktreePath) — a parallel step's agents each write to
+            // their own, a review gate reads a throwaway fork, and a run in a plain folder has no worktree at all;
+            // all three keep the inspection instruction.
+            var evidenceMark = await _MarkEvidenceAsync(stepWorktreePath, cancellationToken).ConfigureAwait(false);
+
             for (var index = 0; index < agentCount; index++)
             {
                 var signal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -732,6 +747,10 @@ internal sealed class AutopilotRunCoordinator(
 
             var summaries = await Task.WhenAll(reports);
 
+            // AC-255: the harness's own account of what the step changed, collected before the CEO is asked anything so
+            // the turn carries it. Null — nothing observable — hands the CEO the inspection instruction it always had.
+            var evidence = await _CollectEvidenceAsync(stepWorktreePath, evidenceMark, step, summaries, cancellationToken).ConfigureAwait(false);
+
             // The agent(s) reported done, but the step is not settled until the CEO validates it — that window used to
             // read as a plain "Running…" with no sign the work was already done (the model says it's finished, but the
             // status still shows running). Say so on the block, so the operator sees the run has moved on to validation.
@@ -755,7 +774,7 @@ internal sealed class AutopilotRunCoordinator(
                     _validation = validation;
                 }
 
-                await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries));
+                await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries, evidence));
                 passed = await _AwaitValidationOrCeoEndAsync(validation.Task, ceo, cancellationToken);
                 if (!passed)
                 {
@@ -844,6 +863,52 @@ internal sealed class AutopilotRunCoordinator(
                     _ = session.CloseAsync();
                 }
             });
+        }
+    }
+
+    // AC-255: where the shared run worktree stood before a step ran. Null whenever there is nothing to measure against
+    // — no source, no shared worktree, or git could not answer — and the step then validates the way it always did.
+    private async Task<AutopilotWorktreeMark?> _MarkEvidenceAsync(string? worktreePath, CancellationToken cancellationToken)
+    {
+        if (_evidenceSource is null || worktreePath is not { Length: > 0 })
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _evidenceSource.MarkAsync(worktreePath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The source's contract is that it never throws, but this gate exists to make validation cheaper — it may
+            // never be the reason a step fails. Same posture as the leftover-work safety commit above.
+            return null;
+        }
+    }
+
+    // AC-255: the harness's account of what the step changed, or null when it has none — which is the whole opt-in
+    // rule in one place: evidence is offered only where the harness could actually observe, never assumed.
+    private async Task<AutopilotStepEvidence?> _CollectEvidenceAsync(
+        string? worktreePath,
+        AutopilotWorktreeMark? mark,
+        AutopilotStep step,
+        IReadOnlyList<string> summaries,
+        CancellationToken cancellationToken)
+    {
+        if (_evidenceSource is null || worktreePath is not { Length: > 0 } || mark is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var change = await _evidenceSource.CollectAsync(worktreePath, mark, cancellationToken).ConfigureAwait(false);
+            return change is null ? null : AutopilotStepEvidence.From(change, step, summaries);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
         }
     }
 

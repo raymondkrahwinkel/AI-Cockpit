@@ -78,7 +78,11 @@ internal sealed class AutopilotRunContext
         Plan = plan;
         Controller = new AutopilotPlanController();
         Controller.BeginPlanning(plan);
-        Coordinator = new AutopilotRunCoordinator(host, Controller, prPublisher: new GitCliPrPublisher());
+        Coordinator = new AutopilotRunCoordinator(
+            host,
+            Controller,
+            prPublisher: new GitCliPrPublisher(),
+            evidenceSource: new GitCliEvidenceSource());
         Completed = _RunAsync(plan);
     }
 

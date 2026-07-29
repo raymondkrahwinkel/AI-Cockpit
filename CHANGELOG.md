@@ -32,6 +32,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an autonomous run now hands its reviewer proof instead of sending it off to look. When a step finishes, the
+  cockpit asks git itself what changed in the run's worktree since that step started, and gives the reviewing session
+  that account to judge the acceptance against — where before it was told to distrust the step's summary and go read
+  the files, every single time. The step doing the work neither writes that account nor can alter it, which is the
+  whole point: the side being checked no longer supplies the evidence it is checked on. It arrives fenced off and
+  labelled as data, so a line sitting inside a diff cannot be read as an instruction to the reviewer. Alongside it the
+  cockpit raises its own flags — a step reporting work while the worktree is unchanged, tests reported passing when
+  nothing test-shaped was touched, a step already sent back once, a step whose earlier attempt ended without a verdict
+  — and the reviewer is told to go and read the files whenever one of them fires. **Where there is nothing to observe,
+  nothing changes:** a run in a plain folder with no repository, or a review gate whose deliverable is a judgement
+  rather than a change, keeps the full inspection exactly as it was. The cheaper route is offered only where the
+  cockpit can genuinely see what happened, and it says so rather than quietly settling for a summary. Tests still run
+  where they always ran — there is no test run added per step.
 - added: the YouTrack plugin's "attach message images to an issue" tool can now attach an image file directly by
   path, not only images sent with the current message — so a screenshot pasted straight into a terminal pane, or
   an image an agent produced itself, can be attached even though it never rode along on a message. The path must
