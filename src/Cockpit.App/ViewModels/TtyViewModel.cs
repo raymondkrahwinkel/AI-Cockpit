@@ -11,6 +11,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
+using Cockpit.Core.Usage;
 
 namespace Cockpit.App.ViewModels;
 
@@ -175,6 +176,26 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private CancellationTokenSource? _limitsPollCancellation;
 
+    /// <summary>Running token total for the session (AC-398), folded from every transcript reading that carried usage — see <see cref="SessionTranscriptActivity.Usage"/>.</summary>
+    private readonly SessionUsageMeter _usage = new();
+
+    /// <summary>When this session's TUI actually came up, seeded again in <see cref="OnLaunchSucceeded"/> — mirrors <c>SessionViewModel</c>'s own <c>_startedAt</c> so a persisted snapshot measures working time, not launch setup.</summary>
+    private DateTimeOffset _startedAt = DateTimeOffset.Now;
+
+    /// <summary>The most recent write to the usage trail, awaited on teardown — same reasoning as <c>SessionViewModel._pendingUsageWrite</c>.</summary>
+    private Task? _pendingUsageWrite;
+
+    /// <summary>Where the running totals are kept so they outlive the session (AC-398). Null in the design-time graph and in tests built without one.</summary>
+    private readonly IUsageHistory? _usageHistory;
+
+    // Tokens seen since the last completed turn (AC-398): a tool-using turn writes several assistant lines
+    // before its own TurnComplete line, each with its own usage, and these hold the running sum until that line
+    // arrives — see _AccumulateTurnUsage.
+    private int _pendingTurnInputTokens;
+    private int _pendingTurnOutputTokens;
+    private int _pendingTurnCacheReadTokens;
+    private int _pendingTurnCacheCreationTokens;
+
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public TtyViewModel()
     {
@@ -220,11 +241,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         ISessionTranscriptReader? transcriptReader = null,
         ITranscriptCleanupService? cleanupService = null,
         IOptions<CockpitOptions>? options = null,
-        IOpenMicState? openMicState = null)
+        IOpenMicState? openMicState = null,
+        IUsageHistory? usageHistory = null)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
+        _usageHistory = usageHistory;
         KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -715,6 +738,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         SessionStatus = SessionStatus.Idle;
         _degradeInsteadOfCloseOnExit = false;
         _restoredOfferSnapshot = null;
+        // Re-seeded here rather than left at construction: a restored/isolated pane can sit configured for a
+        // while (waiting on a worktree, on the operator) before its TUI actually comes up, and that wait is not
+        // working time (AC-398, mirrors SessionViewModel's own _startedAt).
+        _startedAt = DateTimeOffset.Now;
         _StartStatusTracking();
     }
 
@@ -771,6 +798,27 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     {
                         RaiseOutputText(line);
                     }
+
+                    // AC-398: held pending rather than folded straight in — a turn that used a tool writes several
+                    // assistant lines before it completes, each with its own usage, and summing them under one
+                    // Turns increment (rather than one per line) is what keeps that counter meaning "turns", not
+                    // "assistant messages".
+                    if (reading.Usage is { } usage)
+                    {
+                        _pendingTurnInputTokens += usage.InputTokens;
+                        _pendingTurnOutputTokens += usage.OutputTokens;
+                        _pendingTurnCacheReadTokens += usage.CacheReadInputTokens;
+                        _pendingTurnCacheCreationTokens += usage.CacheCreationInputTokens;
+                    }
+
+                    // RawLine is null for the reader's synthetic keep-alive readings (a background sub-agent's
+                    // activity re-emitted each poll, or the state it hands back once that agent stops) — those
+                    // carry no usage and are not a second real turn ending, so flushing on them would write a
+                    // duplicate row with the same totals and an inflated Turns count.
+                    if (reading.Activity == SessionActivity.TurnComplete && reading.RawLine is not null)
+                    {
+                        _AccumulateTurnUsage();
+                    }
                 });
             }
         }
@@ -796,6 +844,65 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         SessionStatus = _statusTracker.Poll(DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Folds the tokens accumulated since the previous turn into the session meter (AC-398) and refreshes the
+    /// bound meter text — mirrors <c>SessionViewModel._AccumulateUsage</c>, fed by the transcript tail instead of
+    /// the SDK event stream. No cost: the CLI's on-disk transcript reports token usage per assistant message but
+    /// never a cost figure, unlike the SDK path's stream-json <c>result</c> event — and the cockpit does not
+    /// compute one itself from tokens (see <c>PluginModelCostEstimate</c>'s own doc: "the cockpit never works a
+    /// figure out itself"). <see cref="SessionUsageMeter.TotalCostUsd"/> therefore simply stays at its default,
+    /// which reads identically to a provider that reports no cost at all.
+    /// </summary>
+    private void _AccumulateTurnUsage()
+    {
+        var usage = new TokenUsage(
+            _pendingTurnInputTokens, _pendingTurnOutputTokens, _pendingTurnCacheReadTokens, _pendingTurnCacheCreationTokens);
+        _pendingTurnInputTokens = 0;
+        _pendingTurnOutputTokens = 0;
+        _pendingTurnCacheReadTokens = 0;
+        _pendingTurnCacheCreationTokens = 0;
+
+        _usage.Add(usage, costUsd: null);
+        HasUsage = _usage.HasData;
+        UsageSummary = _usage.Summary;
+        UsageTooltip = _usage.Tooltip;
+        _RecordUsageSnapshot();
+    }
+
+    /// <summary>
+    /// Writes the running totals to the usage trail after every turn (AC-398), same as the SDK path
+    /// (<c>SessionViewModel._RecordUsageSnapshot</c>) and for the same reason: recording only at the end would
+    /// lose exactly the run that crashed. Not awaited — a turn settling must not wait on a file — but kept so
+    /// <see cref="DisposeCoreAsync"/> can drain it before the pane goes away.
+    /// </summary>
+    private void _RecordUsageSnapshot()
+    {
+        if (_usageHistory is null || !_usage.HasData)
+        {
+            return;
+        }
+
+        _pendingUsageWrite = _usageHistory.RecordAsync(new UsageSnapshot
+        {
+            PaneId = PaneId,
+            StartedAt = _startedAt,
+            RecordedAt = DateTimeOffset.Now,
+            // Always Interactive/no run: nothing embeds a TTY session today (CockpitViewModel.Embed only ever
+            // builds an SDK SessionViewModel) — if that changes, this is where a run's id/label would come from.
+            RunKind = UsageRunKind.Interactive,
+            RunId = null,
+            RunLabel = null,
+            ProfileLabel = ActiveProfileLabel,
+            Model = _configuredModel,
+            InputTokens = _usage.InputTokens,
+            OutputTokens = _usage.OutputTokens,
+            CacheReadInputTokens = _usage.CacheReadInputTokens,
+            CacheCreationInputTokens = _usage.CacheCreationInputTokens,
+            TotalCostUsd = _usage.TotalCostUsd,
+            Turns = _usage.Turns,
+        });
     }
 
     /// <summary>
@@ -1013,7 +1120,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             cancellation);
     }
 
-    protected override ValueTask DisposeCoreAsync()
+    protected override async ValueTask DisposeCoreAsync()
     {
         // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
         // the ConPtyProcess on unload/close. The transcript tailer is this VM's own background loop,
@@ -1027,11 +1134,37 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _limitsPollCancellation = null;
         _StopStatusTracking();
 
+        // A turn interrupted mid-flight (the operator closes the pane, or the CLI is killed, before its
+        // terminating end_turn line arrives) would otherwise lose its tokens entirely rather than fold into the
+        // next turn's total that never comes — flush whatever was pending as this pane's own last, partial turn.
+        if (_pendingTurnInputTokens > 0 || _pendingTurnOutputTokens > 0
+            || _pendingTurnCacheReadTokens > 0 || _pendingTurnCacheCreationTokens > 0)
+        {
+            _AccumulateTurnUsage();
+        }
+
+        // Let the last turn's usage write land (AC-398, mirrors SessionViewModel.DisposeCoreAsync) — after
+        // stopping the status tail above, not before: that tail is what kicks the write off, so a pane closing
+        // right behind its last turn would otherwise race the write and lose it. The trail swallows its own
+        // failures, so this waits on a task that does not fault. Looped rather than a single await: a reading
+        // already dequeued off the tail before cancellation can still be sitting as a queued
+        // Dispatcher.UIThread.Post callback, and awaiting yields the UI thread to run it — which can replace
+        // _pendingUsageWrite with a newer task after the one just captured here. Relies on DisposeCoreAsync
+        // itself running on the UI thread, same as the Post callback it is racing — otherwise the check-and-break
+        // below would be a torn read against that callback's own field writes.
+        while (_pendingUsageWrite is { } pendingUsageWrite)
+        {
+            await pendingUsageWrite;
+            if (ReferenceEquals(_pendingUsageWrite, pendingUsageWrite))
+            {
+                break;
+            }
+        }
+
         // Dropped here rather than left to the view, which is not told when a session closes: the panel is simply
         // removed from the collection and its container leaves the tree, so the view's own DataContext hook never
         // fires. A screenshot that lands after that would otherwise find a live delegate, paste into a terminal
         // that no longer exists, and report success with nothing to show for it (AC-226).
         PasteTextAsync = null;
-        return ValueTask.CompletedTask;
     }
 }

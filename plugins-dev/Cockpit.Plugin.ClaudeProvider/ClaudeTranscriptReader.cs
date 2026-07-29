@@ -82,6 +82,10 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var pendingLine = new StringBuilder();
         var mainTurnComplete = false;
         var lastEmitted = PluginSessionActivity.None;
+        // The CLI can write more than one transcript line for the same assistant API response (progressive
+        // content-block saves) — every repeat carries the identical stop_reason/usage as the first, so treating
+        // a repeat as its own turn-complete/usage reading would double (sometimes 2-3x) count one real API call.
+        string? lastAssistantMessageId = null;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -123,6 +127,22 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 pendingLine.Clear();
 
                 var activity = ClassifyLine(line);
+                ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId);
+                if (messageId is not null)
+                {
+                    if (messageId == lastAssistantMessageId)
+                    {
+                        // A repeat of the same API response already counted above — suppress both the turn
+                        // transition and the usage so this line contributes nothing a second time.
+                        activity = PluginSessionActivity.None;
+                        usage = null;
+                    }
+                    else
+                    {
+                        lastAssistantMessageId = messageId;
+                    }
+                }
+
                 if (activity == PluginSessionActivity.TurnComplete)
                 {
                     mainTurnComplete = true;
@@ -142,7 +162,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     lastEmitted = emit;
                 }
 
-                yield return new PluginTranscriptActivity(emit, line);
+                yield return new PluginTranscriptActivity(emit, line, usage);
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);

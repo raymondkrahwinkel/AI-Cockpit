@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -48,9 +49,15 @@ internal sealed class SessionTranscriptReader(
                 PluginSessionActivity.TurnComplete => SessionActivity.TurnComplete,
                 _ => SessionActivity.None,
             };
-            yield return new SessionTranscriptActivity(activity, reading.RawLine);
+            yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage));
         }
     }
+
+    /// <summary>The plugin-facing token usage (AC-398), mirrored onto the core type the same way the SDK path's own usage already is.</summary>
+    private static TokenUsage? _MapUsage(PluginTokenUsage? usage) =>
+        usage is null
+            ? null
+            : new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens);
 
     /// <summary>
     /// The provider plugin's own reader for this profile and the config JSON to read it with, or a null reader

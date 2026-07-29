@@ -216,6 +216,108 @@ public class ClaudeTranscriptReaderTests : IDisposable
         afterStop.Should().Be(PluginSessionActivity.TurnComplete, "a user-stopped agent must free the dot despite a fresh transcript file");
     }
 
+    [Fact]
+    public async Task ReadActivityAsync_CarriesUsage_FromAnAssistantLine()
+    {
+        // AC-398: the same tail read-aloud/status already use, now also carrying the token usage an assistant
+        // line reports — so the host's usage trail can be fed from the transcript tail without a second read of
+        // the same file.
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        PluginTokenUsage? usage = null;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.Usage is { } seen)
+                {
+                    usage = seen;
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(
+            transcriptPath,
+            """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}""" + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        usage.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_RepeatedLineForTheSameApiResponse_CountsUsageAndTurnOnlyOnce()
+    {
+        // The bug this guards: the CLI can write more than one transcript line for the same assistant API
+        // response (progressive content-block saves) — each repeat carries the identical message.id, stop_reason
+        // and usage as the first. Summing every line rather than every distinct response inflated real transcripts
+        // 2-2.8x (an AC-481-shaped bug: a figure that is really "per API response" treated as "per line").
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var usageReadings = new List<PluginTokenUsage>();
+        var turnCompletions = 0;
+        var linesSeen = 0;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.Usage is { } seen)
+                {
+                    usageReadings.Add(seen);
+                }
+
+                if (reading.Activity == PluginSessionActivity.TurnComplete)
+                {
+                    turnCompletions++;
+                }
+
+                if (reading.RawLine is not null && ++linesSeen == 2)
+                {
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        // Same message.id, same usage, same stop_reason — a thinking block then a text block of the one response.
+        const string repeatedLine =
+            """{"type":"assistant","message":{"id":"msg_01","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}""";
+        await File.AppendAllTextAsync(transcriptPath, repeatedLine + "\n" + repeatedLine + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        usageReadings.Should().ContainSingle().Which.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
+        turnCompletions.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_NonAssistantLine_CarriesNoUsage()
+    {
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        PluginTranscriptActivity? received = null;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.RawLine is not null)
+                {
+                    received = reading;
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        received!.Usage.Should().BeNull();
+    }
+
     private static async Task _WaitUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 200 && !condition(); i++)
