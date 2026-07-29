@@ -56,6 +56,58 @@ public class CockpitHostAddMcpServerTests
             Arg.Any<CancellationToken>());
     }
 
+    // AC-500: a contribution declaring OAuth (an authority, no bearer token) must reach the store as
+    // McpServerAuth.OAuth with its authority/client-id carried along — this is the legacy push path
+    // (AddMcpServer), the mapping's other caller besides McpServerCatalog's pull path.
+    [Fact]
+    public async Task AddMcpServer_OAuthContribution_AddsEntryWithOAuthAuthAndAuthority()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
+        var host = _BuildHost(store);
+        var contribution = new McpServerContribution(
+            "Depot: project-a", "https://depot.example/mcp", OAuthAuthority: "https://depot.example/oauth", OAuthClientId: "cockpit");
+
+        await host.AddMcpServer(contribution);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
+                list[0].Auth == McpServerAuth.OAuth
+                && list[0].OAuthAuthority == "https://depot.example/oauth"
+                && list[0].OAuthClientId == "cockpit"
+                && list[0].ApiKey == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AddMcpServer_ExistingEntry_OAuthContributionRefreshesAuthAndAuthority()
+    {
+        var existing = new McpServerConfig
+        {
+            Name = "Depot: project-a",
+            Transport = McpTransport.Http,
+            Url = "https://old.depot.example/mcp",
+            Auth = McpServerAuth.None,
+            Enabled = true,
+        };
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig> { existing });
+        var host = _BuildHost(store);
+        var contribution = new McpServerContribution(
+            "Depot: project-a", "https://new.depot.example/mcp", OAuthAuthority: "https://depot.example/oauth", OAuthClientId: "cockpit");
+
+        await host.AddMcpServer(contribution);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
+                list.Count == 1
+                && list[0].Auth == McpServerAuth.OAuth
+                && list[0].Url == "https://new.depot.example/mcp"
+                && list[0].OAuthAuthority == "https://depot.example/oauth"
+                && list[0].OAuthClientId == "cockpit"),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task AddMcpServer_RequestedScope_AppliesOnlyToANewEntry()
     {

@@ -25,7 +25,21 @@ internal sealed class McpServerCatalog(
 {
     public async Task<IReadOnlyList<McpServerConfig>> GetServersForProjectAsync(string? projectId, CancellationToken cancellationToken = default)
     {
-        var servers = await GetServersAsync(cancellationToken).ConfigureAwait(false);
+        var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        // The cockpit's own loopback endpoints (AC-40): answered live, never in the store, so the manager never
+        // lists them while the session fan-out still sees them.
+        var internalServers = internalProviders.SelectMany(_ServersOf).ToList();
+
+        // AC-500: projectId reaches each plugin's own bevraging — not just the overlay step below — so a plugin
+        // can contribute a server that exists only for one project (its own Depot connection, say) rather than
+        // every project seeing every plugin server and the overlay only ever being able to remove one.
+        var pluginServers = pluginProviders
+            .SelectMany(provider => _ServersOf(provider, projectId))
+            .Select(PluginMcpMapping.ToServerConfig)
+            .ToList();
+
+        var servers = Merge(registry, [.. internalServers, .. pluginServers]);
         if (string.IsNullOrEmpty(projectId))
         {
             return servers;
@@ -35,21 +49,8 @@ internal sealed class McpServerCatalog(
         return projects.Find(projectId)?.McpOverlay.ApplyTo(servers) ?? servers;
     }
 
-    public async Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default)
-    {
-        var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-
-        // The cockpit's own loopback endpoints (AC-40): answered live, never in the store, so the manager never
-        // lists them while the session fan-out still sees them.
-        var internalServers = internalProviders.SelectMany(_ServersOf).ToList();
-
-        var pluginServers = pluginProviders
-            .SelectMany(_ServersOf)
-            .Select(PluginMcpMapping.ToServerConfig)
-            .ToList();
-
-        return Merge(registry, [.. internalServers, .. pluginServers]);
-    }
+    public Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default) =>
+        GetServersForProjectAsync(projectId: null, cancellationToken);
 
     /// <summary>
     /// The registry with the cockpit-hosted and plugin-owned servers merged in: registry entries first, then the
@@ -68,12 +69,14 @@ internal sealed class McpServerCatalog(
     }
 
     // A plugin that throws while listing its servers must not break session start for everyone else — its servers
-    // are simply absent for this assembly, and the failure is logged.
-    private IReadOnlyList<McpServerContribution> _ServersOf(IPluginMcpProvider provider)
+    // are simply absent for this assembly, and the failure is logged. projectId flows through unconditionally
+    // (AC-500) — null for a session with no project is exactly the value IPluginMcpProvider's default overload
+    // reads as "give me the project-agnostic set", so an unscoped caller sees the same servers as before.
+    private IReadOnlyList<McpServerContribution> _ServersOf(IPluginMcpProvider provider, string? projectId)
     {
         try
         {
-            return provider.GetMcpServers();
+            return provider.GetMcpServers(projectId);
         }
         catch (Exception exception)
         {

@@ -817,6 +817,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   provider can run both routes; a provider with none (a local model, or a plugin that never registered a terminal
   route) shows "SDK-only" instead of a choice that could never take effect, and always starts SDK regardless of
   what is set here. Per session, the toggle in the New-session dialog still has the final word.
+- added: a plugin can now contribute an MCP server that requires an OAuth sign-in, and one that only exists for a
+  particular project — both previously only possible for a server added through the MCP-servers dialog itself. A
+  plugin's OAuth-protected server now goes through the same loopback-browser sign-in and token refresh a
+  dialog-configured one gets, instead of silently connecting with no authentication and no tools; and a project-
+  scoped contribution shows up only for sessions started on that project, the same way the dialog's own per-project
+  servers already do.
 
 ### Changed
 

@@ -18,12 +18,22 @@ internal static class PluginMcpMapping
         Transport = McpTransport.Http,
         Scope = ToServerScope(contribution.Scope),
         Url = contribution.Url,
-        Auth = ToAuth(contribution.BearerToken),
+        Auth = ToAuth(contribution),
         ApiKey = contribution.BearerToken,
+        OAuthAuthority = contribution.OAuthAuthority,
+        OAuthClientId = contribution.OAuthClientId,
     };
 
-    public static McpServerAuth ToAuth(string? bearerToken) =>
-        string.IsNullOrEmpty(bearerToken) ? McpServerAuth.None : McpServerAuth.ApiKey;
+    // A non-empty OAuthAuthority is the contribution's only way to say "this is OAuth" (AC-500) — the DTO has no
+    // Cockpit.Core McpServerAuth to set directly, by the same isolation rule ToServerConfig's doc comment names.
+    // Checked ahead of BearerToken so a contribution that (wrongly) sets both is still treated as OAuth rather than
+    // silently degraded to a static token that will never satisfy the server's real auth requirement.
+    public static McpServerAuth ToAuth(McpServerContribution contribution) => contribution switch
+    {
+        { OAuthAuthority.Length: > 0 } => McpServerAuth.OAuth,
+        { BearerToken.Length: > 0 } => McpServerAuth.ApiKey,
+        _ => McpServerAuth.None,
+    };
 
     // Mapped by name, not ordinal — McpContributionScope and McpServerScope are declared independently (isolation,
     // see the ICockpitHost doc comment) and are free to diverge in order.

@@ -432,8 +432,10 @@ internal sealed class CockpitHost(
                 {
                     Transport = McpTransport.Http,
                     Url = contribution.Url,
-                    Auth = PluginMcpMapping.ToAuth(contribution.BearerToken),
+                    Auth = PluginMcpMapping.ToAuth(contribution),
                     ApiKey = contribution.BearerToken,
+                    OAuthAuthority = contribution.OAuthAuthority,
+                    OAuthClientId = contribution.OAuthClientId,
                 };
             }
 

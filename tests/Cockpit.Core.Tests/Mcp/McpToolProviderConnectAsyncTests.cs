@@ -94,6 +94,27 @@ public class McpToolProviderConnectAsyncTests
         Assert.Equal("tool_a", Assert.Single(session.Tools).Name);
     }
 
+    // AC-500 acceptance criterion 3: an OAuth server whose sign-in never happened must not disappear into the same
+    // generic "could not connect" warning as any other unreachable server — it is a named outcome the session
+    // exposes, so a caller can tell "no tools from this server" apart from "this server is waiting on a sign-in".
+    [Fact]
+    public async Task ConnectAsync_AnOAuthServerThatNeverSignedIn_IsReportedAsNeedingSignIn_NotJustUnreachable()
+    {
+        await using var serverA = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();
+        var provider = _ProviderFor(_DisableBuiltIns().Concat(
+        [
+            new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = serverA.Url },
+            // FakeMcpOAuthAuthorizer hands back options with a redirect nobody answers, so this fails at the
+            // transport the same way a real "no stored token, nobody to ask" OAuth negotiation would.
+            new McpServerConfig { Name = "server-oauth", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Auth = McpServerAuth.OAuth },
+        ]), oauthAuthorizer: new FakeMcpOAuthAuthorizer());
+
+        await using var session = await provider.ConnectAsync();
+
+        Assert.Equal(new[] { "server-a" }, session.ConnectedServerNames);
+        Assert.Equal(new[] { "server-oauth" }, session.ServersNeedingSignIn);
+    }
+
     /// <summary>Disables the built-in stdio presets (npx/uvx) — irrelevant here and not guaranteed available on a test machine.</summary>
     private static IReadOnlyList<McpServerConfig> _DisableBuiltIns() =>
         [.. McpServerPresets.LocalDefaults.Select(server => server with { Enabled = false })];
@@ -179,10 +200,10 @@ public class McpToolProviderConnectAsyncTests
         Assert.Equal(0, keyring.LiveTokenCount);
     }
 
-    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null)
+    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
-        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), keyring ?? new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
+        return new McpToolProvider(catalog, oauthAuthorizer ?? Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), keyring ?? new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
     }
 }

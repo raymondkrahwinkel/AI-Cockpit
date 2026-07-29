@@ -61,11 +61,20 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         // input sequence regardless of which task finishes first, so the resulting tools/connected-names lists
         // stay in the same (deterministic) order as enabledServers even though the connects race in parallel.
         var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
+        var serversNeedingSignIn = new List<string>();
 
-        foreach (var connection in connections)
+        for (var i = 0; i < connections.Length; i++)
         {
+            var connection = connections[i];
             if (connection is null)
             {
+                // AC-500: a failed OAuth server is a named outcome ("waiting on a sign-in"), not just an absence
+                // from ConnectedServerNames indistinguishable from any other unreachable/misconfigured server.
+                if (enabledServers[i].Auth == McpServerAuth.OAuth)
+                {
+                    serversNeedingSignIn.Add(enabledServers[i].Name);
+                }
+
                 continue;
             }
 
@@ -88,7 +97,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         // AC-143: hand the session the pane/token it minted above so its own DisposeAsync can revoke exactly that
         // token when this tool loop ends — the same mint site owns the teardown, rather than a shared cross-
         // component path that could revoke a live sibling's token.
-        return new McpToolSession(clients, tools, connectedNames, toolClasses, keyring, paneId, sessionToken);
+        return new McpToolSession(clients, tools, connectedNames, serversNeedingSignIn, toolClasses, keyring, paneId, sessionToken);
     }
 
     public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
@@ -156,6 +165,14 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             }
 
             return new ServerConnection(client, [.. serverTools], server.Name, classes);
+        }
+        catch (Exception ex) when (server.Auth == McpServerAuth.OAuth)
+        {
+            // Same idiom as McpOAuthCoordinator's non-interactive handshake: with nobody here to answer a browser
+            // prompt, any failure at this transport reads as "no usable sign-in yet" rather than a specific status
+            // code — the SDK's own OAuth negotiation can fail several ways before it ever gets as far as one.
+            logger.LogWarning(ex, "MCP server {Name} needs an OAuth sign-in that has not happened yet; skipping its tools", server.Name);
+            return null;
         }
         catch (Exception ex)
         {
@@ -290,6 +307,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         IReadOnlyList<McpClient> clients,
         IReadOnlyList<AIFunction> tools,
         IReadOnlyList<string> names,
+        IReadOnlyList<string> serversNeedingSignIn,
         IReadOnlyDictionary<string, ToolPermissionClass> toolClasses,
         SessionMcpKeyring? keyring = null,
         string? paneId = null,
@@ -299,6 +317,8 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         public IReadOnlyList<AIFunction> Tools => tools;
 
         public IReadOnlyList<string> ConnectedServerNames => names;
+
+        public IReadOnlyList<string> ServersNeedingSignIn => serversNeedingSignIn;
 
         public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses => toolClasses;
 
