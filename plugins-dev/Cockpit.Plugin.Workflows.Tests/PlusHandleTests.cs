@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Cockpit.Plugin.Workflows.Canvas;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -26,7 +25,7 @@ public class PlusHandleTests
 
         handle.RaiseEvent(_Press());
 
-        pressed.Should().Be(1, "the canvas starts drawing a wire on this press — if it never arrives, the + is dead");
+        Assert.Equal(1, pressed);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class PlusHandleTests
 
         button.RaiseEvent(_Press());
 
-        seenUnhandled.Should().Be(0);
+        Assert.Equal(0, seenUnhandled);
     }
 
     [Fact]
@@ -55,7 +54,7 @@ public class PlusHandleTests
     {
         var pin = _Pin();
 
-        new PlusHandle(pin).Pin.Should().BeSameAs(pin);
+        Assert.Same(pin, new PlusHandle(pin).Pin);
     }
 
     private static WorkflowPin _Pin()

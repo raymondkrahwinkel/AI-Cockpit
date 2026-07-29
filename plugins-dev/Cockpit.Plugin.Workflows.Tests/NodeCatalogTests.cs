@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -15,16 +14,15 @@ public class NodeCatalogTests
     {
         var decision = NodeCatalog.Find("cockpit.if");
 
-        decision.Should().NotBeNull();
-        decision!.Outputs.Should().Equal("true", "false");
-        decision.Kind.Should().Be(WorkflowNodeKind.Decision);
+        Assert.NotNull(decision);
+        Assert.Equal(new[] { "true", "false" }, decision!.Outputs);
+        Assert.Equal(WorkflowNodeKind.Decision, decision.Kind);
     }
 
     [Fact]
     public void ATrigger_TakesNothingIn()
     {
-        NodeCatalog.All.Where(type => type.Kind == WorkflowNodeKind.Trigger)
-            .Should().OnlyContain(type => !type.HasInput);
+        Assert.All(NodeCatalog.All.Where(type => type.Kind == WorkflowNodeKind.Trigger), type => Assert.False(type.HasInput));
     }
 
     [Fact]
@@ -32,28 +30,29 @@ public class NodeCatalogTests
     {
         // The picker is only usable if a step can be recognised without knowing its id — by its vector icon now,
         // or by the glyph string for a plugin's step that has not set one.
-        NodeCatalog.All.Should().OnlyContain(type =>
-            (type.IconKind.HasValue || type.Icon.Length > 0) && type.Name.Length > 0 && type.Description.Length > 0);
+        Assert.All(NodeCatalog.All, type =>
+            Assert.True((type.IconKind.HasValue || type.Icon.Length > 0) && type.Name.Length > 0 && type.Description.Length > 0));
     }
 
     [Fact]
     public void EveryStepId_IsUnique()
     {
-        NodeCatalog.All.Select(type => type.Id).Should().OnlyHaveUniqueItems();
+        var ids = NodeCatalog.All.Select(type => type.Id).ToList();
+        Assert.Equal(ids.Count, ids.Distinct().Count());
     }
 
     [Fact]
     public void Search_FindsAStepByWhatItDoes_NotOnlyByItsName()
     {
         // "Delegate" is called Delegate, but an operator looking for it may well type "background".
-        NodeCatalog.Search("shell").Select(type => type.Id).Should().Contain("cockpit.command");
+        Assert.Contains("cockpit.command", NodeCatalog.Search("shell").Select(type => type.Id));
     }
 
     [Fact]
     public void Search_WithNothingTyped_ShowsEverything()
     {
-        NodeCatalog.Search(null).Should().HaveCount(NodeCatalog.All.Count);
-        NodeCatalog.Search("   ").Should().HaveCount(NodeCatalog.All.Count);
+        Assert.Equal(NodeCatalog.All.Count, System.Linq.Enumerable.Count(NodeCatalog.Search(null)));
+        Assert.Equal(NodeCatalog.All.Count, System.Linq.Enumerable.Count(NodeCatalog.Search("   ")));
     }
 
     [Fact]
@@ -62,8 +61,8 @@ public class NodeCatalogTests
         // A flow saved with a plugin's step, opened on a cockpit without that plugin.
         var node = new WorkflowNode { Id = "x", TypeId = "someplugin.unknown", Name = "Whatever" };
 
-        node.Type.Should().BeNull();
-        node.Outputs.Should().Equal(string.Empty);
-        node.HasInput.Should().BeTrue();
+        Assert.Null(node.Type);
+        Assert.Equal(new[] { string.Empty }, node.Outputs);
+        Assert.True(node.HasInput);
     }
 }

@@ -1,7 +1,6 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions.Workflows;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -22,7 +21,7 @@ public class ContributedStepTests
             new StepContext(node, [WorkflowItem.Of("ticket", "WEB-14")], _Nothing),
             CancellationToken.None);
 
-        step.Seen!.Parameter("Ticket").Should().Be("WEB-14");
+        Assert.Equal("WEB-14", step.Seen!.Parameter("Ticket"));
     }
 
     [Fact]
@@ -32,9 +31,9 @@ public class ContributedStepTests
             new StepContext(_Node(("Ticket", "WEB-14")), [], _Nothing),
             CancellationToken.None);
 
-        outcome.Items.Should().ContainSingle();
-        outcome.Items[0].Json["state"]!.ToString().Should().Be("In Progress");
-        outcome.Output.Should().Be("WEB-14 → In Progress");
+        Assert.Single(outcome.Items);
+        Assert.Equal("In Progress", outcome.Items[0].Json["state"]!.ToString());
+        Assert.Equal("WEB-14 → In Progress", outcome.Output);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class ContributedStepTests
             new StepContext(_Node(), incoming, _Nothing),
             CancellationToken.None);
 
-        outcome.Items.Should().BeEquivalentTo(incoming);
+        Assert.Equivalent(incoming, outcome.Items);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class ContributedStepTests
             new StepContext(node, [], _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be("yes");
+        Assert.Equal("yes", outcome.Output);
     }
 
     [Fact]
@@ -68,17 +67,17 @@ public class ContributedStepTests
     {
         var type = ContributedStep.Describe(new FakeStep());
 
-        type.Id.Should().Be("fake.step");
-        type.Parameters.Should().Equal("Ticket");
-        type.Heading.Should().Be("YOUTRACK");
-        type.Kind.Should().Be(WorkflowNodeKind.Action);
-        type.Produces["state"].Should().Be("In Progress");
+        Assert.Equal("fake.step", type.Id);
+        Assert.Equal(new[] { "Ticket" }, type.Parameters);
+        Assert.Equal("YOUTRACK", type.Heading);
+        Assert.Equal(WorkflowNodeKind.Action, type.Kind);
+        Assert.Equal("In Progress", type.Produces["state"]);
     }
 
     [Fact]
     public void AStepWithSeveralWaysOut_IsADecision_WithoutSayingSo()
     {
-        ContributedStep.Describe(new BranchingStep()).Kind.Should().Be(WorkflowNodeKind.Decision);
+        Assert.Equal(WorkflowNodeKind.Decision, ContributedStep.Describe(new BranchingStep()).Kind);
     }
 
     [Fact]
@@ -86,8 +85,8 @@ public class ContributedStepTests
     {
         var type = ContributedStep.Describe(new PickedTrigger());
 
-        type.Kind.Should().Be(WorkflowNodeKind.Trigger);
-        type.HasInput.Should().BeFalse();
+        Assert.Equal(WorkflowNodeKind.Trigger, type.Kind);
+        Assert.False(type.HasInput);
     }
 
     [Fact]
@@ -99,7 +98,7 @@ public class ContributedStepTests
 
         var run = async () => await trigger.RunAsync(new WorkflowStepContext(new Dictionary<string, string>(), []), CancellationToken.None);
 
-        await run.Should().ThrowAsync<NotSupportedException>();
+        await Assert.ThrowsAsync<NotSupportedException>(run);
     }
 
     private sealed class PickedTrigger : IWorkflowStep

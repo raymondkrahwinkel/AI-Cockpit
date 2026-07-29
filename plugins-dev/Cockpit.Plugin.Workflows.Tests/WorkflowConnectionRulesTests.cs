@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -16,8 +15,8 @@ public class WorkflowConnectionRulesTests
     {
         var workflow = _Workflow(out var trigger, out var notify, out _);
 
-        workflow.Connect(trigger.Id, 0, notify.Id).IsAllowed.Should().BeTrue();
-        workflow.Connections.Should().ContainSingle();
+        Assert.True(workflow.Connect(trigger.Id, 0, notify.Id).IsAllowed);
+        Assert.Single(workflow.Connections);
     }
 
     [Fact]
@@ -25,10 +24,10 @@ public class WorkflowConnectionRulesTests
     {
         var workflow = _Workflow(out var trigger, out var notify, out var delegateStep);
 
-        workflow.Connect(trigger.Id, 0, notify.Id).IsAllowed.Should().BeTrue();
-        workflow.Connect(trigger.Id, 0, delegateStep.Id).IsAllowed.Should().BeTrue();
+        Assert.True(workflow.Connect(trigger.Id, 0, notify.Id).IsAllowed);
+        Assert.True(workflow.Connect(trigger.Id, 0, delegateStep.Id).IsAllowed);
 
-        workflow.Connections.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(workflow.Connections));
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class WorkflowConnectionRulesTests
         workflow.Connect(first.Id, 0, second.Id);
 
         // second -> first: a loop. With a decision as its stop condition this is a shape workflows genuinely have.
-        workflow.Connect(second.Id, 0, first.Id).IsAllowed.Should().BeTrue();
+        Assert.True(workflow.Connect(second.Id, 0, first.Id).IsAllowed);
     }
 
     [Fact]
@@ -48,8 +47,8 @@ public class WorkflowConnectionRulesTests
         var workflow = _Workflow(out var trigger, out var first, out var second);
         workflow.Connect(trigger.Id, 0, first.Id);
 
-        workflow.Connect(first.Id, 0, second.Id).IsAllowed.Should().BeTrue();
-        workflow.Connect(trigger.Id, 0, second.Id).IsAllowed.Should().BeTrue();
+        Assert.True(workflow.Connect(first.Id, 0, second.Id).IsAllowed);
+        Assert.True(workflow.Connect(trigger.Id, 0, second.Id).IsAllowed);
     }
 
     [Fact]
@@ -59,9 +58,9 @@ public class WorkflowConnectionRulesTests
 
         var rule = workflow.Connect(notify.Id, 0, trigger.Id);
 
-        rule.IsAllowed.Should().BeFalse();
-        rule.Reason.Should().Contain("trigger");
-        workflow.Connections.Should().BeEmpty();
+        Assert.False(rule.IsAllowed);
+        Assert.Contains("trigger", rule.Reason);
+        Assert.Empty(workflow.Connections);
     }
 
     [Fact]
@@ -69,7 +68,7 @@ public class WorkflowConnectionRulesTests
     {
         var workflow = _Workflow(out _, out var notify, out _);
 
-        workflow.Connect(notify.Id, 0, notify.Id).IsAllowed.Should().BeFalse();
+        Assert.False(workflow.Connect(notify.Id, 0, notify.Id).IsAllowed);
     }
 
     [Fact]
@@ -80,9 +79,9 @@ public class WorkflowConnectionRulesTests
 
         var rule = workflow.Connect(trigger.Id, 0, notify.Id);
 
-        rule.IsAllowed.Should().BeFalse();
-        rule.Reason.Should().Contain("already");
-        workflow.Connections.Should().ContainSingle();
+        Assert.False(rule.IsAllowed);
+        Assert.Contains("already", rule.Reason);
+        Assert.Single(workflow.Connections);
     }
 
     [Fact]
@@ -93,10 +92,10 @@ public class WorkflowConnectionRulesTests
         workflow.Nodes.Add(decision);
         workflow.Connect(trigger.Id, 0, decision.Id);
 
-        workflow.Connect(decision.Id, 0, yes.Id).IsAllowed.Should().BeTrue();
-        workflow.Connect(decision.Id, 1, no.Id).IsAllowed.Should().BeTrue();
+        Assert.True(workflow.Connect(decision.Id, 0, yes.Id).IsAllowed);
+        Assert.True(workflow.Connect(decision.Id, 1, no.Id).IsAllowed);
 
-        decision.Outputs.Should().Equal("true", "false");
+        Assert.Equal(new[] { "true", "false" }, decision.Outputs);
     }
 
     [Fact]
@@ -105,7 +104,7 @@ public class WorkflowConnectionRulesTests
         var workflow = _Workflow(out var trigger, out var notify, out _);
 
         // A trigger has one way out; index 1 is not one of them.
-        workflow.Connect(trigger.Id, 1, notify.Id).IsAllowed.Should().BeFalse();
+        Assert.False(workflow.Connect(trigger.Id, 1, notify.Id).IsAllowed);
     }
 
     [Fact]
@@ -116,8 +115,8 @@ public class WorkflowConnectionRulesTests
 
         workflow.Remove(notify.Id);
 
-        workflow.Nodes.Should().NotContain(notify);
-        workflow.Connections.Should().BeEmpty();
+        Assert.DoesNotContain(notify, workflow.Nodes);
+        Assert.Empty(workflow.Connections);
     }
 
     [Fact]
@@ -125,9 +124,9 @@ public class WorkflowConnectionRulesTests
     {
         var workflow = _Workflow(out var trigger, out var notify, out _);
 
-        workflow.HasConnectionFrom(trigger.Id, 0).Should().BeFalse();
+        Assert.False(workflow.HasConnectionFrom(trigger.Id, 0));
         workflow.Connect(trigger.Id, 0, notify.Id);
-        workflow.HasConnectionFrom(trigger.Id, 0).Should().BeTrue();
+        Assert.True(workflow.HasConnectionFrom(trigger.Id, 0));
     }
 
     private static WorkflowNode _Node(string id, string typeId, string name) =>

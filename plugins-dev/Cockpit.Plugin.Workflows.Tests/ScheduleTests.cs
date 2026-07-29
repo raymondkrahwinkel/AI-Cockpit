@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Engine;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -16,7 +15,7 @@ public class ScheduleTests
     [InlineData("09:00", "2026-07-13T09:01:00", false)]
     [InlineData("09:00", "2026-07-13T10:00:00", false)]
     public void ATimeOfDay_IsDueInTheMinuteItNames(string when, string now, bool due) =>
-        Schedule.IsDue(when, DateTimeOffset.Parse(now)).Should().Be(due);
+        Assert.Equal(due, Schedule.IsDue(when, DateTimeOffset.Parse(now)));
 
     [Theory]
     [InlineData("every 15m", "2026-07-13T09:30:00", true)]
@@ -24,7 +23,7 @@ public class ScheduleTests
     [InlineData("every 2h", "2026-07-13T10:00:00", true)]
     [InlineData("every 2h", "2026-07-13T11:00:00", false)]
     public void AnInterval_IsDueWhenItDivides(string when, string now, bool due) =>
-        Schedule.IsDue(when, DateTimeOffset.Parse(now)).Should().Be(due);
+        Assert.Equal(due, Schedule.IsDue(when, DateTimeOffset.Parse(now)));
 
     [Theory]
     [InlineData("")]
@@ -35,5 +34,5 @@ public class ScheduleTests
     [InlineData("* * * * *")]
     [InlineData("25:00")]
     public void AScheduleNobodyCanRead_NeverFires(string when) =>
-        Schedule.IsDue(when, DateTimeOffset.Parse("2026-07-13T09:00:00")).Should().BeFalse();
+        Assert.False(Schedule.IsDue(when, DateTimeOffset.Parse("2026-07-13T09:00:00")));
 }

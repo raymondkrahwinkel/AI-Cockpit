@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -17,8 +16,8 @@ public class ExpressionTests
     {
         var result = StepData.Resolve(@"{= output.split('\n').length } lines", _Items(("output", "a\nb\nc")), _Nothing);
 
-        result.Text.Should().Be("3 lines");
-        result.Errors.Should().BeEmpty();
+        Assert.Equal("3 lines", result.Text);
+        Assert.Empty(result.Errors);
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public class ExpressionTests
 
         var result = StepData.Resolve("{= step('Run a command').output.includes('error') }", _Items(("output", "")), produced);
 
-        result.Text.Should().Be("true");
+        Assert.Equal("true", result.Text);
     }
 
     [Fact]
@@ -39,8 +38,8 @@ public class ExpressionTests
     {
         var result = StepData.Resolve("{= nope.nope() }", _Items(("output", "x")), _Nothing);
 
-        result.Text.Should().Be("{= nope.nope() }");
-        result.Errors.Should().ContainSingle();
+        Assert.Equal("{= nope.nope() }", result.Text);
+        Assert.Single(result.Errors);
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class ExpressionTests
             new StepContext(_If("exitCode != '0'"), _Items(("exitCode", "1")), _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be("true");
+        Assert.Equal("true", outcome.Output);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class ExpressionTests
             new StepContext(_If("{= exitCode == '0' }"), _Items(("exitCode", "0")), _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be("true");
+        Assert.Equal("true", outcome.Output);
     }
 
     [Fact]
@@ -70,7 +69,7 @@ public class ExpressionTests
             new StepContext(_If("this is not javascript"), _Items(("output", "x")), _Nothing),
             CancellationToken.None);
 
-        await run.Should().ThrowAsync<InvalidOperationException>();
+        await Assert.ThrowsAsync<InvalidOperationException>(run);
     }
 
     [Fact]
@@ -80,7 +79,8 @@ public class ExpressionTests
             new StepContext(_If(string.Empty), [], _Nothing),
             CancellationToken.None);
 
-        (await run.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*no condition*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("no condition", ex.Message);
     }
 
     private static readonly Dictionary<string, IReadOnlyList<WorkflowItem>> _Nothing = new(StringComparer.OrdinalIgnoreCase);

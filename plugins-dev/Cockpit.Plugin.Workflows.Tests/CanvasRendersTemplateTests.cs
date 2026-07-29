@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Workflows.Canvas;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -21,7 +20,7 @@ public class CanvasRendersTemplateTests
 
         var cards = canvas.GetVisualDescendants().OfType<WorkflowNodeControl>().ToList();
 
-        cards.Should().HaveCount(2, "both steps of the flow are drawn");
+        Assert.Equal(2, System.Linq.Enumerable.Count(cards));
     }
 
     // The whole point of the fit: the steps end up inside the viewport, whatever the canvas was looking at before.
@@ -41,8 +40,8 @@ public class CanvasRendersTemplateTests
         foreach (var card in canvas.GetVisualDescendants().OfType<WorkflowNodeControl>())
         {
             var topLeft = card.TranslatePoint(new Point(0, 0), canvas);
-            topLeft.Should().NotBeNull();
-            canvasBounds.Contains(topLeft!.Value).Should().BeTrue($"'{card.Node.Name}' must be somewhere the operator can see it");
+            Assert.NotNull(topLeft);
+            Assert.True(canvasBounds.Contains(topLeft!.Value), $"'{card.Node.Name}' must be somewhere the operator can see it");
         }
 
         window.Close();

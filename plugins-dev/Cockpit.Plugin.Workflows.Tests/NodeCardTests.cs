@@ -3,7 +3,6 @@ using Avalonia.VisualTree;
 using Avalonia.Input;
 using Cockpit.Plugin.Workflows.Canvas;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -26,7 +25,7 @@ public class NodeCardTests
 
         _Click(card, clickCount: 2);
 
-        opened.Should().Be(1);
+        Assert.Equal(1, opened);
     }
 
     [Fact]
@@ -41,8 +40,8 @@ public class NodeCardTests
 
         _Click(card, clickCount: 1);
 
-        opened.Should().Be(0);
-        dragged.Should().Be(1);
+        Assert.Equal(0, opened);
+        Assert.Equal(1, dragged);
     }
 
     private static WorkflowNode _Node() => new()

@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -40,8 +39,9 @@ public class CommandRunnerTests
 
         var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-        (await Assert.ThrowsAsync<InvalidOperationException>(run))
-            .Which.Message.Should().Contain("exited with 3").And.Contain("it broke");
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("exited with 3", thrown.Message);
+        Assert.Contains("it broke", thrown.Message);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class CommandRunnerTests
 
             var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-            outcome.Output.Should().EndWith(directory.Name);
+            Assert.EndsWith(directory.Name, outcome.Output);
         }
         finally
         {
@@ -114,7 +114,8 @@ public class CommandRunnerTests
         // Only substituted values are quoted; the operator's template keeps its shell — the && chains as written.
         var outcome = await new CommandRunner().RunAsync(_Context(_Command("echo one && echo two")), CancellationToken.None);
 
-        outcome.Output.Should().Contain("one").And.Contain("two");
+        Assert.Contains("one", outcome.Output);
+        Assert.Contains("two", outcome.Output);
     }
 
     private static WorkflowNode _Command(string command) => new()

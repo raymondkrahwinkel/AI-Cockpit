@@ -3,7 +3,6 @@ using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Workflows;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
@@ -22,15 +21,15 @@ public class ContributedStepConsentTests
     [InlineData(WorkflowStepConsent.Dangerous, ConsentRisk.Dangerous)]
     public void DeclaredRisk_MapsStraightThroughToTheGate(WorkflowStepConsent declared, ConsentRisk? expected)
     {
-        new ContributedStep(new FakeStep("x", declared)).RequiredConsent.Should().Be(expected);
+        Assert.Equal(expected, new ContributedStep(new FakeStep("x", declared)).RequiredConsent);
     }
 
     [Fact]
     public void OnlyAnUndeclaredNonTriggerStep_IsUndeclared()
     {
-        ContributedStep.IsUndeclared(new FakeStep("undeclared", consent: null)).Should().BeTrue();
-        ContributedStep.IsUndeclared(new FakeStep("declared", WorkflowStepConsent.None)).Should().BeFalse("it declared it is safe");
-        ContributedStep.IsUndeclared(new FakeStep("trigger", consent: null, isTrigger: true)).Should().BeFalse("a trigger is never run, so it needs no declaration");
+        Assert.True(ContributedStep.IsUndeclared(new FakeStep("undeclared", consent: null)));
+        Assert.False(ContributedStep.IsUndeclared(new FakeStep("declared", WorkflowStepConsent.None)), "it declared it is safe");
+        Assert.False(ContributedStep.IsUndeclared(new FakeStep("trigger", consent: null, isTrigger: true)), "a trigger is never run, so it needs no declaration");
     }
 
     [Fact]
@@ -52,8 +51,8 @@ public class ContributedStepConsentTests
 
         var run = await engine.RunAsync(flow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Single(step => step.NodeId == "d").Status.Should().Be(RunStatus.Succeeded, "a declared step is loaded and runs");
-        run.Steps.Single(step => step.NodeId == "u").Status.Should().Be(RunStatus.Skipped, "an undeclared non-trigger step is left out of the engine, so nothing runs it");
+        Assert.Equal(RunStatus.Succeeded, run.Steps.Single(step => step.NodeId == "d").Status);
+        Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "u").Status);
     }
 
     [Fact]
@@ -65,9 +64,10 @@ public class ContributedStepConsentTests
             new FakeStep("danger", WorkflowStepConsent.Dangerous),
         ]);
 
-        engine.ConsentRequiredTypeIds.Should().Contain("low").And.Contain("danger", "both are put to the operator at run time");
-        engine.AgentForbiddenTypeIds.Should().Contain("danger").And.NotContain("low",
-            "a LowRisk step is left agent-buildable; only a Dangerous one is the operator's to build and arm");
+        Assert.Contains("low", engine.ConsentRequiredTypeIds);
+        Assert.Contains("danger", engine.ConsentRequiredTypeIds);
+        Assert.Contains("danger", engine.AgentForbiddenTypeIds);
+        Assert.DoesNotContain("low", engine.AgentForbiddenTypeIds);
     }
 
     private sealed class FakeStep(string typeId, WorkflowStepConsent? consent, bool isTrigger = false) : IWorkflowStep
