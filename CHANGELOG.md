@@ -974,6 +974,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a plugin section's chevron, title and header border now fall back to the cockpit's own faint-text,
+  primary-text and hairline colours if the theme lookup ever misses, instead of a plain grey or white that
+  was never part of the palette.
+
 - fixed: the cost shown for a session was far too high, because the session's whole spend was counted again on
   every turn. The figure the CLI reports alongside each answer is what the session has cost so far, not what
   that one answer cost, so adding those figures up charged every earlier turn a second time — a two-turn
