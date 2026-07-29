@@ -43,12 +43,24 @@ internal sealed class ProjectResourceEntry
         SendsContent = resource.SendsContent,
     };
 
-    public ProjectResource ToDomain() => new(Reference ?? string.Empty, _ParseRole(Role))
+    public ProjectResource ToDomain()
     {
-        Label = Label,
-        ReachesSessions = ReachesSessions,
-        SendsContent = SendsContent,
-    };
+        var role = _ParseRole(Role);
+
+        return new ProjectResource(Reference ?? string.Empty, role)
+        {
+            Label = Label,
+            ReachesSessions = ReachesSessions,
+
+            // Dropped outright for any role but Instructions, rather than carried and merely ignored (AC-486
+            // review). The domain property already refuses to report it for another role, but that only masks it
+            // while the role stays wrong: this file can be edited by hand, and a tick stored on a Memory row came
+            // back the moment the operator changed that row to Instructions — arriving pre-ticked in front of
+            // someone who never set it, and opening the file from the next session on. A flag that was never
+            // offered must not survive the load at all, or every later `with { Role = … }` is a way to resurrect it.
+            SendsContent = SendsContent && role == ProjectResourceRole.Instructions,
+        };
+    }
 
     /// <summary>
     /// <paramref name="role"/> parsed as a <see cref="ProjectResourceRole"/>, or <see cref="ProjectResourceRole.Reference"/>

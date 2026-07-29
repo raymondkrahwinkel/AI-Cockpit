@@ -93,7 +93,42 @@ public static class ProjectInstructionContentReader
                     continue;
                 }
 
-                result[reference] = readText(reference);
+                // Read on a thread of its own with a deadline, for the same reason ProjectResourceProbe does: this
+                // runs synchronously on the thread that handles Start, and a path whose read does not return
+                // promptly freezes the window rather than costing a moment. The probe learned that from an
+                // unreachable network path; the risk here is larger, because reading a file can block where merely
+                // asking whether it exists does not — a cloud-sync placeholder (OneDrive, Nextcloud "online-only")
+                // downloads on open, and on this operator's machines that is the normal way files are stored, not
+                // an exotic case. A read that overruns is dropped, and Resolve then says the content did not make
+                // it in, which is the same honest answer an unreadable file already produces.
+                var done = new ManualResetEventSlim(initialState: false);
+                string? text = null;
+                var reader = new Thread(() =>
+                {
+                    try
+                    {
+                        text = readText(reference);
+                    }
+                    catch
+                    {
+                        // Swallowed here so the wait below sees "did not answer" rather than an exception crossing
+                        // a thread boundary; the outer catch cannot see this one's stack.
+                    }
+                    finally
+                    {
+                        done.Set();
+                    }
+                })
+                {
+                    IsBackground = true,
+                    Name = "cockpit-instruction-read",
+                };
+
+                reader.Start();
+                if (done.Wait(_ReadBudget) && text is not null)
+                {
+                    result[reference] = text;
+                }
             }
             catch
             {
@@ -107,6 +142,18 @@ public static class ProjectInstructionContentReader
 
         return result;
     }
+
+    /// <summary>
+    /// How long one file's read may take before it is given up on. Deliberately the same order as
+    /// <see cref="ProjectResourceProbe"/>'s own budget and for the same reason — this runs on the thread that
+    /// handles Start — but applied per file rather than to the whole batch: a project carries a handful of ticked
+    /// rows at most, and a single slow one should cost its own content, not everyone else's.
+    /// <para>
+    /// Not a hard wall: starting the thread and the wait's own granularity are real time this figure does not
+    /// account for, the same overrun measured on the probe. It bounds the freeze; it does not abolish it.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan _ReadBudget = TimeSpan.FromMilliseconds(300);
 
     private static long _DefaultLength(string path) => new FileInfo(path).Length;
 

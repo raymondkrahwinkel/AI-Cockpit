@@ -54,6 +54,21 @@ public sealed record ProjectResource(string Reference, ProjectResourceRole Role)
     /// prompt, and a session is always told which of the two it got — the file itself, or only where to find it.
     /// Being told it holds instructions it was never given is worse than being told where they are.
     /// </para>
+    /// <para>
+    /// Reported as false for any role but <see cref="ProjectResourceRole.Instructions"/>, whatever was stored. The
+    /// flag and the role are two fields that can disagree, and every reader that only checked the flag would then be
+    /// a way in: a hand-edited <c>cockpit.json</c> can set it on a Memory row, where the editor shows no checkbox to
+    /// contradict it, and changing that row's role to Instructions afterwards used to carry the tick along —
+    /// arriving pre-ticked in front of an operator who never touched it, and opening the file from the next session
+    /// on. Enforced here rather than at each reader because "the operator ticked this" has to mean the same thing
+    /// everywhere it is asked, and there were already three places asking.
+    /// </para>
     /// </summary>
-    public bool SendsContent { get; init; }
+    public bool SendsContent
+    {
+        get => _sendsContent && Role == ProjectResourceRole.Instructions;
+        init => _sendsContent = value;
+    }
+
+    private readonly bool _sendsContent;
 }

@@ -155,16 +155,9 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     {
         // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
         // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
-        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
-        // simply switching it back off is the whole fix.
-        // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
-        // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
-        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
-        // simply switching it back off is the whole fix.
-        // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
-        // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
-        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
-        // simply switching it back off is the whole fix.
+        // flag for any other role. The other direction needs nothing here: ProjectResource.SendsContent reports
+        // false for any role but Instructions, so a stored tick on a row that was never an instruction cannot
+        // arrive pre-ticked by switching into the role. (It could, until the review round measured it.)
         if (oldValue == ProjectResourceRole.Instructions && newValue != ProjectResourceRole.Instructions)
         {
             SendsContent = false;

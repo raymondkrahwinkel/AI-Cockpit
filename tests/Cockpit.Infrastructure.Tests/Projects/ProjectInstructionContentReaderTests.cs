@@ -240,4 +240,36 @@ public class ProjectInstructionContentReaderTests : IDisposable
 
         Assert.Empty(ProjectInstructionContentReader.Read(resources));
     }
+
+    /// <summary>
+    /// AC-486 review, must-fix 2: this class promised it "never blocks a session from starting", and every test
+    /// here proved only that it never <em>throws</em>. Reading is heavier than the existence check its sibling
+    /// probe does, and it runs on the thread that handles Start — a cloud-sync placeholder (OneDrive, Nextcloud
+    /// "online-only") downloads when it is opened, which on these machines is how files are normally stored. A read
+    /// that overruns its budget is dropped, and the session is told the content did not make it in.
+    /// </summary>
+    [Fact]
+    public void AReadThatDoesNotReturnPromptly_IsGivenUpOnRatherThanWaitedOut()
+    {
+        var resources = new[] { new ProjectResource("/slow.md", ProjectResourceRole.Instructions) { SendsContent = true } };
+        var started = new ManualResetEventSlim(initialState: false);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var result = ProjectInstructionContentReader.Read(
+            resources,
+            fileLength: _ => 10,
+            readAllText: _ =>
+            {
+                started.Set();
+                Thread.Sleep(TimeSpan.FromSeconds(5));
+                return "far too late to be of use";
+            });
+        clock.Stop();
+
+        Assert.True(started.Wait(TimeSpan.FromSeconds(1)), "the read has to have been attempted for this to prove anything");
+        Assert.Empty(result);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(2),
+            $"the caller waited {clock.Elapsed.TotalMilliseconds:F0} ms on a read that never returns — the budget is what stops Start freezing");
+    }
 }
