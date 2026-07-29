@@ -108,8 +108,8 @@ public class SessionUsageRecordingTests
         var session = _Session(history);
 
         // The cost figures rise the way a real session reports them — each result states what the session has
-        // cost so far, not what its last turn cost (AC-481). A falling pair would pass here for the wrong
-        // reason, by taking the meter's restarted-process branch instead of its ordinary one.
+        // cost so far, not what its last turn cost (AC-481). The pair used to fall (0.10 then 0.05), which the
+        // old summing meter added up to the same 0.15 for the wrong reason.
         session._AccumulateUsage(_Turn(new TokenUsage(100, 10, 0, 0), 0.10));
         session._AccumulateUsage(_Turn(new TokenUsage(50, 5, 0, 0), 0.15));
 
