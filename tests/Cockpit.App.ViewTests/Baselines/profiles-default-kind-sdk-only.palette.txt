@@ -13,7 +13,7 @@
 #FF1A1D24  CockpitPanelBgColor
 #FF20242C  CockpitHairlineSoftColor
 #FF2A2F39  CockpitHairlineColor
-#FF3B82F6  CockpitAccentColor
+#FF2563EB  CockpitAccentColor
 #FF5AA576  CockpitStatusDoneColor
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
