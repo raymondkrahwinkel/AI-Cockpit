@@ -16,9 +16,12 @@ namespace Cockpit.Core.Tests.Services;
 /// </summary>
 public class DevPluginReloadWatcherTests
 {
-    private const string PluginsDevRoot = @"C:\repo\plugins-dev";
-    private const string BuiltDll = @"C:\repo\plugins-dev\Cockpit.Plugin.GitStatus\bin\Debug\net10.0\Cockpit.Plugin.GitStatus.dll";
-    private const string ObjDll = @"C:\repo\plugins-dev\Cockpit.Plugin.GitStatus\obj\Debug\net10.0\Cockpit.Plugin.GitStatus.dll";
+    // Built with Path.Combine, not a literal Windows path — the "bin/" check in production code keys off
+    // Path.DirectorySeparatorChar, which is '/' on the Linux CI runner, so a hardcoded backslash path here
+    // would silently never match there.
+    private static readonly string PluginsDevRoot = Path.Combine("repo", "plugins-dev");
+    private static readonly string BuiltDll = Path.Combine(PluginsDevRoot, "Cockpit.Plugin.GitStatus", "bin", "Debug", "net10.0", "Cockpit.Plugin.GitStatus.dll");
+    private static readonly string ObjDll = Path.Combine(PluginsDevRoot, "Cockpit.Plugin.GitStatus", "obj", "Debug", "net10.0", "Cockpit.Plugin.GitStatus.dll");
 
     [Fact]
     public void Start_OffADevCheckout_DoesNothing()
