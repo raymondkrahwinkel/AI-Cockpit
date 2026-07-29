@@ -151,7 +151,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         if (_toolSession.ServersNeedingSignIn.Count > 0)
         {
             _logger.LogWarning(
-                "Local-model MCP fan-out: [{Names}] need an OAuth sign-in and connected with no tools.",
+                "Local-model MCP fan-out: [{Names}] need an OAuth sign-in and were skipped — no tools from them.",
                 string.Join(", ", _toolSession.ServersNeedingSignIn));
         }
 
