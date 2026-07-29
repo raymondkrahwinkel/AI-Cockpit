@@ -96,6 +96,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAgentResourceClaims? _agentClaims;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
+    private readonly SessionStateRecorder? _sessionStateRecorder;
 
     /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -2440,7 +2441,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionResourceResolver? sessionResourceResolver = null,
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
-        IAgentResourceClaims? agentClaims = null)
+        IAgentResourceClaims? agentClaims = null,
+        SessionStateRecorder? sessionStateRecorder = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2477,6 +2479,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
+        _sessionStateRecorder = sessionStateRecorder;
 
         // One subscription rather than a call after each of the three creation paths: the branch can move on any of
         // them, and on the plugin-run path the start can still be cancelled afterwards, which would take the news
@@ -4601,6 +4604,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         string paneId;
+        SessionPanelViewModel startedSession;
+        string? startedWorkingDirectory;
+        string? startedPermissionMode;
         if (result.Kind == SessionKind.Sdk)
         {
             var session = _sessionFactory();
@@ -4622,6 +4628,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.ProjectId = result.ProjectId;
             await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
             paneId = session.PaneId;
+            startedSession = session;
+            startedWorkingDirectory = workingDirectory;
+            startedPermissionMode = result.Mode.Value;
         }
         else
         {
@@ -4666,10 +4675,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 result.EnabledMcpServerNames,
                 contributed);
             paneId = session.PaneId;
+            startedSession = session;
+            startedWorkingDirectory = workingDirectory;
+            startedPermissionMode = isClaudeProfile ? result.Mode.Value : null;
         }
 
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
+
+        // AC-409: enough to bring this pane's session back after a restart or a crash. Written once here rather
+        // than at two separate "session started"/"worktree coupled" moments: by this point isolation has already
+        // resolved (session.WorktreeBranch is set when it applied), so a second write immediately after this one
+        // would say nothing new. Fire-and-forget like the worktree count above: a session that has already started
+        // must not wait on a state-file write.
+        _ = _sessionStateRecorder?.RecordSessionStartedAsync(
+            paneId,
+            result.Profile,
+            startedWorkingDirectory,
+            worktreePath: startedSession.WorktreeBranch is not null ? startedWorkingDirectory : null,
+            worktreeBranch: startedSession.WorktreeBranch,
+            startedPermissionMode);
 
         // Record that this project was worked on, whichever door the session came through, so the overview can
         // lead with what is actually used. Fire-and-forget like the worktree count: a small config write must not

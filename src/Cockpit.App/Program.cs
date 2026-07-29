@@ -9,6 +9,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure;
@@ -233,6 +234,13 @@ sealed class Program
         // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
+
+        // Fold duplicate session-state records left by earlier runs (AC-409), so the log holds one line per pane
+        // rather than one per change for the life of the install. Fire-and-forget like the two reconciles above.
+        // No pane roster is passed, so nothing is dropped: unlike a worktree, an AI session's pane is not persisted
+        // anywhere yet to enumerate, and a compaction that guesses at "still exists" would delete the state this
+        // whole ticket is about. Once panes are persisted, that roster belongs here.
+        _ = Services.GetRequiredService<ISessionStateStore>().CompactAsync();
 
         // Global UI-thread safety net: a plugin body — or any dispatcher work — that throws while rendering must never
         // take the whole cockpit down with it (a render exception in one workspace was tearing the process down). Log it
