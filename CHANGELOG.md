@@ -1004,6 +1004,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the window-picker test suite no longer fails depending on which windows happen to be open on the
+  machine it runs on — it stopped asserting that no window is ever reported larger than the screen, which
+  Windows never guaranteed in the first place (a window dragged partly off-screen legitimately has bounds
+  sticking out), and relies instead on a deterministic check that an off-screen window is still cropped and
+  offered correctly.
 - fixed: an unticked checkbox now sits on the cockpit's own dark surface with its own hairline border, instead
   of a barely-there transparent box outlined in the operating system's default translucent white.
 - fixed: a progress bar's groove — the plugin store's install/update bars and the voice overlay's model-download
