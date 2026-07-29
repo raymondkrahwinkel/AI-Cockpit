@@ -41,7 +41,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   somewhere else; point it outside that folder and the row says plainly that the path is specific to this machine.
   A row whose reference cannot be found is shown as broken right there in the editor, rather than only failing
   silently when a session goes looking for it. Existing projects open with their memory location already in the
-  list, in the same "Memory" role it always was.
+  list, in the same "Memory" role it always was. An instructions row can also be sent along in full rather than
+  merely pointed at: tick "Send along" and the file's contents travel with the session, quoted and credited to where
+  they came from, so a session obeys the conventions file instead of being told a path it may never open. Off unless
+  you tick it, on instructions rows only — the cockpit never decides for itself that a file is safe to hand over,
+  because a rule that judges that will eventually judge it wrong. Ticking it is a request rather than a promise:
+  the contents still have to fit within what one project may contribute to a session's opening prompt, and the
+  session is always told which of the two it actually got — the file, or only its location. A file too large, gone
+  missing, or slow to read is reported as such instead of quietly arriving empty.
 - added: terminal (TTY) sessions now show up in the usage history alongside SDK sessions — their token counts land
   in the same trail as every turn completes, so a session run straight in the terminal is no longer invisible to
   usage tracking. No cost figure is recorded for these, since the CLI's own transcript does not report one and the
