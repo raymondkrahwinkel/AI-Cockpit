@@ -121,4 +121,26 @@ public class ProjectDialogMemorySourceTests
         Assert.Equal("cockpit", viewModel.ResourceRows.Single().Reference);
         Assert.Equal("depot:cockpit", viewModel.ToProject().MemoryRef);
     });
+
+    // AC-502: a source that CAN enumerate its own locations flips this from disabled back to enabled — the
+    // opposite of PickingASourceInTheComboBox_ReachesTheViewModelAndDisablesChoose above, which pins the case a
+    // source cannot list at all.
+    [Fact]
+    public void PickingASourceThatCanListItsOwnLocations_KeepsChooseEnabled() => HeadlessAvalonia.Run(() =>
+    {
+        var depot = new MemorySourceChoice("Depot project", "depot", ListLocationsAsync: _ => Task.FromResult(
+            Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success([])));
+        var viewModel = ViewModelWith(new MemorySourceChoice("Folder", null), depot);
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var comboBox = MemoryComboBox(window)!;
+        comboBox.SelectedItem = depot;
+        window.UpdateLayout();
+        var chooseButton = ChooseButton(viewModel, window);
+        window.Close();
+
+        Assert.True(chooseButton.IsEnabled, "this source can list its own locations, so Choose… opens a picker of names");
+    });
 }

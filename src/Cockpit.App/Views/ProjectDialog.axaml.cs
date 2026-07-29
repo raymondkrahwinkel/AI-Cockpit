@@ -52,6 +52,23 @@ public partial class ProjectDialog : Window
     /// </summary>
     private async Task _PickResourceAsync(ProjectDialogViewModel viewModel, ProjectResourceRowViewModel row)
     {
+        // AC-502: a Memory row with a source other than Folder picked, whose source can enumerate its own
+        // locations, opens a picker of names instead of browsing for a path — CanBrowse only lets this button be
+        // reachable at all when one of these two is true, so IsMemoryFolderMode false here implies ListLocationsAsync
+        // is not null.
+        if (row is { Role: ProjectResourceRole.Memory, IsMemoryFolderMode: false }
+            && row.SelectedMemorySourceChoice is { ListLocationsAsync: { } listLocationsAsync } choice)
+        {
+            var pickerViewModel = new MemorySourceLocationPickerViewModel(choice.Label, listLocationsAsync, choice.SignInAsync);
+            var picked = await new MemorySourceLocationPickerDialog { DataContext = pickerViewModel }.ShowDialog<string?>(this);
+            if (picked is { Length: > 0 })
+            {
+                row.Reference = picked;
+            }
+
+            return;
+        }
+
         try
         {
             string? picked;

@@ -109,7 +109,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 viewModel.MemorySourceChoices.Add(new MemorySourceChoice("Folder", Scheme: null));
             }
 
-            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme));
+            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(
+                registration.Title, registration.Scheme, registration.ListLocationsAsync, registration.SignInAsync));
         }
 
         // Every saved resource becomes a row, in order — the whole of AC-485: what the old single Memory row (and

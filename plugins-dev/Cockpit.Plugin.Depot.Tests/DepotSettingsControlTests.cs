@@ -259,7 +259,7 @@ public class DepotSettingsControlTests
                 new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
             ],
         };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
             registry.Add(pair.Registration);
         }

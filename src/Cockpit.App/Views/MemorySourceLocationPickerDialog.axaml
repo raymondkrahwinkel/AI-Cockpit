@@ -1,0 +1,86 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:projects="using:Cockpit.Plugins.Abstractions.Projects"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.MemorySourceLocationPickerDialog"
+        x:DataType="vm:MemorySourceLocationPickerViewModel"
+        Title="Choose a location"
+        Width="440" Height="480" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:MemorySourceLocationPickerViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="16,14,16,10">
+            <StackPanel Spacing="2">
+                <TextBlock Text="{Binding SourceTitle}" FontSize="14" FontWeight="Medium"/>
+                <TextBlock Text="Pick a location by name — the field is filled with its identifier, not the name shown here." FontSize="11.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
+                <Button Classes="Accent" Content="Choose" Command="{Binding PickCommand}" IsEnabled="{Binding CanPick}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- One Grid, not four DockPanel siblings: an undocked child in Avalonia's DockPanel defaults to Dock="Left"
+             rather than overlaying, which would stack these four states side by side instead of switching between
+             them. A Grid cell overlays its children, so exactly one of the four IsVisible states shows at a time. -->
+        <Grid>
+            <!-- Loading (AC-502 criterion 6): the load itself never blocks this window's own thread, but the operator
+                 still needs to see something is happening rather than a bare empty list mid-fetch. -->
+            <StackPanel IsVisible="{Binding IsLoading}" Margin="16" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="Loading…" HorizontalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+
+            <!-- Not signed in (criterion 4): one action, never a list that reads as "you have nothing". -->
+            <StackPanel IsVisible="{Binding NeedsSignIn}" Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="Sign in to see this source's locations." HorizontalAlignment="Center" TextWrapping="Wrap"/>
+                <Button Classes="Accent" Content="Sign in" Command="{Binding SignInCommand}"
+                        IsVisible="{Binding CanSignIn}" IsEnabled="{Binding !IsSigningIn}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Signing in…" IsVisible="{Binding IsSigningIn}" HorizontalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+
+            <!-- Failed (criterion 5): says what went wrong rather than showing nothing. -->
+            <StackPanel IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
+                           Foreground="{StaticResource CockpitStatusErrorBrush}"/>
+                <Button Classes="Ghost" Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- The list itself, once loaded, not signed-out and not failed — an empty ItemsSource here really does
+                 mean this source has nothing (criteria 4/5), the one case an empty list is the honest answer. -->
+            <ListBox ItemsSource="{Binding Locations}" SelectedItem="{Binding SelectedLocation}"
+                     DoubleTapped="OnLocationDoubleTapped">
+                <ListBox.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="!IsLoading"/>
+                        <Binding Path="!NeedsSignIn"/>
+                        <Binding Path="ErrorMessage" Converter="{x:Static ObjectConverters.IsNull}"/>
+                    </MultiBinding>
+                </ListBox.IsVisible>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="projects:ProjectMemorySourceLocation">
+                        <StackPanel Spacing="1" Margin="2">
+                            <TextBlock Text="{Binding Name}"/>
+                            <TextBlock Text="{Binding Detail}" FontSize="11" IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </DockPanel>
+</Window>

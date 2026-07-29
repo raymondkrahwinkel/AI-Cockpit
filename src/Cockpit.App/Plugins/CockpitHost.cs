@@ -53,6 +53,14 @@ internal sealed class CockpitHost(
     PluginDiagnostics diagnostics,
     IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
 {
+    // AC-502 review: the set of names this exact plugin has itself registered via AddMcpServer — what
+    // CallMcpToolAsync checks against, so a plugin can only ever reach a server it contributed, never another
+    // plugin's, an operator-configured one, or a cockpit-internal endpoint (terminal, worktrees, orchestrator, …)
+    // it never contributed and has no consent/permission gate in front of. One CockpitHost instance lives for a
+    // whole plugin's lifetime (built once in App.axaml.cs's hostFor and closed over by everything that plugin
+    // does afterwards), so this set stays accurate across Initialize and any later settings save.
+    private readonly HashSet<string> _ownMcpServerNames = new(StringComparer.Ordinal);
+
     public IServiceProvider Services => services;
 
     public ICockpitActions Actions => actions;
@@ -446,6 +454,7 @@ internal sealed class CockpitHost(
             }
 
             await store.SaveAsync(servers).ConfigureAwait(false);
+            _ownMcpServerNames.Add(contribution.Name);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -470,6 +479,8 @@ internal sealed class CockpitHost(
             {
                 await store.SaveAsync(servers).ConfigureAwait(false);
             }
+
+            _ownMcpServerNames.Remove(name);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -552,6 +563,54 @@ internal sealed class CockpitHost(
         {
             diagnostics.Record(pluginId, pluginName, "mcp-sign-in", exception.Message);
             return PluginMcpSignInOutcome.Unreachable;
+        }
+    }
+
+    /// <summary>
+    /// Calls a tool on this plugin's own MCP server through the same <see cref="IMcpToolInvoker"/> a session's
+    /// tool-loop uses to reach it (AC-502) — on the app's behalf, never opening a browser and never handing the
+    /// plugin the bearer token the invoker used to authenticate the call.
+    /// <para>
+    /// Refuses <paramref name="name"/> unless it is one <em>this</em> plugin itself registered via
+    /// <see cref="AddMcpServer"/> (review fix): <see cref="IMcpToolInvoker.InvokeAsync"/> resolves against the
+    /// same merged catalog a session connects to, which also holds every other plugin's contributions, every
+    /// operator-configured registry server, and every cockpit-internal endpoint (terminal, worktrees, the
+    /// delegation orchestrator, …). None of those carry this plugin's own consent, and a session connecting to
+    /// them goes through permission machinery this bridge has none of — so it must never become a way to reach
+    /// anything but what this plugin put there itself.
+    /// </para>
+    /// </summary>
+    public async Task<PluginMcpToolCallResult> CallMcpToolAsync(
+        string name,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        string? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_ownMcpServerNames.Contains(name))
+        {
+            return PluginMcpToolCallResult.Unavailable;
+        }
+
+        if (services.GetService<IMcpToolInvoker>() is not { } invoker)
+        {
+            return PluginMcpToolCallResult.Unavailable;
+        }
+
+        try
+        {
+            var result = await invoker.InvokeAsync(name, toolName, arguments, projectId, cancellationToken).ConfigureAwait(false);
+            return result.Outcome switch
+            {
+                McpToolInvocationOutcome.Success => PluginMcpToolCallResult.Success(result.Content ?? string.Empty),
+                McpToolInvocationOutcome.AuthorizationRequired => PluginMcpToolCallResult.AuthorizationRequired,
+                _ => PluginMcpToolCallResult.Failed(result.Error ?? "The tool call failed."),
+            };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-tool-call", exception.Message);
+            return PluginMcpToolCallResult.Failed(exception.Message);
         }
     }
 

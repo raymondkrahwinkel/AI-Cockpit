@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
@@ -14,6 +15,10 @@ namespace Cockpit.Infrastructure.Mcp;
 /// unreachable is logged and skipped, so the session runs with whatever connected rather than failing.
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
+/// <para>
+/// Also the app's own <see cref="IMcpToolInvoker"/> (AC-502): the same connect path, called for one tool on one
+/// server, on the app's behalf rather than a session's.
+/// </para>
 /// </summary>
 internal sealed class McpToolProvider(
     IMcpServerCatalog catalog,
@@ -22,7 +27,7 @@ internal sealed class McpToolProvider(
     McpAuthKey authKey,
     SessionMcpKeyring keyring,
     ILogger<McpToolProvider> logger)
-    : IMcpToolProvider, ISingletonService
+    : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
@@ -130,6 +135,60 @@ internal sealed class McpToolProvider(
         try
         {
             return connection.Tools;
+        }
+        finally
+        {
+            await connection.Client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task<McpToolInvocationResult> InvokeAsync(
+        string serverName,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        string? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        var server = registry.FirstOrDefault(candidate =>
+            candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
+
+        if (server is null)
+        {
+            return McpToolInvocationResult.Failed($"No enabled MCP server named \"{serverName}\".");
+        }
+
+        // Same AC-134 rule EnumerateServerToolsAsync follows: never pop an interactive browser sign-in from this
+        // path — report the named outcome instead, so a caller can offer its own "sign in" action.
+        if (server.Auth == McpServerAuth.OAuth
+            && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
+        {
+            return McpToolInvocationResult.AuthorizationRequired;
+        }
+
+        var connection = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
+        if (connection is null)
+        {
+            return McpToolInvocationResult.Failed($"Could not connect to \"{serverName}\".");
+        }
+
+        try
+        {
+            var result = await connection.Client.CallToolAsync(toolName, arguments, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+
+            return result.IsError == true
+                ? McpToolInvocationResult.Failed(text.Length > 0 ? text : $"\"{toolName}\" reported an error.")
+                : McpToolInvocationResult.Success(text);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "MCP tool {Tool} on {Server} could not be called", toolName, serverName);
+            return McpToolInvocationResult.Failed(exception.Message);
         }
         finally
         {

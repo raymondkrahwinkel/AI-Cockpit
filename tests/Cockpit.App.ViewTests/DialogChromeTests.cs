@@ -23,6 +23,7 @@ public class DialogChromeTests
     private static readonly HashSet<string> TitledByTheirViewModel =
     [
         nameof(ConfirmationDialog),
+        nameof(MemorySourceLocationPickerDialog),
         nameof(NewSessionDialog),
         nameof(PasswordDialog),
         nameof(ProjectDialog),
@@ -63,6 +64,7 @@ public class DialogChromeTests
     private static readonly Dictionary<string, Func<Window>> DeferredDialogs = new()
     {
         [nameof(ConfirmationDialog)] = () => new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel() },
+        [nameof(MemorySourceLocationPickerDialog)] = () => new MemorySourceLocationPickerDialog { DataContext = new MemorySourceLocationPickerViewModel() },
         [nameof(NewSessionDialog)] = () => new NewSessionDialog { DataContext = new NewSessionDialogViewModel() },
         [nameof(PasswordDialog)] = () => new PasswordDialog { DataContext = new PasswordDialogViewModel() },
         [nameof(ProjectDialog)] = () => new ProjectDialog { DataContext = new ProjectDialogViewModel() },

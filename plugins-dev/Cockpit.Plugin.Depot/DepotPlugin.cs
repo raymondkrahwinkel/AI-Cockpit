@@ -35,7 +35,7 @@ public sealed class DepotPlugin : ICockpitPlugin
 
         // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did
         // before this plugin existed, rather than always offering a fixed "Depot project" nothing points at yet.
-        foreach (var registration in DepotMemorySource.BuildRegistrations(settings.Connections))
+        foreach (var registration in DepotMemorySource.BuildRegistrations(settings.Connections, host))
         {
             host.AddProjectMemorySource(registration);
         }

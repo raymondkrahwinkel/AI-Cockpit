@@ -144,12 +144,12 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // storage ever held two connections under the same id (corrupted or hand-edited settings) — building it by
         // hand keeps a duplicate merely overwriting the earlier entry instead of crashing Save().
         var before = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections, _host))
         {
             before[pair.Connection.Id] = pair.Registration;
         }
 
-        var after = DepotMemorySource.BuildRegistrationPairs(registrations);
+        var after = DepotMemorySource.BuildRegistrationPairs(registrations, _host);
         var afterById = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
         foreach (var pair in after)
         {
