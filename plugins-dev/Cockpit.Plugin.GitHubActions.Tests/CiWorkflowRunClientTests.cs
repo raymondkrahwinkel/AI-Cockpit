@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.GitHubActions.Tests;
 
 /// <summary>
@@ -11,9 +9,10 @@ public class CiWorkflowRunClientTests
     [Fact]
     public void RunListArguments_QueriesTheBranchesLatestRunAsJson()
     {
-        CiWorkflowRunClient.RunListArguments("feature/AC-52").Should().Equal(
-            "run", "list", "--branch", "feature/AC-52", "--limit", "1",
-            "--json", "workflowName,headBranch,event,status,conclusion,createdAt,url");
+        Assert.Equal(
+            ["run", "list", "--branch", "feature/AC-52", "--limit", "1",
+             "--json", "workflowName,headBranch,event,status,conclusion,createdAt,url"],
+            CiWorkflowRunClient.RunListArguments("feature/AC-52"));
     }
 
     [Fact]
@@ -25,15 +24,15 @@ public class CiWorkflowRunClientTests
                "url": "https://github.com/owner/repo/actions/runs/1" }]
             """;
 
-        var run = CiWorkflowRunClient.ParseRuns(json).Should().ContainSingle().Subject;
+        var run = Assert.Single(CiWorkflowRunClient.ParseRuns(json));
 
-        run.WorkflowName.Should().Be("CI");
-        run.Branch.Should().Be("main");
-        run.Event.Should().Be("push");
-        run.Status.Should().Be("completed");
-        run.Conclusion.Should().Be("success");
-        run.Url.Should().Be("https://github.com/owner/repo/actions/runs/1");
-        run.State.Should().Be(CiRunState.Passed);
+        Assert.Equal("CI", run.WorkflowName);
+        Assert.Equal("main", run.Branch);
+        Assert.Equal("push", run.Event);
+        Assert.Equal("completed", run.Status);
+        Assert.Equal("success", run.Conclusion);
+        Assert.Equal("https://github.com/owner/repo/actions/runs/1", run.Url);
+        Assert.Equal(CiRunState.Passed, run.State);
     }
 
     [Theory]
@@ -45,8 +44,8 @@ public class CiWorkflowRunClientTests
     [InlineData("queued", "", "Running")]
     public void State_DerivesFromStatusAndConclusion(string status, string conclusion, string expected)
     {
-        new CiRun("CI", "main", "push", status, conclusion, null, "https://github.com/o/r/actions/runs/1")
-            .State.ToString().Should().Be(expected);
+        Assert.Equal(expected, new CiRun("CI", "main", "push", status, conclusion, null, "https://github.com/o/r/actions/runs/1")
+            .State.ToString());
     }
 
     [Theory]
@@ -55,7 +54,7 @@ public class CiWorkflowRunClientTests
     [InlineData("{}", false)]
     public void ParseRuns_ToleratesEmptyOrInvalidJson(string json, bool _)
     {
-        CiWorkflowRunClient.ParseRuns(json).Should().BeEmpty();
+        Assert.Empty(CiWorkflowRunClient.ParseRuns(json));
     }
 
     [Theory]
@@ -68,6 +67,6 @@ public class CiWorkflowRunClientTests
     [InlineData("", false)]
     public void IsGitHubRunUrl_AcceptsOnlyHttpsGitHub(string url, bool expected)
     {
-        CiWorkflowRunClient.IsGitHubRunUrl(url).Should().Be(expected);
+        Assert.Equal(expected, CiWorkflowRunClient.IsGitHubRunUrl(url));
     }
 }
