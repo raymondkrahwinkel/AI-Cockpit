@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 using Cockpit.Plugin.Depot.Ui;
@@ -122,6 +123,158 @@ public class DepotSettingsControlTests
         Assert.Single(settings.Connections);
     }
 
+    // AC-501: memory sources sync the same save a connection's MCP contribution does, live, without an app restart.
+    [Fact]
+    public void Save_NewConnection_RegistersItsOwnMemorySourceUnderThePlainDepotScheme()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Synvolution", url: "https://depot.example.com");
+
+        view.Save();
+
+        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
+            registration.Scheme == "depot" && registration.Title.Contains("Synvolution")));
+    }
+
+    [Fact]
+    public void Save_SecondConnection_RegistersItUnderANamespacedScheme()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 1, name: "Wispslate", url: "https://wispslate.example.com");
+
+        view.Save();
+
+        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration => registration.Scheme == "depot.wispslate"));
+    }
+
+    [Fact]
+    public void Save_RemovedConnection_ReclaimsItsOldMemorySourceScheme()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _RemoveRow(view, index: 0);
+
+        view.Save();
+
+        host.Received(1).RemoveProjectMemorySource("depot");
+        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
+    }
+
+    // The guard this pins: without this, a rename would only re-add under the same scheme (Register refuses it as
+    // "already taken" — by itself) and the picker would keep showing the operator's old name forever.
+    [Fact]
+    public void Save_RenamedConnection_ReclaimsTheOldSchemeAndRegistersTheRenamedTitle()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+
+        view.Save();
+
+        host.Received(1).RemoveProjectMemorySource("depot");
+        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
+            registration.Scheme == "depot" && registration.Title.Contains("Synvolution (renamed)")));
+    }
+
+    [Fact]
+    public void Save_UnchangedConnection_DoesNotReRegisterItsMemorySource()
+    {
+        // Re-adding unchanged content would only hit Register's "scheme already taken" refusal — this pins that
+        // Save() does not even try, rather than relying on the registry to swallow a no-op call quietly.
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+
+        view.Save();
+
+        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
+        host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
+    }
+
+    // A connection removed ahead of another in the list promotes the survivor into the primary slot — its scheme
+    // changes from a namespaced one to the plain "depot", which existing "depot:<slug>"-linked projects rely on.
+    [Fact]
+    public void Save_RemovingThePrimaryConnection_PromotesTheSurvivorToTheDepotScheme()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com"),
+                new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
+            ],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _RemoveRow(view, index: 0);
+
+        view.Save();
+
+        host.Received(1).RemoveProjectMemorySource("depot");
+        host.Received(1).RemoveProjectMemorySource("depot.wispslate");
+        host.Received(1).AddProjectMemorySource(Arg.Is<ProjectMemorySourceRegistration>(registration =>
+            registration.Scheme == "depot" && registration.Title.Contains("Wispslate")));
+    }
+
+    // Regression: retiring a stale scheme and registering the new one per connection, one connection at a time,
+    // let an Add claim a scheme a later connection in the same save still held under its own before-registration —
+    // two connections swapping names silently dropped one of the two from the registry until a restart. A
+    // call-counting substitute cannot see that gap (both Adds and both Removes still happen, just in an order that
+    // loses one), so this wires the host's calls into a small registry stand-in and asserts on its end state.
+    [Fact]
+    public void Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry()
+    {
+        var registry = new FakeMemorySourceRegistry();
+        var host = Substitute.For<ICockpitHost>();
+        host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
+            .Do(call => registry.Add(call.Arg<ProjectMemorySourceRegistration>()));
+        host.When(cockpit => cockpit.RemoveProjectMemorySource(Arg.Any<string>()))
+            .Do(call => registry.Remove(call.Arg<string>()));
+
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
+                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
+                new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
+            ],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections))
+        {
+            registry.Add(pair.Registration);
+        }
+
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
+        _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
+
+        view.Save();
+
+        Assert.Equal(3, registry.Sources.Count);
+        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta) && beta.Title.Contains("Beta"));
+        Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma) && gamma.Title.Contains("Gamma"));
+    }
+
     [Fact]
     public void Save_BlankRow_IsDropped_AndContributesNothing()
     {
@@ -193,5 +346,23 @@ public class DepotSettingsControlTests
 
         // The row wires Click, not Command — raise the routed event RemoveRequested actually listens to.
         remove.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    }
+
+    /// <summary>
+    /// A minimal stand-in for <c>ProjectMemorySourceRegistry</c> (internal to Cockpit.App, not referenced from this
+    /// project) with the same first-one-wins-by-scheme rule, wired to the host substitute's
+    /// <see cref="ICockpitHost.AddProjectMemorySource"/>/<see cref="ICockpitHost.RemoveProjectMemorySource"/> calls.
+    /// Exists because a substitute that only counts calls cannot see an ordering bug where a later Add silently
+    /// loses to an earlier connection's not-yet-retired scheme — only the registry's actual end state can.
+    /// </summary>
+    private sealed class FakeMemorySourceRegistry
+    {
+        private readonly Dictionary<string, ProjectMemorySourceRegistration> _sources = new(StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyDictionary<string, ProjectMemorySourceRegistration> Sources => _sources;
+
+        public void Add(ProjectMemorySourceRegistration registration) => _sources.TryAdd(registration.Scheme, registration);
+
+        public void Remove(string scheme) => _sources.Remove(scheme);
     }
 }

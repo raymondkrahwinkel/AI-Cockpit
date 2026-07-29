@@ -11,8 +11,9 @@ namespace Cockpit.Plugin.Depot;
 /// or more Depot instances. Each connection is contributed to the shared MCP registry as an OAuth
 /// <see cref="McpServerContribution"/> (AC-500) — Depot has a single auth path, so the plugin never holds a
 /// credential of its own; the host drives the sign-in and keeps the token. Reading and writing project memory still
-/// happens through the Depot MCP inside the session itself (see <see cref="DepotMemorySource"/>); this plugin
-/// contributes the connection, not a tool.
+/// happens through the Depot MCP inside the session itself. Since AC-501, each connection also registers its own
+/// memory source (see <see cref="DepotMemorySource"/>) rather than one fixed registration shared by every instance;
+/// this plugin contributes the connection, not a tool.
 /// </summary>
 public sealed class DepotPlugin : ICockpitPlugin
 {
@@ -29,10 +30,15 @@ public sealed class DepotPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        host.AddProjectMemorySource(DepotMemorySource.Registration);
-
         var settings = new DepotSettings(host.Storage);
         host.AddSettings(() => new DepotSettingsControl(host, settings));
+
+        // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did
+        // before this plugin existed, rather than always offering a fixed "Depot project" nothing points at yet.
+        foreach (var registration in DepotMemorySource.BuildRegistrations(settings.Connections))
+        {
+            host.AddProjectMemorySource(registration);
+        }
 
         // AC-500's upsert-by-name is idempotent: re-contributing every saved connection on each start refreshes the
         // shared MCP registry entry without waiting for a settings save, same as every other AddMcpServer caller.

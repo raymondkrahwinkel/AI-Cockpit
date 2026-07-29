@@ -33,6 +33,17 @@ public interface IProjectMemorySourceRegistry
     /// </returns>
     bool Register(ProjectMemorySourceRegistration registration);
 
+    /// <summary>
+    /// Withdraws the source registered under <paramref name="scheme"/> (AC-501), matched the same case-insensitive
+    /// way <see cref="Register"/> checks for a collision. A no-op, returning false, when nothing is registered under
+    /// it. Removing a source never touches a project's own stored <c>MemoryRef</c> — the same restraint
+    /// <c>Project.PluginFields</c> keeps when the plugin that once linked a project disappears (AC-166): a reference
+    /// this leaves without a matching source just falls back to the unexplained-scheme sentence the next time a
+    /// session reads it, rather than being rewritten out from under the project.
+    /// </summary>
+    /// <returns>True when a source was registered under this scheme and is now gone.</returns>
+    bool Remove(string scheme);
+
     /// <summary>Every source registered so far, in registration order — the order the editor's picker offers them in.</summary>
     IReadOnlyList<ProjectMemorySourceRegistration> Sources { get; }
 }
@@ -57,6 +68,18 @@ internal sealed class ProjectMemorySourceRegistry : IProjectMemorySourceRegistry
         }
 
         _sources.Add(registration);
+        return true;
+    }
+
+    public bool Remove(string scheme)
+    {
+        var index = _sources.FindIndex(existing => string.Equals(existing.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return false;
+        }
+
+        _sources.RemoveAt(index);
         return true;
     }
 }

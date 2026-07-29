@@ -37,6 +37,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   sign-in flow and the plugin never sees or stores a token. Renaming or removing a connection cleans up its old MCP
   registration so a stale entry never lingers, and every connection shows whether it's signed in right there in the
   row, with a Sign in button that opens the browser only when you click it.
+- added: each Depot connection now offers its own memory source in the project editor's picker, so "Depot project —
+  Wispslate" and "Depot project — Synvolution" show up as distinct choices instead of one shared "Depot project"
+  entry that couldn't say which instance it meant. Adding, renaming or removing a connection takes effect
+  immediately in the picker, no restart needed. Your first connection keeps working exactly as before under its
+  existing project link.
 - added: an incompatible plugin now says so before you install it, not after. The plugin store's browse card shows
   a red "Incompatible" badge with the reason — a contract version it was built for, or a cockpit version it needs —
   and its Install/Update button is disabled; nothing is hidden from the catalogue, but a click that would only fail
