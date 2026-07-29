@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
@@ -22,7 +21,7 @@ public class TranscriptSearchServiceTests : IDisposable
     {
         var service = new TranscriptSearchService([_root]);
 
-        (await service.SearchAsync("   ")).Should().BeEmpty();
+        Assert.Empty((await service.SearchAsync("   ")));
     }
 
     [Fact]
@@ -36,9 +35,11 @@ public class TranscriptSearchServiceTests : IDisposable
         var service = new TranscriptSearchService([_root]);
         var hits = await service.SearchAsync("login");
 
-        hits.Should().HaveCount(2);
-        hits.Select(hit => hit.Role).Should().Contain(["user", "assistant"]);
-        hits.Should().OnlyContain(hit => hit.SessionId == "sess1" && hit.Project == "proj-a");
+        Assert.Equal(2, System.Linq.Enumerable.Count(hits));
+        var roles = hits.Select(hit => hit.Role).ToList();
+        Assert.Contains("user", roles);
+        Assert.Contains("assistant", roles);
+        Assert.All(hits, hit => Assert.True(hit.SessionId == "sess1" && hit.Project == "proj-a"));
     }
 
     [Fact]
@@ -54,9 +55,9 @@ public class TranscriptSearchServiceTests : IDisposable
         var service = new TranscriptSearchService([_root]);
         var hits = await service.SearchAsync("keyword");
 
-        hits.Should().HaveCount(2);
-        hits[0].SessionId.Should().Be("new");
-        hits[1].SessionId.Should().Be("old");
+        Assert.Equal(2, System.Linq.Enumerable.Count(hits));
+        Assert.Equal("new", hits[0].SessionId);
+        Assert.Equal("old", hits[1].SessionId);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var service = new TranscriptSearchService([_root]);
 
-        (await service.SearchAsync("login")).Should().BeEmpty();
+        Assert.Empty((await service.SearchAsync("login")));
     }
 
     [Fact]
@@ -78,7 +79,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var service = new TranscriptSearchService([Path.Combine(_root, "does-not-exist"), _root]);
 
-        (await service.SearchAsync("login")).Should().HaveCount(1);
+        Assert.Single(await service.SearchAsync("login"));
     }
 
     // A project folder the operator cannot read must not take the whole search down with it: the walk skips it and
@@ -101,7 +102,7 @@ public class TranscriptSearchServiceTests : IDisposable
         {
             var service = new TranscriptSearchService([_root]);
 
-            (await service.SearchAsync("login")).Should().HaveCount(1);
+            Assert.Single(await service.SearchAsync("login"));
         }
         finally
         {
@@ -124,8 +125,8 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var recent = await new TranscriptSearchService([_root]).RecentAsync();
 
-        recent.Select(hit => hit.SessionId).Should().Equal("new", "old");
-        recent[0].Snippet.Should().Be("add the export button");
+        Assert.Equal(["new", "old"], recent.Select(hit => hit.SessionId));
+        Assert.Equal("add the export button", recent[0].Snippet);
     }
 
     // The whole point of #AC-1: a hit carries the folder the session ran in (its cwd), so resuming it can start
@@ -138,8 +139,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var hits = await new TranscriptSearchService([_root]).SearchAsync("login");
 
-        hits.Should().ContainSingle()
-            .Which.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+        Assert.Equal("/home/me/RiderProjects/App", Assert.Single(hits).WorkingDirectory);
     }
 
     [Fact]
@@ -150,8 +150,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var recent = await new TranscriptSearchService([_root]).RecentAsync();
 
-        recent.Should().ContainSingle()
-            .Which.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+        Assert.Equal("/home/me/RiderProjects/App", Assert.Single(recent).WorkingDirectory);
     }
 
     [Fact]
@@ -161,7 +160,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var hits = await new TranscriptSearchService([_root]).SearchAsync("login");
 
-        hits.Should().ContainSingle().Which.WorkingDirectory.Should().BeNull();
+        Assert.Null(Assert.Single(hits).WorkingDirectory);
     }
 
     [Fact]
@@ -174,7 +173,7 @@ public class TranscriptSearchServiceTests : IDisposable
 
         var recent = await new TranscriptSearchService([_root]).RecentAsync(limit: 3);
 
-        recent.Should().HaveCount(3);
+        Assert.Equal(3, System.Linq.Enumerable.Count(recent));
     }
 
     private void _WriteSession(string project, string sessionId, params string[] lines)

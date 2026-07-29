@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.UsageTrend.Tests;
 
@@ -25,11 +24,11 @@ public class UsageTrendSampleTests
 
         var sample = UsageTrendSample.From(snapshot, At);
 
-        sample.TimestampUtc.Should().Be(At);
-        sample.ProfileLabel.Should().Be("Work");
-        sample.ContextPercent.Should().Be(42);
-        sample.FiveHourPercent.Should().Be(55);
-        sample.WeeklyPercent.Should().Be(66);
+        Assert.Equal(At, sample.TimestampUtc);
+        Assert.Equal("Work", sample.ProfileLabel);
+        Assert.Equal(42, sample.ContextPercent);
+        Assert.Equal(55, sample.FiveHourPercent);
+        Assert.Equal(66, sample.WeeklyPercent);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class UsageTrendSampleTests
 
         var sample = UsageTrendSample.From(snapshot, At);
 
-        sample.FiveHourPercent.Should().Be(20);
-        sample.WeeklyPercent.Should().BeNull();
+        Assert.Equal(20, sample.FiveHourPercent);
+        Assert.Null(sample.WeeklyPercent);
     }
 
     [Fact]
@@ -51,8 +50,8 @@ public class UsageTrendSampleTests
 
         var sample = UsageTrendSample.From(snapshot, At);
 
-        sample.FiveHourPercent.Should().Be(33);
-        sample.WeeklyPercent.Should().Be(44);
+        Assert.Equal(33, sample.FiveHourPercent);
+        Assert.Equal(44, sample.WeeklyPercent);
     }
 
     [Fact]
@@ -63,8 +62,8 @@ public class UsageTrendSampleTests
 
         var sample = UsageTrendSample.From(snapshot, At);
 
-        sample.FiveHourPercent.Should().BeNull();
-        sample.WeeklyPercent.Should().BeNull();
-        sample.HasAny.Should().BeTrue("the context figure still makes it a real data point");
+        Assert.Null(sample.FiveHourPercent);
+        Assert.Null(sample.WeeklyPercent);
+        Assert.True(sample.HasAny, "the context figure still makes it a real data point");
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
@@ -16,9 +15,9 @@ public class TranscriptTextExtractorTests
 
         var entry = TranscriptTextExtractor.Extract(line);
 
-        entry.Should().NotBeNull();
-        entry!.Role.Should().Be("user");
-        entry.Text.Should().Be("fix the login bug");
+        Assert.NotNull(entry);
+        Assert.Equal("user", entry!.Role);
+        Assert.Equal("fix the login bug", entry.Text);
     }
 
     [Fact]
@@ -28,9 +27,9 @@ public class TranscriptTextExtractorTests
 
         var entry = TranscriptTextExtractor.Extract(line);
 
-        entry.Should().NotBeNull();
-        entry!.Role.Should().Be("assistant");
-        entry.Text.Should().Be("Here is the fix");
+        Assert.NotNull(entry);
+        Assert.Equal("assistant", entry!.Role);
+        Assert.Equal("Here is the fix", entry.Text);
     }
 
     [Fact]
@@ -38,13 +37,13 @@ public class TranscriptTextExtractorTests
     {
         var line = """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]}}""";
 
-        TranscriptTextExtractor.Extract(line).Should().BeNull();
+        Assert.Null(TranscriptTextExtractor.Extract(line));
     }
 
     [Fact]
     public void Extract_NonMessageType_ReturnsNull()
     {
-        TranscriptTextExtractor.Extract("""{"type":"summary","summary":"…"}""").Should().BeNull();
+        Assert.Null(TranscriptTextExtractor.Extract("""{"type":"summary","summary":"…"}"""));
     }
 
     [Theory]
@@ -53,7 +52,7 @@ public class TranscriptTextExtractorTests
     [InlineData("not json")]
     [InlineData("{}")]
     public void Extract_BlankOrMalformed_ReturnsNull(string line)
-        => TranscriptTextExtractor.Extract(line).Should().BeNull();
+        => Assert.Null(TranscriptTextExtractor.Extract(line));
 
     [Fact]
     public void Extract_RoleFromMessageRoleWhenTopLevelTypeIsNotARole()
@@ -63,9 +62,9 @@ public class TranscriptTextExtractorTests
 
         var entry = TranscriptTextExtractor.Extract(line);
 
-        entry.Should().NotBeNull();
-        entry!.Role.Should().Be("assistant");
-        entry.Text.Should().Be("hi");
+        Assert.NotNull(entry);
+        Assert.Equal("assistant", entry!.Role);
+        Assert.Equal("hi", entry.Text);
     }
 
     [Fact]
@@ -75,8 +74,8 @@ public class TranscriptTextExtractorTests
 
         var entry = TranscriptTextExtractor.Extract(line);
 
-        entry.Should().NotBeNull();
-        entry!.Cwd.Should().Be("/home/me/project");
+        Assert.NotNull(entry);
+        Assert.Equal("/home/me/project", entry!.Cwd);
     }
 
     [Fact]
@@ -84,6 +83,6 @@ public class TranscriptTextExtractorTests
     {
         var line = """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""";
 
-        TranscriptTextExtractor.Extract(line)!.Cwd.Should().BeNull();
+        Assert.Null(TranscriptTextExtractor.Extract(line)!.Cwd);
     }
 }
