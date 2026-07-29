@@ -60,6 +60,16 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
             return _Fail(profileError);
         }
 
+        // AC-256: runnable is not the same as affordable. The brief asks the CEO to lean cheap, but a brief only asks —
+        // the pilot run put 88.9% of its tokens on the most expensive tier while that instruction was in force. The
+        // ceiling is enforced here, at emit, so the CEO redrafts before the operator ever sees the plan. Deliberately
+        // not at step start: an operator who re-targets a step afterwards is making a human choice, and failing their
+        // step for it would be both rude and confusing — the waste this addresses is the model's, not theirs.
+        if (AutopilotModelTier.ValidateAll(steps, profiles, settings.CostStrategy()) is { } tierError)
+        {
+            return _Fail(tierError);
+        }
+
         // AC-411: a step folded in from a tracker child (an epic's sub-item, pulled in by the CEO during planning
         // rather than clicked by the operator) must clear the same executable-stage gate its parent already passed
         // before the round started (AC-345) — checked here in code against the tracker itself, not left to the CEO's

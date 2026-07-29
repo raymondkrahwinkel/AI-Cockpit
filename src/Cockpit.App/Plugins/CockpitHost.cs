@@ -354,16 +354,42 @@ internal sealed class CockpitHost(
     public async Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
+        var registry = services.GetRequiredService<IPluginProviderRegistry>();
         return profiles
-            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
+            .Select(profile =>
             {
-                // A Claude profile offers the model aliases; a local or plugin profile pins its own, so no suggestions.
-                ModelSuggestions = profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : [],
-                // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
-                RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
+                var model = _DeclaredModelOption(registry, profile);
+                return new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
+                {
+                    // Whatever models the profile's own provider offers. The host used to answer this from its own copy
+                    // of the Claude aliases, which is how Autopilot came to describe that list as running cheapest-first
+                    // while it ran the other way round (AC-256): a second copy carrying meaning nobody promised it. Ask
+                    // the provider instead, so every provider is served by the same code and none needs the host to know
+                    // its vocabulary. The catalogue stays only as the answer when there is no registration to ask —
+                    // a Claude profile whose provider plugin did not load, and the legacy typed config that
+                    // ProviderConfigEntry.ToDomain migrates away on read. Keeping it there leaves that case exactly as
+                    // it behaves today rather than quietly emptying it as part of this change.
+                    ModelSuggestions = model?.Choices ?? (profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : []),
+                    // Cost is the provider's own estimate or nothing at all; the host never ranks or prices a model.
+                    ModelCostEstimatesCheapestFirst = model?.CostEstimatesCheapestFirst ?? [],
+                    // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
+                    RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
+                };
             })
             .ToList();
     }
+
+    /// <summary>
+    /// The model launch option the profile's own session provider declares, or <see langword="null"/> when the profile
+    /// is not plugin-backed or its provider offers no model choice. Found by <see cref="WellKnownPluginSessionOptions.Model"/>
+    /// — the same key the driver adapter bridges a live model switch through — so the host locates it without knowing
+    /// any provider's option vocabulary. Only the statically declared options are read: <see cref="SessionProviderRegistration.ResolveOptionsAsync"/>
+    /// reaches out to a CLI, and this runs on every plan emission and step start, where a stall would be felt.
+    /// </summary>
+    private static PluginSessionLaunchOption? _DeclaredModelOption(IPluginProviderRegistry registry, Core.Profiles.SessionProfile profile) =>
+        profile.ProviderConfig is Core.Profiles.PluginProviderConfig plugin
+            ? registry.Resolve(plugin.ProviderId)?.Options.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Model)
+            : null;
 
     /// <summary>
     /// Idempotent upsert-by-name into the shared <see cref="IMcpServerStore"/> registry (#60). No entry named

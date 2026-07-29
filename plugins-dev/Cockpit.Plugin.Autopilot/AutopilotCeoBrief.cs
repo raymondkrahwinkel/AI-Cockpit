@@ -1,4 +1,6 @@
+using System.Globalization;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.Autopilot;
 
@@ -48,7 +50,7 @@ internal static class AutopilotCeoBrief
               + "who the CEO is; from here you decide everything per step. Keep the run coherent in that identity, and "
               + "have each step's agent carry it too rather than switching persona mid-run.\n";
 
-        var roster = _Roster(profiles);
+        var roster = _Roster(profiles, costStrategy);
         var costGuidance = _CostGuidance(costStrategy);
         var executionFit = _ExecutionFit();
         var reviewVerification = _ReviewVerification();
@@ -237,31 +239,65 @@ internal static class AutopilotCeoBrief
     // There is no per-model price/tier field to surface (see PluginProfileInfo: only RunsLocally and the model-alias list),
     // so the roster gives the CEO the two signals that do exist — local-vs-paid and the model names — and tells it how to
     // weigh them, rather than inventing a cost number that is not there.
-    private static string _Roster(IReadOnlyList<PluginProfileInfo>? profiles)
+    private static string _Roster(IReadOnlyList<PluginProfileInfo>? profiles, AutopilotCostStrategy strategy)
     {
         if (profiles is not { Count: > 0 })
         {
             return string.Empty;
         }
 
-        var lines = profiles.Select(profile =>
-        {
-            var cost = profile.RunsLocally ? "runs locally, free" : "hosted API, paid";
-            var models = profile.ModelSuggestions is { Count: > 0 } suggestions
-                ? $"; models (lighter/cheaper to heavier/more capable): {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
-                : "; pins its own model — leave a step's model empty on this profile";
-            return $"- {profile.Label} ({cost}{models})";
-        });
+        var lines = profiles.Select(profile => $"- {profile.Label} ({(profile.RunsLocally ? "runs locally, free" : "hosted API, paid")}{_Models(profile)})");
 
         return "\nProfiles you can assign steps to (a step's model must be one the profile lists here, or empty for a "
             + "profile that pins its own):\n"
             + string.Join("\n", lines)
             + "\n\nHow to read this roster: \"runs locally, free\" means no API cost, but a local profile is usually a "
             + "lighter model that can stall on a demanding step — it may analyse or summarise instead of executing. "
-            + "\"hosted API, paid\" costs money but is generally more capable. Where a profile lists several models, they "
-            + "run from lighter and cheaper to heavier and more capable. There is no per-model price tag beyond this "
-            + "local-vs-paid signal and the model names, so weigh each step's difficulty against them and pick the "
-            + "cheapest option that can actually carry the step to a finished, committed result — not simply the cheapest "
-            + "one.\n";
+            + "\"hosted API, paid\" costs money but is generally more capable. Any prices shown are the provider's own "
+            + "estimate per million tokens (input/output) and may be out of date — treat them as rough proportions "
+            + "between models, never as a quote. A profile listed without prices has not ranked its models at all, so do "
+            + "not read any order into it. Weigh each step's difficulty against these signals and pick the cheapest "
+            + "option that can actually carry the step to a finished, committed result — not simply the cheapest one.\n"
+            + _Ceiling(strategy);
     }
+
+    // Where a provider ranked its own models, the roster follows that ranking and says so; where it did not, the list
+    // is explicitly disclaimed as unordered. The previous wording asserted the ranking either way, and was exactly
+    // backwards against the list it described (AC-256) — a sentence the CEO obeyed straight into the priciest tier.
+    private static string _Models(PluginProfileInfo profile)
+    {
+        if (profile.ModelCostEstimatesCheapestFirst is { Count: > 0 } ranked)
+        {
+            return $"; models cheapest first: {string.Join(", ", ranked.Select(_Priced))} — a step on this profile must use exactly one of these";
+        }
+
+        return profile.ModelSuggestions is { Count: > 0 } suggestions
+            ? $"; models, in no particular order: {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
+            : "; pins its own model — leave a step's model empty on this profile";
+    }
+
+    // Invariant culture on purpose: the brief is English prose read by a model, and a machine set to a comma decimal
+    // separator would otherwise render "$1,5" into it.
+    private static string _Priced(PluginModelCostEstimate estimate) =>
+        estimate is { EstimatedInputUsdPerMillionTokens: { } input, EstimatedOutputUsdPerMillionTokens: { } output }
+            ? $"{estimate.Model} (est. ${input.ToString("0.##", CultureInfo.InvariantCulture)}/${output.ToString("0.##", CultureInfo.InvariantCulture)})"
+            : estimate.Model;
+
+    // The ceiling is enforced, not requested: a plan that breaks it is refused when you emit it, so you would only
+    // find out by being sent back. Saying it here costs one paragraph and saves a round trip.
+    private static string _Ceiling(AutopilotCostStrategy strategy) => strategy switch
+    {
+        AutopilotCostStrategy.QualityFirst =>
+            "\nNo cost ceiling applies under this strategy: any model its profile lists is accepted for any step.\n",
+
+        AutopilotCostStrategy.CostFirst =>
+            "\nA cost ceiling is enforced when you submit the plan: a step that is not a review gate must use the "
+            + "cheapest model its profile lists. Review gates may use any of them — a missed finding costs more than "
+            + "the tokens saved. A plan that breaks this is rejected and comes back to you to fix.\n",
+
+        _ =>
+            "\nA cost ceiling is enforced when you submit the plan: a step that is not a review gate must use one from "
+            + "the cheaper half of its profile's list. Review gates may use any of them — a missed finding costs more "
+            + "than the tokens saved. A plan that breaks this is rejected and comes back to you to fix.\n",
+    };
 }

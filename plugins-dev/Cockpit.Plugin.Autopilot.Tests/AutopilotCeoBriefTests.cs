@@ -134,9 +134,11 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan, profiles);
 
-        // The roster now teaches the CEO how to read the (only) signals that exist — local-vs-paid and the model names —
-        // rather than pretending a per-model price tag it does not have.
-        brief.Should().Contain("lighter/cheaper to heavier/more capable");
+        // The roster teaches the CEO how to read the signals it has — local-vs-paid, and whatever the provider itself
+        // declared about its models. It used to assert an order over the model names on top of that, which was the
+        // reverse of the list it described (AC-256); these profiles declare no ranking, so it must claim none.
+        brief.Should().NotContain("lighter/cheaper to heavier/more capable");
+        brief.Should().Contain("in no particular order");
         brief.Should().Contain("a local profile is usually a lighter model that can stall on a demanding step");
         brief.Should().Contain("the cheapest option that can actually carry the step to a finished, committed result");
     }
