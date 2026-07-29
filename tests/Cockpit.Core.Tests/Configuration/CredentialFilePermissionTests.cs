@@ -59,19 +59,6 @@ public class CredentialFilePermissionTests : IDisposable
     }
 
     [Fact]
-    public void TtyMcpConfig_IsWrittenOwnerOnly()
-    {
-        var path = TtyMcpConfigFile.Write("""{"mcpServers":{}}""", _directory);
-
-        Path.GetDirectoryName(path).Should().Be(_directory);
-
-        if (!OperatingSystem.IsWindows())
-        {
-            File.GetUnixFileMode(path).Should().Be(OwnerOnly);
-        }
-    }
-
-    [Fact]
     public void TtyMcpConfig_LivesBesideTheOtherState_NotInTheSharedTempDirectory()
     {
         // The file carries the registry's bearer headers, and the temp directory is world-readable (1777).
@@ -82,9 +69,14 @@ public class CredentialFilePermissionTests : IDisposable
     }
 
     [Fact]
-    public void TtyMcpConfig_IsDeletedWhenTheSessionIsDisposed()
+    public void SessionScopedFile_IsDeletedWhenTheSessionIsDisposed()
     {
-        var path = TtyMcpConfigFile.Write("""{"mcpServers":{}}""", _directory);
+        // The host-side --mcp-config writer this used to exercise (TtyMcpConfigFile.Write) had no production
+        // caller and was removed in AC-380 — each provider plugin now writes and owns its own session-scoped
+        // file (e.g. ClaudeMcpConfig). What still matters, and is still live in production, is that
+        // TtyProcessOwningSessionFiles deletes whatever session-scoped file it is handed once the session ends.
+        var path = Path.Combine(_directory, $"{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, """{"mcpServers":{}}""");
 
         using (var session = new TtyProcessOwningSessionFiles(new FakeConPtyProcess(), [path]))
         {
@@ -100,7 +92,10 @@ public class CredentialFilePermissionTests : IDisposable
         var temporaryDirectory = Path.Combine(_directory, "tmp");
         Directory.CreateDirectory(temporaryDirectory);
 
-        var ours = TtyMcpConfigFile.Write("""{"mcpServers":{}}""", _directory);
+        // TtyMcpConfigFile no longer writes these itself (AC-380) — simulating what an older cockpit version, or
+        // a killed session, left behind is now the only way to put one here.
+        var ours = Path.Combine(_directory, $"tty-mcp-{Guid.NewGuid():N}.json");
+        File.WriteAllText(ours, """{"mcpServers":{}}""");
         var legacy = Path.Combine(temporaryDirectory, $"cockpit-tty-mcp-{Guid.NewGuid():N}.json");
         File.WriteAllText(legacy, """{"mcpServers":{}}""");
         var unrelated = Path.Combine(temporaryDirectory, "something-else.json");
