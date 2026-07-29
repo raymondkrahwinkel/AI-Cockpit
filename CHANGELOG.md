@@ -164,6 +164,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   sense of on its own. A project pointing at a source whose plugin is not installed keeps its reference untouched;
   saving it does not lose or garble what it already pointed at.
 
+- fixed: a delegated task that fails now tells you why. One failure finishes a task twice — first the refusal that
+  knows the reason, then the turn's own ending, which reports failure without a reason of its own — and the second
+  was overwriting the first, so every failed delegation came back with an empty error however plainly the provider
+  had explained itself. A task that goes on to answer on a later turn still clears the failure it recovered from.
+
 - fixed: a build published as a folder rather than a single file now carries the example workspace and Autopilot with
   it. Both were copied next to the executable but never into a publish, so that route handed over a cockpit missing
   two of the plugins it ships with — the single-file build was unaffected, which is why it went unnoticed.

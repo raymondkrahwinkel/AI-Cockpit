@@ -113,6 +113,12 @@ internal sealed class DelegatedTaskEntry
     /// <summary>
     /// Records the outcome. <paramref name="keepSessionAlive"/> distinguishes a task that answered (its session
     /// stays up so a follow-up turn is still possible) from one that was stopped or never started.
+    /// <para>
+    /// Called more than once for a single failure, and deliberately so: a <c>SessionError</c> is not proof a session
+    /// is over (AC-106), so the turn that follows it still reports its own outcome and may correct the verdict. That
+    /// makes what a second call is allowed to overwrite the interesting question — see how <see cref="Error"/> is
+    /// kept below.
+    /// </para>
     /// </summary>
     public void Finish(DelegatedTaskStatus status, string? result, string? error, bool keepSessionAlive = false)
     {
@@ -123,7 +129,15 @@ internal sealed class DelegatedTaskEntry
 
         Status = status;
         Result = result ?? Result;
-        Error = error;
+
+        // A later call carrying no reason must not erase one already recorded, the same way Result is kept above —
+        // but only while the task is still failed. The two calls behind one failure are a SessionError that knows
+        // why ("You've hit your usage limit…") followed by the turn's own completion, which reports failure with no
+        // diagnostic of its own; plain assignment let the second wipe the first, and every failed delegation then
+        // read as `error: null` to the operator and to get_task_result — undiagnosable, though the reason had been
+        // in hand a millisecond earlier. Succeeding clears it instead: a follow-up turn reuses this same entry, and
+        // a task that has since answered must not still carry the failure it recovered from.
+        Error = status == DelegatedTaskStatus.Failed ? error ?? Error : error;
         FinishedAt = DateTimeOffset.Now;
 
         if (!keepSessionAlive)
