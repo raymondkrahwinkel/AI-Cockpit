@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the YouTrack plugin's "attach message images to an issue" tool can now attach an image file directly by
+  path, not only images sent with the current message — so a screenshot pasted straight into a terminal pane, or
+  an image an agent produced itself, can be attached even though it never rode along on a message. The path must
+  point inside the terminal's own paste folder or the session's working directory, and the file must genuinely be
+  an image (checked by its content, not by its name) — anything else is refused.
 - added: an autonomous run now has a spending ceiling it cannot talk its way past. A session provider can state what
   its own models cost, cheapest first — the Claude provider now does, and any other provider can — and the planner is
   held to that ranking: unless you have set the cost strategy to quality-first, a step that is not a review gate has
@@ -1009,6 +1014,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Windows never guaranteed in the first place (a window dragged partly off-screen legitimately has bounds
   sticking out), and relies instead on a deterministic check that an off-screen window is still cropped and
   offered correctly.
+- fixed: several widgets (a markdown link, the mic level meter, a handful of plugin loading bars and canvas
+  controls) had kept the accent's old, lighter shade in their own fallback colour instead of picking up the
+  darker one the theme moved to — so they now draw the same accent as the rest of the cockpit again.
 - fixed: an unticked checkbox now sits on the cockpit's own dark surface with its own hairline border, instead
   of a barely-there transparent box outlined in the operating system's default translucent white.
 - fixed: a progress bar's groove — the plugin store's install/update bars and the voice overlay's model-download

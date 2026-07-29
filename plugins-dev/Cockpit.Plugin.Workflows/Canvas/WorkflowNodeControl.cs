@@ -330,7 +330,7 @@ internal sealed class WorkflowNodeControl : Border
 
     private static IBrush _Hairline => _Brush("CockpitHairlineBrush", "#2a2f39");
 
-    private static IBrush _Accent => _Brush("CockpitAccentBrush", "#3b82f6");
+    private static IBrush _Accent => _Brush("CockpitAccentBrush", "#2563eb");
 
     /// <summary>
     /// A card's corner, from the theme's control radius, so a step on the canvas rounds like every other box in the
@@ -396,7 +396,7 @@ internal sealed class WorkflowPin : Ellipse
         set
         {
             Width = Height = value ? 15 : 10;
-            Fill = value ? _Brush("CockpitAccentBrush", "#3b82f6") : Idle;
+            Fill = value ? _Brush("CockpitAccentBrush", "#2563eb") : Idle;
         }
     }
 
