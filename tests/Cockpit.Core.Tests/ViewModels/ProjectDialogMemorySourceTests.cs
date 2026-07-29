@@ -10,10 +10,15 @@ using Cockpit.Plugins.Abstractions.Projects;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// The "Memory" row's picker (AC-165/166): "Folder" plus one entry per contributed source. What is picked and what
-/// is stored are different strings too, exactly the shape <see cref="ProjectDialogPluginFieldTests"/> already covers
+/// A Memory row's picker (AC-165/166): "Folder" plus one entry per contributed source. What is picked and what is
+/// stored are different strings too, exactly the shape <see cref="ProjectDialogPluginFieldTests"/> already covers
 /// for a plugin field — the operator sees "cockpit", the project stores "depot:cockpit" — with the same worry about
 /// a plugin that is not installed: it must not lose or garble a reference just because this dialog was opened.
+/// <para>
+/// AC-485 moved this picker from a single dialog-wide field onto <see cref="ProjectResourceRowViewModel"/> itself —
+/// <see cref="ProjectDialogViewModel.MemorySourceChoices"/> is still the one shared list of choices, but which one
+/// is picked, and the reference typed beside it, now live on each row.
+/// </para>
 /// </summary>
 public class ProjectDialogMemorySourceTests
 {
@@ -41,11 +46,12 @@ public class ProjectDialogMemorySourceTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.HasMemorySources.Should().BeFalse();
         viewModel.MemorySourceChoices.Should().BeEmpty();
-        viewModel.SelectedMemorySourceChoice.Should().BeNull();
-        viewModel.IsMemoryFolderMode.Should().BeTrue();
-        viewModel.MemoryRef.Should().Be("/home/raymond/notes");
+        var row = viewModel.ResourceRows.Should().ContainSingle().Subject;
+        row.ShowsMemorySourcePicker.Should().BeFalse();
+        row.SelectedMemorySourceChoice.Should().BeNull();
+        row.IsMemoryFolderMode.Should().BeTrue();
+        row.Reference.Should().Be("/home/raymond/notes");
         viewModel.ToProject().MemoryRef.Should().Be("/home/raymond/notes");
     }
 
@@ -55,14 +61,14 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
 
-        viewModel.HasMemorySources.Should().BeTrue();
         viewModel.MemorySourceChoices.Select(choice => choice.Label).Should().Equal("Folder", "Depot project");
         viewModel.MemorySourceChoices[0].Scheme.Should().BeNull();
         viewModel.MemorySourceChoices[1].Scheme.Should().Be("depot");
 
-        // A new project has no stored MemoryRef to match against a source, so the picker must not render empty —
-        // it defaults to the Folder choice, the same one it would show with no sources registered at all.
-        viewModel.SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0]);
+        // A freshly added row has no stored reference to match against a source, so it must not render empty — it
+        // defaults to the Folder choice, the same one it would show with no sources registered at all.
+        viewModel.AddResourceRowCommand.Execute(null);
+        viewModel.ResourceRows.Single().SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0]);
     }
 
     [Fact]
@@ -88,10 +94,11 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
 
-        viewModel.SelectedMemorySourceChoice.Should().NotBeNull();
-        viewModel.SelectedMemorySourceChoice!.Scheme.Should().Be("depot");
-        viewModel.MemoryRef.Should().Be("cockpit", "the box shows what the plugin queries with, not the scheme prefix");
-        viewModel.IsMemoryFolderMode.Should().BeFalse();
+        var row = viewModel.ResourceRows.Should().ContainSingle().Subject;
+        row.SelectedMemorySourceChoice.Should().NotBeNull();
+        row.SelectedMemorySourceChoice!.Scheme.Should().Be("depot");
+        row.Reference.Should().Be("cockpit", "the box shows what the plugin queries with, not the scheme prefix");
+        row.IsMemoryFolderMode.Should().BeFalse();
     }
 
     [Fact]
@@ -102,11 +109,12 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
 
-        viewModel.IsMemoryFolderMode.Should().BeTrue();
+        var row = viewModel.ResourceRows.Should().ContainSingle().Subject;
+        row.IsMemoryFolderMode.Should().BeTrue();
         // The picker must render "Folder" selected, not empty — a null selection here would leave the ComboBox
         // showing nothing for the everyday case of a project that simply points at a folder.
-        viewModel.SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0]);
-        viewModel.MemoryRef.Should().Be("/home/raymond/notes");
+        row.SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0]);
+        row.Reference.Should().Be("/home/raymond/notes");
     }
 
     /// <summary>
@@ -121,8 +129,9 @@ public class ProjectDialogMemorySourceTests
         // No memorySources passed at all here — as if the Depot plugin were not installed.
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.IsMemoryFolderMode.Should().BeTrue();
-        viewModel.MemoryRef.Should().Be("depot:cockpit", "with no source registered the raw reference is shown verbatim");
+        var row = viewModel.ResourceRows.Should().ContainSingle().Subject;
+        row.IsMemoryFolderMode.Should().BeTrue();
+        row.Reference.Should().Be("depot:cockpit", "with no source registered the raw reference is shown verbatim");
 
         viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit", "saving without touching the field must not change it");
     }
@@ -133,8 +142,10 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
         viewModel.Name = "Cockpit";
-        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
-        viewModel.MemoryRef = "cockpit";
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
+        row.Reference = "cockpit";
 
         viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit");
     }
@@ -146,8 +157,10 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
         viewModel.Name = "Cockpit";
-        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
-        viewModel.MemoryRef = "   ";
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
+        row.Reference = "   ";
 
         viewModel.ToProject().MemoryRef.Should().BeNull();
     }
@@ -158,7 +171,8 @@ public class ProjectDialogMemorySourceTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
         viewModel.Name = "Cockpit";
-        viewModel.MemoryRef = "/home/raymond/notes";
+        viewModel.AddResourceRowCommand.Execute(null);
+        viewModel.ResourceRows.Single().Reference = "/home/raymond/notes";
 
         viewModel.ToProject().MemoryRef.Should().Be("/home/raymond/notes");
     }
@@ -174,7 +188,7 @@ public class ProjectDialogMemorySourceTests
         // Both checked so this is not merely "the string happens to match": the picker must actually have selected
         // the Depot source (not fallen back to Folder with the raw text carried through, which would print the same
         // saved string by coincidence).
-        viewModel.SelectedMemorySourceChoice?.Scheme.Should().Be("depot");
+        viewModel.ResourceRows.Single().SelectedMemorySourceChoice?.Scheme.Should().Be("depot");
         viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit");
     }
 
@@ -188,10 +202,12 @@ public class ProjectDialogMemorySourceTests
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
 
-        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
+        row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
 
-        viewModel.MemoryHint.Should().NotContain("a folder");
+        row.MemoryHint.Should().NotContain("a folder");
     }
 
     [Fact]
@@ -199,8 +215,9 @@ public class ProjectDialogMemorySourceTests
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(), memorySources: []);
+        viewModel.AddResourceRowCommand.Execute(null);
 
-        viewModel.MemoryHint.Should().Be(
+        viewModel.ResourceRows.Single().MemoryHint.Should().Be(
             "Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told " +
             "about it, so they can look things up instead of being told again.");
     }

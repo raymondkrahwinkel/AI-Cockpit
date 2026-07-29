@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a project can now keep more than one memory location, plus standing instructions and reference material,
+  each as its own row in the project editor — "Memory, instructions and reference" replaces the single Memory field.
+  Add as many rows as you like, pick what each one is for, name it, and say whether a starting session is told
+  about it ("Tell sessions" defaults on here, unlike the notes above it, because a memory or instructions row exists
+  specifically to be handed to a session). Picking a file or folder from inside the project's own folder stores it
+  relative to that folder, so the project definition still makes sense on a machine that has it checked out
+  somewhere else; point it outside that folder and the row says plainly that the path is specific to this machine.
+  A row whose reference cannot be found is shown as broken right there in the editor, rather than only failing
+  silently when a session goes looking for it. Existing projects open with their memory location already in the
+  list, in the same "Memory" role it always was.
 - added: an autonomous run now hands its reviewer proof instead of sending it off to look. When a step finishes, the
   cockpit asks git itself what changed in the run's worktree since that step started, and gives the reviewing session
   that account to judge the acceptance against — where before it was told to distrust the step's summary and go read

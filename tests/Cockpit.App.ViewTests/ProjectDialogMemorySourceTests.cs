@@ -8,9 +8,14 @@ using FluentAssertions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The "Memory" row's picker in the real project editor (AC-165/166). Measured against the actual markup rather
-/// than the view model alone, the same reason <c>ProjectDialogPluginFieldTests</c> is: a binding that silently does
-/// not wire up passes a view-model-only test happily, and everything here lives in the binding.
+/// A Memory row's picker in the real project editor (AC-165/166). Measured against the actual markup rather than
+/// the view model alone, the same reason <c>ProjectDialogPluginFieldTests</c> is: a binding that silently does not
+/// wire up passes a view-model-only test happily, and everything here lives in the binding.
+/// <para>
+/// AC-485 moved the picker from one field the dialog always showed onto a <see cref="ProjectResourceRowViewModel"/>
+/// row instead — every test here adds exactly one row (<c>AddResourceRowCommand</c> defaults its role to Memory)
+/// and finds that row's own controls, rather than a control fixed once in the window.
+/// </para>
 /// </summary>
 [Collection("avalonia")]
 public class ProjectDialogMemorySourceTests
@@ -23,6 +28,7 @@ public class ProjectDialogMemorySourceTests
             viewModel.MemorySourceChoices.Add(source);
         }
 
+        viewModel.AddResourceRowCommand.Execute(null);
         return viewModel;
     }
 
@@ -34,12 +40,12 @@ public class ProjectDialogMemorySourceTests
 
     private static Button ChooseButton(ProjectDialogViewModel viewModel, Window window) =>
         window.GetVisualDescendants().OfType<Button>()
-            .First(button => ReferenceEquals(button.Command, viewModel.PickMemoryCommand));
+            .First(button => ReferenceEquals(button.Command, viewModel.PickResourceCommand));
 
     [Fact]
     public void NoMemorySourcesRegistered_ThePickerStaysHiddenAndChooseStaysUsable() => HeadlessAvalonia.Run(() =>
     {
-        var viewModel = new ProjectDialogViewModel();
+        var viewModel = ViewModelWith();
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();
         window.UpdateLayout();
@@ -86,7 +92,7 @@ public class ProjectDialogMemorySourceTests
         var chooseButton = ChooseButton(viewModel, window);
         window.Close();
 
-        viewModel.SelectedMemorySourceChoice.Should().Be(depot, "the combo box's own selection must reach the view model, not merely display it");
+        viewModel.ResourceRows.Single().SelectedMemorySourceChoice.Should().Be(depot, "the combo box's own selection must reach the row, not merely display it");
         chooseButton.IsEnabled.Should().BeFalse("a source's identifier is typed, not browsed for on disk");
     });
 
@@ -95,7 +101,7 @@ public class ProjectDialogMemorySourceTests
     {
         var depot = new MemorySourceChoice("Depot project", "depot");
         var viewModel = ViewModelWith(new MemorySourceChoice("Folder", null), depot);
-        viewModel.SelectedMemorySourceChoice = depot;
+        viewModel.ResourceRows.Single().SelectedMemorySourceChoice = depot;
         viewModel.Name = "Cockpit";
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();
@@ -104,11 +110,16 @@ public class ProjectDialogMemorySourceTests
         var chooseButton = ChooseButton(viewModel, window);
         // The box beside "Choose…" in the same row — the one control that row actually has to type into.
         var textBox = ((Grid)chooseButton.Parent!).Children.OfType<TextBox>().First();
+        textBox.Focus();
         textBox.Text = "cockpit";
+        window.UpdateLayout();
+        // AC-485 review (MUST-FIX 2): the box now commits on losing focus, not per keystroke — any other focusable
+        // control stands in for "the operator moved on".
+        window.GetVisualDescendants().OfType<TextBox>().First(other => !ReferenceEquals(other, textBox)).Focus();
         window.UpdateLayout();
         window.Close();
 
-        viewModel.MemoryRef.Should().Be("cockpit");
+        viewModel.ResourceRows.Single().Reference.Should().Be("cockpit");
         viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit", "the plugin's scheme is prepended on save, not typed by the operator");
     });
 }

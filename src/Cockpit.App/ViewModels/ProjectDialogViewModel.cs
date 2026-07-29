@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -30,8 +32,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns <see cref="LogoSource"/>.</summary>
     public event Action? PickLogoRequested;
 
-    /// <summary>Raised when the operator wants to pick the memory folder; the view opens the folder picker and assigns <see cref="MemoryRef"/>.</summary>
-    public event Action? PickMemoryRequested;
+    /// <summary>
+    /// Raised when the operator picks "Choose…" on a resource row (AC-485); the view opens a folder picker for a
+    /// Memory row or a file picker for any other role, and assigns the result back onto that row's own
+    /// <see cref="ProjectResourceRowViewModel.Reference"/> — carrying the row rather than a single dialog-wide value,
+    /// since AC-485 lets more than one row need a picker of its own.
+    /// </summary>
+    public event Action<ProjectResourceRowViewModel>? PickResourceRequested;
 
     /// <summary>Design-time constructor for the Avalonia previewer.</summary>
     public ProjectDialogViewModel()
@@ -60,9 +67,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
-        MemoryRef = project.MemoryRef ?? string.Empty;
         _additionalServers = project.McpOverlay.AdditionalServers;
-        _carriedResources = project.Resources;
+        // Matching a Memory row's reference against a registered source has to wait until CreateAsync has built
+        // MemorySourceChoices below — exactly the same ordering problem the single Memory row used to have (see the
+        // matching there), just once per row instead of once for the whole dialog.
+        _pendingResources = project.Resources;
 
         foreach (var field in project.AdditionalInfo)
         {
@@ -90,8 +99,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
             viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(registration, project?.LinkedAs(registration.Key)));
         }
 
-        // Nothing registered leaves the picker out entirely (HasMemorySources) — the row keeps looking and behaving
-        // exactly as it did before AC-166 existed, which is the default this feature must not shift.
+        // Nothing registered leaves the picker out entirely (ShowsMemorySourcePicker on every row) — a Memory row
+        // keeps looking and behaving exactly as it did before AC-166 existed, which is the default this feature
+        // must not shift.
         foreach (var registration in memorySources ?? [])
         {
             if (viewModel.MemorySourceChoices.Count == 0)
@@ -102,29 +112,47 @@ public partial class ProjectDialogViewModel : ViewModelBase
             viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme));
         }
 
-        // Folder is the default selection the instant there is a picker at all — a plain path, a reference naming
-        // no installed source, or (the everyday case) a brand-new project with no MemoryRef yet. The match below
-        // overwrites this only when the stored reference actually names a registered source; every other case
-        // leaves Folder selected, which is what the ComboBox must show rather than nothing at all.
-        if (viewModel.MemorySourceChoices.Count > 0)
+        // Every saved resource becomes a row, in order — the whole of AC-485: what the old single Memory row (and
+        // the "carried through untouched" rows behind it) used to hide is now what the operator actually edits.
+        foreach (var resource in viewModel._pendingResources)
         {
-            viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
+            var row = new ProjectResourceRowViewModel(
+                viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions);
+
+            // Folder is the default selection the instant there is a picker at all — a plain path, a reference
+            // naming no installed source, or a role other than Memory. The match below overwrites this only when
+            // the row is a Memory row whose stored reference actually names a registered source; every other case
+            // leaves Folder selected, which is what the ComboBox must show rather than nothing at all.
+            if (viewModel.MemorySourceChoices.Count > 0)
+            {
+                row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
+            }
+
+            // A saved reference of the shape "<scheme>:<value>" naming a source actually offered here selects that
+            // source and shows the bare value; anything else — a path, a scheme no installed plugin registered, an
+            // empty value after the colon — leaves "Folder" selected (set above) and the reference exactly as the
+            // row stored it. That is deliberate, not merely the fallback case: a plugin that is temporarily
+            // uninstalled must not lose or garble the reference just because this dialog was opened and saved
+            // while it was gone.
+            if (resource.Role == ProjectResourceRole.Memory
+                && viewModel.MemorySourceChoices.Count > 0
+                && ProjectMemoryRef.TryParse(resource.Reference, out var scheme, out var value)
+                && viewModel.MemorySourceChoices.FirstOrDefault(choice =>
+                    choice.Scheme is { } candidate && string.Equals(candidate, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched)
+            {
+                row.SelectedMemorySourceChoice = matched;
+                row.Reference = value;
+            }
+
+            viewModel._AddResourceRow(row);
         }
 
-        // A saved reference of the shape "<scheme>:<value>" naming a source actually offered here selects that
-        // source and shows the bare value; anything else — a path, a scheme no installed plugin registered, an
-        // empty value after the colon — leaves "Folder" selected (set above) and MemoryRef exactly as the project
-        // stored it (set in the constructor above). That is deliberate, not merely the fallback case: a plugin that is
-        // temporarily uninstalled must not lose or garble the reference just because this dialog was opened and
-        // saved while it was gone.
-        if (viewModel.MemorySourceChoices.Count > 0
-            && ProjectMemoryRef.TryParse(project?.MemoryRef, out var scheme, out var value)
-            && viewModel.MemorySourceChoices.FirstOrDefault(choice =>
-                choice.Scheme is { } candidate && string.Equals(candidate, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched)
-        {
-            viewModel.SelectedMemorySourceChoice = matched;
-            viewModel.MemoryRef = value;
-        }
+        // Awaited directly here (AC-485 review, MUST-FIX 2), not merely scheduled: the dialog must open with every
+        // row's diagnostics already answered, the same as before that review moved the actual check off the UI
+        // thread. Every other call site below only schedules the refresh and moves on — see
+        // _RefreshResourceDiagnostics's own remarks on why that is safe for them but not for this one.
+        viewModel._RefreshResourceDiagnostics(immediately: true);
+        await viewModel.ResourceDiagnosticsRefreshCompleted.ConfigureAwait(false);
 
         // A link under a key no installed plugin claims — the plugin was removed, or is simply not on this machine —
         // is carried through rather than dropped on save, the way a disabled server name with no row is. Uninstalling
@@ -167,14 +195,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private readonly IReadOnlyList<McpServerConfig> _additionalServers = [];
 
     /// <summary>
-    /// The project's resources (AC-483) as they were opened, carried through untouched — this dialog edits only the
-    /// single memory value in <see cref="MemoryRef"/>, so an Instructions or Reference row (or a second Memory row
-    /// this v1 UI has no box for) must survive the round trip the same way <see cref="_additionalServers"/> and
-    /// <see cref="_carriedPluginFields"/> already do. <see cref="ToProject"/> sets this <em>before</em> folding
-    /// <see cref="MemoryRef"/> in, because <see cref="Project.MemoryRef"/>'s own doc comment warns that whichever of
-    /// the two an initializer sets last wins the same underlying list.
+    /// The project's resources exactly as the store loaded them, held only until <see cref="ResourceRows"/> can be
+    /// built from them (AC-485) — matching a Memory row's reference against a registered source has to wait for
+    /// <c>CreateAsync</c> to populate <see cref="MemorySourceChoices"/> first, the same ordering constraint the
+    /// single Memory row used to have. Empty once <c>CreateAsync</c> has consumed it; nothing reads it afterwards.
     /// </summary>
-    private readonly IReadOnlyList<ProjectResource> _carriedResources = [];
+    private readonly IReadOnlyList<ProjectResource> _pendingResources = [];
 
     /// <summary>The names this project switched off that the checklist has no row for, carried through so saving cannot switch them back on.</summary>
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
@@ -219,52 +245,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
     public string? GitUrl { get; private set; }
 
     /// <summary>
-    /// Where this project's memory lives: the folder's path in "Folder" mode, or the bare identifier
-    /// (<c>cockpit</c>, not <c>depot:cockpit</c>) once <see cref="SelectedMemorySourceChoice"/> names a source
-    /// (AC-165/166). Blank for a project that keeps none.
-    /// </summary>
-    [ObservableProperty]
-    private string _memoryRef = string.Empty;
-
-    /// <summary>
-    /// The memory picker's choices: "Folder" plus one per contributed source, in registration order. Left empty
-    /// when <c>CreateAsync</c> was given none — which is what makes the picker itself disappear
-    /// (<see cref="HasMemorySources"/>) rather than show a dropdown with nothing useful in it.
+    /// The memory-source picker's choices, shared by every <see cref="ProjectResourceRowViewModel"/> whose
+    /// <see cref="ProjectResourceRowViewModel.Role"/> is Memory: "Folder" plus one per contributed source, in
+    /// registration order (AC-165/166). Left empty when <c>CreateAsync</c> was given none — which is what makes the
+    /// picker disappear from every row (<see cref="ProjectResourceRowViewModel.ShowsMemorySourcePicker"/>) rather
+    /// than show a dropdown with nothing useful in it.
     /// </summary>
     public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; } = [];
-
-    /// <summary>Whether the memory picker is shown at all. False keeps the Memory row exactly as it was before AC-166.</summary>
-    public bool HasMemorySources => MemorySourceChoices.Count > 0;
-
-    /// <summary>
-    /// The picker's current choice, or null when nothing was ever picked — which reads the same as "Folder"
-    /// (<see cref="IsMemoryFolderMode"/>) so a dialog with no registered sources needs no selection to behave
-    /// correctly.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsMemoryFolderMode))]
-    [NotifyPropertyChangedFor(nameof(MemoryValuePlaceholder))]
-    [NotifyPropertyChangedFor(nameof(MemoryHint))]
-    private MemorySourceChoice? _selectedMemorySourceChoice;
-
-    /// <summary>Whether <see cref="MemoryRef"/> holds a folder path rather than a source's bare value — gates "Choose…", which only ever browses for a folder.</summary>
-    public bool IsMemoryFolderMode => SelectedMemorySourceChoice?.Scheme is null;
-
-    /// <summary>
-    /// The line under the Memory label, which has to stop calling the location a folder once it is not one. Found by
-    /// rendering the row rather than by a test: with a source picked, the hint still read "a folder, kept apart from
-    /// the source folder" directly above a box holding a project key — the one sentence on the row insisting on
-    /// exactly what this feature exists to stop assuming. The folder wording is unchanged to the character, so a
-    /// cockpit with no source registered reads precisely as it did before.
-    /// </summary>
-    public string MemoryHint =>
-        SelectedMemorySourceChoice is { Scheme.Length: > 0 }
-            ? "Where this project's memory lives — the name it goes by in the source above, not a path. Sessions are told about it, so they can look things up instead of being told again."
-            : "Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again.";
-
-    /// <summary>What the empty memory box hints at: a folder when none is picked, an identifier once a source is.</summary>
-    public string MemoryValuePlaceholder =>
-        SelectedMemorySourceChoice is { Scheme.Length: > 0 } choice ? $"An identifier {choice.Label} understands" : "No memory location";
 
     /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
     public ObservableCollection<string> Profiles { get; } = [];
@@ -277,6 +264,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// cost them nothing: <see cref="ToProject"/> drops them.
     /// </summary>
     public ObservableCollection<ProjectInfoFieldViewModel> AdditionalInfo { get; } = [];
+
+    /// <summary>
+    /// The project's resources (AC-483/485), in the order the operator put them in — a memory location, standing
+    /// instructions, something to look up. Replaces the dialog's old standalone Memory row: that row is now simply
+    /// one of these with <see cref="ProjectResourceRowViewModel.Role"/> set to <see cref="ProjectResourceRole.Memory"/>,
+    /// and every other role that a project could already carry (but this dialog had no box for) is edited here too.
+    /// A row the operator adds and leaves alone costs them nothing: <see cref="ToProject"/> drops it.
+    /// </summary>
+    public ObservableCollection<ProjectResourceRowViewModel> ResourceRows { get; } = [];
 
     /// <summary>
     /// The fields plugins contributed (AC-317), in registration order — what this project is called in a tracker or
@@ -319,12 +315,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
             LogoPath = _NullIfBlank(LogoSource),
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
-            // Resources first, MemoryRef second — deliberately, not stylistically (see Project.MemoryRef's own doc
-            // comment): the two write the same underlying list, and whichever is set last in this initializer wins.
-            // Carrying the project's other rows through and only then folding the edited memory value in is what
-            // keeps an Instructions or Reference row from being replaced by an empty list here.
-            Resources = _carriedResources,
-            MemoryRef = _ToMemoryRef(),
+            // Resources only — never MemoryRef beside it (see Project.MemoryRef's own doc comment on why an
+            // initializer must pick one: both write the same underlying list, and whichever is set last wins). Every
+            // row the operator can see and edit is right here in ResourceRows now, Memory rows included, so there is
+            // no second, hidden value left to fold in and no order to get wrong.
+            Resources =
+            [
+                .. ResourceRows.Select(row => row.ToDomain()).Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)),
+            ],
             McpOverlay = new ProjectMcpOverlay
             {
                 DisabledServerNames =
@@ -343,16 +341,6 @@ public partial class ProjectDialogViewModel : ViewModelBase
             ],
             PluginFields = _LinkedProjectFields(),
         };
-
-    /// <summary>
-    /// The saved <c>MemoryRef</c>: the folder path as typed in "Folder" mode, unchanged from before this feature
-    /// existed, or <c>"{scheme}:{value}"</c> once a source is selected — except a value the operator left blank,
-    /// which saves as no reference at all rather than a bare <c>"{scheme}:"</c> that names a source and nothing in it.
-    /// </summary>
-    private string? _ToMemoryRef() =>
-        SelectedMemorySourceChoice is { Scheme: { Length: > 0 } scheme }
-            ? _NullIfBlank(MemoryRef) is { } value ? $"{scheme}:{value}" : null
-            : _NullIfBlank(MemoryRef);
 
     /// <summary>
     /// What this project is linked to: the rows the operator filled in, plus the keys carried through from plugins
@@ -376,9 +364,6 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void PickLogo() => PickLogoRequested?.Invoke();
 
-    [RelayCommand]
-    private void PickMemory() => PickMemoryRequested?.Invoke();
-
     /// <summary>Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.</summary>
     [RelayCommand]
     private void ClearLogo() => LogoSource = string.Empty;
@@ -388,6 +373,31 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
+
+    /// <summary>Appends a blank resource row (AC-485), the same shape <see cref="AddInfoField"/> already has — Folder pre-selected for it the instant there is a picker at all, matching what <c>CreateAsync</c> does for a loaded row.</summary>
+    [RelayCommand]
+    private void AddResourceRow()
+    {
+        var row = new ProjectResourceRowViewModel(MemorySourceChoices);
+        if (MemorySourceChoices.Count > 0)
+        {
+            row.SelectedMemorySourceChoice = MemorySourceChoices[0];
+        }
+
+        _AddResourceRow(row);
+        _RefreshResourceDiagnostics();
+    }
+
+    [RelayCommand]
+    private void RemoveResourceRow(ProjectResourceRowViewModel row)
+    {
+        ResourceRows.Remove(row);
+        _UpdateLastRowFlags();
+        _RefreshResourceDiagnostics();
+    }
+
+    [RelayCommand]
+    private void PickResource(ProjectResourceRowViewModel row) => PickResourceRequested?.Invoke(row);
 
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();
@@ -399,6 +409,160 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private void Cancel() => CloseRequested?.Invoke(null);
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
+
+    /// <summary>Re-running the portability check whenever the folder itself changes — a row already flagged machine-bound may no longer be once the operator points the project at a folder that now contains it, or the reverse.</summary>
+    partial void OnSourceDirectoryChanged(string value) => _RefreshResourceDiagnostics();
+
+    private void _AddResourceRow(ProjectResourceRowViewModel row)
+    {
+        ResourceRows.Add(row);
+        _UpdateLastRowFlags();
+        // Any change that affects what gets saved or how it is judged — Reference, Role, ReachesSessions, and which
+        // memory source is picked.
+        //
+        // AC-485 review (FIX 6) — Role is included, but not for either reason this comment used to give: Role does
+        // not gate the broken-reference probe (ReachesSessions does, see _RefreshResourceDiagnostics below), and it
+        // does not gate portability either (ProjectResourcePathPortability.IsMachineBound never looks at a row's
+        // Role at all). The real reason is MUST-FIX 1: switching a row's role away from Memory (or back to it) can
+        // itself rewrite Reference's own text — see ProjectResourceRowViewModel.OnRoleChanged — and it is that
+        // rewritten value the diagnostics below must judge, not whatever Reference held a moment before the switch.
+        row.PropertyChanged += _OnResourceRowChanged;
+    }
+
+    /// <summary>
+    /// Sets <see cref="ProjectResourceRowViewModel.IsLastRow"/> on every row (AC-485 review, FIX 8) — called
+    /// whenever <see cref="ResourceRows"/> gains or loses a row, since which one is last can only change then.
+    /// </summary>
+    private void _UpdateLastRowFlags()
+    {
+        for (var i = 0; i < ResourceRows.Count; i++)
+        {
+            ResourceRows[i].IsLastRow = i == ResourceRows.Count - 1;
+        }
+    }
+
+    private void _OnResourceRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ProjectResourceRowViewModel.Reference)
+            or nameof(ProjectResourceRowViewModel.Role)
+            or nameof(ProjectResourceRowViewModel.ReachesSessions)
+            or nameof(ProjectResourceRowViewModel.SelectedMemorySourceChoice))
+        {
+            _RefreshResourceDiagnostics();
+        }
+    }
+
+    /// <summary>
+    /// Completes once the most recently scheduled <see cref="_RefreshResourceDiagnostics"/> call has written its
+    /// answer onto every row, or been superseded by a later one (AC-485 review, MUST-FIX 2) — a hook a test can
+    /// await deterministically instead of sleeping for a computation whose entire point is to run off the UI
+    /// thread. Production code never awaits this itself: what the operator sees update is each row's own bound
+    /// <see cref="ProjectResourceRowViewModel.IsBroken"/>/<see cref="ProjectResourceRowViewModel.IsMachineBound"/>,
+    /// whenever the background work gets there.
+    /// </summary>
+    internal Task ResourceDiagnosticsRefreshCompleted { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Bumped by every call to <see cref="_RefreshResourceDiagnostics"/> — see that method's remarks on why a stale answer must be told apart from the current one.</summary>
+    private int _resourceDiagnosticsRefreshVersion;
+
+    /// <summary>
+    /// Schedules a re-run of <see cref="ProjectResourceProbe"/> and <see cref="ProjectResourcePathPortability"/>
+    /// over every row without waiting for it, so the row-level property change that triggered this call (a
+    /// keystroke in the Reference box, a role switch, adding or removing a row, the folder changing) returns to the
+    /// UI immediately.
+    /// <para>
+    /// AC-485 review (MUST-FIX 2): this used to run the probe's I/O synchronously, on whatever thread called it —
+    /// the UI thread for every trigger above. The <c>Reference</c> box binds with Avalonia's default per-keystroke
+    /// trigger, so a row whose path check does not answer quickly — a disconnected mapped drive, say, which the
+    /// probe's own UNC guard does not catch since a drive letter is not a UNC path — cost up to the probe's own
+    /// 200 ms time budget on <em>every character typed</em>: measured at 204 ms/call, so 35 keystrokes cost roughly
+    /// 7 seconds of a frozen window, for every row in the dialog at once. The actual I/O now runs on a pool thread
+    /// (see <see cref="_RunResourceDiagnosticsAsync"/>) and only its answer is marshalled back.
+    /// </para>
+    /// </summary>
+    private void _RefreshResourceDiagnostics(bool immediately = false) =>
+        ResourceDiagnosticsRefreshCompleted = _RunResourceDiagnosticsAsync(
+            immediately ? TimeSpan.Zero : ResourceDiagnosticsQuietPeriod);
+
+    /// <summary>
+    /// How long the typing has to stop before a row is judged. Long enough that writing a path straight through
+    /// never triggers a check, short enough that the answer feels like it belongs to what was just typed. Opening
+    /// the dialog passes <c>immediately</c> instead: there is nothing to wait for, and a row stored as broken should
+    /// say so the moment it is on screen.
+    /// </summary>
+    private static readonly TimeSpan ResourceDiagnosticsQuietPeriod = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>
+    /// The actual work <see cref="_RefreshResourceDiagnostics"/> schedules (AC-485 review, MUST-FIX 2). Row objects
+    /// are read only on the calling (UI) thread, into a plain snapshot — touching a
+    /// <see cref="ProjectResourceRowViewModel"/> off the UI thread is not safe — and the snapshot alone, plain data
+    /// with no UI affinity, is handed to <see cref="Task.Run{TResult}(Func{TResult})"/> for the part that can
+    /// actually take a while: <see cref="ProjectResourceProbe.FindUnresolved"/> and
+    /// <see cref="ProjectResourcePathPortability.IsMachineBound"/> over every row. Once that finishes, the answer is
+    /// written back onto each row — but only if no newer call has started in the meantime: <c>version</c> is
+    /// compared against <see cref="_resourceDiagnosticsRefreshVersion"/>'s current value, and a stale answer
+    /// (a slow, earlier call finishing after a faster, later one already has) is simply dropped rather than
+    /// overwriting the fresher one — a race that was not possible back when every call ran to completion
+    /// synchronously, in the order it was made.
+    /// <para>
+    /// AC-485 review (FIX 3): <see cref="ProjectResourceProbe.FindUnresolved"/> itself never looks at
+    /// <see cref="ProjectResource.ReachesSessions"/> for a row that is not switched off elsewhere — it filters the
+    /// whole input by that flag before doing any I/O, then answers with the bare <em>text</em> of every reference it
+    /// found missing. Matching that text back onto every row sharing it — including a row this probe was never
+    /// asked about, because its own <c>ReachesSessions</c> was false — would call a row "broken" that was simply
+    /// never judged. Gating the assignment itself on the row's own <c>ReachesSessions</c> (not only on the string
+    /// being in the result) keeps "not judged" and "judged and broken" apart, which the doc comment on
+    /// <see cref="ProjectResourceRowViewModel.IsBroken"/> already promises and the assignment below did not
+    /// previously keep.
+    /// </para>
+    /// </summary>
+    private async Task _RunResourceDiagnosticsAsync(TimeSpan quietPeriod)
+    {
+        var version = ++_resourceDiagnosticsRefreshVersion;
+
+        // Wait for the typing to stop before judging anything. Running the probe off the UI thread stops it freezing
+        // the window, but it does not stop it running once per character — and a half-typed path is a path that does
+        // not exist, so without this the row flashes "could not be found" in red while the operator is still writing
+        // it. Superseded within the quiet period means this call never touches disk at all.
+        //
+        // Deliberately not solved by committing the box on focus loss instead, which is where this landed first: it
+        // made the typed value reach the row only when focus moved, and saving straight from the box — typing a path
+        // and going for the confirm button, the ordinary way to use this dialog — dropped the row entirely. Measured,
+        // not reasoned: the test SavingStraightFromTheReferenceBox_KeepsWhatWasTyped fails against that version. What
+        // is on screen is what is in the view model, here as everywhere else in this app; the cost of the check is
+        // this delay's problem, not the binding's.
+        if (quietPeriod > TimeSpan.Zero)
+        {
+            await Task.Delay(quietPeriod).ConfigureAwait(true);
+            if (version != _resourceDiagnosticsRefreshVersion)
+            {
+                return;
+            }
+        }
+
+        var resources = ResourceRows.Select(row => (row, resource: row.ToDomain())).ToList();
+        var sourceDirectory = SourceDirectory;
+
+        var (unresolved, machineBound) = await Task.Run(() =>
+        {
+            var unresolvedReferences = ProjectResourceProbe.FindUnresolved(resources.Select(pair => pair.resource));
+            var isMachineBound = resources.ToDictionary(
+                pair => pair.row,
+                pair => ProjectResourcePathPortability.IsMachineBound(sourceDirectory, pair.resource.Reference));
+            return (Unresolved: unresolvedReferences, MachineBound: isMachineBound);
+        }).ConfigureAwait(true);
+
+        if (version != _resourceDiagnosticsRefreshVersion)
+        {
+            return;
+        }
+
+        foreach (var (row, resource) in resources)
+        {
+            row.IsBroken = resource.ReachesSessions && unresolved.Contains(resource.Reference);
+            row.IsMachineBound = machineBound[row];
+        }
+    }
 
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -8,6 +8,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App;
@@ -78,6 +79,7 @@ internal static class Screenshotter
         // row only grows its picker when something is registered, and nothing is in a plain render: without this the
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
+        ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
@@ -231,12 +233,58 @@ internal static class Screenshotter
         var viewModel = new ViewModels.ProjectDialogViewModel();
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
-        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
-        viewModel.MemoryRef = "cockpit";
 
-        // Taller than the dialog opens, the way the profiles scene is: the Memory row sits below the fold of a
-        // default-sized editor, and a scene that renders the part you cannot see proves nothing about the part
+        // AC-485 folded the dialog's old standalone Memory row into the resource section below; this scene keeps
+        // exercising the same picker (a Memory row with a source other than Folder selected) through that section
+        // instead, one row rather than a dedicated field.
+        var memoryRow = new ViewModels.ProjectResourceRowViewModel(viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "cockpit");
+        memoryRow.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        viewModel.ResourceRows.Add(memoryRow);
+
+        // Taller than the dialog opens, the way the profiles scene is: the resource section sits below the fold of
+        // a default-sized editor, and a scene that renders the part you cannot see proves nothing about the part
         // this change is in.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>
+    /// The resource section with two rows, in the state that paints the most of it (AC-414): a Memory row with a
+    /// plugin source picked (mirroring the memory-source scene above, folded into this section instead of a
+    /// dedicated field), and a Reference row that is both machine-bound and broken — the two things AC-485 requires
+    /// be visible in the editor itself, not only in a prompt the operator never reads. Two rows rather than all
+    /// three roles: <see cref="Controls.DialogScreenClamp"/> caps a dialog's height at 90% of the (headless) screen
+    /// regardless of the <c>Height</c> set below, so a third row would sit past what any render of this scene can
+    /// actually show — better two rows fully visible than three where the last is cut off mid-row. The
+    /// broken/machine-bound flags are set directly rather than produced by running the real probe against real
+    /// paths, so this scene paints the same way on every platform this repo builds on, regardless of what OS drew
+    /// the screenshot.
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithResources()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
+
+        var memoryRow = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "cockpit", "Team notes");
+        memoryRow.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        viewModel.ResourceRows.Add(memoryRow);
+
+        // Reaching sessions, deliberately, even though an unticked row would show the checkbox contrast: a row that
+        // is switched off is never probed at all, so "switched off" and "broken" cannot both be true of it. Staged
+        // together they made this scene paint a state the app cannot produce — and the diagnostics pass corrects it
+        // the moment it runs, which is how the red hint disappeared from the render without a single test noticing
+        // (a palette baseline permits a screen to paint fewer colours than it lists).
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Reference, @"C:\Users\raymond\OldNotes\handbook.md", "Old handbook")
+        {
+            IsBroken = true,
+            IsMachineBound = true,
+        });
+
+        // Taller than the dialog opens, the way the memory-source scene already is — clamped by DialogScreenClamp
+        // to 90% of the headless screen either way, but still what pushes the resource section as far above that
+        // ceiling as this dialog's other sections leave room for.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 

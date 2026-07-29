@@ -33,6 +33,13 @@ public class ProjectDialogViewModelTests
 
     private static McpServerConfig Server(string name) => new() { Name = name, Command = "npx" };
 
+    // AC-485 review (FIX 9): rooted per platform (this repo's CI runs on Linux, this box runs Windows) rather than a
+    // literal "D:\handbook" — that literal is not even an absolute path on Linux, so a test using it exercises the
+    // probe's and portability's "not fully qualified, skip" branch there and their "fully qualified, check it"
+    // branch here, silently running different code on the two platforms that run this same test.
+    private static string _Root(params string[] segments) =>
+        Path.Combine([OperatingSystem.IsWindows() ? @"C:\Users\raymond\Cockpit" : "/home/raymond/Cockpit", .. segments]);
+
     [Fact]
     public async Task CreateAsync_NewProject_OpensEmptyWithEveryServerTicked()
     {
@@ -182,7 +189,7 @@ public class ProjectDialogViewModelTests
             [
                 new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
                 new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" },
-                new ProjectResource("D:\\handbook", ProjectResourceRole.Reference) { Label = "Old handbook" },
+                new ProjectResource(_Root("handbook"), ProjectResourceRole.Reference) { Label = "Old handbook" },
             ],
         };
 
@@ -192,14 +199,15 @@ public class ProjectDialogViewModelTests
     }
 
     /// <summary>
-    /// The other half of the same fix: changing the one editable memory value must touch only the Memory row it
-    /// represents, leaving an Instructions row and a Reference row exactly as they were.
+    /// The other half of the same fix: editing one row's reference must touch only that row, leaving an
+    /// Instructions row and a Reference row exactly as they were (AC-485: every row is its own
+    /// <see cref="ProjectResourceRowViewModel"/> now, not folded into one dialog-wide value).
     /// </summary>
     [Fact]
-    public async Task ToProject_ChangingTheMemoryValue_TouchesOnlyTheMemoryRow()
+    public async Task ToProject_ChangingOneRowsReference_TouchesOnlyThatRow()
     {
         var instructions = new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" };
-        var reference = new ProjectResource("D:\\handbook", ProjectResourceRole.Reference) { Label = "Old handbook" };
+        var reference = new ProjectResource(_Root("handbook"), ProjectResourceRole.Reference) { Label = "Old handbook" };
         var project = Project.Create("Cockpit") with
         {
             Resources =
@@ -211,12 +219,17 @@ public class ProjectDialogViewModelTests
         };
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
-        viewModel.MemoryRef = "/home/raymond/Notes/CockpitV2";
+        viewModel.ResourceRows.Single(row => row.Role == ProjectResourceRole.Memory).Reference = "/home/raymond/Notes/CockpitV2";
 
         var saved = viewModel.ToProject();
 
         saved.MemoryRef.Should().Be("/home/raymond/Notes/CockpitV2");
-        saved.Resources.Should().Contain(instructions).And.Contain(reference);
+        // AC-485 review (FIX 9): .Equal pins the whole sequence in the order the operator left it, not merely that
+        // the untouched rows still appear somewhere in the saved list.
+        saved.Resources.Should().Equal(
+            new ProjectResource("/home/raymond/Notes/CockpitV2", ProjectResourceRole.Memory),
+            instructions,
+            reference);
     }
 
     [Fact]
