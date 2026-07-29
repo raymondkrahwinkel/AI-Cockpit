@@ -1,11 +1,14 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Screenshots;
+using Cockpit.Core.Toasts;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Tests.Hotkeys;
@@ -161,7 +164,13 @@ public class GlobalHotkeyCoordinatorTests
         var screenshotStore = Substitute.For<IScreenshotSettingsStore>();
         screenshotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ScreenshotSettings());
         var logger = new CapturingLogger<GlobalHotkeyCoordinator>();
-        var coordinator = new GlobalHotkeyCoordinator(new FakeGlobalHotkeyService(), voiceStore, screenshotStore, logger);
+        var coordinator = new GlobalHotkeyCoordinator(
+            new FakeGlobalHotkeyService(),
+            voiceStore,
+            screenshotStore,
+            TestGlobalHotkeys.AlwaysAvailable(),
+            Substitute.For<IToastService>(),
+            logger);
 
         var act = async () => await coordinator.ApplyAsync();
 
@@ -184,7 +193,12 @@ public class GlobalHotkeyCoordinatorTests
         var screenshotStore = Substitute.For<IScreenshotSettingsStore>();
         screenshotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ScreenshotSettings());
         var coordinator = new GlobalHotkeyCoordinator(
-            new FakeGlobalHotkeyService(), voiceStore, screenshotStore, new CapturingLogger<GlobalHotkeyCoordinator>());
+            new FakeGlobalHotkeyService(),
+            voiceStore,
+            screenshotStore,
+            TestGlobalHotkeys.AlwaysAvailable(),
+            Substitute.For<IToastService>(),
+            new CapturingLogger<GlobalHotkeyCoordinator>());
 
         await coordinator.ApplyAsync();
         coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue("the first arm succeeded");
@@ -240,5 +254,123 @@ public class GlobalHotkeyCoordinatorTests
         service.RaisePressed(GlobalHotkeys.Screenshot);
 
         pressed.Should().Equal(GlobalHotkeys.Screenshot);
+    }
+
+    /// <summary>
+    /// AC-71: neither hotkey backend can tell a hidden truth — that a compositor bound the key to a different,
+    /// already-running cockpit, or that a keyboard hook installed while another instance's hook is doing the
+    /// same. <see cref="IHotkeyExclusivityGuard"/> refusing the claim is the one signal that survives both
+    /// backends reporting success. A key another instance already holds must not be armed, and must not read as
+    /// "the operator never switched it on" — it is reported, once, rather than silently doing nothing.
+    /// </summary>
+    [Fact]
+    public async Task AKeyAnotherInstanceAlreadyHolds_IsNotArmed_AndReportsTheConflictOnce()
+    {
+        var guard = Substitute.For<IHotkeyExclusivityGuard>();
+        guard.TryAcquire(GlobalHotkeys.PushToTalk).Returns((IDisposable?)null);
+        var toasts = Substitute.For<IToastService>();
+        var service = new FakeGlobalHotkeyService();
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            service, TestGlobalHotkeys.GlobalPushToTalkOn, guard: guard, toasts: toasts);
+
+        await coordinator.ApplyAsync();
+        await coordinator.ApplyAsync();
+
+        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("another cockpit instance already holds the key");
+        service.LastBindings.Should().BeEmpty("the conflicted binding must never reach the OS service");
+        toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("another cockpit instance")), ToastSeverity.Warning);
+    }
+
+    /// <summary>A key nobody else is competing for is claimed and reaches the OS service exactly as before AC-71.</summary>
+    [Fact]
+    public async Task AKeyNobodyElseHolds_IsClaimedAndArmed()
+    {
+        var service = new FakeGlobalHotkeyService();
+        var coordinator = TestGlobalHotkeys.Coordinator(service, TestGlobalHotkeys.GlobalPushToTalkOn);
+
+        await coordinator.ApplyAsync();
+
+        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue();
+        service.LastBindings.Should().ContainSingle(binding => binding.Id == GlobalHotkeys.PushToTalk);
+    }
+
+    /// <summary>
+    /// The holder disappearing (the other cockpit instance closing) must not need a restart to notice — the
+    /// whole reason AC-71 exists: a conflict that resolves itself has to be picked back up on its own.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheOtherInstanceReleasesTheKey_ARetryArmsItWithoutBeingAskedAgain()
+    {
+        var guard = Substitute.For<IHotkeyExclusivityGuard>();
+        guard.TryAcquire(GlobalHotkeys.PushToTalk).Returns(
+            _ => (IDisposable?)null, _ => Substitute.For<IDisposable>());
+        var service = new FakeGlobalHotkeyService();
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            service,
+            TestGlobalHotkeys.GlobalPushToTalkOn,
+            guard: guard,
+            retryInterval: TimeSpan.FromMilliseconds(20));
+
+        await coordinator.ApplyAsync();
+        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("the first attempt found the key held");
+
+        await _WaitUntilAsync(() => coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+
+        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue("the retry timer claimed it once it came free");
+    }
+
+    /// <summary>A retry that is still conflicted must not nag the operator again with the same news.</summary>
+    [Fact]
+    public async Task AConflictThatHasNotResolvedYet_DoesNotToastTwice()
+    {
+        var guard = Substitute.For<IHotkeyExclusivityGuard>();
+        guard.TryAcquire(GlobalHotkeys.PushToTalk).Returns((IDisposable?)null);
+        var toasts = Substitute.For<IToastService>();
+        var coordinator = TestGlobalHotkeys.Coordinator(
+            new FakeGlobalHotkeyService(),
+            TestGlobalHotkeys.GlobalPushToTalkOn,
+            guard: guard,
+            toasts: toasts,
+            retryInterval: TimeSpan.FromMilliseconds(20));
+
+        await coordinator.ApplyAsync();
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        toasts.Received(1).Show(Arg.Any<string>(), ToastSeverity.Warning);
+    }
+
+    /// <summary>Switching the feature off must release the claim rather than holding a key nobody wants any more.</summary>
+    [Fact]
+    public async Task SwitchingTheFeatureOff_ReleasesItsClaim()
+    {
+        var claim = Substitute.For<IDisposable>();
+        var guard = Substitute.For<IHotkeyExclusivityGuard>();
+        guard.TryAcquire(GlobalHotkeys.PushToTalk).Returns(claim);
+        var voiceStore = Substitute.For<IVoiceSettingsStore>();
+        voiceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            TestGlobalHotkeys.GlobalPushToTalkOn, new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
+        var screenshotStore = Substitute.For<IScreenshotSettingsStore>();
+        screenshotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ScreenshotSettings());
+        var coordinator = new GlobalHotkeyCoordinator(
+            new FakeGlobalHotkeyService(),
+            voiceStore,
+            screenshotStore,
+            guard,
+            Substitute.For<IToastService>(),
+            NullLogger<GlobalHotkeyCoordinator>.Instance);
+
+        await coordinator.ApplyAsync();
+        await coordinator.ApplyAsync();
+
+        claim.Received(1).Dispose();
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition, int timeoutMs = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
     }
 }

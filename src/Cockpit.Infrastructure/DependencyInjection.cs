@@ -61,6 +61,10 @@ public static class DependencyInjection
         // alternative is a route whose reliability depends on a checkbox nobody remembers ticking.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
 
+        // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
+        // below) there is nothing for a platform switch to choose between.
+        services.AddSingleton<IHotkeyExclusivityGuard, MutexHotkeyExclusivityGuard>();
+
         AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);
