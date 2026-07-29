@@ -158,7 +158,12 @@ public class ProjectResourceProbeTests : IDisposable
     [Fact]
     public void AnAbsolutePathWithInvalidCharacters_IsReportedUnresolvedRatherThanSilentlySkipped()
     {
-        var badPath = @"C:\bad<>|?*\0name.md";
+        // Rooted for the platform the test is running on, not for the one it was written on. The probe only judges a
+        // fully-qualified path, and what counts as fully qualified is itself platform-specific: "C:\..." is rooted on
+        // Windows and a plain relative name on Linux, where it would be skipped and this assertion would fail for a
+        // reason that has nothing to do with awkward characters. That is not hypothetical — it is how this test first
+        // reached CI: green on Windows, red on the Linux runner.
+        var badPath = OperatingSystem.IsWindows() ? @"C:\bad<>|?*\0name.md" : "/bad<>|?*\0name.md";
         var resources = new[] { new ProjectResource(badPath, ProjectResourceRole.Memory) };
 
         ProjectResourceProbe.FindUnresolved(resources).Should().Contain(
@@ -172,7 +177,8 @@ public class ProjectResourceProbeTests : IDisposable
     [Fact]
     public void AnAbsurdlyLongPath_IsReportedUnresolvedRatherThanSilentlySkipped()
     {
-        var longPath = @"C:\" + new string('a', 32_000);
+        // Rooted per platform for the same reason as the case above.
+        var longPath = (OperatingSystem.IsWindows() ? @"C:\" : "/") + new string('a', 32_000);
         var resources = new[] { new ProjectResource(longPath, ProjectResourceRole.Memory) };
 
         var act = () => ProjectResourceProbe.FindUnresolved(resources);
