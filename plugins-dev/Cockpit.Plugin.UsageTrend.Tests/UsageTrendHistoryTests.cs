@@ -19,7 +19,7 @@ public class UsageTrendHistoryTests
         var result = UsageTrendHistory.Append([], Sample(T0));
 
         Assert.NotNull(result);
-        Assert.Equal(1, System.Linq.Enumerable.Count(result!));
+        Assert.Single(result!);
     }
 
     [Fact]
