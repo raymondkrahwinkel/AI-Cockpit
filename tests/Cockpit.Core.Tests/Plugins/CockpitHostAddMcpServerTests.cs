@@ -65,8 +65,11 @@ public class CockpitHostAddMcpServerTests
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
         var host = _BuildHost(store);
-        var contribution = new McpServerContribution(
-            "Depot: project-a", "https://depot.example/mcp", OAuthAuthority: "https://depot.example/oauth", OAuthClientId: "cockpit");
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp")
+        {
+            OAuthAuthority = "https://depot.example/oauth",
+            OAuthClientId = "cockpit",
+        };
 
         await host.AddMcpServer(contribution);
 
@@ -93,8 +96,11 @@ public class CockpitHostAddMcpServerTests
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig> { existing });
         var host = _BuildHost(store);
-        var contribution = new McpServerContribution(
-            "Depot: project-a", "https://new.depot.example/mcp", OAuthAuthority: "https://depot.example/oauth", OAuthClientId: "cockpit");
+        var contribution = new McpServerContribution("Depot: project-a", "https://new.depot.example/mcp")
+        {
+            OAuthAuthority = "https://depot.example/oauth",
+            OAuthClientId = "cockpit",
+        };
 
         await host.AddMcpServer(contribution);
 

@@ -104,6 +104,10 @@ public class McpToolProviderConnectAsyncTests
         var provider = _ProviderFor(_DisableBuiltIns().Concat(
         [
             new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = serverA.Url },
+            // A plain (non-OAuth) unreachable server, alongside the OAuth one below — this is what proves the
+            // guard actually checks Auth == OAuth rather than "any connect failure": without that check, this
+            // server would land in ServersNeedingSignIn too.
+            new McpServerConfig { Name = "server-fail", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" },
             // FakeMcpOAuthAuthorizer hands back options with a redirect nobody answers, so this fails at the
             // transport the same way a real "no stored token, nobody to ask" OAuth negotiation would.
             new McpServerConfig { Name = "server-oauth", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Auth = McpServerAuth.OAuth },

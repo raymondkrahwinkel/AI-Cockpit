@@ -145,6 +145,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
                 selectionText);
         }
 
+        // AC-500: a server the plugin/registry declared OAuth is a named outcome distinct from an ordinary
+        // connect failure — reported once here, at the one place this driver already reports its MCP fan-out,
+        // rather than left as session state nothing ever reads.
+        if (_toolSession.ServersNeedingSignIn.Count > 0)
+        {
+            _logger.LogWarning(
+                "Local-model MCP fan-out: [{Names}] need an OAuth sign-in and connected with no tools.",
+                string.Join(", ", _toolSession.ServersNeedingSignIn));
+        }
+
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
         // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when we
         // actually confined this session (confineRoot set → the tool provider re-rooted file access to the worktree and

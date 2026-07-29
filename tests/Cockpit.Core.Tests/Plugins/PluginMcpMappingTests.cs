@@ -15,7 +15,7 @@ public class PluginMcpMappingTests
     [Fact]
     public void ToAuth_ContributionWithOAuthAuthority_MapsToOAuth()
     {
-        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", OAuthAuthority: "https://depot.example/oauth");
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp") { OAuthAuthority = "https://depot.example/oauth" };
 
         Assert.Equal(McpServerAuth.OAuth, PluginMcpMapping.ToAuth(contribution));
     }
@@ -36,13 +36,26 @@ public class PluginMcpMappingTests
         Assert.Equal(McpServerAuth.None, PluginMcpMapping.ToAuth(contribution));
     }
 
+    // A whitespace-only authority is not a usable OAuth configuration — it must not win over a real bearer token,
+    // and must not mark the server OAuth at all, or it is stuck forever in McpToolProvider's ServersNeedingSignIn
+    // with nothing to negotiate against. Mirrors EditableMcpServerViewModel.ToConfig()'s own IsNullOrWhiteSpace rule.
+    [Fact]
+    public void ToAuth_ContributionWithWhitespaceOnlyAuthority_IsNotTreatedAsOAuth()
+    {
+        var contribution = new McpServerContribution("open-server", "https://open.example.com/mcp", "token-123") { OAuthAuthority = "   " };
+
+        Assert.Equal(McpServerAuth.ApiKey, PluginMcpMapping.ToAuth(contribution));
+    }
+
     // A contribution that (wrongly) sets both must not silently degrade to a bearer-only auth that can never
     // satisfy the server's real OAuth requirement — OAuth wins.
     [Fact]
     public void ToAuth_ContributionWithBothOAuthAndBearer_OAuthWins()
     {
-        var contribution = new McpServerContribution(
-            "Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token", OAuthAuthority: "https://depot.example/oauth");
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token")
+        {
+            OAuthAuthority = "https://depot.example/oauth",
+        };
 
         Assert.Equal(McpServerAuth.OAuth, PluginMcpMapping.ToAuth(contribution));
     }
@@ -50,8 +63,11 @@ public class PluginMcpMappingTests
     [Fact]
     public void ToServerConfig_OAuthContribution_CarriesAuthorityAndClientIdIntoTheServerConfig()
     {
-        var contribution = new McpServerContribution(
-            "Depot: project-a", "https://depot.example/mcp", OAuthAuthority: "https://depot.example/oauth", OAuthClientId: "cockpit");
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp")
+        {
+            OAuthAuthority = "https://depot.example/oauth",
+            OAuthClientId = "cockpit",
+        };
 
         var config = PluginMcpMapping.ToServerConfig(contribution);
 
@@ -59,5 +75,36 @@ public class PluginMcpMappingTests
         Assert.Equal("https://depot.example/oauth", config.OAuthAuthority);
         Assert.Equal("cockpit", config.OAuthClientId);
         Assert.Null(config.ApiKey);
+    }
+
+    // AC-500 review finding: a contribution that (wrongly) sets both a bearer token and an OAuth authority must not
+    // leave the unused token sitting in the registry beside the OAuth config that actually takes effect.
+    [Fact]
+    public void ToServerConfig_ContributionWithBothOAuthAndBearer_DropsTheUnusedBearerToken()
+    {
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token")
+        {
+            OAuthAuthority = "https://depot.example/oauth",
+        };
+
+        var config = PluginMcpMapping.ToServerConfig(contribution);
+
+        Assert.Equal(McpServerAuth.OAuth, config.Auth);
+        Assert.Null(config.ApiKey);
+        Assert.Equal("https://depot.example/oauth", config.OAuthAuthority);
+    }
+
+    // The inverse: an ApiKey contribution must not carry a leftover/blank OAuth authority into the server config.
+    [Fact]
+    public void ToServerConfig_ApiKeyContribution_LeavesOAuthFieldsNull()
+    {
+        var contribution = new McpServerContribution("YouTrack: Prod", "https://x.youtrack.cloud/mcp", "token-123");
+
+        var config = PluginMcpMapping.ToServerConfig(contribution);
+
+        Assert.Equal(McpServerAuth.ApiKey, config.Auth);
+        Assert.Equal("token-123", config.ApiKey);
+        Assert.Null(config.OAuthAuthority);
+        Assert.Null(config.OAuthClientId);
     }
 }
