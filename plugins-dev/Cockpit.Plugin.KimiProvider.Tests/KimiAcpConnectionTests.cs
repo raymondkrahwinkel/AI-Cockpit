@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -27,7 +26,7 @@ public class KimiAcpConnectionTests
 
         var result = await requestTask;
 
-        result.GetProperty("protocolVersion").GetInt32().Should().Be(1);
+        Assert.Equal(1, result.GetProperty("protocolVersion").GetInt32());
     }
 
     [Fact]
@@ -41,7 +40,7 @@ public class KimiAcpConnectionTests
         var id = await _WaitForRequestIdAsync(fake, "session/new");
         await fake.PushStdoutAsync($$$"""{"jsonrpc":"2.0","id":{{{id}}},"error":{"code":-32000,"message":"authRequired"}}""");
 
-        await FluentActions.Awaiting(() => requestTask).Should().ThrowAsync<KimiAcpException>();
+        await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
     }
 
     // P1-8: the exception message must be built from only error.code + error.message — never the raw error
@@ -59,9 +58,9 @@ public class KimiAcpConnectionTests
         var id = await _WaitForRequestIdAsync(fake, "session/new");
         await fake.PushStdoutAsync($$$$$$"""{"jsonrpc":"2.0","id":{{{{{{id}}}}}},"error":{"code":-32000,"message":"authRequired","data":{"params":{"headers":{"Authorization":"Bearer super-secret-token"}}}}}""");
 
-        var exception = await FluentActions.Awaiting(() => requestTask).Should().ThrowAsync<KimiAcpException>();
-        exception.Which.Message.Should().Be("kimi acp error -32000: authRequired");
-        exception.Which.Message.Should().NotContain("super-secret-token");
+        var exception = await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
+        Assert.Equal("kimi acp error -32000: authRequired", exception.Message);
+        Assert.DoesNotContain("super-secret-token", exception.Message);
     }
 
     [Fact]
@@ -77,10 +76,10 @@ public class KimiAcpConnectionTests
         var notification = await _FirstNotificationAsync(connection);
         var serverRequest = await _FirstServerRequestAsync(connection);
 
-        notification.Method.Should().Be("session/update");
-        serverRequest.Method.Should().Be("session/request_permission");
-        serverRequest.Id.GetInt32().Should().Be(7);
-        serverRequest.Params.GetProperty("sessionId").GetString().Should().Be("session-1");
+        Assert.Equal("session/update", notification.Method);
+        Assert.Equal("session/request_permission", serverRequest.Method);
+        Assert.Equal(7, serverRequest.Id.GetInt32());
+        Assert.Equal("session-1", serverRequest.Params.GetProperty("sessionId").GetString());
     }
 
     [Fact]
@@ -94,7 +93,7 @@ public class KimiAcpConnectionTests
         await _WaitForRequestIdAsync(fake, "initialize");
         fake.CompleteStdout();
 
-        await FluentActions.Awaiting(() => requestTask).Should().ThrowAsync<KimiAcpException>();
+        await Assert.ThrowsAsync<KimiAcpException>(() => requestTask);
     }
 
     [Fact]
@@ -116,7 +115,7 @@ public class KimiAcpConnectionTests
 
         var finishedInTime = await Task.WhenAny(pushStderr, Task.Delay(TimeSpan.FromSeconds(3))) == pushStderr;
 
-        finishedInTime.Should().BeTrue("a dedicated stderr-drain task must keep a bounded stderr pipe from blocking the connection");
+        Assert.True(finishedInTime, "a dedicated stderr-drain task must keep a bounded stderr pipe from blocking the connection");
     }
 
     // P1-9b: the internal notification channel is bounded (capacity 1024) with BoundedChannelFullMode.Wait —
@@ -162,7 +161,7 @@ public class KimiAcpConnectionTests
             // reports a clean, readable failure instead of an unhandled exception from the cancelled iteration.
         }
 
-        received.Should().Be(total, "a bounded channel under load must apply backpressure, not silently drop messages");
+        Assert.Equal(total, received);
     }
 
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)

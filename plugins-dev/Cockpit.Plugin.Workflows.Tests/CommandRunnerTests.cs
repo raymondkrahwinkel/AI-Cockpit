@@ -29,8 +29,8 @@ public class CommandRunnerTests
 
         var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-        outcome.Output.Should().Be("hello from the flow");
-        outcome.Items.Single().Json["output"]!.ToString().Should().Be("hello from the flow");
+        Assert.Equal("hello from the flow", outcome.Output);
+        Assert.Equal("hello from the flow", outcome.Items.Single().Json["output"]!.ToString());
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class CommandRunnerTests
 
         var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-        (await run.Should().ThrowAsync<InvalidOperationException>())
+        (await Assert.ThrowsAsync<InvalidOperationException>(run))
             .Which.Message.Should().Contain("exited with 3").And.Contain("it broke");
     }
 
@@ -49,8 +49,7 @@ public class CommandRunnerTests
     {
         var run = async () => await new CommandRunner().RunAsync(_Context(_Command(string.Empty)), CancellationToken.None);
 
-        (await run.Should().ThrowAsync<InvalidOperationException>())
-            .Which.Message.Should().Contain("no command");
+        Assert.Contains("no command", (await Assert.ThrowsAsync<InvalidOperationException>(run)).Message);
     }
 
     [Fact]
@@ -61,8 +60,7 @@ public class CommandRunnerTests
 
         var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
-        (await run.Should().ThrowAsync<InvalidOperationException>())
-            .Which.Message.Should().Contain("no directory");
+        Assert.Contains("no directory", (await Assert.ThrowsAsync<InvalidOperationException>(run)).Message);
     }
 
     [Fact]
@@ -97,7 +95,7 @@ public class CommandRunnerTests
 
         var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
 
-        outcome.Output.Should().Be("hi; echo PWNED");
+        Assert.Equal("hi; echo PWNED", outcome.Output);
     }
 
     [Fact]
@@ -107,7 +105,7 @@ public class CommandRunnerTests
 
         var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
 
-        outcome.Output.Should().Be("a`whoami`b");
+        Assert.Equal("a`whoami`b", outcome.Output);
     }
 
     [Fact]

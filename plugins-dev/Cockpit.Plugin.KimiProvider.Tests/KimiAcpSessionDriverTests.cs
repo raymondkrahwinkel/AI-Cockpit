@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -29,11 +28,11 @@ public class KimiAcpSessionDriverTests
         var sessionNew = await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
         await startTask;
 
-        Path.IsPathRooted(sessionNew.GetProperty("params").GetProperty("cwd").GetString()).Should().BeTrue();
-        driver.SessionId.Should().Be("session_1");
+        Assert.True(Path.IsPathRooted(sessionNew.GetProperty("params").GetProperty("cwd").GetString()));
+        Assert.Equal("session_1", driver.SessionId);
 
         var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
-        initialized.SessionId.Should().Be("session_1");
+        Assert.Equal("session_1", initialized.SessionId);
     }
 
     // P1-7: an ANTHROPIC_* credential the cockpit process itself inherited (from whatever shell launched it)
@@ -49,7 +48,9 @@ public class KimiAcpSessionDriverTests
             await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
             await _StartAsync(driver, fake);
 
-            fake.EnvironmentVariables.Should().ContainKey("ANTHROPIC_API_KEY").WhoseValue.Should().BeNull();
+            var environmentVariables = fake.EnvironmentVariables;
+            Assert.NotNull(environmentVariables);
+            Assert.Null(environmentVariables["ANTHROPIC_API_KEY"]);
         }
         finally
         {
@@ -73,7 +74,9 @@ public class KimiAcpSessionDriverTests
             await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
             await _StartAsync(driver, fake);
 
-            fake.EnvironmentVariables.Should().ContainKey(variable).WhoseValue.Should().BeNull();
+            var environmentVariables = fake.EnvironmentVariables;
+            Assert.NotNull(environmentVariables);
+            Assert.Null(environmentVariables[variable]);
         }
         finally
         {
@@ -96,7 +99,9 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
         await startTask;
 
-        fake.EnvironmentVariables.Should().ContainKey("COCKPIT_MCP_KEY").WhoseValue.Should().Be("mcp-key");
+        var environmentVariables = fake.EnvironmentVariables;
+        Assert.NotNull(environmentVariables);
+        Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
     }
 
     [Fact]
@@ -110,9 +115,9 @@ public class KimiAcpSessionDriverTests
         var resume = await _RespondAsync(fake, "session/resume", """{"configOptions":[]}""");
         await startTask;
 
-        resume.GetProperty("params").GetProperty("sessionId").GetString().Should().Be("session_99");
-        driver.SessionId.Should().Be("session_99");
-        fake.WrittenLines.Should().NotContain(line => line.Contains("\"method\":\"session/load\""));
+        Assert.Equal("session_99", resume.GetProperty("params").GetProperty("sessionId").GetString());
+        Assert.Equal("session_99", driver.SessionId);
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/load\""));
     }
 
     // The regression test the brief singles out (D6): a serialized stdio server must carry no "type" field at
@@ -135,8 +140,8 @@ public class KimiAcpSessionDriverTests
         await startTask;
 
         var wireServers = sessionNew.GetProperty("params").GetProperty("mcpServers");
-        wireServers[0].TryGetProperty("type", out _).Should().BeFalse("a stdio server must be recognised by the absence of \"type\", not by \"type\":\"stdio\"");
-        wireServers[1].GetProperty("type").GetString().Should().Be("http");
+        Assert.False(wireServers[0].TryGetProperty("type", out _));
+        Assert.Equal("http", wireServers[1].GetProperty("type").GetString());
     }
 
     [Fact]
@@ -153,8 +158,8 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        setConfig.GetProperty("params").GetProperty("configId").GetString().Should().Be("model");
-        setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("kimi-k2");
+        Assert.Equal("model", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("kimi-k2", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     // P1-5: a stale KimiConfig.DefaultModel the current configOptions snapshot positively excludes must not even
@@ -181,7 +186,7 @@ public class KimiAcpSessionDriverTests
             // reply this test never provides — the timeout above bounds that instead of stalling the test run.
         }
 
-        fake.WrittenLines.Should().NotContain(line => line.Contains("\"method\":\"session/set_config_option\""));
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
     }
 
     // P1-5: kimi rejecting the configured default model (a race, or any other reason beyond the snapshot check
@@ -203,7 +208,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32602,"message":"model rejected"}}""");
 
         await startTask;
-        driver.SessionId.Should().Be("session_1");
+        Assert.Equal("session_1", driver.SessionId);
     }
 
     [Fact]
@@ -219,8 +224,8 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        setConfig.GetProperty("params").GetProperty("configId").GetString().Should().Be("mode");
-        setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("plan");
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("plan", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     [Fact]
@@ -236,8 +241,8 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        setConfig.GetProperty("params").GetProperty("configId").GetString().Should().Be("mode");
-        setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("default");
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     // P0-4, security: acceptEdits must fail closed to kimi's manual-approval "default" mode. Mapping it to
@@ -256,8 +261,8 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        setConfig.GetProperty("params").GetProperty("configId").GetString().Should().Be("mode");
-        setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("default");
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("default", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     [Fact]
@@ -273,8 +278,8 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[]}""");
         await startTask;
 
-        setConfig.GetProperty("params").GetProperty("configId").GetString().Should().Be("mode");
-        setConfig.GetProperty("params").GetProperty("value").GetString().Should().Be("auto");
+        Assert.Equal("mode", setConfig.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("auto", setConfig.GetProperty("params").GetProperty("value").GetString());
     }
 
     // AC-273: Kimi has no way to receive the host's hidden briefing over ACP, so the operator is told once,
@@ -292,8 +297,9 @@ public class KimiAcpSessionDriverTests
         await startTask;
 
         var notice = await _NextEventOfTypeAsync<PluginSessionError>(driver);
-        notice.Message.Should().Contain("system prompt").And.Contain("not applied");
-        notice.Message.Should().NotContain("You are Olaf", "the briefing is hidden from the operator by design — repeating it in the transcript would publish what the host deliberately kept out of it");
+        Assert.Contains("system prompt", notice.Message);
+        Assert.Contains("not applied", notice.Message);
+        Assert.DoesNotContain("You are Olaf", notice.Message);
     }
 
     [Fact]
@@ -304,7 +310,7 @@ public class KimiAcpSessionDriverTests
         await _StartAsync(driver, fake);
 
         var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
-        events.Should().NotContain(evt => evt is PluginSessionError);
+        Assert.DoesNotContain(events, evt => evt is PluginSessionError);
     }
 
     [Fact]
@@ -314,7 +320,7 @@ public class KimiAcpSessionDriverTests
         await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
         await _StartAsync(driver, fake);
 
-        fake.WrittenLines.Should().NotContain(line => line.Contains("\"method\":\"session/set_config_option\""));
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
     }
 
     [Fact]
@@ -331,12 +337,12 @@ public class KimiAcpSessionDriverTests
 
         var cancelNotification = await _WaitForWrittenLineAsync(fake, "\"method\":\"session/cancel\"");
         using var cancelDocument = JsonDocument.Parse(cancelNotification);
-        cancelDocument.RootElement.TryGetProperty("id", out _).Should().BeFalse("session/cancel is a notification, not a request");
-        cancelDocument.RootElement.GetProperty("params").GetProperty("sessionId").GetString().Should().Be("session_1");
+        Assert.False(cancelDocument.RootElement.TryGetProperty("id", out _));
+        Assert.Equal("session_1", cancelDocument.RootElement.GetProperty("params").GetProperty("sessionId").GetString());
 
         var permissionAnswer = await _WaitForWrittenLineAsync(fake, "\"id\":30");
         using var answerDocument = JsonDocument.Parse(permissionAnswer);
-        answerDocument.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString().Should().Be("cancelled");
+        Assert.Equal("cancelled", answerDocument.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString());
     }
 
     // A permission request that lands after the cancel is answered where it arrives and never tracked. Besides
@@ -357,10 +363,10 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":77");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString().Should().Be("cancelled");
+        Assert.Equal("cancelled", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString());
 
         var events = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(150));
-        events.Should().NotContain(evt => evt is PluginPermissionRequested);
+        Assert.DoesNotContain(events, evt => evt is PluginPermissionRequested);
     }
 
     [Fact]
@@ -378,7 +384,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"id":78,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-2:tool-1","title":"shell","content":[]}}}""");
 
         var requested = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        requested.ToolUseId.Should().Be("turn-2:tool-1");
+        Assert.Equal("turn-2:tool-1", requested.ToolUseId);
     }
 
     // D3, and the reason the emit gate exists: kimi sends a tool_call and the permission request for the same id
@@ -416,15 +422,13 @@ public class KimiAcpSessionDriverTests
                     ordering.TryAdd(toolUse.ToolUseId!, index);
                     break;
                 case PluginPermissionRequested permission:
-                    ordering.Should().ContainKey(
-                        permission.ToolUseId!,
-                        "a permission card for {0} reached the host before the tool card it belongs to",
-                        permission.ToolUseId);
+                    Assert.True(ordering.ContainsKey(permission.ToolUseId!),
+                        $"a permission card for {permission.ToolUseId} reached the host before the tool card it belongs to");
                     break;
             }
         }
 
-        ordering.Should().HaveCount(calls, "every tool call should have produced exactly one tool-use request");
+        Assert.Equal(calls, ordering.Count);
     }
 
     // A poll whose reply never parses as usage must not leave the capture armed for the rest of the session: the
@@ -449,8 +453,8 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"The manual's example reads Context: 45,000 / 200,000 (22.5%) — that is the format."}}}}""");
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Contain("that is the format");
-        driver.Status.Should().BeNull("the stale arm must not have turned a real message into a status reading");
+        Assert.Contains("that is the format", delta.Text);
+        Assert.Null(driver.Status);
     }
 
     // D12: a process end that is NOT our own dispose must surface an error and a failed turn before the
@@ -471,9 +475,9 @@ public class KimiAcpSessionDriverTests
             events.Add(evt);
         }
 
-        events.Should().HaveCount(2, "the buffered PluginSessionInitialized was already drained by _StartAsync");
-        events[0].Should().BeOfType<PluginSessionError>();
-        events[1].Should().BeOfType<PluginTurnCompleted>().Which.IsError.Should().BeTrue();
+        Assert.Equal(2, System.Linq.Enumerable.Count(events));
+        Assert.IsType<PluginSessionError>(events[0]);
+        Assert.True(Assert.IsType<PluginTurnCompleted>(events[1]).IsError);
     }
 
     // --- disposal (P1-6) -------------------------------------------------------------------------------------
@@ -488,7 +492,7 @@ public class KimiAcpSessionDriverTests
         await driver.DisposeAsync();
         var secondDispose = () => driver.DisposeAsync().AsTask();
 
-        await secondDispose.Should().NotThrowAsync();
+        await secondDispose();
     }
 
     // P1-6: DisposeAsync must wait for the fire-and-forget trailing /usage poll to actually finish releasing
@@ -514,10 +518,11 @@ public class KimiAcpSessionDriverTests
 
         await driver.DisposeAsync();
 
-        pollTask.Should().NotBeNull();
-        pollTask!.IsCompleted.Should().BeTrue("DisposeAsync must not return before the pending usage-poll task has finished releasing the prompt gate");
+        Assert.NotNull(pollTask);
+        Assert.True(pollTask!.IsCompleted, "DisposeAsync must not return before the pending usage-poll task has finished releasing the prompt gate");
         var awaitPollTask = () => pollTask;
-        await awaitPollTask.Should().NotThrowAsync<ObjectDisposedException>("the gate must not be disposed while the poll task is still trying to release it");
+        var pollTaskException = await Record.ExceptionAsync(awaitPollTask);
+        Assert.False(pollTaskException is ObjectDisposedException, "the gate must not be disposed while the poll task is still trying to release it");
     }
 
     // --- event translation (AC-270) -----------------------------------------------------------------------
@@ -538,11 +543,11 @@ public class KimiAcpSessionDriverTests
         // reply before the delta is observed races the pump's own scheduling rather than proving anything about
         // the driver.
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("Hello");
+        Assert.Equal("Hello", delta.Text);
 
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
         var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        completed.IsError.Should().BeFalse();
+        Assert.False(completed.IsError);
     }
 
     [Fact]
@@ -557,7 +562,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Let me consider"}}}}""");
 
         var thinking = await _NextEventOfTypeAsync<PluginAssistantThinkingDelta>(driver);
-        thinking.Thinking.Should().Be("Let me consider");
+        Assert.Equal("Let me consider", thinking.Thinking);
     }
 
     // D4: the lazy tool_call (status "pending", only the tool name as title) must still yield exactly one
@@ -579,8 +584,8 @@ public class KimiAcpSessionDriverTests
         // triggering the reply — same reasoning as the text-delta test above: the reply and the notification
         // pump are independently scheduled, so this is what actually proves "exactly one card", not a race.
         var events = await _CollectUntilAsync(driver, evt => evt is PluginToolResult);
-        events.OfType<PluginToolUseRequested>().Should().ContainSingle().Which.ToolUseId.Should().Be("turn-1:tool-1");
-        events.OfType<PluginToolResult>().Should().ContainSingle().Which.Content.Should().Be("file contents");
+        Assert.Equal("turn-1:tool-1", Assert.Single(events.OfType<PluginToolUseRequested>()).ToolUseId);
+        Assert.Equal("file contents", Assert.Single(events.OfType<PluginToolResult>()).Content);
 
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
         await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
@@ -594,14 +599,14 @@ public class KimiAcpSessionDriverTests
         const string startingConfigOptions = """[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k2","options":[]},{"type":"select","id":"thinking","name":"Thinking","currentValue":"medium","options":[{"value":"off","name":"Off"},{"value":"medium","name":"Medium"}]},{"type":"select","id":"mode","name":"Mode","currentValue":"default","options":[]}]""";
         await _StartAsync(driver, fake, configOptionsJson: startingConfigOptions);
 
-        driver.LiveOptions.Should().Contain(option => option.Key == "thinking");
+        Assert.Contains(driver.LiveOptions, option => option.Key == "thinking");
 
         // The model switched to one with no thinking support: the next config_option_update carries only model/mode.
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"config_option_update","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k1","options":[]},{"type":"select","id":"mode","name":"Mode","currentValue":"default","options":[]}]}}}""");
 
         await _WaitForLiveOptionsAsync(driver, current => !current.Any(option => option.Key == "thinking"));
 
-        driver.LiveOptions.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(driver.LiveOptions));
     }
 
     // --- permissions (AC-271) ------------------------------------------------------------------------------
@@ -616,8 +621,8 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"id":10,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"},{"optionId":"approve_always","name":"Approve for this session","kind":"allow_always"},{"optionId":"reject","name":"Reject","kind":"reject_once"}],"toolCall":{"toolCallId":"turn-1:tool-9","title":"shell","content":[]}}}""");
 
         var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        permission.ToolUseId.Should().Be("turn-1:tool-9");
-        permission.ToolName.Should().Be("shell");
+        Assert.Equal("turn-1:tool-9", permission.ToolUseId);
+        Assert.Equal("shell", permission.ToolName);
     }
 
     // P1-3, trigger (c), D3: a permission request for a toolCallId that never had a prior tool_call must still
@@ -633,9 +638,9 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"id":21,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"approve_once","name":"Approve once","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-1:tool-21","title":"shell","content":[]}}}""");
 
         var events = await _CollectUntilAsync(driver, evt => evt is PluginPermissionRequested);
-        events.Should().HaveCount(2);
-        events[0].Should().BeOfType<PluginToolUseRequested>().Which.ToolUseId.Should().Be("turn-1:tool-21");
-        events[1].Should().BeOfType<PluginPermissionRequested>().Which.ToolUseId.Should().Be("turn-1:tool-21");
+        Assert.Equal(2, System.Linq.Enumerable.Count(events));
+        Assert.Equal("turn-1:tool-21", Assert.IsType<PluginToolUseRequested>(events[0]).ToolUseId);
+        Assert.Equal("turn-1:tool-21", Assert.IsType<PluginPermissionRequested>(events[1]).ToolUseId);
     }
 
     [Fact]
@@ -652,8 +657,8 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":11");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString().Should().Be("selected");
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString().Should().Be("approve_once");
+        Assert.Equal("selected", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("outcome").GetString());
+        Assert.Equal("approve_once", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     [Fact]
@@ -670,7 +675,7 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":12");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString().Should().Be("reject");
+        Assert.Equal("reject", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     [Fact]
@@ -687,7 +692,7 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":13");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString().Should().Be("approve_always");
+        Assert.Equal("approve_always", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     // D-permissions: the plan_review namespace uses plan_approve (not approve_once) for the "allow_once" kind —
@@ -706,7 +711,7 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":14");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString().Should().Be("plan_approve");
+        Assert.Equal("plan_approve", document.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     [Fact]
@@ -719,7 +724,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"id":15,"method":"session/request_permission","params":{"sessionId":"session_1","options":[{"optionId":"q0_a","name":"Option A","kind":"allow_once"}],"toolCall":{"toolCallId":"turn-1:q-1","title":"AskUserQuestion","content":[]}}}""");
 
         var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        permission.ToolName.Should().Be("AskUserQuestion");
+        Assert.Equal("AskUserQuestion", permission.ToolName);
     }
 
     // P0-5: a child process reusing a toolCallId that already has an outstanding approval must not overwrite
@@ -740,14 +745,14 @@ public class KimiAcpSessionDriverTests
 
         var duplicateAnswer = await _WaitForWrittenLineAsync(fake, "\"id\":17");
         using var duplicateDocument = JsonDocument.Parse(duplicateAnswer);
-        duplicateDocument.RootElement.TryGetProperty("error", out var error).Should().BeTrue("a reused toolCallId must be rejected, not silently overwrite the first request");
-        error.GetProperty("code").GetInt32().Should().Be(-32602);
+        Assert.True(duplicateDocument.RootElement.TryGetProperty("error", out var error), "a reused toolCallId must be rejected, not silently overwrite the first request");
+        Assert.Equal(-32602, error.GetProperty("code").GetInt32());
 
         await driver.RespondToPermissionAsync("turn-1:tool-dup", allow: true);
 
         var originalAnswer = await _WaitForWrittenLineAsync(fake, "\"id\":16");
         using var originalDocument = JsonDocument.Parse(originalAnswer);
-        originalDocument.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString().Should().Be("approve_once");
+        Assert.Equal("approve_once", originalDocument.RootElement.GetProperty("result").GetProperty("outcome").GetProperty("optionId").GetString());
     }
 
     // P1-1: a session/request_permission missing toolCall.toolCallId is blocking (protocol §5) — silently
@@ -764,8 +769,8 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":18");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.TryGetProperty("error", out var error).Should().BeTrue();
-        error.GetProperty("code").GetInt32().Should().Be(-32602);
+        Assert.True(document.RootElement.TryGetProperty("error", out var error));
+        Assert.Equal(-32602, error.GetProperty("code").GetInt32());
     }
 
     // P1-9: an unbounded _pendingApprovals dictionary is an OOM vector on untrusted stdout — a runaway/malicious
@@ -803,8 +808,8 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":9999");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.TryGetProperty("error", out var error).Should().BeTrue("a request past the cap must be rejected, not tracked");
-        error.GetProperty("code").GetInt32().Should().Be(-32000);
+        Assert.True(document.RootElement.TryGetProperty("error", out var error), "a request past the cap must be rejected, not tracked");
+        Assert.Equal(-32000, error.GetProperty("code").GetInt32());
     }
 
     // D11 + the regression test the brief singles out: an unmodelled reverse-request gets -32601, and the pump
@@ -820,13 +825,13 @@ public class KimiAcpSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":20");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.TryGetProperty("error", out var error).Should().BeTrue();
-        error.GetProperty("code").GetInt32().Should().Be(-32601);
-        document.RootElement.TryGetProperty("result", out _).Should().BeFalse();
+        Assert.True(document.RootElement.TryGetProperty("error", out var error));
+        Assert.Equal(-32601, error.GetProperty("code").GetInt32());
+        Assert.False(document.RootElement.TryGetProperty("result", out _));
 
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"still alive"}}}}""");
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("still alive");
+        Assert.Equal("still alive", delta.Text);
     }
 
     [Fact]
@@ -840,7 +845,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"survived"}}}}""");
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("survived");
+        Assert.Equal("survived", delta.Text);
     }
 
     // --- live config options (AC-272) ---------------------------------------------------------------------
@@ -854,7 +859,7 @@ public class KimiAcpSessionDriverTests
 
         await driver.SetLiveOptionAsync("not-a-real-config-id", "whatever");
 
-        fake.WrittenLines.Should().NotContain(line => line.Contains("\"method\":\"session/set_config_option\""));
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/set_config_option\""));
     }
 
     [Fact]
@@ -868,9 +873,9 @@ public class KimiAcpSessionDriverTests
         var request = await _RespondAsync(fake, "session/set_config_option", """{"configOptions":[{"type":"select","id":"mode","name":"Mode","currentValue":"yolo","options":[{"value":"yolo","name":"YOLO"}]}]}""");
         await setTask;
 
-        request.GetProperty("params").GetProperty("configId").GetString().Should().Be("mode");
-        request.GetProperty("params").GetProperty("value").GetString().Should().Be("yolo");
-        driver.LiveOptions.Should().ContainSingle(option => option.Key == "mode").Which.DefaultValue.Should().Be("yolo");
+        Assert.Equal("mode", request.GetProperty("params").GetProperty("configId").GetString());
+        Assert.Equal("yolo", request.GetProperty("params").GetProperty("value").GetString());
+        Assert.Equal("yolo", Assert.Single(driver.LiveOptions, option => option.Key == "mode").DefaultValue);
     }
 
     // --- stopReason mapping (D7, protocol §3/§12) -----------------------------------------------------------
@@ -893,8 +898,8 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"end_turn"}""");
 
         var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        completed.IsError.Should().BeFalse();
-        completed.StopReason.Should().Be("end_turn");
+        Assert.False(completed.IsError);
+        Assert.Equal("end_turn", completed.StopReason);
     }
 
     [Fact]
@@ -908,8 +913,8 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"cancelled"}""");
 
         var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        completed.IsError.Should().BeFalse();
-        completed.StopReason.Should().Be("cancelled");
+        Assert.False(completed.IsError);
+        Assert.Equal("cancelled", completed.StopReason);
     }
 
     // P0-3: refusal is the one wire value that must actually surface as an error — a refused/filtered turn
@@ -925,8 +930,8 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"refusal"}""");
 
         var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        completed.IsError.Should().BeTrue();
-        completed.StopReason.Should().Be("refusal");
+        Assert.True(completed.IsError);
+        Assert.Equal("refusal", completed.StopReason);
     }
 
     [Fact]
@@ -940,8 +945,8 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"some_future_value"}""");
 
         var completed = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        completed.IsError.Should().BeFalse();
-        completed.StopReason.Should().Be("end_turn");
+        Assert.False(completed.IsError);
+        Assert.Equal("end_turn", completed.StopReason);
     }
 
     // --- usage / context percentage (AC-274) ---------------------------------------------------------------
@@ -957,10 +962,10 @@ public class KimiAcpSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         await _RespondAsync(fake, "session/prompt", """{"stopReason":"completed"}""");
         var turnCompleted = await _NextEventOfTypeAsync<PluginTurnCompleted>(driver);
-        turnCompleted.IsError.Should().BeFalse();
+        Assert.False(turnCompleted.IsError);
 
         var usageRequest = await _WaitForNthRequestAsync(fake, "session/prompt", occurrence: 2);
-        usageRequest.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString().Should().Be("/usage");
+        Assert.Equal("/usage", usageRequest.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString());
         var usageRequestId = usageRequest.GetProperty("id").GetInt64();
 
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Session usage:\n- Context: 45,000 / 200,000 (22.5%)"}}}}""");
@@ -973,7 +978,7 @@ public class KimiAcpSessionDriverTests
         await _WaitForStatusAsync(driver, status => status is not null);
 
         var strayEvents = await _CollectForAsync(driver, TimeSpan.FromMilliseconds(100));
-        strayEvents.Should().BeEmpty("a /usage poll must never leak into the transcript");
+        Assert.Empty(strayEvents);
     }
 
     [Fact]
@@ -993,7 +998,7 @@ public class KimiAcpSessionDriverTests
 
         await _WaitForStatusAsync(driver, status => status is not null);
 
-        driver.Status.Should().BeEquivalentTo(new PluginSessionStatus(22.5, RateLimits: []));
+        Assert.Equivalent(new PluginSessionStatus(22.5, RateLimits: []), driver.Status);
     }
 
     // P0-2: only a chunk that actually parses as the usage line is swallowed while capturing — a chunk that
@@ -1017,8 +1022,8 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync($$$"""{"id":{{{usageRequestId}}},"result":{"stopReason":"end_turn"}}""");
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("this is not a usage report");
-        driver.Status.Should().BeNull();
+        Assert.Equal("this is not a usage report", delta.Text);
+        Assert.Null(driver.Status);
     }
 
     // P0-2 regression: a real turn's own chunk that happens to arrive while the trailing /usage poll is
@@ -1042,7 +1047,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"actual trailing turn text"}}}}""");
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("actual trailing turn text");
+        Assert.Equal("actual trailing turn text", delta.Text);
     }
 
     // P0-1: a failed /usage round must clear the capturing flag itself, or it stays stuck true and silently
@@ -1067,7 +1072,7 @@ public class KimiAcpSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"session/update","params":{"sessionId":"session_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"- Context: 1,000 / 2,000 (50.0%)"}}}}""");
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("- Context: 1,000 / 2,000 (50.0%)");
+        Assert.Equal("- Context: 1,000 / 2,000 (50.0%)", delta.Text);
     }
 
     // Proves the shared prompt gate (AC-274): a second real message fired the instant the first turn's
@@ -1105,7 +1110,7 @@ public class KimiAcpSessionDriverTests
         }
 
         var delta = await _NextEventOfTypeAsync<PluginAssistantTextDelta>(driver);
-        delta.Text.Should().Be("Second reply");
+        Assert.Equal("Second reply", delta.Text);
     }
 
     // --- auth surface (P1-10) -----------------------------------------------------------------------------
@@ -1123,9 +1128,9 @@ public class KimiAcpSessionDriverTests
         await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
         await startTask;
 
-        driver.AuthMethods.Should().NotBeNull();
-        driver.AuthMethods!.Value.GetArrayLength().Should().Be(1);
-        driver.AuthMethods!.Value.EnumerateArray().First().GetProperty("id").GetString().Should().Be("login");
+        Assert.NotNull(driver.AuthMethods);
+        Assert.Equal(1, driver.AuthMethods!.Value.GetArrayLength());
+        Assert.Equal("login", driver.AuthMethods!.Value.EnumerateArray().First().GetProperty("id").GetString());
     }
 
     // P1-10b: protocol §1 — session/new fails with the JSON-RPC error -32000 (authRequired) when kimi has no
@@ -1144,14 +1149,14 @@ public class KimiAcpSessionDriverTests
         var id = sessionNewRequest.GetProperty("id").GetInt64();
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32000,"message":"authRequired"}}""");
 
-        var thrown = await FluentActions.Awaiting(() => startTask).Should().ThrowAsync<KimiAcpException>();
-        thrown.Which.Message.Should().Contain("kimi acp --login");
-        thrown.Which.Message.Should().Contain("API key");
-        thrown.Which.Message.Should().NotContain("{", "the message must not be (or contain) the raw JSON-RPC error object");
+        var thrown = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
+        Assert.Contains("kimi acp --login", thrown.Message);
+        Assert.Contains("API key", thrown.Message);
+        Assert.DoesNotContain("{", thrown.Message);
 
         var error = await _NextEventOfTypeAsync<PluginSessionError>(driver);
-        error.Message.Should().Contain("kimi acp --login");
-        error.Message.Should().Contain("API key");
+        Assert.Contains("kimi acp --login", error.Message);
+        Assert.Contains("API key", error.Message);
     }
 
     // P1-10b regression: an authRequired failure on the JSON-RPC error must not be confused with any other
@@ -1168,9 +1173,9 @@ public class KimiAcpSessionDriverTests
         var id = sessionNewRequest.GetProperty("id").GetInt64();
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32602,"message":"invalid params"}}""");
 
-        var thrown = await FluentActions.Awaiting(() => startTask).Should().ThrowAsync<KimiAcpException>();
-        thrown.Which.Message.Should().Be("kimi acp error -32602: invalid params");
-        thrown.Which.Message.Should().NotContain("kimi acp --login");
+        var thrown = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
+        Assert.Equal("kimi acp error -32602: invalid params", thrown.Message);
+        Assert.DoesNotContain("kimi acp --login", thrown.Message);
     }
 
     // --- helpers -----------------------------------------------------------------------------------------

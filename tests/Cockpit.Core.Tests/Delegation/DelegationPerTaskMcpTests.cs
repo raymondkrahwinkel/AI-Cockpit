@@ -37,7 +37,7 @@ public class DelegationPerTaskMcpTests
         var refuse = async () => await service.DelegateAsync(
             new DelegationRequest("local", "work", McpServers: [Orchestrator]));
 
-        await refuse.Should().ThrowAsync<DelegationRejectedException>();
+        await Assert.ThrowsAsync<DelegationRejectedException>(refuse);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class DelegationPerTaskMcpTests
         var refuse = async () => await service.DelegateAsync(
             new DelegationRequest("local", "work", McpServers: ["git"]));
 
-        (await refuse.Should().ThrowAsync<DelegationRejectedException>()).Which.Message.Should().Contain("git");
+        Assert.Contains("git", (await Assert.ThrowsAsync<DelegationRejectedException>(refuse)).Message);
         await driver.DidNotReceive().StartAsync(
             Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
@@ -107,7 +107,7 @@ public class DelegationPerTaskMcpTests
 
         var targets = await service.ListTargetsAsync();
 
-        targets.Should().ContainSingle().Which.McpServers.Should().BeEquivalentTo("filesystem", "youtrack");
+        Assert.Single(targets).McpServers.Should().BeEquivalentTo("filesystem", "youtrack");
     }
 
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };

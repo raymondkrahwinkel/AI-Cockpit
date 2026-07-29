@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -17,8 +16,8 @@ public class KimiMcpConfigTests
     [Fact]
     public void Build_WithNoServers_IsEmpty()
     {
-        KimiMcpConfig.Build(null, _NoEnv).Should().BeEmpty();
-        KimiMcpConfig.Build([], _NoEnv).Should().BeEmpty();
+        Assert.Empty(KimiMcpConfig.Build(null, _NoEnv));
+        Assert.Empty(KimiMcpConfig.Build([], _NoEnv));
     }
 
     // D6, the regression test the brief singles out: a stdio server's serialized JSON must have no "type"
@@ -29,10 +28,10 @@ public class KimiMcpConfigTests
         var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }], _NoEnv);
 
         var json = _SerializeSingle(wire);
-        json.TryGetProperty("type", out _).Should().BeFalse("a stdio server must be recognised by the absence of \"type\", not by \"type\":\"stdio\"");
-        json.GetProperty("name").GetString().Should().Be("fs");
-        json.GetProperty("command").GetString().Should().Be("npx");
-        json.GetProperty("args").EnumerateArray().Select(element => element.GetString()).Should().Equal("-y", "@modelcontextprotocol/server-filesystem");
+        Assert.False(json.TryGetProperty("type", out _));
+        Assert.Equal("fs", json.GetProperty("name").GetString());
+        Assert.Equal("npx", json.GetProperty("command").GetString());
+        Assert.Equal(new[] { "-y", "@modelcontextprotocol/server-filesystem" }, json.GetProperty("args").EnumerateArray().Select(element => element.GetString()));
     }
 
     [Fact]
@@ -41,10 +40,10 @@ public class KimiMcpConfigTests
         var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" }], _NoEnv);
 
         var json = _SerializeSingle(wire);
-        json.GetProperty("type").GetString().Should().Be("http");
-        json.GetProperty("name").GetString().Should().Be("cockpit-orchestrator");
-        json.GetProperty("url").GetString().Should().Be("http://127.0.0.1:8765/mcp");
-        json.GetProperty("headers").GetArrayLength().Should().Be(0);
+        Assert.Equal("http", json.GetProperty("type").GetString());
+        Assert.Equal("cockpit-orchestrator", json.GetProperty("name").GetString());
+        Assert.Equal("http://127.0.0.1:8765/mcp", json.GetProperty("url").GetString());
+        Assert.Equal(0, json.GetProperty("headers").GetArrayLength());
     }
 
     [Fact]
@@ -53,9 +52,9 @@ public class KimiMcpConfigTests
         var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = "yt-pat-value" }], _NoEnv);
 
         var headers = _SerializeSingle(wire).GetProperty("headers");
-        headers.GetArrayLength().Should().Be(1);
-        headers[0].GetProperty("name").GetString().Should().Be("Authorization");
-        headers[0].GetProperty("value").GetString().Should().Be("Bearer yt-pat-value");
+        Assert.Equal(1, headers.GetArrayLength());
+        Assert.Equal("Authorization", headers[0].GetProperty("name").GetString());
+        Assert.Equal("Bearer yt-pat-value", headers[0].GetProperty("value").GetString());
     }
 
     [Fact]
@@ -65,13 +64,13 @@ public class KimiMcpConfigTests
         var wire = KimiMcpConfig.Build([new PluginMcpServer { Name = "cockpit-session", Url = "http://127.0.0.1:8765/mcp", CockpitHosted = true }], environment);
 
         var headers = _SerializeSingle(wire).GetProperty("headers");
-        headers[0].GetProperty("value").GetString().Should().Be("Bearer run-key");
+        Assert.Equal("Bearer run-key", headers[0].GetProperty("value").GetString());
     }
 
     [Fact]
     public void Build_SkipsAServerWithNeitherUrlNorCommand()
     {
-        KimiMcpConfig.Build([new PluginMcpServer { Name = "broken" }], _NoEnv).Should().BeEmpty();
+        Assert.Empty(KimiMcpConfig.Build([new PluginMcpServer { Name = "broken" }], _NoEnv));
     }
 
     [Fact]
@@ -83,16 +82,16 @@ public class KimiMcpConfigTests
             new PluginMcpServer { Name = "api", Url = "http://x/mcp" },
         ], _NoEnv);
 
-        wire.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(wire));
         var json = JsonSerializer.Serialize(wire);
         using var document = JsonDocument.Parse(json);
-        document.RootElement[0].TryGetProperty("type", out _).Should().BeFalse();
-        document.RootElement[1].GetProperty("type").GetString().Should().Be("http");
+        Assert.False(document.RootElement[0].TryGetProperty("type", out _));
+        Assert.Equal("http", document.RootElement[1].GetProperty("type").GetString());
     }
 
     private static JsonElement _SerializeSingle(IReadOnlyList<object> wire)
     {
-        wire.Should().ContainSingle();
+        Assert.Single(wire);
         var json = JsonSerializer.Serialize(wire[0]);
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();

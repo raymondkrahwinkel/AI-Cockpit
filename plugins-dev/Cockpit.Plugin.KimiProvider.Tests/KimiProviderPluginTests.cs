@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -19,8 +18,8 @@ public class KimiProviderPluginTests
         using var plugin = new KimiProviderPlugin();
         plugin.Initialize(host);
 
-        host.CapturedRegistration.Should().NotBeNull();
-        host.CapturedRegistration!.Capabilities.SupportsLiveModelSwitch.Should().BeTrue(
+        Assert.NotNull(host.CapturedRegistration);
+        Assert.True(host.CapturedRegistration!.Capabilities.SupportsLiveModelSwitch,
             "the host reads registration.Capabilities, not the driver instance's own Capabilities, to build the session adapter");
     }
 }

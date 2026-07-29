@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -21,26 +20,26 @@ public class KimiUsageParserTests
             - Context: 45,000 / 200,000 (22.5%)
             """;
 
-        KimiUsageParser.ParseContextUsedPercent(usageBlock).Should().Be(22.5);
+        Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent(usageBlock));
     }
 
     [Fact]
     public void ParseContextUsedPercent_ThousandsCommaCounts_AreParsedWithCommasStripped()
     {
-        KimiUsageParser.ParseContextUsedPercent("- Context: 45,000 / 200,000 (22.5%)").Should().Be(22.5);
+        Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent("- Context: 45,000 / 200,000 (22.5%)"));
     }
 
     // Percentage can exceed 100 ((contextUsage*100).toFixed(1)) — must not be clamped.
     [Fact]
     public void ParseContextUsedPercent_AboveOneHundredPercent_IsReturnedUnclamped()
     {
-        KimiUsageParser.ParseContextUsedPercent("- Context: 210,000 / 200,000 (105.0%)").Should().Be(105.0);
+        Assert.Equal(105.0, KimiUsageParser.ParseContextUsedPercent("- Context: 210,000 / 200,000 (105.0%)"));
     }
 
     [Fact]
     public void ParseContextUsedPercent_OnlyTheContextLine_WithoutTotalOrCurrentTurn_StillWorks()
     {
-        KimiUsageParser.ParseContextUsedPercent("- Context: 1,500 / 10,000 (15.0%)").Should().Be(15.0);
+        Assert.Equal(15.0, KimiUsageParser.ParseContextUsedPercent("- Context: 1,500 / 10,000 (15.0%)"));
     }
 
     // /status ends with the same "Context:" line shape (protocol §11) — no separate branch needed.
@@ -56,7 +55,7 @@ public class KimiUsageParserTests
             - Context: 45,000 / 200,000 (22.5%)
             """;
 
-        KimiUsageParser.ParseContextUsedPercent(statusBlock).Should().Be(22.5);
+        Assert.Equal(22.5, KimiUsageParser.ParseContextUsedPercent(statusBlock));
     }
 
     [Theory]
@@ -75,7 +74,7 @@ public class KimiUsageParserTests
     [InlineData("- Context: 45,000 / 200,000 (22.5 %)")]
     public void ParseContextUsedPercent_UnexpectedInput_ReturnsNull(string? text)
     {
-        KimiUsageParser.ParseContextUsedPercent(text).Should().BeNull();
+        Assert.Null(KimiUsageParser.ParseContextUsedPercent(text));
     }
 
     // P1-12: proves the round-trip guard on the two token counts is genuinely reachable, contrary to the
@@ -85,6 +84,6 @@ public class KimiUsageParserTests
     [Fact]
     public void ParseContextUsedPercent_AThousandsGroupedCountThatOverflowsLong_ReturnsNull()
     {
-        KimiUsageParser.ParseContextUsedPercent("- Context: 99,999,999,999,999,999,999 / 200,000 (22.5%)").Should().BeNull();
+        Assert.Null(KimiUsageParser.ParseContextUsedPercent("- Context: 99,999,999,999,999,999,999 / 200,000 (22.5%)"));
     }
 }

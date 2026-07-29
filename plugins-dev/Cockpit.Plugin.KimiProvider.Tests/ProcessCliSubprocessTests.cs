@@ -1,5 +1,4 @@
 using System.Text;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -26,8 +25,8 @@ public class ProcessCliSubprocessTests
             lines.Add(line);
         }
 
-        lines.Should().ContainSingle().Which.Should().Be("normal-line", "the oversized line must be dropped rather than returned in full, and the pump must keep living for the next line");
-        subprocess.DroppedOversizedLineCount.Should().Be(1);
+        Assert.Equal("normal-line", Assert.Single(lines));
+        Assert.Equal(1, subprocess.DroppedOversizedLineCount);
     }
 
     [Fact]
@@ -43,8 +42,8 @@ public class ProcessCliSubprocessTests
             lines.Add(line);
         }
 
-        lines.Should().Equal("one", "two", "three");
-        subprocess.DroppedOversizedLineCount.Should().Be(0);
+        Assert.Equal(new[] { "one", "two", "three" }, lines);
+        Assert.Equal(0, subprocess.DroppedOversizedLineCount);
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class ProcessCliSubprocessTests
             lines.Add(line);
         }
 
-        lines.Should().BeEmpty("a never-terminated oversized line must never be yielded, even at end of stream");
-        subprocess.DroppedOversizedLineCount.Should().Be(1);
+        Assert.Empty(lines);
+        Assert.Equal(1, subprocess.DroppedOversizedLineCount);
     }
 }
