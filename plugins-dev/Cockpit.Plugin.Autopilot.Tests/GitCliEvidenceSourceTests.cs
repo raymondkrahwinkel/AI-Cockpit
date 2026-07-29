@@ -137,22 +137,22 @@ public sealed class GitCliEvidenceSourceTests : IDisposable
     [Fact]
     public async Task MarkAsync_WhenGitRefusesToSnapshotTheWorktree_ReturnsNull_RatherThanQuietlyPinningHead()
     {
-        // The guard that keeps a failure from becoming a wrong answer. A conflicted merge is one state git will not
-        // snapshot; falling back to HEAD there would hand the next step the whole merge as its own work, and nothing
-        // in the validation turn would hint that anything had gone wrong.
-        await _Git("checkout", "-b", "other");
-        _Write("tracked.txt", "the other branch");
-        await _Git("add", "-A");
-        await _Commit("a conflicting change");
-        await _Git("checkout", "-");
-        _Write("tracked.txt", "the first branch");
-        await _Git("add", "-A");
-        await _Commit("the other side of the conflict");
+        // The guard that keeps a failure from becoming a wrong answer: falling back to the commit alone would hand the
+        // next step this step's uncommitted work as its own, and nothing in the validation turn would hint at it.
+        // Provoked through an index lock rather than, say, a conflicted merge — a lock stops every index-writing git
+        // command on every version and platform, while `rev-parse HEAD` still answers, so this also stays red if the
+        // guard is removed. (A conflicted merge is not portable: some git versions snapshot it happily.)
+        _Write("tracked.txt", "uncommitted work that must not be mistaken for the next step's");
+        File.WriteAllText(Path.Combine(_repository, ".git", "index.lock"), string.Empty);
 
-        var merge = await GitCommandLine.RunAsync("git", ["merge", "other"], _repository);
-        Assert.False(merge.Ok, "the merge was supposed to conflict");
-
-        Assert.Null(await _source.MarkAsync(_repository));
+        try
+        {
+            Assert.Null(await _source.MarkAsync(_repository));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(_repository, ".git", "index.lock"));
+        }
     }
 
     [Fact]
