@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Projects;
+
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
@@ -8,4 +10,13 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 /// <param name="Label">What the picker shows — "Folder", or the source's own <c>Title</c>.</param>
 /// <param name="Scheme">The prefix this choice writes into <c>MemoryRef</c>, or null for "Folder".</param>
-public sealed record MemorySourceChoice(string Label, string? Scheme);
+public sealed record MemorySourceChoice(string Label, string? Scheme)
+{
+    /// <summary>
+    /// The registered source's own reachability check (AC-503), carried alongside <see cref="Scheme"/> so a row's
+    /// diagnostics can call it without reaching back into a registry this view model does not otherwise hold onto.
+    /// Null for "Folder" and for a source whose plugin did not implement one — either way, nothing is shown under
+    /// the row for it, the same as before AC-503 existed.
+    /// </summary>
+    public Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>>? CheckReachability { get; init; }
+}

@@ -310,6 +310,21 @@
                                                    Text="This reference could not be found."/>
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsMachineBound}"
                                                    Text="This is an absolute path specific to this machine — it will not travel if the project definition is shared."/>
+
+                                        <!-- AC-503: the plugin-resource counterpart to the two hints above — a Memory row whose picked source
+                                             can confirm a typed value gets the same visible confirmation/error treatment a broken Reference row
+                                             already has. Exactly one of the three is ever visible at once (the three IsXxx bools on the row are
+                                             mutually exclusive, all gated on Role == Memory and a non-blank Reference), so there is no ordering
+                                             concern between them. -->
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsConfirmedReachable}"
+                                                   Foreground="{StaticResource CockpitStatusDoneBrush}"
+                                                   Text="{Binding ReachabilityDetail, TargetNullValue='Confirmed — this location was found.'}"/>
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsNotFoundReachable}"
+                                                   Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                                   Text="This location could not be found, or is not visible with the current sign-in."/>
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsNotSignedIn}"
+                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   Text="Not signed in, or this connection could not be reached — sign in to confirm this location."/>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>

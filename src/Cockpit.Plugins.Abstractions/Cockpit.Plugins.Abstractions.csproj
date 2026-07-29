@@ -261,7 +261,15 @@
          the top-level transcript. Optional, defaulting to null: an already-compiled driver keeps constructing
          every event the old way and simply never attributes any to a sub-agent. Additions only — a minor; major
          and abstractionsVersion stay 1. -->
-    <Version>1.39.0</Version>
+    <!-- 1.40.0 (AC-503): added ICockpitHost.ProbeMcpToolAsync (default-implemented, returns McpProbeResult.Failed) —
+         one MCP tool call outside a running session, so a plugin can confirm a value the operator typed against an
+         already-configured/signed-in connection; McpProbeOutcome/McpProbeResult (new types, Failed at ordinal 0).
+         Added ProjectMemorySourceRegistration.CheckReachability, an optional init-only delegate (null = no check
+         available, the default, which is exactly today's "show nothing" behavior); ProjectMemorySourceReachability
+         (NotSignedIn at ordinal 0)/ProjectMemorySourceReachabilityResult (new types). No positional constructor
+         parameter was added to the existing record, so a prebuilt plugin keeps compiling and behaving unchanged.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.40.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

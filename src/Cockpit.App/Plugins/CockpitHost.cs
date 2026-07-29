@@ -589,6 +589,43 @@ internal sealed class CockpitHost(
         }
     }
 
+    /// <summary>
+    /// Delegates to <see cref="IMcpToolProbe"/> (AC-503) and maps its Core-level <see cref="McpToolProbeResult"/>
+    /// onto the plugin-facing <see cref="McpProbeResult"/> — the same isolation seam <see cref="GetMcpServerAuthStateAsync"/>
+    /// and <see cref="SignInMcpServerAsync"/> already keep between <c>Cockpit.Core</c>'s own vocabulary and the
+    /// plugin SDK's. A host with no probe registered (a test fake, an older host) answers <see cref="McpProbeResult.Failed"/>
+    /// without attempting anything.
+    /// </summary>
+    public async Task<McpProbeResult> ProbeMcpToolAsync(
+        string serverName,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpToolProbe>() is not { } probe)
+        {
+            return McpProbeResult.Failed;
+        }
+
+        try
+        {
+            var result = await probe.ProbeAsync(serverName, toolName, arguments, cancellationToken).ConfigureAwait(false);
+            return result.Outcome switch
+            {
+                McpToolProbeOutcome.NotSignedIn => McpProbeResult.NotSignedIn,
+                McpToolProbeOutcome.NotFound => McpProbeResult.NotFound,
+                McpToolProbeOutcome.Success => McpProbeResult.Success(result.Detail),
+                _ => McpProbeResult.Failed,
+            };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Never token/credential data here (Iron Law #8) — only the server/tool names, which are configuration.
+            diagnostics.Record(pluginId, pluginName, "mcp-probe", exception.Message);
+            return McpProbeResult.Failed;
+        }
+    }
+
     public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
         services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
             ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)

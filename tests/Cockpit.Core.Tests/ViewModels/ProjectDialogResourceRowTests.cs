@@ -542,4 +542,174 @@ public class ProjectDialogResourceRowTests
         // Switching a row onto Instructions must not silently opt it into having its file read and sent.
         Assert.False(row.SendsContent);
     }
+
+    // --- AC-503: a Memory row's own reachability check ---------------------------------------------------------
+
+    private static ProjectMemorySourceRegistration _DepotSourceWithCheck(
+        Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>> check) =>
+        new("depot", "Depot project", "Read it through the Depot MCP.") { CheckReachability = check };
+
+    [Fact]
+    public async Task RegressionTest_ASourceWithNoCheckDelegate_LeavesTheRowExactlyAsBeforeAC503()
+    {
+        // A registration a plugin built before AC-503 existed (or one whose author simply never implemented a
+        // check) carries CheckReachability = null — this proves such a row shows none of the three new states,
+        // the same as today.
+        var depotSource = new ProjectMemorySourceRegistration("depot", "Depot project", "Read it through the Depot MCP.");
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Null(row.Reachability);
+        Assert.False(row.IsConfirmedReachable);
+        Assert.False(row.IsNotFoundReachable);
+        Assert.False(row.IsNotSignedIn);
+    }
+
+    [Fact]
+    public async Task EmptyField_ShowsNoneOfTheThreeStates_AndNeverCallsTheCheckAtAll()
+    {
+        var calls = 0;
+        var depotSource = _DepotSourceWithCheck((_, _) =>
+        {
+            calls++;
+            return Task.FromResult(ProjectMemorySourceReachabilityResult.Confirmed(null));
+        });
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        viewModel.Name = "Cockpit";
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows[0];
+        row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+
+        // Reference is left blank — AC-503 acceptance criterion 6.
+        await viewModel.ResourceDiagnosticsRefreshCompleted;
+
+        Assert.Equal(0, calls);
+        Assert.Null(row.Reachability);
+        Assert.False(row.IsConfirmedReachable);
+        Assert.False(row.IsNotFoundReachable);
+        Assert.False(row.IsNotSignedIn);
+    }
+
+    [Fact]
+    public async Task AConfirmedValue_SetsReachabilityAndShowsTheDetail()
+    {
+        var depotSource = _DepotSourceWithCheck((value, _) =>
+            Task.FromResult(ProjectMemorySourceReachabilityResult.Confirmed($"24 documents for {value}")));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, row.Reachability);
+        Assert.True(row.IsConfirmedReachable);
+        Assert.False(row.IsNotFoundReachable);
+        Assert.False(row.IsNotSignedIn);
+        Assert.Equal("24 documents for cockpit", row.ReachabilityDetail);
+    }
+
+    [Fact]
+    public async Task ANotFoundValue_SetsReachabilityNotFound()
+    {
+        var depotSource = _DepotSourceWithCheck((_, _) => Task.FromResult(ProjectMemorySourceReachabilityResult.NotFound));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:no-such-project", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Equal(ProjectMemorySourceReachability.NotFound, row.Reachability);
+        Assert.True(row.IsNotFoundReachable);
+        Assert.False(row.IsConfirmedReachable);
+        Assert.False(row.IsNotSignedIn);
+    }
+
+    [Fact]
+    public async Task ANotSignedInValue_SetsReachabilityNotSignedIn()
+    {
+        var depotSource = _DepotSourceWithCheck((_, _) => Task.FromResult(ProjectMemorySourceReachabilityResult.NotSignedIn));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, row.Reachability);
+        Assert.True(row.IsNotSignedIn);
+        Assert.False(row.IsConfirmedReachable);
+        Assert.False(row.IsNotFoundReachable);
+    }
+
+    [Fact]
+    public async Task ACheckDelegateThatThrows_MapsToNotSignedIn_NeverToNotFound()
+    {
+        // AC-503 acceptance criterion 4: a plugin's own check delegate failing (a hiccup in its host call, an
+        // unhandled edge case) is exactly the same kind of ambiguous failure a network/timeout error at the host
+        // probe layer is — it must never read as "this does not exist", which would name the wrong cause.
+        var depotSource = _DepotSourceWithCheck((_, _) => throw new InvalidOperationException("boom"));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, row.Reachability);
+    }
+
+    [Fact]
+    public async Task IronLaw8_ANonConfirmedResultsDetail_NeverSurfacesOnTheRow_EvenIfThePluginSetOne()
+    {
+        // Belt-and-braces: even if a plugin's own check mistakenly attached a Detail to a non-Confirmed result —
+        // here standing in for what a leaked credential fragment would look like — the row must never show it.
+        // ProjectMemorySourceReachabilityResult's own doc comment already says Detail is ignored for any state but
+        // Confirmed; this proves the dialog's own mapping actually honours that rather than merely documenting it.
+        var depotSource = _DepotSourceWithCheck((_, _) =>
+            Task.FromResult(new ProjectMemorySourceReachabilityResult(ProjectMemorySourceReachability.NotSignedIn, "Bearer fake-token-should-never-be-shown")));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Null(row.ReachabilityDetail);
+    }
+
+    [Fact]
+    public async Task RapidEdits_CancelTheOlderInFlightCheck_NotJustDiscardItsResult()
+    {
+        // AC-503 acceptance criterion 5: simulates a quick run of edits (typing). The older check must actually be
+        // cancelled — its own CancellationToken tripped — not merely have its eventual answer thrown away, which is
+        // what _RunReachabilityCheckAsync's own version-guard would do for free even without real cancellation.
+        var log = new List<(string Value, CancellationToken Token)>();
+        var depotSource = _DepotSourceWithCheck(async (value, token) =>
+        {
+            log.Add((value, token));
+            if (value == "first")
+            {
+                // Long enough that, absent real cancellation, this would still be running when the test's own
+                // await below returns — proving the token itself was tripped, not just outrun.
+                await Task.Delay(TimeSpan.FromSeconds(3), token).ConfigureAwait(false);
+            }
+
+            return ProjectMemorySourceReachabilityResult.Confirmed(value);
+        });
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        viewModel.Name = "Cockpit";
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows[0];
+        row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+
+        row.Reference = "first";
+        // Past the 400 ms quiet period, so check("first") has actually started (is in flight) by the time the next
+        // edit lands — the scenario this AC means, not merely two edits that both land inside one quiet period.
+        await Task.Delay(TimeSpan.FromMilliseconds(600));
+        row.Reference = "second";
+
+        // Cancelling the previous run's token happens synchronously at the top of the new _RunResourceDiagnosticsAsync
+        // call (before its own quiet-period await), so this is already true the instant the property setter above returns.
+        Assert.True(log.Single(entry => entry.Value == "first").Token.IsCancellationRequested,
+            "the older check's own token must be cancelled, not merely have its eventual result ignored");
+
+        await viewModel.ResourceDiagnosticsRefreshCompleted;
+
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, row.Reachability);
+        Assert.Equal("second", row.ReachabilityDetail);
+    }
 }

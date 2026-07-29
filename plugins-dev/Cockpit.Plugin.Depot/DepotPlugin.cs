@@ -23,6 +23,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // than a snapshot taken once — the same reason YouTrackPlugin keeps its own settings reference.
     private DepotSettings? _settings;
 
+    // Kept from Initialize (AC-503) so GetMcpServers(string?, IReadOnlyList<string>) below can hand
+    // BuildRegistrationPairs the host it needs to wire CheckReachability onto every registration it builds — even
+    // though this particular call site only reads Registration.Scheme back out, BuildRegistrationPairs itself always
+    // needs a host to build a registration at all.
+    private ICockpitHost? _host;
+
     public PluginMetadata Metadata { get; } = new(
         Id: "depot",
         DisplayName: "Depot",
@@ -42,11 +48,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     {
         var settings = new DepotSettings(host.Storage);
         _settings = settings;
+        _host = host;
         host.AddSettings(() => new DepotSettingsControl(host, settings));
 
         // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did
         // before this plugin existed, rather than always offering a fixed "Depot project" nothing points at yet.
-        foreach (var registration in DepotMemorySource.BuildRegistrations(settings.Connections))
+        foreach (var registration in DepotMemorySource.BuildRegistrations(settings.Connections, host))
         {
             host.AddProjectMemorySource(registration);
         }
@@ -88,13 +95,13 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     /// </summary>
     public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId, IReadOnlyList<string> projectMemorySchemes)
     {
-        if (_settings is null || projectMemorySchemes.Count == 0)
+        if (_settings is null || _host is null || projectMemorySchemes.Count == 0)
         {
             return [];
         }
 
         var schemes = new HashSet<string>(projectMemorySchemes, StringComparer.OrdinalIgnoreCase);
-        return DepotMemorySource.BuildRegistrationPairs(_settings.Connections)
+        return DepotMemorySource.BuildRegistrationPairs(_settings.Connections, _host)
             .Where(pair => schemes.Contains(pair.Registration.Scheme))
             .Select(pair => _ContributionFor(pair.Connection))
             .ToList();

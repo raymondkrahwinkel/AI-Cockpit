@@ -1,4 +1,8 @@
 using Cockpit.Plugin.Depot.Model;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Projects;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -134,5 +138,109 @@ public class DepotMemorySourceTests
         var pairs = DepotMemorySource.BuildRegistrationPairs(connections);
 
         Assert.Equal(pairs.Select(pair => pair.Registration), registrations);
+    }
+
+    // --- AC-503: CheckReachability wiring ---------------------------------------------------------------------
+
+    [Fact]
+    public void NoHostPassed_LeavesCheckReachabilityNull()
+    {
+        // The default for every existing caller of this method (and every test above it) — a row from a
+        // registration built without a host must behave exactly as it always has: nothing shown under it.
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+
+        Assert.Null(pairs.Single().Registration.CheckReachability);
+    }
+
+    [Fact]
+    public void AHostPassed_WiresUpCheckReachability()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        Assert.NotNull(pairs.Single().Registration.CheckReachability);
+    }
+
+    [Fact]
+    public async Task CheckReachability_CallsTheHostProbe_AgainstThisConnectionsOwnMcpServerName()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+            .Returns(McpProbeResult.Success("24 documents"));
+        var connection = Connection("c1", "Synvolution");
+        var pairs = DepotMemorySource.BuildRegistrationPairs([connection], host);
+
+        await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        // "Depot: Synvolution" — DepotConnectionRegistration.McpServerName's own fixed prefix, so a hand-typed
+        // server name here can never silently drift from the name AddMcpServer actually registered under.
+        await host.Received(1).ProbeMcpToolAsync(connection.McpServerName, Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CheckReachability_PassesTheTypedValueAsAnArgument()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+            .Returns(McpProbeResult.Success(null));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        await pairs.Single().Registration.CheckReachability!("my-slug", CancellationToken.None);
+
+        await host.Received(1).ProbeMcpToolAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, object?>>(arguments => arguments.Values.Contains("my-slug")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(McpProbeOutcome.Success, ProjectMemorySourceReachability.Confirmed)]
+    [InlineData(McpProbeOutcome.NotFound, ProjectMemorySourceReachability.NotFound)]
+    [InlineData(McpProbeOutcome.NotSignedIn, ProjectMemorySourceReachability.NotSignedIn)]
+    // Acceptance criterion 4: a probe that could not even be attempted/completed (Failed — a network hiccup, a
+    // timeout) must read the same as "not signed in", never as "not found" — that would name the wrong cause for
+    // what is really just a transient failure to reach the connection at all.
+    [InlineData(McpProbeOutcome.Failed, ProjectMemorySourceReachability.NotSignedIn)]
+    public async Task CheckReachability_MapsEveryProbeOutcome_ToTheHonestRowState(
+        McpProbeOutcome probeOutcome, ProjectMemorySourceReachability expected)
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+            .Returns(new McpProbeResult(probeOutcome, probeOutcome == McpProbeOutcome.Success ? "some detail" : null));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal(expected, result.State);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OnSuccess_CarriesTheProbesDetailThrough()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+            .Returns(McpProbeResult.Success("24 documents, last changed 2 hours ago"));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal("24 documents, last changed 2 hours ago", result.Detail);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OnFailure_NeverSurfacesTheDetailField()
+    {
+        // Iron Law #8, belt-and-braces: even if a future McpProbeResult.Failed ever carried a Detail (it does not
+        // today — Failed/NotSignedIn/NotFound never set one), this mapping must not forward it into a state the UI
+        // shows a fixed sentence for (ProjectMemorySourceReachabilityResult's own doc comment on Detail).
+        var host = Substitute.For<ICockpitHost>();
+        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+            .Returns(new McpProbeResult(McpProbeOutcome.Failed, "should never be shown"));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Null(result.Detail);
     }
 }
