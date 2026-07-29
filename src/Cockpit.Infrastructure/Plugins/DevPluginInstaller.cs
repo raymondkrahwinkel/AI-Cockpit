@@ -36,6 +36,14 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The <c>plugins-dev</c> folder for the running app's own checkout, or null off a dev checkout — the same
+    /// walk <see cref="InstallAsync"/> uses to decide there is nothing to sync. Exposed so a watcher (AC-185) can
+    /// find what to watch without duplicating that walk.
+    /// </summary>
+    public static string? FindPluginsDevRoot() =>
+        _FindPluginsDev(new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+
     // Each first-party plugin's built output lives at plugins-dev/<plugin>/bin/<config>/<tfm>/, next to its
     // plugin.json. Config and tfm are read from the running app's own base directory so the sync always matches
     // the build that is running, rather than a guessed "Debug/net10.0".

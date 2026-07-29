@@ -228,6 +228,12 @@ public partial class App : Application
         // and asked — rather than having it cleaned out of their plugins folder behind their back.
         _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
 
+#if DEBUG
+        // AC-185: the dev inner loop — watches plugins-dev for a rebuild and offers one toast action to reload
+        // it, instead of a manual restart after every build. DEBUG only, and a no-op off a dev checkout.
+        Program.Services.GetService<DevPluginReloadWatcher>()?.Start();
+#endif
+
         // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
         // gets compared), then every 15 minutes for the rest of the run.
         // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is

@@ -738,6 +738,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   was ever brought back this run — the resume reports itself undelivered exactly as it always has. Terminal
   sessions are not covered yet: a terminal's connection comes up too late for this to trust safely, so a due
   resume against a terminal pane still reports undelivered rather than risk starting one for nothing.
+- added: a plugin author running a DEBUG build from a dev checkout now gets a one-click reload after rebuilding
+  a plugin under `plugins-dev` — a toast offers **Reload**, which brings the new build in and restarts, instead
+  of a manual zip/install round-trip for every change. It only refreshes a plugin you already installed, and only
+  on a dev checkout; a release build behaves exactly as before.
 
 ### Changed
 
