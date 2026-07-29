@@ -53,6 +53,14 @@ public sealed record Project(string Id, string Name)
     public ProjectMcpOverlay McpOverlay { get; init; } = ProjectMcpOverlay.None;
 
     /// <summary>
+    /// Whatever else a project's sessions may need to read, follow or look things up in (AC-483): a memory folder
+    /// and a Depot project together, tomorrow an instruction file — see <see cref="ProjectResource"/> and
+    /// <see cref="ProjectResourceRole"/>. In the idiom of <see cref="AdditionalInfo"/>: a plain list, in the order
+    /// they were added, empty for the (still common) project that keeps none.
+    /// </summary>
+    public IReadOnlyList<ProjectResource> Resources { get; init; } = [];
+
+    /// <summary>
     /// Where this project's memory lives — a folder, deliberately separate from <see cref="SourceDirectory"/>,
     /// because what a project knows and what it is made of are not the same place and often not the same disk.
     /// Told to the session as part of its standing instructions, so it can go and look rather than be told again
@@ -61,8 +69,67 @@ public sealed record Project(string Id, string Name)
     /// Free text rather than a path type: a plugin will contribute other kinds of reference (a Depot project,
     /// AC-165/166), and those are not folders. The host stores what it is given and says it plainly.
     /// </para>
+    /// <para>
+    /// Mirrors the first <see cref="ProjectResourceRole.Memory"/> row in <see cref="Resources"/> rather than
+    /// holding a value of its own (AC-483: a project can now carry more than one memory source, and this field
+    /// predates that by a long way). Kept only so nothing that already reads or writes it — <c>SessionStartDefaults</c>,
+    /// the project editor, every test that does <c>project with { MemoryRef = "..." }</c> — has to change: reading
+    /// always answers from <see cref="Resources"/>, and writing (an <c>init</c> accessor, because that is the only
+    /// kind of setter a record's <c>with</c> expression and object initializers can call) folds the value into that
+    /// same first row rather than keeping a second, independent place for it to disagree with.
+    /// </para>
+    /// <para>
+    /// ⚠️ Because both names write the same place, an initializer that sets <em>both</em> is order-dependent: the
+    /// later one wins, so <c>with { MemoryRef = "a", Resources = [...] }</c> and the same two lines swapped produce
+    /// different projects. Nothing does that today (checked), and nothing should: set one or the other. The way out
+    /// is not a cleverer setter — no accessor can make two writes to one place commute — but for the callers that
+    /// still say <c>MemoryRef</c> to say <see cref="Resources"/> instead, after which this member goes. AC-485 is
+    /// where that starts, since the project editor is the last writer of consequence.
+    /// </para>
     /// </summary>
-    public string? MemoryRef { get; init; }
+    public string? MemoryRef
+    {
+        get => Resources.FirstOrDefault(resource => resource.Role == ProjectResourceRole.Memory)?.Reference;
+        init => Resources = _WithMemoryReference(Resources, value);
+    }
+
+    /// <summary>
+    /// <paramref name="resources"/> with its first <see cref="ProjectResourceRole.Memory"/> row's
+    /// <see cref="ProjectResource.Reference"/> set to <paramref name="reference"/>: replaced in place if such a row
+    /// exists, appended if it does not.
+    /// <para>
+    /// A null or blank <paramref name="reference"/> removes <em>every</em> Memory row, not just the first: AC2 lets
+    /// a project keep more than one (a local folder and a Depot project together), and <see cref="MemoryRef"/> is a
+    /// singular name for "the memory this project keeps" — if clearing it left a second Memory row standing, the
+    /// getter would go on reporting memory that is, from this call's point of view, supposed to be gone. Removing
+    /// only the first would make <c>with { MemoryRef = null }</c> lie about what it just did.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<ProjectResource> _WithMemoryReference(IReadOnlyList<ProjectResource> resources, string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return [.. resources.Where(resource => resource.Role != ProjectResourceRole.Memory)];
+        }
+
+        var index = -1;
+        for (var i = 0; i < resources.Count; i++)
+        {
+            if (resources[i].Role == ProjectResourceRole.Memory)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            return [.. resources, new ProjectResource(reference, ProjectResourceRole.Memory)];
+        }
+
+        var updated = new List<ProjectResource>(resources) { [index] = resources[index] with { Reference = reference } };
+        return updated;
+    }
 
     /// <summary>
     /// The project's logo: the path of the image the cockpit copied into its own storage when the operator picked a
