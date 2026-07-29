@@ -50,7 +50,13 @@ public class RenameFieldThemeStateTests
         window.UpdateLayout();
         Assert.False(field.IsPointerOver, "focus has to be read on its own, or hover answers for it");
         Assert.True(field.IsFocused, "and only while the field actually holds focus");
-        Assert.Equal(_Token("CockpitAccentColor"), _Colour(border.BorderBrush));
+        // The focus token, not the accent: the host theme gives a plain :focus CockpitFocusHairlineBrush on purpose
+        // (Theme.axaml, the TextBox :focus setter and the comment above it) — the accent ring is reserved for
+        // :focus-visible, so that a field reached by mouse is marked more quietly than one reached by keyboard.
+        // Asserting the accent here made this test disagree with the theme it claims to read; it only passed while
+        // the two tokens happened to share a hue, and it started failing the moment the accent was darkened for
+        // contrast (AC-381) — for a reason that has nothing to do with this field.
+        Assert.Equal(_Token("CockpitFocusHairlineColor"), _Colour(border.BorderBrush));
 
         // The two things the states must not touch: the fill it reads as a label by, and the width that would
         // shift the toolbar around it.

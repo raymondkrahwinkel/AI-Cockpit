@@ -778,7 +778,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   it doesn't look untouched, just not as loud as the keyboard signal.
 - changed: the accent colour is a darker blue. The white button label it carries measured under the accessibility
   floor for readable text against the previous shade; the new one, and its hover and pressed tints, all clear it.
-  This is a deliberate move away from the accent shown in the app's earlier mockups, made for readability.
+  This is a deliberate move away from the accent shown in the app's earlier mockups, made for readability. The
+  quieter ring on a field you clicked into is a tint of that accent, so it moved with it — it had been left behind
+  on the old hue, which made the two blues on a focused field disagree by a shade nobody chose.
 
 - changed: Autopilot now plans its review gates to spend verification where the verdict is. A gate reviews, its
   findings get fixed, and it reviews again until a round finds nothing — the rounds in between are asked to build
