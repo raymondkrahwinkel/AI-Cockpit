@@ -236,7 +236,13 @@
          the same fact up the route that has no event stream of its own. Both the property and the callback are
          additions with safe defaults (Unknown-derived-from-SessionId; null callback an already-compiled plugin simply
          never calls). Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.35.0</Version>
+    <!-- 1.36.0 (AC-410): added PluginTurnCompleted.Errors — a failed turn's provider-reported reasons (e.g. Claude's
+         error_during_execution for an unresolvable resume id sets Result to null and reports the failure only in
+         errors[]), which the host's own TurnCompleted mirrors so a restored pane's degraded restore offer can show
+         why the resume actually failed instead of just that it did. Init-only, defaulting to null: an already-
+         compiled driver keeps constructing this record the old way and simply reports no errors. Additions only —
+         a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.36.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

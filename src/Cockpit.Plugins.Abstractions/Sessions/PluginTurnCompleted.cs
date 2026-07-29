@@ -23,4 +23,14 @@ public sealed record PluginTurnCompleted : PluginSessionEvent
 
     /// <summary>The provider's own turn count for the session, when it reports one.</summary>
     public int? NumTurns { get; init; }
+
+    /// <summary>
+    /// Why the turn failed, in the provider's own words, when <see cref="Subtype"/> is an error and
+    /// <see cref="Result"/> was never set to explain it (AC-410) — e.g. Claude's
+    /// <c>error_during_execution</c> for an unresolvable <c>--resume</c> id reports
+    /// <c>["No conversation found with session ID: …"]</c> here and nothing in <see cref="Result"/>. Null when the
+    /// provider reported none, which is every turn that is not this failure mode. Optional like <see cref="Usage"/>
+    /// above: an already-compiled plugin that never sets it keeps constructing this the old way.
+    /// </summary>
+    public IReadOnlyList<string>? Errors { get; init; }
 }

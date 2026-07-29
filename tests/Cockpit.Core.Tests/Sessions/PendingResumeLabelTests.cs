@@ -65,9 +65,11 @@ public class PendingResumeLabelTests
         // belongs to exists, so no event is coming for that session and being handed the scheduler has to be
         // enough on its own.
         //
-        // Note what this test does NOT claim: that a resume survives a restart. A pane id is a fresh guid per run
-        // (SessionPanelViewModel.PaneId) and no session is reopened when the cockpit starts, so a stored resume
-        // never finds its session again — that gap is AC-290, not this one.
+        // Note what this test does NOT claim: that a resume is actually delivered across a restart. A restored
+        // pane keeps the id it was saved under (SessionPanelViewModel.AdoptPaneId, AC-410), so a stored resume can
+        // find this pane again by id — but this test only checks that the pending line shows up, not that
+        // RunDueAsync would send into it, which it will not until the pane has actually been started
+        // (CanTakeAPrompt; see ScheduledResumeCoordinatorTests.WhenTheResolvedPaneIsNotYetStarted_...).
         var store = new InMemoryScheduledResumeStore();
         var session = new TestSessionPanel();
         Assert.Equal(string.Empty, session.PendingResumeLabel);

@@ -249,6 +249,22 @@ public sealed class SessionStateStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task CompactAsync_FileWhoseEveryLineIsUnreadable_LeavesItAloneRatherThanEmptyingIt()
+    {
+        // Found by running the real app against a hand-written state file (AC-410 live check): every line failed to
+        // parse, the parse loop yielded nothing — it skips a bad line rather than raising — and compaction wrote
+        // that nothing back out, truncating the file to zero bytes. A build that cannot read the file it is given
+        // must not be the thing that destroys it; that is the same rule the read-failure path already follows.
+        var store = CreateStore();
+        await File.WriteAllTextAsync(_path, "{\"PaneId\":\"pane-1\",\"WorkingDirectory\":\"C:\\Users\\raymo\"}" + Environment.NewLine);
+        var before = await File.ReadAllTextAsync(_path);
+
+        await store.CompactAsync();
+
+        Assert.Equal(before, await File.ReadAllTextAsync(_path));
+    }
+
+    [Fact]
     public async Task LoadAsync_LineWithoutAPaneId_SkipsThatLineAndKeepsTheRest()
     {
         // Valid JSON that simply has no pane on it — a hand edit of a file that sits next to cockpit.json, or a

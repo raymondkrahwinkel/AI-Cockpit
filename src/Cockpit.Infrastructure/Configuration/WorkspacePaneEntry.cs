@@ -29,6 +29,14 @@ internal sealed class WorkspacePaneEntry
 
     public string? WorkingDirectory { get; set; }
 
+    public string? Title { get; set; }
+
+    public bool NameIsChosen { get; set; }
+
+    public string SessionKind { get; set; } = nameof(PaneSessionKind.Sdk);
+
+    public string? ProjectId { get; set; }
+
     public static WorkspacePaneEntry FromDomain(WorkspacePane pane) => new()
     {
         Id = pane.Id,
@@ -41,12 +49,21 @@ internal sealed class WorkspacePaneEntry
         ProfileId = pane.ProfileId,
         Shell = pane.Shell,
         WorkingDirectory = pane.WorkingDirectory,
+        Title = pane.Title,
+        NameIsChosen = pane.NameIsChosen,
+        SessionKind = pane.SessionKind.ToString(),
+        ProjectId = pane.ProjectId,
     };
 
     /// <summary>This entry as a domain record; spans are floored at one so a zero-span pane cannot render as invisible.</summary>
     public WorkspacePane ToDomain()
     {
         var kind = Enum.TryParse<PaneKind>(Kind, ignoreCase: true, out var parsed) ? parsed : PaneKind.AiSession;
+        // Same fallback as Kind above: a session kind this build no longer recognises (or a hand-edited typo)
+        // degrades to Sdk rather than refusing to load the pane.
+        var sessionKind = Enum.TryParse<PaneSessionKind>(SessionKind, ignoreCase: true, out var parsedSessionKind)
+            ? parsedSessionKind
+            : PaneSessionKind.Sdk;
         return new WorkspacePane(Id, kind)
         {
             Cell = new GridCell(Column, Row, Math.Max(1, ColumnSpan), Math.Max(1, RowSpan)),
@@ -54,6 +71,10 @@ internal sealed class WorkspacePaneEntry
             ProfileId = ProfileId,
             Shell = Shell,
             WorkingDirectory = WorkingDirectory,
+            Title = Title,
+            NameIsChosen = NameIsChosen,
+            SessionKind = sessionKind,
+            ProjectId = ProjectId,
         };
     }
 }

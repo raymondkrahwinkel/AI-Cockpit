@@ -197,7 +197,29 @@ internal static class ClaudeStreamJson
         Usage = _ParseUsage(root),
         TotalCostUsd = root.TryGetProperty("total_cost_usd", out var costProp) && costProp.ValueKind == JsonValueKind.Number ? costProp.GetDouble() : null,
         NumTurns = root.TryGetProperty("num_turns", out var turnsProp) && turnsProp.ValueKind == JsonValueKind.Number ? turnsProp.GetInt32() : null,
+        Errors = _ParseErrors(root),
     };
+
+    // AC-410: the field _ParseResult otherwise never reads. A failed error_during_execution turn (an unresolvable
+    // --resume id, say) carries no "result" — this is the only place the failure's own reason survives at all.
+    private static IReadOnlyList<string>? _ParseErrors(JsonElement root)
+    {
+        if (!root.TryGetProperty("errors", out var errorsProp) || errorsProp.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var errors = new List<string>();
+        foreach (var item in errorsProp.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                errors.Add(item.GetString() ?? string.Empty);
+            }
+        }
+
+        return errors.Count > 0 ? errors : null;
+    }
 
     private static PluginTokenUsage? _ParseUsage(JsonElement root)
     {

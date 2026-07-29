@@ -69,6 +69,10 @@ public class ScheduledResumeTimerTests
 
         public Task<string> FirstPrompt => _first.Task;
 
+        // A live, ready session for these timer tests (AC-410's CanTakeAPrompt gate in RunDueAsync would otherwise
+        // refuse to send into this fake the same way it now refuses an unstarted restored pane).
+        public override bool CanTakeAPrompt => true;
+
         public override Task<bool> SendPromptAsync(string prompt)
         {
             _first.TrySetResult(prompt);

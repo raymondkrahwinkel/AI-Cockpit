@@ -10,6 +10,13 @@ internal sealed class TestSessionPanel : SessionPanelViewModel
 {
     public List<string> Sent { get; } = [];
 
+    // Defaults to a live, ready session — every existing scheduled-resume test assumes delivery works and gates
+    // on IsDue/HasLapsed instead. Set false to stand in for a restored pane that was never started (AC-410),
+    // where CanTakeAPrompt is what ScheduledResumeCoordinator.RunDueAsync must refuse to send into.
+    public bool CanTakeAPromptOverride { get; set; } = true;
+
+    public override bool CanTakeAPrompt => CanTakeAPromptOverride;
+
     public override Task<bool> SendPromptAsync(string prompt)
     {
         Sent.Add(prompt);

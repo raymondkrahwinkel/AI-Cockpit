@@ -559,6 +559,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 : null,
             TotalCostUsd = turnCompleted.TotalCostUsd,
             NumTurns = turnCompleted.NumTurns,
+            Errors = turnCompleted.Errors,
         },
         PluginSessionError error => new SessionError
         {

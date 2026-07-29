@@ -158,4 +158,27 @@ public class ScheduledResumeCoordinatorTests
 
         coordinator.Pending.Should().ContainSingle();
     }
+
+    /// <summary>
+    /// AC-410: pane-id continuity means a resume due within the restore <c>Grace</c> window can now resolve to a
+    /// pane the operator has not started yet — its runtime never came up, so sending into it "completes without
+    /// going anywhere" (the failure mode <c>SessionPanelViewModel.CanTakeAPrompt</c> exists to describe). This must
+    /// land in the same "could not be delivered" branch as a session that is gone outright, not the "was sent" one.
+    /// Asserted with xunit's own Assert (AC-372), unlike this file's older neighbours.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheResolvedPaneIsNotYetStarted_TheResumeIsNotSent_ButIsReported()
+    {
+        var store = new InMemoryStore();
+        var coordinator = new ScheduledResumeCoordinator(store);
+        var session = new TestSessionPanel { CanTakeAPromptOverride = false };
+        coordinator.ResolveSession = _ => session;
+
+        await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on"));
+        await coordinator.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.Empty(session.Sent);
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
+    }
 }

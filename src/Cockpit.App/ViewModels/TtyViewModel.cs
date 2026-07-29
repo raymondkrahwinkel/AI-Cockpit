@@ -2,6 +2,7 @@ using System.Text;
 using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -44,6 +45,21 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private IReadOnlySet<string>? _configuredEnabledMcpServerNames;
     private SessionResources? _configuredContributed;
     private bool _launched;
+
+    /// <summary>
+    /// True from <see cref="LaunchConfigured"/> until <see cref="OnLaunchSucceeded"/> for the first launch of a
+    /// restored pane, false otherwise (AC-410). Armed off <see cref="SessionPanelViewModel.RestoreOffer"/> being set
+    /// at configure time — <c>CockpitViewModel._StartRestoredSessionAsync</c> only clears it after the start call
+    /// returns, but that happens as soon as this launch is configured, well before the pty has actually spawned, so
+    /// <c>RestoreOffer</c> itself cannot be read again once the process later exits; <see cref="_restoredOfferSnapshot"/>
+    /// is what survives that gap. While armed, <see cref="OnProcessExited"/> must not close the pane: a resume that
+    /// fails fast (an expired conversation id) would otherwise erase the very pane record it was trying to bring
+    /// back, in the same run that just restored it.
+    /// </summary>
+    private bool _degradeInsteadOfCloseOnExit;
+
+    /// <summary>The offer this pane was restored with, captured when <see cref="_degradeInsteadOfCloseOnExit"/> armed — the source a failed exit degrades back to, since <see cref="SessionPanelViewModel.RestoreOffer"/> is already null by then.</summary>
+    private SessionRestorePlan? _restoredOfferSnapshot;
 
     /// <summary>
     /// A shell provider handed in directly for a terminal pane (#AC-25), bypassing
@@ -473,6 +489,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         ActiveProfileLabel = profile?.Label;
         Status = profile is null ? "Launching TUI..." : $"Launching TUI ({profile.Label})...";
         SessionStatus = SessionStatus.Busy;
+
+        // AC-410: RestoreOffer is still set here for a restored pane's first launch — the caller
+        // (CockpitViewModel._StartRestoredSessionAsync) only clears it once this call returns, which is before the
+        // pty has actually spawned. A fresh (never-restored) session has no offer, so this is a no-op there.
+        _degradeInsteadOfCloseOnExit = RestoreOffer is not null;
+        _restoredOfferSnapshot = RestoreOffer;
+
         TryRaiseLaunch();
     }
 
@@ -636,26 +659,62 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>
     /// Called by the view when the hosted TUI process exits after running (the user closed claude in the
-    /// TUI, or it ended). A TTY panel is a live terminal with nothing left to interact with once the
-    /// process is gone, so ask the cockpit to close the panel — mirrors closing claude itself.
+    /// TUI, or it ended). A TTY panel is ordinarily a live terminal with nothing left to interact with once the
+    /// process is gone, so this asks the cockpit to close the panel — mirrors closing claude itself.
+    /// <para>
+    /// AC-410's exception: within a restored pane's <see cref="_degradeInsteadOfCloseOnExit"/> window, an exit is
+    /// not "the operator is done", it is a resume that failed before it even started (an expired conversation id
+    /// makes <c>claude --resume</c> print an error and exit immediately). Closing there would delete the very pane
+    /// record the operator was trying to bring back, at the exact moment it turns out to be needed. Instead the
+    /// restore offer comes back with the failure visible, so "Start fresh" is still one click away.
+    /// </para>
     /// </summary>
-    public void OnProcessExited()
+    /// <param name="lastOutput">
+    /// The last visible terminal lines, for the degraded offer's explanation — null when there was nothing to
+    /// capture, or when this exit is not within the degrade window and the lines go unused.
+    /// </param>
+    public void OnProcessExited(string? lastOutput = null)
     {
         _StopStatusTracking();
         Status = "TUI process exited.";
         SessionStatus = SessionStatus.Done;
+
+        if (_degradeInsteadOfCloseOnExit && _restoredOfferSnapshot is { } offer)
+        {
+            _degradeInsteadOfCloseOnExit = false;
+            _restoredOfferSnapshot = null;
+            RestoreOffer = offer with
+            {
+                Availability = SessionRestoreAvailability.Gone,
+                Explanation = _DegradedExitExplanation(lastOutput),
+            };
+            return;
+        }
+
         RaiseCloseRequested();
     }
+
+    /// <summary>What the degraded restore offer's banner shows for why the earlier conversation is gone — the terminal's own last words rather than a guess, since nothing here can name the actual cause (AC-410).</summary>
+    private static string _DegradedExitExplanation(string? lastOutput) =>
+        string.IsNullOrWhiteSpace(lastOutput)
+            ? "Claude exited immediately instead of resuming, before anything was printed."
+            : $"Claude exited immediately instead of resuming:\n{lastOutput.Trim()}";
 
     /// <summary>
     /// Called by the view once the pty has actually spawned, so the header stops reading "Launching
     /// TUI..." while the real TUI is already interactive below it. Also starts JSONL-driven status
     /// tracking: the session is now idle-waiting-for-you until the transcript shows a turn in flight.
+    /// <para>
+    /// Closes a restored pane's degrade window (AC-410): a launch that got this far actually put something on
+    /// screen, so an exit from here on is the operator closing claude, not a resume failing before it started.
+    /// </para>
     /// </summary>
     public void OnLaunchSucceeded()
     {
         Status = "Running";
         SessionStatus = SessionStatus.Idle;
+        _degradeInsteadOfCloseOnExit = false;
+        _restoredOfferSnapshot = null;
         _StartStatusTracking();
     }
 

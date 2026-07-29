@@ -39,6 +39,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
     private ISessionRuntime? _runtime;
 
+    /// <summary>
+    /// The offer this pane was restored with, captured at the top of <see cref="StartConfiguredAsync"/> when it is
+    /// still set (AC-410) — the caller (<c>CockpitViewModel._StartRestoredSessionAsync</c>) clears
+    /// <see cref="SessionPanelViewModel.RestoreOffer"/> as soon as this method returns, well before the first turn's
+    /// result has come back. Consumed, and cleared, by the first <see cref="TurnCompleted"/> this session reports —
+    /// a resume that fails does so on that very first turn (<c>error_during_execution</c>, no history to fail on
+    /// later), so nothing past it should still read as "this was a resume attempt".
+    /// </summary>
+    private SessionRestorePlan? _restoredOfferSnapshot;
+
     /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
 
@@ -573,6 +583,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             return;
         }
+
+        // AC-410: still set here for a restored pane's first launch — see _restoredOfferSnapshot's own doc for why
+        // it has to be captured now rather than read again once the first turn actually completes.
+        _restoredOfferSnapshot = RestoreOffer;
 
         // The reading level (AC-138) opens on the per-session override chosen in the New-session dialog, else the
         // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
@@ -1535,6 +1549,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                         TranscriptEntryKind.TurnCompleted, $"Turn failed ({turn.Subtype})"));
                 }
 
+                // AC-410: the first turn of a restored pane's own launch settles the resume snapshot, one way or
+                // the other. A failure here is a resume that was actually tried and refused (an expired
+                // conversation id makes claude --resume print "No conversation found" and end the turn as
+                // error_during_execution with no Result) — the offer comes back with that reason instead of
+                // leaving the operator looking at a silently failed session with no banner explaining why.
+                if (_restoredOfferSnapshot is { } restoredOffer)
+                {
+                    _restoredOfferSnapshot = null;
+                    if (turn.IsError)
+                    {
+                        RestoreOffer = restoredOffer with
+                        {
+                            Availability = SessionRestoreAvailability.Gone,
+                            Explanation = _DegradedTurnExplanation(turn),
+                        };
+                    }
+                }
+
                 _FlushPendingProseForReadAloud();
 
                 _currentTurnAssistantEntries.Clear();
@@ -1732,6 +1764,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         return true;
     }
+
+    /// <summary>What a restored pane's degraded offer shows for why (AC-410) — the provider's own <c>errors[]</c> when it reported one, else the bare subtype, since <see cref="TurnCompleted.Result"/> is exactly what an error_during_execution turn does not carry.</summary>
+    private static string _DegradedTurnExplanation(TurnCompleted turn) =>
+        turn.Errors is { Count: > 0 } errors
+            ? string.Join('\n', errors)
+            : $"Claude could not resume the earlier conversation ({turn.Subtype}).";
 
     // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
     // the provider reports how full the context window is when a turn ends, so that is when the numbers change —

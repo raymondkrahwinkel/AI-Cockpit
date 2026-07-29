@@ -476,6 +476,27 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public Task RemovePaneAsync(string paneId) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
 
+    /// <summary>
+    /// Removes a pane from a specific workspace by id, whether or not it is the one on screen (AC-410): a session
+    /// on a Sessions desk the operator is not currently looking at must still lose its persisted pane record when
+    /// it closes. A no-op when <paramref name="workspaceId"/> names no workspace.
+    /// </summary>
+    public Task RemovePaneAsync(string workspaceId, string paneId) =>
+        Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+            ? Task.CompletedTask
+            : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
+
+    /// <summary>
+    /// Adds a pane to a specific workspace by id (AC-410) — the counterpart to
+    /// <see cref="RemovePaneAsync(string, string)"/>, used to persist an AI session's pane record at the moment
+    /// it starts, on whichever Sessions workspace it belongs to, active or not. A no-op when
+    /// <paramref name="workspaceId"/> names no workspace.
+    /// </summary>
+    public Task AddPaneAsync(string workspaceId, WorkspacePane pane) =>
+        Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+            ? Task.CompletedTask
+            : _ApplyAsync(Settings.WithUpdated(workspace.WithPane(pane)));
+
     /// <summary>Moves a pane to <paramref name="cell"/> after a drag. Position only — the pane itself is never rebuilt, which is what keeps a dragged terminal from losing its pty (leermoment 2026-07-13).</summary>
     public Task MovePaneAsync(string paneId, GridCell cell) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithPaneMoved(paneId, cell)));

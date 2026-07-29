@@ -129,6 +129,14 @@ public sealed record TurnCompleted : SessionEvent
 
     /// <summary>The CLI's own turn count for the session from <c>num_turns</c> (#8), or null when absent.</summary>
     public int? NumTurns { get; init; }
+
+    /// <summary>
+    /// Why the turn failed, in the provider's own words (AC-410) — mirrors
+    /// <c>Cockpit.Plugins.Abstractions.Sessions.PluginTurnCompleted.Errors</c>. Null on every turn except the one
+    /// failure mode that carries no <see cref="Result"/> to explain itself: an <c>error_during_execution</c> from a
+    /// <c>--resume</c> id the provider no longer recognises.
+    /// </summary>
+    public IReadOnlyList<string>? Errors { get; init; }
 }
 
 /// <summary>

@@ -108,6 +108,49 @@
             </DockPanel>
         </Border>
 
+        <!-- AC-410: this pane was brought back after a restart — nothing has started yet. An offer, not a
+             warning (hence the accent border, like the pending-resume banner above), and deliberately not
+             silently dismissible: doing nothing leaves it standing, so the pane comes back again next run rather
+             than vanishing without a trace. "Resume conversation" only shows when the plan is confident the
+             earlier conversation is still reachable; "Start fresh" and "Close" are always offered. -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
+                IsVisible="{Binding HasRestoreOffer}"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Content="Resume conversation" Classes="Compact"
+                            Command="{Binding ResumeConversationCommand}" IsVisible="{Binding CanResumeConversation}"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Pick the earlier conversation back up where it left off."/>
+                    <Button Content="Start fresh" Classes="Compact"
+                            Command="{Binding StartFreshCommand}" VerticalAlignment="Center"
+                            ToolTip.Tip="Start a new conversation in this pane instead."/>
+                    <Button Content="Close" Classes="Compact"
+                            Command="{Binding CloseRestoredPaneCommand}" VerticalAlignment="Center"
+                            ToolTip.Tip="Close this pane. It was never started."/>
+                </StackPanel>
+                <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its children with unbounded width in
+                     the stacking direction, so the offer line never learns it has to stop and runs on underneath
+                     the buttons docked to the right of it. The star column gives it the space that is actually
+                     left. -->
+                <StackPanel Orientation="Vertical" Spacing="2" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="Restore" Width="15" Height="15"
+                                                    Margin="0,0,6,0" VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding RestoreOfferText}" VerticalAlignment="Center"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </Grid>
+                    <TextBlock Text="{Binding RestoreDegradedReason}" IsVisible="{Binding !CanResumeConversation}"
+                               Margin="21,0,0,0" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
         <!-- AC-34: the "agent connected" bar — always visible while an agent is coupled to this pane through the
              terminal-access MCP, the counterpart to both the operator and the agent being able to type. It says which
              of the two was approved ("reading" vs "connected"), because those are separate consents. Its Disconnect is

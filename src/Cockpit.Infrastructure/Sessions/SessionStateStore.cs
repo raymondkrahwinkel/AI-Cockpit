@@ -113,6 +113,20 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
                 return;
             }
 
+            // Parsing nothing out of a file that has something in it is the same situation as failing to read it,
+            // and gets the same answer: leave it alone. The per-line parse never throws — a line it cannot make
+            // sense of is simply skipped — so a file this build cannot understand at all (written by a newer one,
+            // re-encoded, hand-mangled) arrives here as an empty set rather than as an error, and rewriting on
+            // that would replace every record with nothing. The read-failure branch above already refuses to turn
+            // "unreadable" into "empty"; this is the same refusal on the path that does not raise.
+            if (latest.Count == 0 && new FileInfo(_filePath).Length > 0)
+            {
+                _logger.LogWarning(
+                    "Not compacting the session-state log at {Path}: it holds data but no line in it could be read, so rewriting it would discard all of it.",
+                    _filePath);
+                return;
+            }
+
             // No roster means "fold, drop nothing" — a caller that cannot say which panes still exist must not have
             // its silence read as "none of them do".
             var kept = knownPaneIds is null
