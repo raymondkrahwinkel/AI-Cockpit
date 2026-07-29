@@ -70,6 +70,21 @@ public class LocalCiMcpToolsTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEmptyCallerIsNoCallerAtAll()
+    {
+        _host.CallerPaneId = string.Empty;
+        var act = FakeStreamingCliRunner.Exiting(0);
+
+        var answer = await _Tools(act).RunLocalChecks();
+
+        // The blank is the interesting one: a host that has no answer and a host that answers with nothing look
+        // alike here, and treating the second as a real caller is how a lookup starts being done on an id nobody
+        // vouched for.
+        Assert.False(_Read(answer).GetProperty("ok").GetBoolean());
+        Assert.Empty(act.Calls);
+    }
+
+    [Fact]
     public async Task ACallerTheCockpitDoesNotKnowGetsNothing()
     {
         _host.CallerPaneId = "pane-that-never-registered";

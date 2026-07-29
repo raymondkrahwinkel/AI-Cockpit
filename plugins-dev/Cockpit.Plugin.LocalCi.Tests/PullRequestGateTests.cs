@@ -58,6 +58,20 @@ public class PullRequestGateTests
     }
 
     [Fact]
+    public async Task ARunThatFailedIsReportedAsFailedAndNotAsNothingHavingRun()
+    {
+        _settings.Set(Checkout, on: true);
+        _tracker.Complete(Checkout, _Result(LocalRunOutcome.Failed), Head, Noon);
+
+        var verdict = await _Gate().JudgeAsync(Checkout, CancellationToken.None);
+
+        // Both refuse, so refusing alone does not tell them apart — and calling a run that ran and failed "nothing
+        // ran" sends the operator looking for a run to start instead of at the failure they already have.
+        Assert.Equal(GateStatus.Failed, verdict.Status);
+        Assert.Equal(_Result(LocalRunOutcome.Failed).Headline, verdict.Reason);
+    }
+
+    [Fact]
     public async Task EveryEndingThatIsNotAPassIsRefused()
     {
         _settings.Set(Checkout, on: true);

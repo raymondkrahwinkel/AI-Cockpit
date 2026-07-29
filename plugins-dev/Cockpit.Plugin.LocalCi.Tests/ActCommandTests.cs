@@ -23,6 +23,20 @@ public class ActCommandTests
     }
 
     [Fact]
+    public void TheRunNeitherRefetchesWhatItHasNorLeavesContainersBehind()
+    {
+        var arguments = ActCommand.Build(Request, "ubuntu-latest", Options, "r1");
+
+        // act pulls images and actions on every run unless told otherwise, which would undo the caches that make a
+        // second run worth doing — the whole measured difference between a cold run and a warm one.
+        Assert.Contains("--action-offline-mode", arguments);
+
+        // And a run that ends badly cleans up after itself; without this only the stop path does, and an ordinary
+        // failure leaves a container holding the cores.
+        Assert.Contains("--rm", arguments);
+    }
+
+    [Fact]
     public void TheWorkflowIsNamedRelativeToTheCheckout()
     {
         var arguments = ActCommand.Build(Request, "ubuntu-latest", Options, "r1");
