@@ -81,7 +81,8 @@ public class AutopilotPlanTierGateTests
         controller.BeginPlanning(AutopilotPlan.Empty(source: null, goal: "Ship it"));
         controller.BindSession("pane-1");
 
-        // Empty storage, so the run sits on the default Balanced strategy — the stand the measured 88.9% was taken on.
+        // Empty storage, so the run sits on the default Balanced strategy — the stand a plan is held to unless the
+        // operator has moved it, which is the case the ceiling has to get right.
         return new AutopilotPlanTools(host, controller, new AutopilotSettings(new FakeStorage()));
     }
 

@@ -32,6 +32,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an autonomous run now has a spending ceiling it cannot talk its way past. A session provider can state what
+  its own models cost, cheapest first — the Claude provider now does, and any other provider can — and the planner is
+  held to that ranking: unless you have set the cost strategy to quality-first, a step that is not a review gate has
+  to run on the cheaper end of what its profile offers, and a plan that ignores it comes straight back to the planner
+  naming the models that step may use instead. Review gates keep the full range, because a missed finding costs more
+  than the tokens it would have saved. Prices are the provider's own **estimate** and are labelled as such wherever
+  they appear: nobody publishes a price list a program can read, so these figures are compiled into the provider and
+  can quietly go out of date — read them as proportions between models, never as a quote. What a session actually
+  cost still comes from the provider itself, exactly as before. If you would rather the planner kept its free hand,
+  set the cost strategy to quality-first and no ceiling applies.
+- added: run history now shows which profile and model actually ran each step. While a run is live that sits on the
+  step as a chip and vanishes when the run settles; now it survives, so you can open a finished run and see where its
+  money went instead of inferring it from the plan you approved.
 - added: your sessions come back after a crash. A cockpit that closed with agent sessions open — whether you
   closed it or it went down under you — starts again with those panes where you left them, on the right desk,
   under the right profile, in the right folder and worktree, each one carrying an offer to pick its conversation
@@ -985,6 +998,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   now actually dim to the theme's secondary/faint ink at rest and brighten on hover — three hover rules
   tried to set that colour and never reached the label, so all three looked like plain, undimmed text the
   whole time.
+- fixed: the planning brief told the planner that a profile's model list ran from lighter and cheaper to heavier and
+  more capable, while it actually ran the other way round. A planner following that instruction to "pick the cheapest
+  model that can do the job" was reading the expensive end of the list — in a measured pilot run, 89% of every token
+  spent went to one of the pricier models and the two cheapest were never used at all. The roster now follows the
+  order the provider itself declares, and where a provider declares no order the brief says so rather than inventing
+  one.
 
 - fixed: the cost shown for a session was far too high, because the session's whole spend was counted again on
   every turn. The figure the CLI reports alongside each answer is what the session has cost so far, not what

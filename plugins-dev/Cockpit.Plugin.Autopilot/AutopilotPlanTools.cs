@@ -61,7 +61,7 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         }
 
         // AC-256: runnable is not the same as affordable. The brief asks the CEO to lean cheap, but a brief only asks —
-        // the pilot run put 88.9% of its tokens on the most expensive tier while that instruction was in force. The
+        // the pilot run put 88.9% of its tokens on a model near the expensive end while that instruction was in force. The
         // ceiling is enforced here, at emit, so the CEO redrafts before the operator ever sees the plan. Deliberately
         // not at step start: an operator who re-targets a step afterwards is making a human choice, and failing their
         // step for it would be both rude and confusing — the waste this addresses is the model's, not theirs.

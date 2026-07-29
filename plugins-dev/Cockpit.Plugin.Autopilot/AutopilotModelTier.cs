@@ -5,8 +5,9 @@ namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
 /// The cost ceiling a plan clears before the operator ever approves it (AC-256). Until this existed the only thing
-/// steering model choice was brief text, and the pilot run put 88.9% of its tokens on the most expensive tier — a
-/// brief asks, it does not enforce, which is the same lesson AC-433 learned about review scope.
+/// steering model choice was brief text, and the pilot run put 88.9% of its tokens on a model near the expensive end
+/// while never once reaching for either of the two cheapest — a brief asks, it does not enforce, which is the same
+/// lesson AC-433 learned about review scope.
 /// <para>
 /// Expressed purely as a position in the list the profile's own provider ranked
 /// (<see cref="PluginProfileInfo.ModelCostEstimatesCheapestFirst"/>), never as a model name: the CEO brief is

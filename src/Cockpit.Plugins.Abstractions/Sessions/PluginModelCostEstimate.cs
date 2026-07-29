@@ -3,8 +3,8 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <summary>
 /// What one of a provider's models costs, as that provider estimates it — the cockpit never works a figure out
 /// itself, the same way <see cref="PluginTurnCompleted.TotalCostUsd"/> is reported rather than computed. "Estimated"
-/// is in the property names on purpose: no provider publishes machine-readable prices, so a plugin carries a figure
-/// it compiled in and cannot tell when that figure went stale. A consumer showing one has to name it an estimate to
+/// is in the property names on purpose: a plugin that has no priced feed to read is left carrying a figure it
+/// compiled in, and cannot tell when that figure went stale. A consumer showing one has to name it an estimate to
 /// read the property at all.
 /// </summary>
 /// <param name="Model">
