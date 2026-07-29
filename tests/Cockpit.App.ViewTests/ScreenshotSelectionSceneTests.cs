@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -28,9 +27,9 @@ public class ScreenshotSelectionSceneTests
     {
         var selection = _Model(surface);
 
-        selection.Selection.Should().BeNull("the surface an operator first sees has nothing chosen on it");
-        selection.PickingWindow.Should().BeFalse();
-        selection.Redacting.Should().BeFalse();
+        Assert.Null(selection.Selection);
+        Assert.False(selection.PickingWindow);
+        Assert.False(selection.Redacting);
     });
 
     /// <summary>
@@ -43,12 +42,13 @@ public class ScreenshotSelectionSceneTests
     {
         var selection = _Model(surface);
 
-        selection.Selection.Should().NotBeNull("the scene drags a region out with the pointer");
+        Assert.NotNull(selection.Selection);
 
         // A range rather than a number: the two ends of the drag are fractions of the surface, so the last pixel
         // either way is down to how those land — which is not what this is about. Half of it would be.
-        selection.Selection.GetValueOrDefault().Width.Should().BeInRange(
-            1380, 1384,
+        var width = selection.Selection.GetValueOrDefault().Width;
+        Assert.True(
+            width is >= 1380 and <= 1384,
             "the drag crosses 48% of a 1440-unit surface onto a capture twice its size — 1382 pixels, not 691");
     });
 
@@ -57,9 +57,9 @@ public class ScreenshotSelectionSceneTests
     {
         var selection = _Model(surface);
 
-        selection.PickingWindow.Should().BeTrue("the scene presses W to get into window mode");
-        selection.HoveredWindow.Should().NotBeNull("the pointer is left over one of the stand-in windows");
-        selection.Selection.Should().NotBeNull("a highlighted window marks its own rectangle out");
+        Assert.True(selection.PickingWindow, "the scene presses W to get into window mode");
+        Assert.NotNull(selection.HoveredWindow);
+        Assert.NotNull(selection.Selection);
     });
 
     /// <summary>
@@ -71,10 +71,10 @@ public class ScreenshotSelectionSceneTests
     {
         var selection = _Model(surface);
 
-        selection.Redacting.Should().BeTrue("the scene marks out a region first, which is what B needs");
-        selection.MarkingNeedsARegion.Should().BeFalse();
-        selection.Marks.Should().HaveCount(2, "two boxes are dragged over the region")
-            .And.AllBeOfType<RedactionMark>();
+        Assert.True(selection.Redacting, "the scene marks out a region first, which is what B needs");
+        Assert.False(selection.MarkingNeedsARegion);
+        Assert.Equal(2, System.Linq.Enumerable.Count(selection.Marks));
+        Assert.All(selection.Marks, mark => Assert.IsType<RedactionMark>(mark));
     });
 
     /// <summary>
@@ -88,18 +88,21 @@ public class ScreenshotSelectionSceneTests
     {
         var sampled = _SampleInside(surface, 0.24, 0.28, 0.68, 0.72);
 
-        sampled.Darkest.Should().BeLessThan(60, "the region covers part of a dark window");
-        sampled.Lightest.Should().BeGreaterThan(200, "and part of a light one");
+        Assert.True(sampled.Darkest < 60, "the region covers part of a dark window");
+        Assert.True(sampled.Lightest > 200, "and part of a light one");
     });
 
     /// <summary>Two arrows, pointing opposite ways, so the scene shows both that the head follows the drag and that the mark carries over either half of the desktop.</summary>
     [Fact]
     public void TheArrowScene_LeavesTwoArrowsPointingOppositeWays() => _Staged(ScreenshotSelectionScene.Arrow, surface =>
     {
-        var arrows = _Model(surface).Marks.Should().HaveCount(2).And.AllBeOfType<ArrowMark>().Which.ToList();
+        var marks = _Model(surface).Marks;
+        Assert.Equal(2, System.Linq.Enumerable.Count(marks));
+        Assert.All(marks, mark => Assert.IsType<ArrowMark>(mark));
+        var arrows = marks.Cast<ArrowMark>().ToList();
 
-        (arrows[0].To.X - arrows[0].From.X).Should().BeNegative("the first is dragged to the left");
-        (arrows[1].To.X - arrows[1].From.X).Should().BePositive("and the second back to the right");
+        Assert.True(arrows[0].To.X - arrows[0].From.X < 0, "the first is dragged to the left");
+        Assert.True(arrows[1].To.X - arrows[1].From.X > 0, "and the second back to the right");
     });
 
     /// <summary>
@@ -121,10 +124,12 @@ public class ScreenshotSelectionSceneTests
             var onTheDarkEditor = _SampleInside(surface, 0.30, 0.53, 0.36, 0.59, step: 1);
             var onTheLightDocument = _SampleInside(surface, 0.84, 0.445, 0.875, 0.49, step: 1);
 
-            onTheDarkEditor.WidestColourSpread.Should().BeGreaterThan(
-                100, "the arrow's ink is the only strongly coloured thing on a window drawn in greys");
-            onTheLightDocument.WidestColourSpread.Should().BeGreaterThan(
-                100, "and the same on the page, which is drawn in greys too");
+            Assert.True(
+                onTheDarkEditor.WidestColourSpread > 100,
+                "the arrow's ink is the only strongly coloured thing on a window drawn in greys");
+            Assert.True(
+                onTheLightDocument.WidestColourSpread > 100,
+                "and the same on the page, which is drawn in greys too");
         });
 
     /// <summary>
@@ -135,11 +140,14 @@ public class ScreenshotSelectionSceneTests
     [Fact]
     public void TheHighlightScene_LeavesOneWashOfEachDirection() => _Staged(ScreenshotSelectionScene.Highlight, surface =>
     {
-        var washes = _Model(surface).Marks.Should().HaveCount(2).And.AllBeOfType<HighlightMark>().Which.ToList();
+        var marks = _Model(surface).Marks;
+        Assert.Equal(2, System.Linq.Enumerable.Count(marks));
+        Assert.All(marks, mark => Assert.IsType<HighlightMark>(mark));
+        var washes = marks.Cast<HighlightMark>().ToList();
 
-        washes.Select(wash => wash.Blend).Should().BeEquivalentTo(
-            [HighlightBlend.Darken, HighlightBlend.Lighten],
-            "the document is light and the terminal is dark, and the surface looked");
+        Assert.Equivalent(
+            new[] { HighlightBlend.Darken, HighlightBlend.Lighten },
+            washes.Select(wash => wash.Blend));
     });
 
     /// <summary>
@@ -155,10 +163,11 @@ public class ScreenshotSelectionSceneTests
             // which it missed at this size and not at the one a render defaults to.
             var band = _SampleInside(surface, 0.60, 0.424, 0.88, 0.462, step: 1);
 
-            band.Lightest.Should().BeLessThan(
-                240, "the page under the band took the colour, so the band can be seen at all");
-            (band.Lightest - band.Darkest).Should().BeGreaterThan(
-                60, "and the line of text under it is still far darker than the band it lies on");
+            Assert.True(
+                band.Lightest < 240, "the page under the band took the colour, so the band can be seen at all");
+            Assert.True(
+                band.Lightest - band.Darkest > 60,
+                "and the line of text under it is still far darker than the band it lies on");
         });
 
     /// <summary>
@@ -169,12 +178,15 @@ public class ScreenshotSelectionSceneTests
     public void TheStrokeScene_LeavesTwoLines_EachOfThemACurve() =>
         _Staged(ScreenshotSelectionScene.Stroke, surface =>
         {
-            var lines = _Model(surface).Marks.Should().HaveCount(2).And.AllBeOfType<StrokeMark>().Which.ToList();
+            var marks = _Model(surface).Marks;
+            Assert.Equal(2, System.Linq.Enumerable.Count(marks));
+            Assert.All(marks, mark => Assert.IsType<StrokeMark>(mark));
+            var lines = marks.Cast<StrokeMark>().ToList();
 
             foreach (var line in lines)
             {
-                line.Points.Should().HaveCountGreaterThan(20, "a ring is not two points and a hope");
-                line.Curve().Should().HaveCount(line.Thinned().Count - 1, "one length of curve between each pair");
+                Assert.True(System.Linq.Enumerable.Count(line.Points) > 20, "a ring is not two points and a hope");
+                Assert.Equal(line.Thinned().Count - 1, System.Linq.Enumerable.Count(line.Curve()));
             }
         });
 
@@ -187,8 +199,9 @@ public class ScreenshotSelectionSceneTests
     {
         var acrossTheTerminal = _SampleInside(surface, 0.60, 0.685, 0.86, 0.715, step: 1);
 
-        acrossTheTerminal.WidestColourSpread.Should().BeGreaterThan(
-            100, "the line's ink is the only strongly coloured thing on that window");
+        Assert.True(
+            acrossTheTerminal.WidestColourSpread > 100,
+            "the line's ink is the only strongly coloured thing on that window");
     });
 
     /// <summary>
@@ -200,11 +213,14 @@ public class ScreenshotSelectionSceneTests
         _Staged(ScreenshotSelectionScene.Text, surface =>
         {
             var selection = _Model(surface);
-            var notes = selection.Marks.Should().HaveCount(2).And.AllBeOfType<TextMark>().Which.ToList();
+            var marks = selection.Marks;
+            Assert.Equal(2, System.Linq.Enumerable.Count(marks));
+            Assert.All(marks, mark => Assert.IsType<TextMark>(mark));
+            var notes = marks.Cast<TextMark>().ToList();
 
-            notes[0].Text.Should().Be("Window is empty here");
-            selection.PickingWindow.Should().BeFalse("typing it picked no window");
-            selection.IsClosed.Should().BeFalse("and took no shot");
+            Assert.Equal("Window is empty here", notes[0].Text);
+            Assert.False(selection.PickingWindow, "typing it picked no window");
+            Assert.False(selection.IsClosed, "and took no shot");
         });
 
     /// <summary>The scenes that were already there still build, including the fallback an unknown name lands on.</summary>
@@ -215,7 +231,7 @@ public class ScreenshotSelectionSceneTests
     [InlineData("projects", typeof(ProjectsDialog))]
     [InlineData("new-session", typeof(NewSessionDialog))]
     public void TheHarnessStillBuildsTheOtherScenes(string? scene, Type expected) => HeadlessAvalonia.Run(() =>
-        Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight).Should().BeOfType(expected));
+        Assert.IsType(expected, Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight)));
 
     /// <summary>
     /// What the rendered frame holds in one part of itself: its darkest and lightest pixel as an average of the
@@ -263,8 +279,8 @@ public class ScreenshotSelectionSceneTests
 
     private static void _Staged(string scene, Action<ScreenshotSelectionWindow> assert) => HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight)
-            .Should().BeOfType<ScreenshotSelectionWindow>("the harness builds the selection surface for this scene").Subject;
+        var surface = Assert.IsType<ScreenshotSelectionWindow>(
+            Screenshotter.BuildScene(scene, SurfaceWidth, SurfaceHeight));
 
         surface.Show();
         try

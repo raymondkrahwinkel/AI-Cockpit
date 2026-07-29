@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -31,8 +30,9 @@ public class PluginMenuOrderTests
         cockpit.ApplyPluginMenuPreference("workflows", menuOrder: 1, hiddenInMenu: false);
         cockpit.ApplyPluginMenuPreference("youtrack", menuOrder: 2, hiddenInMenu: false);
 
-        cockpit.VisibleMenuEntries.Select(entry => entry.PluginId)
-            .Should().Equal("github-pull-requests", "workflows", "youtrack");
+        Assert.Equal(
+            new[] { "github-pull-requests", "workflows", "youtrack" },
+            cockpit.VisibleMenuEntries.Select(entry => entry.PluginId));
     });
 
     [Fact]
@@ -45,7 +45,7 @@ public class PluginMenuOrderTests
 
         cockpit.ApplyPluginMenuPreference("transcript-search", menuOrder: 0, hiddenInMenu: true);
 
-        cockpit.VisibleMenuEntries.Select(entry => entry.PluginId).Should().Equal("youtrack");
+        Assert.Equal(new[] { "youtrack" }, cockpit.VisibleMenuEntries.Select(entry => entry.PluginId));
     });
 
     // A plugin that contributes both keeps its launcher above its own section: the button is how you reach it, the
@@ -58,6 +58,6 @@ public class PluginMenuOrderTests
         sink.AddPluginSideSection("github-pull-requests", "Open PRs", () => new TextBlock());
         sink.AddPluginSideButton("github-pull-requests", "Pull requests", () => { });
 
-        cockpit.VisibleMenuEntries.Select(entry => entry.Button is not null).Should().Equal(true, false);
+        Assert.Equal(new[] { true, false }, cockpit.VisibleMenuEntries.Select(entry => entry.Button is not null));
     });
 }

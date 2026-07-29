@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -21,7 +20,7 @@ public class WorktreesDialogRemoveFailureTests
         window.Show();
         window.UpdateLayout();
 
-        _FailureLines(window).Should().BeEmpty();
+        Assert.Empty(_FailureLines(window));
     });
 
     [Fact]
@@ -38,9 +37,9 @@ public class WorktreesDialogRemoveFailureTests
         viewModel.RemoveFailure = "Could not remove 'cockpit/work-51841402' — fatal: '/home/raymond/.config/Cockpit/worktrees/ea9894eee63a/cockpit-work-51841402' is not a working tree";
         window.UpdateLayout();
 
-        var line = _FailureLines(window).Should().ContainSingle().Subject;
-        line.Text.Should().Contain("is not a working tree");
-        line.Bounds.Height.Should().BeGreaterThan(0, "an invisible explanation is the bug this fixes");
+        var line = Assert.Single(_FailureLines(window));
+        Assert.Contains("is not a working tree", line.Text);
+        Assert.True(line.Bounds.Height > 0, "an invisible explanation is the bug this fixes");
     });
 
     private static List<TextBlock> _FailureLines(WorktreesDialog window) =>

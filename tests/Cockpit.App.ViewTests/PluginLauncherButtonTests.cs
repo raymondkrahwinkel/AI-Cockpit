@@ -4,7 +4,6 @@ using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -33,8 +32,8 @@ public class PluginLauncherButtonTests
 
         _Gear(launcher).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-        settingsOpened.Should().Be(1);
-        invoked.Should().Be(0, "the press stops at the gear — it must not also run the plugin's own action");
+        Assert.Equal(1, settingsOpened);
+        Assert.Equal(0, invoked);
     });
 
     [Fact]
@@ -46,7 +45,7 @@ public class PluginLauncherButtonTests
 
         launcher.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-        invoked.Should().Be(1);
+        Assert.Equal(1, invoked);
     });
 
     // A plugin with no settings view gets no gear: one that opened nothing would be exactly the dead control the
@@ -56,7 +55,7 @@ public class PluginLauncherButtonTests
     {
         var launcher = new PluginLauncherButton("Prompt Library", () => { });
 
-        launcher.GetLogicalDescendants().OfType<Button>().Should().BeEmpty();
+        Assert.Empty(launcher.GetLogicalDescendants().OfType<Button>());
     });
 
     private static Button _Gear(PluginLauncherButton launcher) =>

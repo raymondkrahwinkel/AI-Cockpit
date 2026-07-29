@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -53,31 +52,31 @@ public class VisualTreeSnapshotTests
     {
         var snapshot = VisualTreeSnapshot.Capture(window);
 
-        snapshot.Should().Contain("bg=#131519");
-        snapshot.Should().Contain("corner=11");
-        snapshot.Should().Contain("\"82%\"");
-        snapshot.Should().Contain("fg=#D9B25A");
+        Assert.Contains("bg=#131519", snapshot);
+        Assert.Contains("corner=11", snapshot);
+        Assert.Contains("\"82%\"", snapshot);
+        Assert.Contains("fg=#D9B25A", snapshot);
     });
 
     [Fact]
     public void Capture_SkipsHiddenSubtrees() => WithTree(window =>
-        VisualTreeSnapshot.Capture(window).Should().NotContain("HIDDEN_MARKER"));
+        Assert.DoesNotContain("HIDDEN_MARKER", VisualTreeSnapshot.Capture(window)));
 
     [Fact]
     public void Capture_TargetsANamedSubtree() => WithTree(window =>
     {
         var snapshot = VisualTreeSnapshot.Capture(window, "Pill");
 
-        snapshot.Should().StartWith("Border \"Pill\"");
-        snapshot.Should().Contain("\"82%\"");
+        Assert.StartsWith("Border \"Pill\"", snapshot);
+        Assert.Contains("\"82%\"", snapshot);
     });
 
     [Fact]
     public void Capture_TargetsByControlType_WhenNoNameMatches() => WithTree(window =>
         // No control is named "TextBlock", so the type fallback must scope to a TextBlock subtree.
-        VisualTreeSnapshot.Capture(window, "TextBlock").Should().StartWith("TextBlock"));
+        Assert.StartsWith("TextBlock", VisualTreeSnapshot.Capture(window, "TextBlock")));
 
     [Fact]
     public void Capture_NotesAMissingTarget() => WithTree(window =>
-        VisualTreeSnapshot.Capture(window, "Nope").Should().Contain("no control named or typed \"Nope\""));
+        Assert.Contains("no control named or typed \"Nope\"", VisualTreeSnapshot.Capture(window, "Nope")));
 }

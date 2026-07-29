@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -17,16 +16,17 @@ public class TranscriptionModelDropdownViewTests
     public void WithoutAnAdvisor_TheBackendList_IsAutoAndCpuOnly() => HeadlessAvalonia.Run(() =>
     {
         var vm = new CockpitViewModel();
-        vm.VoiceBackendPreferences.Select(option => option.Value)
-            .Should().Equal(VoiceBackendPreference.Auto, VoiceBackendPreference.Cpu);
+        Assert.Equal(
+            new[] { VoiceBackendPreference.Auto, VoiceBackendPreference.Cpu },
+            vm.VoiceBackendPreferences.Select(option => option.Value));
     });
 
     [Fact]
     public void TheModelDropdown_DefaultsToACuratedModel_NotCustom() => HeadlessAvalonia.Run(() =>
     {
         var vm = new CockpitViewModel();
-        vm.SelectedTranscriptionModel!.Name.Should().Be("large-v3-turbo");
-        vm.IsTranscriptionModelCustom.Should().BeFalse();
+        Assert.Equal("large-v3-turbo", vm.SelectedTranscriptionModel!.Name);
+        Assert.False(vm.IsTranscriptionModelCustom);
     });
 
     [Fact]
@@ -35,10 +35,10 @@ public class TranscriptionModelDropdownViewTests
         var vm = new CockpitViewModel();
 
         vm.SelectedTranscriptionModel = vm.TranscriptionModelChoices.Single(model => model.IsCustom);
-        vm.IsTranscriptionModelCustom.Should().BeTrue("the Custom… choice reveals the free-text box");
+        Assert.True(vm.IsTranscriptionModelCustom, "the Custom… choice reveals the free-text box");
 
         vm.VoiceCustomModelName = "large-v3-turbo-q5_0";
-        vm.VoiceModelName.Should().Be("large-v3-turbo-q5_0", "the box drives the effective model while custom is active");
+        Assert.Equal("large-v3-turbo-q5_0", vm.VoiceModelName);
     });
 
     [Fact]
@@ -48,7 +48,7 @@ public class TranscriptionModelDropdownViewTests
 
         vm.SelectedTranscriptionModel = vm.TranscriptionModelChoices.Single(model => model.Name == "small");
 
-        vm.VoiceModelName.Should().Be("small");
-        vm.IsTranscriptionModelCustom.Should().BeFalse();
+        Assert.Equal("small", vm.VoiceModelName);
+        Assert.False(vm.IsTranscriptionModelCustom);
     });
 }

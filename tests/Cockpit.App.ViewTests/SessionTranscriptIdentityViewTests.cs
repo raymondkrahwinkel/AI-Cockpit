@@ -3,7 +3,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -34,7 +33,7 @@ public class SessionTranscriptIdentityViewTests
 
         window.Close();
 
-        avatarShown.Should().BeTrue("an assistant reply is tagged with the model's avatar so a glance shows who is speaking");
+        Assert.True(avatarShown, "an assistant reply is tagged with the model's avatar so a glance shows who is speaking");
     });
 
     [Fact]
@@ -56,7 +55,7 @@ public class SessionTranscriptIdentityViewTests
 
         window.Close();
 
-        cardShown.Should().BeTrue("an empty session fills the void with the model's avatar card, not a blank pane");
+        Assert.True(cardShown, "an empty session fills the void with the model's avatar card, not a blank pane");
     });
 
     [Fact]
@@ -64,7 +63,7 @@ public class SessionTranscriptIdentityViewTests
     {
         // The sample session declares model + effort live controls, as an SDK session does.
         var session = new SessionViewModel();
-        session.HasLiveControls.Should().BeTrue("the sample SDK session declares live controls");
+        Assert.True(session.HasLiveControls, "the sample SDK session declares live controls");
 
         var window = new Window { Width = 1000, Height = 400, Content = new SessionView { DataContext = session } };
         window.Show();
@@ -75,7 +74,7 @@ public class SessionTranscriptIdentityViewTests
         var combosInHeader = window.GetVisualDescendants().OfType<ComboBox>().Count(combo => combo.Name != "ReadingLevelPicker");
         window.Close();
 
-        combosInHeader.Should().Be(0, "the model/effort/permission dropdowns collapse into a single chip's flyout, not spread across the header (the reading-level picker aside)");
+        Assert.Equal(0, combosInHeader);
     });
 
     [Fact]
@@ -94,7 +93,7 @@ public class SessionTranscriptIdentityViewTests
         var bannerShown = banner is not null && banner.IsEffectivelyVisible;
         window.Close();
 
-        bannerShown.Should().BeTrue("a session that is still launching shows a clear 'still starting' indicator, not a silent panel");
+        Assert.True(bannerShown, "a session that is still launching shows a clear 'still starting' indicator, not a silent panel");
     });
 
     [Fact]
@@ -113,6 +112,6 @@ public class SessionTranscriptIdentityViewTests
         var bannerShown = banner is not null && banner.IsEffectivelyVisible;
         window.Close();
 
-        bannerShown.Should().BeFalse("the 'still starting' banner shows only while actively launching, never stuck afterwards");
+        Assert.False(bannerShown, "the 'still starting' banner shows only while actively launching, never stuck afterwards");
     });
 }

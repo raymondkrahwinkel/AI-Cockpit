@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Secrets;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -19,8 +18,8 @@ public class ScreenLockOptionTests
 
         await vm.RefreshAsync();
 
-        vm.LockWithOperatingSystem.Should().BeFalse("that is what the store held");
-        store.Saves.Should().Be(0, "seeding the toggle from disk must not be a write back to disk");
+        Assert.False(vm.LockWithOperatingSystem, "that is what the store held");
+        Assert.Equal(0, store.Saves);
     }
 
     [Fact]
@@ -32,8 +31,8 @@ public class ScreenLockOptionTests
 
         vm.LockWithOperatingSystem = false;
 
-        store.Saves.Should().Be(1);
-        store.LastSaved!.LockWhenOperatingSystemLocks.Should().BeFalse("the operator turned it off");
+        Assert.Equal(1, store.Saves);
+        Assert.False(store.LastSaved!.LockWhenOperatingSystemLocks, "the operator turned it off");
     }
 
     private sealed class RecordingStore(bool loaded) : IScreenLockSettingsStore

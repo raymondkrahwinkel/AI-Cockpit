@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -28,15 +27,16 @@ public class OptionsSubNavigationViewTests
         dialog.UpdateLayout();
 
         var rail = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "VoiceNav");
-        rail.Items.OfType<ListBoxItem>().Select(item => item.Content as string)
-            .Should().Equal("Read-aloud", "Transcribe", "Cleanup");
+        Assert.Equal(
+            new[] { "Read-aloud", "Transcribe", "Cleanup" },
+            rail.Items.OfType<ListBoxItem>().Select(item => item.Content as string));
 
         var carousel = dialog.GetVisualDescendants().OfType<Carousel>().Single();
-        rail.SelectedIndex.Should().Be(0, "the rail opens on the first sub-page");
-        carousel.SelectedIndex.Should().Be(0, "the Carousel starts on the page the rail has selected");
+        Assert.Equal(0, rail.SelectedIndex);
+        Assert.Equal(0, carousel.SelectedIndex);
 
         rail.SelectedIndex = 2;
-        carousel.SelectedIndex.Should().Be(2, "the shown page follows the rail selection, not a separate state");
+        Assert.Equal(2, carousel.SelectedIndex);
 
         dialog.Close();
     });
@@ -55,8 +55,9 @@ public class OptionsSubNavigationViewTests
             tabs.SelectedItem = tab;
             dialog.UpdateLayout();
 
-            dialog.GetVisualDescendants().OfType<Border>().Any(border => border.Classes.Contains("subnavRail"))
-                .Should().BeTrue($"the {tab.Header} tab is expected to render its sub-nav rail");
+            Assert.True(
+                dialog.GetVisualDescendants().OfType<Border>().Any(border => border.Classes.Contains("subnavRail")),
+                $"the {tab.Header} tab is expected to render its sub-nav rail");
         }
 
         dialog.Close();

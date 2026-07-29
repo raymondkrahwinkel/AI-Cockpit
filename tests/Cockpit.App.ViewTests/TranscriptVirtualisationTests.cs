@@ -3,7 +3,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -47,7 +46,7 @@ public class TranscriptVirtualisationTests
 
         // A 600px-tall window cannot show four hundred rows. Anything close to four hundred means the panel is
         // building the whole history again.
-        rows.Should().BeGreaterThan(0, "the rows on screen must actually be there");
-        rows.Should().BeLessThan(100, "only what fits on screen (plus a little) should exist as controls");
+        Assert.True(rows > 0, "the rows on screen must actually be there");
+        Assert.True(rows < 100, "only what fits on screen (plus a little) should exist as controls");
     });
 }

@@ -1,7 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -28,11 +27,11 @@ public class DiagnosticsCollectorTests
             new SessionDescriptor("http-only", "Agent", null),
         ]);
 
-        snapshot.Sessions.Should().HaveCount(2);
-        snapshot.Sessions[0].ResidentBytes.Should().Be(80_000_000);
-        snapshot.Sessions[0].ProcessId.Should().Be(100);
-        snapshot.Sessions[1].ResidentBytes.Should().Be(0);
-        snapshot.Sessions[1].ProcessId.Should().BeNull();
+        Assert.Equal(2, System.Linq.Enumerable.Count(snapshot.Sessions));
+        Assert.Equal(80_000_000, snapshot.Sessions[0].ResidentBytes);
+        Assert.Equal(100, snapshot.Sessions[0].ProcessId);
+        Assert.Equal(0, snapshot.Sessions[1].ResidentBytes);
+        Assert.Null(snapshot.Sessions[1].ProcessId);
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class DiagnosticsCollectorTests
 
         var snapshot = collector.Collect([]);
 
-        snapshot.CrashLogs.Should().ContainSingle().Which.Should().Be(crash);
+        Assert.Equal(crash, Assert.Single(snapshot.CrashLogs));
     }
 
     [Fact]
@@ -53,11 +52,11 @@ public class DiagnosticsCollectorTests
 
         var snapshot = collector.Collect([]);
 
-        snapshot.Platform.RuntimeVersion.Should().NotBeNullOrWhiteSpace();
-        snapshot.Platform.AvaloniaVersion.Should().NotBeNullOrWhiteSpace();
-        snapshot.Rendering.Mode.Should().NotBeNullOrWhiteSpace();
-        snapshot.Memory.ResidentBytes.Should().BeGreaterThan(0);
-        snapshot.ManagedHeap.HeapSizeBytes.Should().BeGreaterThanOrEqualTo(0);
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.Platform.RuntimeVersion));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.Platform.AvaloniaVersion));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.Rendering.Mode));
+        Assert.True(snapshot.Memory.ResidentBytes > 0);
+        Assert.True(snapshot.ManagedHeap.HeapSizeBytes >= 0);
     }
 
     private sealed class FakeProcessTable(IReadOnlyList<ProcessRow> rows) : IProcessTableReader

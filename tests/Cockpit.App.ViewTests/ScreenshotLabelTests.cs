@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -53,14 +52,14 @@ public class ScreenshotLabelTests
 
         surface.KeyTextInput("Window ABDOHPR");
 
-        selection.PickingWindow.Should().BeFalse("W was a letter, not the window tool");
-        selection.Drawing.Should().BeFalse();
-        selection.Outlining.Should().BeFalse();
-        selection.Redacting.Should().BeFalse();
-        selection.Highlighting.Should().BeFalse();
-        selection.Selection.Should().Be(region, "and A did not take the whole capture");
-        selection.IsClosed.Should().BeFalse("nor did anything confirm or cancel it");
-        selection.Typed.Should().Be("Window ABDOHPR", "all of it went into the note");
+        Assert.False(selection.PickingWindow, "W was a letter, not the window tool");
+        Assert.False(selection.Drawing);
+        Assert.False(selection.Outlining);
+        Assert.False(selection.Redacting);
+        Assert.False(selection.Highlighting);
+        Assert.Equal(region, selection.Selection);
+        Assert.False(selection.IsClosed, "nor did anything confirm or cancel it");
+        Assert.Equal("Window ABDOHPR", selection.Typed);
     });
 
     /// <summary>
@@ -76,15 +75,16 @@ public class ScreenshotLabelTests
 
         surface.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
 
-        selection.Typing.Should().BeFalse("the note is closed");
-        selection.IsClosed.Should().BeFalse("but the surface is not");
-        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<TextMark>().Which
-            .Text.Should().Be("this one", "what was typed is kept rather than thrown away by the key that ends it");
+        Assert.False(selection.Typing, "the note is closed");
+        Assert.False(selection.IsClosed, "but the surface is not");
+        Assert.Equal(
+            "this one",
+            Assert.IsType<TextMark>(Assert.Single(selection.Marks)).Text);
 
         surface.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
 
-        selection.IsClosed.Should().BeTrue("the second press is the one that cancels");
-        selection.Result.Should().BeNull();
+        Assert.True(selection.IsClosed, "the second press is the one that cancels");
+        Assert.Null(selection.Result);
     });
 
     /// <summary>
@@ -100,12 +100,12 @@ public class ScreenshotLabelTests
 
         surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
 
-        selection.IsClosed.Should().BeFalse();
-        selection.Marks.Should().ContainSingle();
+        Assert.False(selection.IsClosed);
+        Assert.Single(selection.Marks);
 
         surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
 
-        selection.Result.Should().NotBeNull("with no note open, Enter is the shortcut again");
+        Assert.NotNull(selection.Result);
     });
 
     /// <summary>A note with nothing typed into it is an invisible mark, and an operator who opened one by accident should not have to find it again to take it off.</summary>
@@ -117,7 +117,7 @@ public class ScreenshotLabelTests
 
         surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
 
-        selection.Marks.Should().BeEmpty();
+        Assert.Empty(selection.Marks);
     });
 
     /// <summary>Backspace takes back a character rather than reaching the surface, where it means nothing and would be silently swallowed.</summary>
@@ -130,7 +130,7 @@ public class ScreenshotLabelTests
 
         surface.KeyPressQwerty(PhysicalKey.Backspace, RawInputModifiers.None);
 
-        selection.Typed.Should().Be("this one");
+        Assert.Equal("this one", selection.Typed);
     });
 
     /// <summary>
@@ -147,7 +147,7 @@ public class ScreenshotLabelTests
 
         surface.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.None);
 
-        selection.Outlining.Should().BeTrue();
+        Assert.True(selection.Outlining);
     });
 
     /// <summary>Clicking somewhere else puts down the note you had rather than throwing it away, and opens another where you clicked.</summary>
@@ -161,8 +161,8 @@ public class ScreenshotLabelTests
         surface.MouseDown(new Point(800, 500), MouseButton.Left);
         surface.MouseUp(new Point(800, 500), MouseButton.Left);
 
-        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<TextMark>().Which.Text.Should().Be("first");
-        selection.Typing.Should().BeTrue("and the next one is open where the click landed");
+        Assert.Equal("first", Assert.IsType<TextMark>(Assert.Single(selection.Marks)).Text);
+        Assert.True(selection.Typing, "and the next one is open where the click landed");
     });
 
     /// <summary>
@@ -181,9 +181,9 @@ public class ScreenshotLabelTests
         surface.MouseDown(spot, MouseButton.Left);
         surface.MouseUp(spot, MouseButton.Left);
 
-        selection.IsClosed.Should().BeFalse("the second click was a note, not a confirmation");
-        selection.Result.Should().BeNull();
-        selection.Typing.Should().BeTrue("and it opened another note where it landed");
+        Assert.False(selection.IsClosed, "the second click was a note, not a confirmation");
+        Assert.Null(selection.Result);
+        Assert.True(selection.Typing, "and it opened another note where it landed");
     });
 
     /// <summary>
@@ -204,8 +204,8 @@ public class ScreenshotLabelTests
     [Fact]
     public void TheSurfaceTakesFocus_SoThatTypingHasSomewhereToLand() => _OnTheSurface(surface =>
     {
-        surface.Focusable.Should().BeTrue("text input goes to the focused element, and nothing else here can be one");
-        surface.IsFocused.Should().BeTrue("and the surface asks for it as it opens");
+        Assert.True(surface.Focusable, "text input goes to the focused element, and nothing else here can be one");
+        Assert.True(surface.IsFocused, "and the surface asks for it as it opens");
     });
 
     private static void _OpenNote(ScreenshotSelectionWindow surface, Point at)
@@ -218,13 +218,12 @@ public class ScreenshotLabelTests
         surface.MouseDown(at, MouseButton.Left);
         surface.MouseUp(at, MouseButton.Left);
 
-        _Model(surface).Typing.Should().BeTrue("the click opened a note, which the rest of the test is about");
+        Assert.True(_Model(surface).Typing, "the click opened a note, which the rest of the test is about");
     }
 
     private static void _OnTheSurface(Action<ScreenshotSelectionWindow> assert) => HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight)
-            .Should().BeOfType<ScreenshotSelectionWindow>().Subject;
+        var surface = Assert.IsType<ScreenshotSelectionWindow>(Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight));
 
         surface.Show();
         try

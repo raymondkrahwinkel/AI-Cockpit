@@ -4,7 +4,6 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Core.Projects;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -34,8 +33,8 @@ public class ProjectInfoListTests
 
         window.Close();
 
-        buttons.Should().ContainSingle("only the web address may look clickable");
-        texts.Should().Contain("Acme BV — ask for their project lead", "an ordinary value is still shown, just not as a link");
+        Assert.Single(buttons);
+        Assert.Contains("Acme BV — ask for their project lead", texts);
     });
 
     [Fact]
@@ -53,8 +52,9 @@ public class ProjectInfoListTests
 
         window.Close();
 
-        decorations.Should().NotBeNullOrEmpty("a link has to be recognisable as one before it is hovered");
-        foreground?.ToString().Should().Be(accent?.ToString(), "the accent is this app's link colour");
+        Assert.NotNull(decorations);
+        Assert.NotEmpty(decorations);
+        Assert.Equal(accent?.ToString(), foreground?.ToString());
     });
 
     [Fact]
@@ -69,8 +69,7 @@ public class ProjectInfoListTests
 
         window.Close();
 
-        texts.Should().ContainSingle().Which.Should().Be("https://example.test/pasted",
-            "pasting a link without inventing a label first is the fastest thing the editor can do");
+        Assert.Equal("https://example.test/pasted", Assert.Single(texts));
     });
 
     [Fact]
@@ -87,7 +86,7 @@ public class ProjectInfoListTests
 
         window.Close();
 
-        overflowing.Should().BeEmpty("a card is a fixed width, so a long link has to trim rather than push past it");
+        Assert.Empty(overflowing);
     });
 
     [Fact]
@@ -100,7 +99,7 @@ public class ProjectInfoListTests
         var oneLine = _WantedHeight(new ProjectInfoField("Address", "Kalverstraat 1"));
         var pastedParagraph = _WantedHeight(new ProjectInfoField("Address", new string('x', 50_000)));
 
-        pastedParagraph.Should().BeLessThan(oneLine * 6,
+        Assert.True(pastedParagraph < oneLine * 6,
             "a value is stored in full but drawn within a bounded number of lines");
     });
 

@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -27,7 +26,7 @@ public class PluginToolbarActionTests
         cockpit.ApplyPluginMenuPreference("kubernetes", menuOrder: 0, hiddenInMenu: false);
         cockpit.ApplyPluginMenuPreference("docker", menuOrder: 1, hiddenInMenu: false);
 
-        cockpit.VisibleToolbarActions.Select(action => action.PluginId).Should().Equal("kubernetes", "docker");
+        Assert.Equal(new[] { "kubernetes", "docker" }, cockpit.VisibleToolbarActions.Select(action => action.PluginId));
     });
 
     [Fact]
@@ -40,6 +39,6 @@ public class PluginToolbarActionTests
 
         cockpit.ApplyPluginMenuPreference("docker", menuOrder: 0, hiddenInMenu: true);
 
-        cockpit.VisibleToolbarActions.Select(action => action.PluginId).Should().Equal("kubernetes");
+        Assert.Equal(new[] { "kubernetes" }, cockpit.VisibleToolbarActions.Select(action => action.PluginId));
     });
 }

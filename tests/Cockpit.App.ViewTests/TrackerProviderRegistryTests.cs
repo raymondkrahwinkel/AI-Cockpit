@@ -1,6 +1,5 @@
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Tracking;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -29,12 +28,12 @@ public class TrackerProviderRegistryTests
         var registry = new TrackerProviderRegistry();
         var first = new FakeProvider("youtrack");
 
-        registry.Register(first).Should().BeTrue();
-        registry.Register(new FakeProvider("youtrack")).Should().BeFalse();
-        registry.Register(new FakeProvider("github-issues")).Should().BeTrue();
+        Assert.True(registry.Register(first));
+        Assert.False(registry.Register(new FakeProvider("youtrack")));
+        Assert.True(registry.Register(new FakeProvider("github-issues")));
 
-        registry.Providers.Should().HaveCount(2);
-        registry.Providers[0].Should().BeSameAs(first);
-        registry.Providers[1].TrackerId.Should().Be("github-issues");
+        Assert.Equal(2, System.Linq.Enumerable.Count(registry.Providers));
+        Assert.Same(first, registry.Providers[0]);
+        Assert.Equal("github-issues", registry.Providers[1].TrackerId);
     }
 }

@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -38,8 +37,8 @@ public class PaneFocusSelectionTests
 
         var container = CockpitView._PaneContainerFromSource(deepInB);
 
-        container.Should().BeSameAs(paneB, "the walk stops at the pane sitting directly in the tile panel");
-        container!.DataContext.Should().BeSameAs(sessionB, "so the focused element's pane carries its own session");
+        Assert.Same(paneB, container);
+        Assert.Same(sessionB, container!.DataContext);
     });
 
     [Fact]
@@ -50,6 +49,6 @@ public class PaneFocusSelectionTests
         window.Show();
         window.UpdateLayout();
 
-        CockpitView._PaneContainerFromSource(loose).Should().BeNull("nothing outside a tile panel is a pane to select");
+        Assert.Null(CockpitView._PaneContainerFromSource(loose));
     });
 }
