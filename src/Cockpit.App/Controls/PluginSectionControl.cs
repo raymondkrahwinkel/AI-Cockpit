@@ -27,7 +27,7 @@ internal sealed class PluginSectionControl : UserControl
     public PluginSectionControl(string title, Control content, Action? onSettings = null)
     {
         _chevron = CockpitIcons.Icon(MaterialIconKind.ChevronDown, 13);
-        _chevron.Foreground = _Brush("CockpitTextFaintBrush", Brushes.Gray);
+        _chevron.Foreground = _Brush("CockpitTextFaintBrush", "#656c78");
         _chevron.VerticalAlignment = VerticalAlignment.Center;
 
         var titleBlock = new TextBlock
@@ -35,7 +35,7 @@ internal sealed class PluginSectionControl : UserControl
             Text = title,
             FontWeight = FontWeight.SemiBold,
             FontSize = 12,
-            Foreground = _Brush("CockpitTextPrimaryBrush", Brushes.White),
+            Foreground = _Brush("CockpitTextPrimaryBrush", "#e8eaef"),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -65,7 +65,7 @@ internal sealed class PluginSectionControl : UserControl
         var header = new Border
         {
             Background = _Brush("CockpitSecondaryBgBrush", Brushes.Transparent),
-            BorderBrush = _Brush("CockpitHairlineBrush", Brushes.Gray),
+            BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39"),
             BorderThickness = new Thickness(1),
             CornerRadius = _Radius("CockpitControlRadius", 6),
             Padding = new Thickness(8, 6),
@@ -106,6 +106,11 @@ internal sealed class PluginSectionControl : UserControl
 
     private static IBrush _Brush(string key, IBrush fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : fallback;
+
+    private static IBrush _Brush(string key, string fallbackHex) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 
     private static CornerRadius _Radius(string key, double fallback) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius ? radius : new CornerRadius(fallback);

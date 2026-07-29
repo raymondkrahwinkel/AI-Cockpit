@@ -22,6 +22,11 @@ namespace Cockpit.Core.Tests.Styles;
 /// would not be a literal match and would slip past.
 /// </para>
 /// <para>
+/// Three spellings of a hardcoded colour are covered: a quoted hex literal, <c>Color.FromRgb</c>/<c>FromArgb</c>
+/// components, and — since AC-402 — a named framework colour, <c>Brushes.X</c>/<c>Colors.X</c>, except
+/// <c>Transparent</c>, which names the absence of a colour rather than one of the cockpit's own.
+/// </para>
+/// <para>
 /// It scans <c>Cockpit.App</c>, <c>Cockpit.Plugins.Abstractions</c> <b>and every plugin under <c>plugins-dev/</c></b>
 /// (AC-337). The plugins were outside it until the repaint reached them, and that is exactly where the drift had
 /// collected: fallbacks still holding the pre-AC-334 orange, and one naming a <c>CockpitTextBrush</c> that has never
@@ -146,6 +151,12 @@ public partial class ThemeHexColorGuardTests
                     var key = (relativePath, component.Value);
                     found[key] = found.GetValueOrDefault(key) + 1;
                 }
+
+                foreach (var named in _NamedFrameworkColorMatches(line))
+                {
+                    var key = (relativePath, named);
+                    found[key] = found.GetValueOrDefault(key) + 1;
+                }
             }
         }
 
@@ -234,6 +245,33 @@ public partial class ThemeHexColorGuardTests
     }
 
     /// <summary>
+    /// The third spelling (AC-402): <c>Brushes.X</c>/<c>Colors.X</c> is caught regardless of which of the two
+    /// static classes it names, but <c>Transparent</c> is not a hardcoded colour and must not match.
+    /// </summary>
+    [Fact]
+    public void NamedFrameworkColorRegex_CatchesBrushesAndColorsButNotTransparent()
+    {
+        NamedFrameworkColorRegex().Matches("Foreground = Brushes.Gray").Should().HaveCount(1);
+        NamedFrameworkColorRegex().Matches("Foreground = Colors.White").Should().HaveCount(1);
+        NamedFrameworkColorRegex().Matches("Background = Brushes.Transparent").Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A named colour is bare code, so — unlike the hex regex, which is saved by the quoted-string check — a
+    /// mention in a doc comment (<c>Brushes.Orange</c>, right here in this sentence) would otherwise match. This is
+    /// the exact shape <c>ClusterRowControl.cs</c> has: a <c>&lt;c&gt;Brushes.Orange&lt;/c&gt;</c> in its XML doc
+    /// remarking on a colour it used to hardcode.
+    /// </summary>
+    [Fact]
+    public void NamedFrameworkColorMatches_IgnoresLineComments()
+    {
+        _NamedFrameworkColorMatches("/// The exec-auth warning used to be drawn in <c>Brushes.Orange</c>.")
+            .Should().BeEmpty();
+        _NamedFrameworkColorMatches("Foreground = Brushes.Gray; // was Brushes.Orange before AC-402")
+            .Should().Equal("Brushes.Gray");
+    }
+
+    /// <summary>
     /// The <c>ThemeBrush.Resolve(key, fallback)</c> exemption is expression-based, not line-based: a hex on the
     /// same line as a legitimate call — but not itself that call's fallback argument — must still be caught. This
     /// is the shape <c>MicLevelMeter.cs</c> already has (two <c>Resolve</c> calls sharing one line); the assertion
@@ -311,6 +349,43 @@ public partial class ThemeHexColorGuardTests
         }
     }
 
+    /// <summary>
+    /// Unlike a hex literal, a named framework colour is bare code — <c>Brushes.Gray</c>, no quotes — so it cannot
+    /// be told from prose by "is it inside a string". It can be told apart by comment position instead: this
+    /// codebase's doc comments are the reason a name like this shows up in a sentence at all (see this file's own
+    /// <c>NamedFrameworkColorRegex</c> doc), so anything from the first non-string <c>//</c> onward is prose, not
+    /// code.
+    /// </summary>
+    private static IEnumerable<string> _NamedFrameworkColorMatches(string line)
+    {
+        var commentStart = _FindLineCommentStart(line);
+        var codeSpan = commentStart < 0 ? line : line[..commentStart];
+        return NamedFrameworkColorRegex().Matches(codeSpan).Select(match => match.Value);
+    }
+
+    private static int _FindLineCommentStart(string line)
+    {
+        var quotedSpans = QuotedSpanRegex().Matches(line)
+            .Select(match => (match.Index, match.Length))
+            .ToList();
+
+        for (var index = 0; index < line.Length - 1; index++)
+        {
+            if (line[index] != '/' || line[index + 1] != '/')
+            {
+                continue;
+            }
+
+            var insideQuotes = quotedSpans.Any(span => index >= span.Index && index < span.Index + span.Length);
+            if (!insideQuotes)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
     private static Dictionary<string, string> _ParseThemeColorTokens(string themeAxamlPath)
     {
         var tokens = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -333,6 +408,15 @@ public partial class ThemeHexColorGuardTests
     /// </summary>
     [GeneratedRegex(@"Color\.From(?:Rgb|Argb)\s*\([^)]*\)")]
     private static partial Regex ColorFromComponentsRegex();
+
+    /// <summary>
+    /// The third spelling (AC-402): a named framework colour, <c>Brushes.X</c> or <c>Colors.X</c>, used directly
+    /// instead of a theme token. <c>Transparent</c> is excluded — it names the absence of a colour, not one of the
+    /// cockpit's own, and both <c>StatusBrushConverter</c> and this file's own <c>_Brush</c>/<c>Brush</c> callers
+    /// legitimately fall back to it.
+    /// </summary>
+    [GeneratedRegex(@"\b(?:Brushes|Colors)\.(?!Transparent\b)[A-Za-z]+\b")]
+    private static partial Regex NamedFrameworkColorRegex();
 
     /// <summary>
     /// Both shapes of the one sanctioned fallback: the host's <c>ThemeBrush.Resolve(key, hex)</c> and the copy a
