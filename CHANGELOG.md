@@ -42,6 +42,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   entry that couldn't say which instance it meant. Adding, renaming or removing a connection takes effect
   immediately in the picker, no restart needed. Your first connection keeps working exactly as before under its
   existing project link.
+- added: a Memory row pointed at Depot now confirms the project you typed actually exists, the same way a broken
+  file path is already flagged under a Reference row. Type a Depot project slug and, a moment later, you'll see
+  either a green confirmation, a red "could not be found" (also shown for one you don't have access to — Depot can't
+  yet tell the two apart), or an amber "not signed in / unreachable" when the connection itself needs attention
+  first. Nothing is shown while the field is empty or while you're still typing.
 - changed: a session on a project linked to a Depot connection is now offered only that connection's MCP server,
   not every configured Depot instance — and a project with no Depot connection gets none at all. It shows up
   ticked in the New-session checklist like any other plugin-offered server, so you still have the last word on

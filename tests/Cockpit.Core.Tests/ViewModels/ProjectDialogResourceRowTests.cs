@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -668,6 +669,67 @@ public class ProjectDialogResourceRowTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
         var row = viewModel.ResourceRows.Single();
 
+        Assert.Null(row.ReachabilityDetail);
+    }
+
+    // --- AC-503 acceptance criterion 6, the two reset sub-cases the review round asked to see proven directly ------
+    // (rather than only inferred from OnRoleChanged/OnSelectedMemorySourceChoiceChanged unconditionally calling
+    // _ResetReachability): a role switch away from Memory and back, and a source switch that leaves Reference's own
+    // text untouched. Built directly against ProjectResourceRowViewModel rather than through CreateAsync, since
+    // what is under test here is the row's own reset behavior, not the dialog's diagnostics pipeline.
+
+    [Fact]
+    public void SwitchingRoleAwayFromMemoryAndBackToMemory_ResetsReachability()
+    {
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot project", "depot"),
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit")
+        {
+            SelectedMemorySourceChoice = choices[1],
+            Reachability = ProjectMemorySourceReachability.Confirmed,
+            ReachabilityDetail = "24 documents",
+        };
+
+        row.Role = ProjectResourceRole.Reference;
+        Assert.Null(row.Reachability);
+
+        // Set again after the away-switch already cleared it, so the back-switch below is the one actually proven —
+        // a false pass here would mean the first switch's reset alone was doing the work.
+        row.Reachability = ProjectMemorySourceReachability.Confirmed;
+        row.ReachabilityDetail = "24 documents";
+
+        row.Role = ProjectResourceRole.Memory;
+
+        Assert.Null(row.Reachability);
+        Assert.Null(row.ReachabilityDetail);
+    }
+
+    [Fact]
+    public void SwitchingSelectedMemorySourceChoice_WhileReferenceTextStaysTheSame_ResetsReachability()
+    {
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot project — Synvolution", "depot"),
+            new("Depot project — Wispslate", "depot.wispslate"),
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit")
+        {
+            SelectedMemorySourceChoice = choices[1],
+            Reachability = ProjectMemorySourceReachability.Confirmed,
+            ReachabilityDetail = "24 documents",
+        };
+
+        // The typed value is deliberately left exactly as it was — a Reachability answer for "cockpit" against
+        // Synvolution says nothing about whether "cockpit" also resolves on Wispslate, so switching the source
+        // alone (Reference untouched) must invalidate it just as much as an edited Reference would.
+        row.SelectedMemorySourceChoice = choices[2];
+
+        Assert.Equal("cockpit", row.Reference);
+        Assert.Null(row.Reachability);
         Assert.Null(row.ReachabilityDetail);
     }
 
