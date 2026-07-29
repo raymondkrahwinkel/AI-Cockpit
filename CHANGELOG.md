@@ -42,6 +42,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   A row whose reference cannot be found is shown as broken right there in the editor, rather than only failing
   silently when a session goes looking for it. Existing projects open with their memory location already in the
   list, in the same "Memory" role it always was.
+- added: terminal (TTY) sessions now show up in the usage history alongside SDK sessions — their token counts land
+  in the same trail as every turn completes, so a session run straight in the terminal is no longer invisible to
+  usage tracking. No cost figure is recorded for these, since the CLI's own transcript does not report one and the
+  cockpit does not estimate one from tokens.
 - added: an autonomous run now hands its reviewer proof instead of sending it off to look. When a step finishes, the
   cockpit asks git itself what changed in the run's worktree since that step started, and gives the reviewing session
   that account to judge the acceptance against — where before it was told to distrust the step's summary and go read
