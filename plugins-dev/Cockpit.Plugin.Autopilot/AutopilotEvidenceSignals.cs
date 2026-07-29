@@ -24,6 +24,14 @@ internal static class AutopilotEvidenceSignals
                 + "work landed somewhere else, or never landed.");
         }
 
+        if (change.AddedFromBeforeTheMark.Count > 0)
+        {
+            concerns.Add(
+                $"This step handed git {change.AddedFromBeforeTheMark.Count} file(s) that were already lying in the "
+                + $"worktree before it started ({string.Join(", ", change.AddedFromBeforeTheMark.Take(5))}) — they read "
+                + "as new in the diff below, but their contents are not this step's work.");
+        }
+
         if (_ClaimsTestsPass(summaries) && !_TouchedATestFile(change))
         {
             concerns.Add(
@@ -37,14 +45,17 @@ internal static class AutopilotEvidenceSignals
                 $"This step was already sent back {step.Reworks} time(s) — its acceptance has failed here before, so "
                 + "read the change rather than the summary.");
         }
-        else if (step.Attempts > 1)
+
+        // Deliberately not an "else" on the rework above: a rework always implies a second attempt, and it is exactly
+        // there that this caveat matters most. The mark is retaken per attempt, so the change below is only the latest
+        // attempt's slice while the acceptance spans the whole step — and the rework concern does not say that.
+        // Attempts also grows on an attempt no CEO ever judged (a crashed or stalled session, see AutopilotCorrection),
+        // which is the case where nothing else would fire at all.
+        if (step.Attempts > 1)
         {
-            // Attempts also grows on an attempt no CEO ever judged — a crashed or stalled session (AutopilotCorrection).
-            // That earlier attempt's work is behind this attempt's mark, so the change below is only the latest slice
-            // while the acceptance covers the whole step. Without this the rework concern would stay silent for it.
             concerns.Add(
-                $"This is attempt {step.Attempts}: an earlier attempt ran and never reached a verdict, so what follows "
-                + "is only what this attempt changed, while the acceptance covers the whole step.");
+                $"This is attempt {step.Attempts}: what follows is only what this attempt changed, while the acceptance "
+                + "covers the whole step — earlier attempts' work sits behind this attempt's starting point.");
         }
 
         return concerns;

@@ -22,7 +22,7 @@ public class AutopilotEvidenceGateTests
     {
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], "@@ -1 +1 @@\n+new", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "@@ -1 +1 @@\n+new", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -50,7 +50,7 @@ public class AutopilotEvidenceGateTests
         // embedded — measuring against the worktree afterwards would compare it to its own result.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -80,7 +80,7 @@ public class AutopilotEvidenceGateTests
         // task in a plain folder has no worktree to observe, so the CEO keeps validating exactly as it did before.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 
@@ -138,7 +138,7 @@ public class AutopilotEvidenceGateTests
         // and its deliverable is a judgement rather than a change — there is nothing for the harness to diff.
         var plan = _RunningPlan(_HardStep("1") with { IsReviewGate = true });
         var host = _Host();
-        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], "diff", false));
+        var source = new FakeEvidenceSource(new AutopilotWorktreeChange(["src/Thing.cs"], [], [], "diff", false));
         var coordinator = new AutopilotRunCoordinator(host, plan, evidenceSource: source);
         var turns = _CaptureCeoTurns(host);
 

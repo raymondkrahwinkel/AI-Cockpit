@@ -20,13 +20,27 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
             return null;
         }
 
-        // `stash create` writes a commit whose tree is the worktree as it stands, and writes it nowhere: it touches no
-        // ref, no index and no file, so it is a read as far as the run is concerned. That is what pins work an earlier
-        // step left uncommitted, so this step is not later credited with it. It prints nothing on a clean tree — there
-        // is then nothing uncommitted to pin and HEAD already is the worktree.
-        var snapshot = await GitCommandLine.RunAsync("git", ["stash", "create"], worktreePath, cancellationToken);
-        var commit = snapshot.Ok ? snapshot.StdOut.Trim() : string.Empty;
+        // `stash create` records the worktree as it stands into a commit it stores nowhere — no ref, no index entry, no
+        // file changes (only loose objects, which git collects on its own). That is what pins work an earlier step left
+        // uncommitted, so this step is not later credited with it. Writing that commit needs an identity, and a machine
+        // without a configured one — a CI box, a fresh container — would otherwise fail here; the identity is supplied
+        // for the call, and never reaches a commit anyone will see.
+        var snapshot = await GitCommandLine.RunAsync(
+            "git",
+            ["-c", "user.name=cockpit-autopilot", "-c", "user.email=autopilot@localhost", "stash", "create"],
+            worktreePath,
+            cancellationToken);
 
+        if (!snapshot.Ok)
+        {
+            // Refused — an unborn repository, a conflicted merge, an object store it cannot write to. Falling back to
+            // HEAD here would quietly reinstate the very thing the mark exists to prevent, and the CEO would never
+            // learn the difference. Report that there is nothing to observe and let it inspect the files itself.
+            return null;
+        }
+
+        // Nothing printed means a clean tree: there is no uncommitted work to pin, so HEAD already is the worktree.
+        var commit = snapshot.StdOut.Trim();
         if (commit.Length == 0)
         {
             var head = await GitCommandLine.RunAsync("git", ["rev-parse", "HEAD"], worktreePath, cancellationToken);
@@ -71,10 +85,17 @@ internal sealed class GitCliEvidenceSource : IAutopilotEvidenceSource
             ? _Lines(untracked.StdOut).Where(path => !mark.UntrackedFiles.Contains(path, StringComparer.Ordinal)).ToArray()
             : [];
 
+        // A file that was lying here untracked and that this step merely handed to git crosses into the tracked half
+        // and reads as brand new in the diff. It stays in the change — staging it is real — but it is singled out, so
+        // an earlier step's file is not silently read as this step's output.
+        var changed = _Lines(names.StdOut);
+        var staged = changed.Where(path => mark.UntrackedFiles.Contains(path, StringComparer.Ordinal)).ToArray();
+
         var cut = _CutLength(patch.StdOut);
         return new AutopilotWorktreeChange(
-            _Lines(names.StdOut),
+            changed,
             newFiles,
+            staged,
             patch.StdOut[..cut],
             cut < patch.StdOut.Length);
     }

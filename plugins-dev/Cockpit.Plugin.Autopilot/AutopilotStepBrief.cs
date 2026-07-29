@@ -134,7 +134,11 @@ internal static class AutopilotStepBrief
         // begin with a single space and its paths with nothing at all, so a step could write a line that reads like an
         // instruction to the CEO and have it arrive inside the very block the CEO was told to trust. Fencing it as data
         // is the guard; stripping any copy of the fence out of the observation is what keeps the fence closed.
-        var observation = evidence.Observation.Replace(ObservationFence, "-----(marker removed)-----", StringComparison.Ordinal);
+        // The agent's own summary sits in the same turn and is even more directly under its control than a diff is, so
+        // it gets the same treatment: without this a step could put a fence pair in its done-summary and hand the CEO a
+        // counterfeit harness observation, inside the one block the turn calls independent.
+        var observation = _WithoutFence(evidence.Observation);
+        reported = _WithoutFence(reported);
 
         return $$"""
             A step of the plan has finished — validate it before the run moves on. Step: {{step.Title}}.
@@ -163,4 +167,8 @@ internal static class AutopilotStepBrief
 
     /// <summary>Marks both ends of the harness observation in a validation turn, so its contents cannot be read as instructions.</summary>
     private const string ObservationFence = "----- HARNESS OBSERVATION -----";
+
+    /// <summary>Text on its way into a validation turn, with any copy of the fence defanged — only the turn itself may open or close that block.</summary>
+    private static string _WithoutFence(string text) =>
+        text.Replace(ObservationFence, "-----(marker removed)-----", StringComparison.Ordinal);
 }

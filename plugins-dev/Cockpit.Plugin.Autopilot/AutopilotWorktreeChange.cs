@@ -9,6 +9,12 @@ namespace Cockpit.Plugin.Autopilot;
 /// New files sitting in the worktree that git does not track yet. Listed separately because a diff cannot show them:
 /// a step that wrote a file without adding it has done real work the patch below is silent about.
 /// </param>
+/// <param name="AddedFromBeforeTheMark">
+/// Files this step handed to git that were already lying in the worktree untracked when it started. They belong in
+/// <see cref="FilesChanged"/> — staging a file is a real change to the repository — but their <em>contents</em> are an
+/// earlier step's work, and a diff shows them as brand new. Kept apart so the CEO is told, rather than left to read a
+/// file someone else wrote as this step's output.
+/// </param>
 /// <param name="Patch">The diff as git printed it, cut to what a brief can carry when <see cref="Truncated"/>.</param>
 /// <param name="Truncated">
 /// The diff was longer than the brief carries and was cut. Said out loud in the validation turn — a silently shortened
@@ -17,6 +23,7 @@ namespace Cockpit.Plugin.Autopilot;
 internal sealed record AutopilotWorktreeChange(
     IReadOnlyList<string> FilesChanged,
     IReadOnlyList<string> UntrackedFiles,
+    IReadOnlyList<string> AddedFromBeforeTheMark,
     string Patch,
     bool Truncated)
 {
