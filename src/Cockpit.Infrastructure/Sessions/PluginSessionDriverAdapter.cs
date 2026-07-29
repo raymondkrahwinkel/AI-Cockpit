@@ -506,7 +506,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         conversationSink.Report(paneId, conversation.ToCore());
     }
 
-    private static SessionEvent _Adapt(PluginSessionEvent pluginEvent) => pluginEvent switch
+    // AC-146: stamped once here rather than in every branch below — pluginEvent.ParentToolUseId names the
+    // sub-agent (Task tool call) this event belongs to, when it belongs to one, and every SessionEvent subtype
+    // carries the same base property the host's transcript nests sub-agent rows by.
+    private static SessionEvent _Adapt(PluginSessionEvent pluginEvent) => _AdaptCore(pluginEvent) with
+    {
+        ParentToolUseId = pluginEvent.ParentToolUseId,
+    };
+
+    private static SessionEvent _AdaptCore(PluginSessionEvent pluginEvent) => pluginEvent switch
     {
         PluginSessionInitialized initialized => new SessionInitialized
         {

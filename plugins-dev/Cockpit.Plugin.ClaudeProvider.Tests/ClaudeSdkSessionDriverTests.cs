@@ -235,6 +235,35 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"));
     }
 
+    // AC-146: sub-agent activity is worth seeing by default (Raymond, 2026-07-29) — an env var rather than a CLI
+    // flag, since an older CLI that does not know it just ignores it, where an unknown flag would refuse to start.
+    [Fact]
+    public async Task Start_SetsTheForwardSubagentTextEnvironmentVariable_OnByDefault()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            CancellationToken.None);
+
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "1"));
+    }
+
+    [Fact]
+    public async Task Start_AProfileSuppliedForwardSubagentTextValue_IsNotOverridden()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            environment: new Dictionary<string, string> { ["CLAUDE_CODE_FORWARD_SUBAGENT_TEXT"] = "0" },
+            CancellationToken.None);
+
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "0"));
+    }
+
     [Fact]
     public async Task Start_AProfileSuppliedAnthropicCredential_IsRemovedFromTheSpawnNotHandedToTheCli()
     {

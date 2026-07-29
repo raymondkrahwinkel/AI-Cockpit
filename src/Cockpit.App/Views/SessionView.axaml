@@ -557,6 +557,84 @@
                                         </StackPanel>
                                     </StackPanel>
                                     </StackPanel>
+
+                                    <!-- AC-146: a Task/Agent tool call's own sub-agent activity — nested here rather
+                                         than flattened into the top-level transcript, and collapsed by default
+                                         (Raymond, 2026-07-29): an operator sees that a sub-agent ran and expands to
+                                         see what it did. The toggle only shows once at least one event arrived. -->
+                                    <Button IsVisible="{Binding HasSubAgentRows}" Command="{Binding ToggleSubAgentExpandedCommand}"
+                                            Classes="toolChip" HorizontalAlignment="Left">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <materialIcons:MaterialIcon Kind="{Binding SubAgentToggleIconKind}" Width="12" Height="12"/>
+                                            <materialIcons:MaterialIcon Kind="RobotOutline" Width="13" Height="13"/>
+                                            <TextBlock Text="{Binding SubAgentSummaryText}"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <ItemsControl IsVisible="{Binding IsSubAgentExpanded}" ItemsSource="{Binding SubAgentRows}" Margin="14,4,0,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="4"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <!-- A simplified row, one level deep only (today's CLI does not nest a sub-agent inside a
+                                                 sub-agent): the same tool chip/expand/result affordances as the top level, reusing the
+                                                 row's own commands and computed properties, without the markdown avatar row a sub-agent's
+                                                 own narration is not entitled to (it is not the operator's reply). -->
+                                            <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                                <Border Classes="transcriptRow" Padding="6,4" CornerRadius="{StaticResource CockpitControlRadius}">
+                                                    <StackPanel Spacing="4">
+                                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="transcript"
+                                                                             FontStyle="Italic" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                             IsVisible="{Binding IsPlainText}"/>
+
+                                                        <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <Button Grid.Column="0" Command="{Binding ToggleExpandedCommand}"
+                                                                        Classes="toolChip" HorizontalAlignment="Left">
+                                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                        <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                                        <TextBlock Text="{Binding ToolHeader}"/>
+                                                                    </StackPanel>
+                                                                </Button>
+                                                                <TextBlock Grid.Column="1" Text="{Binding PermissionDecision}" VerticalAlignment="Center"
+                                                                           FontStyle="Italic" FontSize="11"
+                                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                           IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                            </Grid>
+                                                            <StackPanel IsVisible="{Binding IsExpanded}" Spacing="4" Margin="14,2,0,2">
+                                                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
+                                                                                     Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                                <SelectableTextBlock Text="{Binding ResultDisplayText}" TextWrapping="Wrap"
+                                                                                     Classes="toolBody" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                                     IsVisible="{Binding HasResult}"/>
+                                                            </StackPanel>
+                                                            <WrapPanel Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
+                                                                <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                                                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
+                                                                        CommandParameter="{Binding}"/>
+                                                                <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).DenyToolCommand}"
+                                                                        CommandParameter="{Binding}"/>
+                                                            </WrapPanel>
+                                                        </StackPanel>
+
+                                                        <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
+                                                            <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
+                                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                                    <TextBlock Text="{Binding ToggleLabel}"/>
+                                                                </StackPanel>
+                                                            </Button>
+                                                            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap" Classes="toolBody"
+                                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                                 IsVisible="{Binding IsExpanded}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
 
                                 <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->

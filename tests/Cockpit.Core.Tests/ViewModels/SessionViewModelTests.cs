@@ -7,6 +7,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -569,6 +570,117 @@ public class SessionViewModelTests
         // AC-213: the thinking row stays and the assistant text streams into its own row beneath it, in order.
         vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.AssistantText);
         vm.Transcript.Last().Text.Should().Be("Here you go.");
+    }
+
+    // AC-146: sub-agent activity nests under its parent Task tool-use row instead of flattening into the
+    // top-level transcript, collapsed by default.
+    [Fact]
+    public void Apply_SubAgentActivity_NestsUnderItsParentToolUseRow_CollapsedByDefault()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Looking into it…", ParentToolUseId = "task-1" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Read", InputJson = "{}", ParentToolUseId = "task-1" });
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-tool-1", Content = "file contents", IsError = false, ParentToolUseId = "task-1" });
+
+        var anchor = Assert.Single(vm.Transcript);
+        anchor.Kind.Should().Be(TranscriptEntryKind.ToolUse);
+        anchor.IsSubAgentExpanded.Should().BeFalse("sub-agent activity is collapsed until the operator expands it");
+        anchor.SubAgentRows.Select(r => r.Kind).Should().Equal(TranscriptEntryKind.AssistantText, TranscriptEntryKind.ToolUse);
+        anchor.SubAgentRows[0].Text.Should().Be("Looking into it…");
+        anchor.SubAgentRows[1].ResultText.Should().Be("file contents");
+    }
+
+    [Fact]
+    public void Apply_SubAgentToolCallNeedingPermission_IsFoundNestedByToolUseId()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
+
+        var anchor = Assert.Single(vm.Transcript);
+        var nested = Assert.Single(anchor.SubAgentRows);
+        nested.IsPendingPermission.Should().BeTrue();
+    }
+
+    // AC-146 AC5: extract-last-assistant-text.js's own choice to exclude sidechain chatter from read-aloud must
+    // not get inverted in the app's own read-aloud path — a sub-agent's text must never reach the operator's ears
+    // as if the top-level reply said it.
+    [Fact]
+    public void SubAgentText_NeverReachesReadAloud_OnlyTheTopLevelReplyDoes()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var queue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)), voicePlaybackQueue: queue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "sub-agent chatter that must stay hidden", ParentToolUseId = "task-1" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "the actual reply" });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "the actual reply", IsError = false });
+
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.All(s => !s.Contains("sub-agent chatter"))),
+            Arg.Any<int>(), Arg.Any<string>());
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Any(s => s.Contains("the actual reply"))),
+            Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    // AC-146 AC5, defensive: an event naming a parent this pane never saw a top-level tool-use row for (a
+    // dropped event, or a stray id — not expected with the current CLI/adapter, but not trusted blindly either)
+    // must not be promoted into the top-level reply just because there is nowhere to nest it. It is still shown
+    // (nothing vanishes silently) but stays out of read-aloud and the output-text signal, exactly like a
+    // successfully-nested sub-agent chunk would.
+    [Fact]
+    public void SubAgentText_WithNoMatchingAnchor_StillNeverReachesReadAloud_ButIsStillShown()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var queue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)), voicePlaybackQueue: queue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        // No ToolUseRequested for "task-1" was ever applied — the anchor this parent id names does not exist.
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "orphaned sub-agent chatter", ParentToolUseId = "task-1" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "the actual reply" });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "the actual reply", IsError = false });
+
+        vm.Transcript.Should().Contain(row => row.Text == "orphaned sub-agent chatter", "nothing is silently dropped");
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.All(s => !s.Contains("orphaned sub-agent chatter"))),
+            Arg.Any<int>(), Arg.Any<string>());
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Any(s => s.Contains("the actual reply"))),
+            Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    // The same fallback, but on a ToolResult naming an unresolved parent — must couple to (or fall back to a row
+    // for) its tool-use row like any orphan, yet never raise the output-text/tool-activity signals a genuine
+    // top-level result would.
+    [Fact]
+    public void OrphanedToolResult_CouplesAndShows_ButNeverRaisesOutputOrToolActivitySignals()
+    {
+        var vm = NewVm();
+        var outputs = new List<string>();
+        var toolActivity = new List<SessionToolActivity>();
+        vm.OutputTextProduced += (_, text) => outputs.Add(text);
+        vm.ToolActivityProduced += (_, activity) => toolActivity.Add(activity);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-tool-1", Content = "result text", IsError = false, ParentToolUseId = "task-1" });
+
+        vm.Transcript.Should().Contain(row => row.ResultText == "result text");
+        outputs.Should().NotContain("result text");
+        toolActivity.Should().BeEmpty();
     }
 
     [Fact]

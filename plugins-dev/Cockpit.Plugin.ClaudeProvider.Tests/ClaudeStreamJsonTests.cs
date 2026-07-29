@@ -75,4 +75,48 @@ public class ClaudeStreamJsonTests
 
         Assert.Null(initialized.Model);
     }
+
+    // AC-146: a sub-agent's own wire events carry parent_tool_use_id alongside session_id, naming the Task
+    // tool_use_id that spawned them — stamped onto whatever event(s) the line yields so the host can nest them
+    // under that call instead of flattening them into the top-level transcript.
+    [Fact]
+    public void StreamEvent_WithParentToolUseId_CarriesItOnTheTextDelta()
+    {
+        const string line = """
+        {"type":"stream_event","session_id":"abc","parent_tool_use_id":"toolu_task1",
+         "event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"looking into it"}}}
+        """;
+
+        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal("toolu_task1", delta.ParentToolUseId);
+        Assert.Equal("looking into it", delta.Text);
+    }
+
+    [Fact]
+    public void Assistant_WithParentToolUseId_CarriesItOnTheToolUseRequested()
+    {
+        const string line = """
+        {"type":"assistant","session_id":"abc","parent_tool_use_id":"toolu_task1",
+         "message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_sub1","name":"Read","input":{}}]}}
+        """;
+
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal("toolu_task1", toolUse.ParentToolUseId);
+        Assert.Equal("toolu_sub1", toolUse.ToolUseId);
+    }
+
+    [Fact]
+    public void StreamEvent_WithNoParentToolUseId_LeavesItNull()
+    {
+        const string line = """
+        {"type":"stream_event","session_id":"abc",
+         "event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"top-level reply"}}}
+        """;
+
+        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Null(delta.ParentToolUseId);
+    }
 }

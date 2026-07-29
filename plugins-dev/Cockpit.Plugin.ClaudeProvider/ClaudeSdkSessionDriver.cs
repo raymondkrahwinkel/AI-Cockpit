@@ -364,6 +364,16 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
     }
 
+    /// <summary>
+    /// Env var that asks the CLI to forward a sub-agent's own text/thinking into the stream (AC-146) — the Task
+    /// tool's activity would otherwise be invisible beyond the parent tool-call row and its final result. An env
+    /// var rather than a CLI flag deliberately: an older CLI that does not know it simply never sets the
+    /// corresponding internal option and forwards nothing, exactly like today — an unrecognised environment
+    /// variable is silently ignored, where an unrecognised CLI flag would refuse to start the process at all.
+    /// That is the whole of the graceful degradation this needs; no version sniffing required.
+    /// </summary>
+    private const string ForwardSubagentTextEnvironmentVariable = "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT";
+
     private Dictionary<string, string?> _BuildEnvironment(string userHome)
     {
         var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -375,6 +385,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         {
             environment[key] = value;
         }
+
+        // Default on (Raymond, 2026-07-29): sub-agent activity is worth seeing by default, collapsed under its
+        // parent Task row rather than behind an opt-in toggle nobody finds. Set only when the profile did not
+        // already supply its own value, so an operator who wants it off can still say so.
+        environment.TryAdd(ForwardSubagentTextEnvironmentVariable, "1");
 
         // Drop any ANTHROPIC_* credential, inherited or profile-supplied: one that reaches the CLI silently moves
         // the session off the operator's subscription and onto API-key billing (the same rule the host's spawn
