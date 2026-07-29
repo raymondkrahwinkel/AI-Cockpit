@@ -86,7 +86,14 @@ internal static class AutopilotStepBrief
         + "a short summary of what you did — that is how the run advances; a text reply on its own does not report the "
         + "step done. If you are still working, ignore this and call it once you finish.";
 
-    public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries)
+    /// <summary>
+    /// The turn the CEO judges a finished step by. With <paramref name="evidence"/> — an independent account of the
+    /// change, produced by the harness from the run's own worktree (AC-255) — the CEO validates against that instead of
+    /// re-reading the worktree itself. Without it, it gets exactly the instruction it always got: a run whose work the
+    /// harness cannot observe (a plain folder, a review gate judging a report, a git probe that failed) degrades loudly
+    /// back to the deep inspection rather than quietly to trusting the summary.
+    /// </summary>
+    public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries, AutopilotStepEvidence? evidence = null)
     {
         // A single whitespace-only summary is treated as no summary, like the zero-summary case — otherwise the CEO gets a
         // blank "What the agent(s) reported:" block instead of the clear "(the agent reported no summary)" fallback.
@@ -99,6 +106,30 @@ internal static class AutopilotStepBrief
             ? "(no explicit acceptance was set — judge it against the step's intent)"
             : step.Acceptance;
 
+        if (evidence is null)
+        {
+            return $$"""
+                A step of the plan has finished — validate it before the run moves on. Step: {{step.Title}}.
+                Acceptance: {{acceptance}}
+
+                What the agent(s) reported:
+                {{reported}}
+
+                The step's work is in your working directory (the run's worktree, where every step works). Inspect the actual
+                files there to check the result against the acceptance — do not rely on the summary alone. Decide whether the
+                output meets the acceptance, then call
+                mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_validate with passed=true (it meets the acceptance) or
+                passed=false (it does not — it will be reworked), and a one-line reason.
+                """;
+        }
+
+        // An empty concern list is said out loud rather than left off: "no spot-check fired" and "the harness checked
+        // and this is fine" are different claims, and only the first one is true.
+        var concerns = evidence.Concerns.Count == 0
+            ? "The harness flagged nothing about this change. That is not a judgement on the step — it means no spot-check fired."
+            : "The harness flagged this about the change — look at the files for it:\n"
+                + string.Join("\n", evidence.Concerns.Select(concern => $"- {concern}"));
+
         return $$"""
             A step of the plan has finished — validate it before the run moves on. Step: {{step.Title}}.
             Acceptance: {{acceptance}}
@@ -106,11 +137,16 @@ internal static class AutopilotStepBrief
             What the agent(s) reported:
             {{reported}}
 
-            The step's work is in your working directory (the run's worktree, where every step works). Inspect the actual
-            files there to check the result against the acceptance — do not rely on the summary alone. Decide whether the
-            output meets the acceptance, then call
+            What the harness itself observed in the run's worktree. This was produced by the harness, not by the agent,
+            and the agent cannot change it — judge the acceptance against this rather than re-reading the worktree:
+            {{evidence.Observation}}
+
+            {{concerns}}
+
+            Decide whether the output meets the acceptance, then call
             mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_validate with passed=true (it meets the acceptance) or
-            passed=false (it does not — it will be reworked), and a one-line reason.
+            passed=false (it does not — it will be reworked), and a one-line reason. Read the files yourself when
+            something was flagged above, or when the observation does not settle the acceptance on its own.
             """;
     }
 }
