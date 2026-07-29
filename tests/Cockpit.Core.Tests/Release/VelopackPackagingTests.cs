@@ -32,16 +32,53 @@ public class VelopackPackagingTests
     }
 
     /// <summary>
-    /// The single-file build still exists, for the portable exe and the Inno installer that both package exactly one
-    /// file. It must come from its own output directory: pointed at the directory publish it would overwrite the
-    /// very files vpk is about to pack.
+    /// Windows has exactly one installation form: the Velopack Setup built from the directory publish (AC-496).
+    /// The Inno installer and the single-file publish that fed it are gone — this is the guard that keeps them
+    /// gone, since nothing else fails loudly if a later edit brings either back.
+    /// <para>
+    /// Mutation-proven: reintroducing the "Windows installer" step (restoring
+    /// <c>scripts/package-windows-installer.ps1</c>) or the "Publish the single-file Windows build" step turns
+    /// this red.
+    /// </para>
     /// </summary>
     [Theory]
     [MemberData(nameof(Workflows))]
-    public void TheSingleFileBuild_HasItsOwnOutput(string workflow)
+    public void TheWorkflow_CarriesNoLegacyWindowsInstaller(string workflow)
     {
-        Assert.Contains("--output publish/win-x64-singlefile",
-            _Step(workflow, "Publish the single-file Windows build"), StringComparison.Ordinal);
+        var text = _Workflow(workflow);
+
+        Assert.DoesNotContain("package-windows-installer.ps1", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("windows-installer.iss", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Windows installer", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Publish the single-file Windows build", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishSingleFile", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("win-x64-setup.exe\"", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The legacy scripts themselves are deleted, not merely unreferenced — a file left behind is a file someone
+    /// re-wires the workflow back to.
+    /// </summary>
+    [Fact]
+    public void TheLegacyInnoScripts_AreDeleted()
+    {
+        var repoRoot = _RepoRoot();
+        Assert.False(File.Exists(Path.Combine(repoRoot, "scripts", "package-windows-installer.ps1")));
+        Assert.False(File.Exists(Path.Combine(repoRoot, "scripts", "windows-installer.iss")));
+    }
+
+    /// <summary>
+    /// The feed files (`RELEASES-*`, `releases.*.json`, `*-full.nupkg`) have to ride on the release for the updater
+    /// to work, but they read as noise on a human download list unless the notes say so explicitly (AC-496).
+    /// </summary>
+    [Fact]
+    public void TheReleaseNotes_MarkTheFeedFilesAsMachineryNotDownloads()
+    {
+        var notes = _Step("release.yml", "Append what each platform needs on first run");
+
+        Assert.Contains("RELEASES-*", notes, StringComparison.Ordinal);
+        Assert.Contains("releases.*.json", notes, StringComparison.Ordinal);
+        Assert.Contains("*-full.nupkg", notes, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -204,6 +241,26 @@ public class VelopackPackagingTests
     }
 
     private static string _Workflow(string workflow) => File.ReadAllText(_WorkflowPath(workflow));
+
+    /// <summary>
+    /// The repo root, found the same way <see cref="_WorkflowPath"/> finds a workflow — by walking up from the
+    /// test output until <c>.github/workflows</c> shows up beneath a candidate directory.
+    /// </summary>
+    private static string _RepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, ".github", "workflows")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("No folder above the test output holds .github/workflows — this test reads the repo it belongs to.");
+    }
 
     private static string _WorkflowPath(string workflow)
     {

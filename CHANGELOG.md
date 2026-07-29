@@ -1607,3 +1607,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   added little.
 - removed: two dropdown-picker theme rules that never painted anything — measured to have no effect in any
   state, so there is nothing to notice; pickers still look and behave exactly as before.
+- removed: the legacy Inno Setup installer and the portable single-file `.exe` it was built from, along with the
+  packaging scripts behind them — gone from both the release and nightly pages, so Windows now has exactly one
+  installation form: the Velopack Setup and its Portable build. The release notes also gained a short section
+  calling out the update-feed files (`RELEASES-*`, `releases.*.json`, `*-full.nupkg`) as machinery for the
+  in-app updater, not something to download by hand.
