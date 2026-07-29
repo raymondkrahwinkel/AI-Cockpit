@@ -2,7 +2,6 @@ using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -27,7 +26,7 @@ public class McpServerChecklistTests
             },
         };
 
-        checklist.SummaryText.Should().Be("MCP servers · 2 of 3 selected");
+        Assert.Equal("MCP servers · 2 of 3 selected", checklist.SummaryText);
     });
 
     [Fact]
@@ -45,7 +44,7 @@ public class McpServerChecklistTests
 
         youtrack.IsEnabledForSession = true;
 
-        checklist.SummaryText.Should().Be("MCP servers · 2 of 2 selected");
+        Assert.Equal("MCP servers · 2 of 2 selected", checklist.SummaryText);
     });
 
     [Fact]
@@ -61,13 +60,13 @@ public class McpServerChecklistTests
         servers.Add(new McpServerSelectionItemViewModel("youtrack") { IsEnabledForSession = false });
         servers[0].IsEnabledForSession = false;
 
-        checklist.SummaryText.Should().Be("MCP servers · 0 of 2 selected");
+        Assert.Equal("MCP servers · 0 of 2 selected", checklist.SummaryText);
     });
 
     [Fact]
     public void WithNoServers_TheHeaderIsJustTheName() => HeadlessAvalonia.Run(() =>
     {
-        new McpServerChecklist().SummaryText.Should().Be("MCP servers");
+        Assert.Equal("MCP servers", new McpServerChecklist().SummaryText);
     });
 
     [Fact]
@@ -80,6 +79,6 @@ public class McpServerChecklistTests
         var checklists = window.GetVisualDescendants().OfType<McpServerChecklist>().ToList();
         window.Close();
 
-        checklists.Should().ContainSingle("the project editor must not grow a second copy of the rows");
+        Assert.Single(checklists);
     });
 }

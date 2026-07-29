@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -18,9 +17,9 @@ public class MoveWidgetBetweenWorkspacesTests
 
         var moved = await workspaces.MovePaneToWorkspaceAsync(pane.Id, target.Id);
 
-        moved.Should().BeTrue();
-        _Workspace(workspaces, source.Id).Panes.Should().BeEmpty();
-        _Workspace(workspaces, target.Id).Panes.Should().ContainSingle().Which.WidgetId.Should().Be("widgets.clock");
+        Assert.True(moved);
+        Assert.Empty(_Workspace(workspaces, source.Id).Panes);
+        Assert.Equal("widgets.clock", Assert.Single(_Workspace(workspaces, target.Id).Panes).WidgetId);
     }
 
     /// <summary>
@@ -35,7 +34,7 @@ public class MoveWidgetBetweenWorkspacesTests
 
         await workspaces.MovePaneToWorkspaceAsync(paneId, target.Id);
 
-        _Workspace(workspaces, target.Id).Panes.Single().Id.Should().Be(paneId);
+        Assert.Equal(paneId, _Workspace(workspaces, target.Id).Panes.Single().Id);
     }
 
     /// <summary>
@@ -54,9 +53,9 @@ public class MoveWidgetBetweenWorkspacesTests
         await workspaces.MovePaneToWorkspaceAsync(moving.Id, target.Id);
 
         var landed = _Workspace(workspaces, target.Id).Panes.Single(pane => pane.Id == moving.Id);
-        landed.Cell.ColumnSpan.Should().Be(moving.Cell.ColumnSpan);
-        landed.Cell.RowSpan.Should().Be(moving.Cell.RowSpan);
-        _Workspace(workspaces, target.Id).Panes.Should().HaveCount(2);
+        Assert.Equal(moving.Cell.ColumnSpan, landed.Cell.ColumnSpan);
+        Assert.Equal(moving.Cell.RowSpan, landed.Cell.RowSpan);
+        Assert.Equal(2, System.Linq.Enumerable.Count(_Workspace(workspaces, target.Id).Panes));
     }
 
     /// <summary>A sessions workspace cannot hold a widget, so its tab is not a target — the move is refused, not attempted.</summary>
@@ -70,8 +69,8 @@ public class MoveWidgetBetweenWorkspacesTests
 
         var moved = await workspaces.MovePaneToWorkspaceAsync(paneId, sessions);
 
-        moved.Should().BeFalse();
-        _Workspace(workspaces, source.Id).Panes.Should().ContainSingle();
+        Assert.False(moved);
+        Assert.Single(_Workspace(workspaces, source.Id).Panes);
     }
 
     /// <summary>Dropped back on its own tab, nothing happens — a move to where it already is is not a move.</summary>
@@ -83,8 +82,8 @@ public class MoveWidgetBetweenWorkspacesTests
 
         var moved = await workspaces.MovePaneToWorkspaceAsync(paneId, source.Id);
 
-        moved.Should().BeFalse();
-        _Workspace(workspaces, source.Id).Panes.Should().ContainSingle();
+        Assert.False(moved);
+        Assert.Single(_Workspace(workspaces, source.Id).Panes);
     }
 
     [Fact]
@@ -94,7 +93,7 @@ public class MoveWidgetBetweenWorkspacesTests
 
         var moving = async () => await workspaces.MovePaneToWorkspaceAsync("no-such-pane", target.Id);
 
-        await moving.Should().NotThrowAsync();
+        await moving();
     }
 
     private static Workspace _Workspace(WorkspacesViewModel workspaces, string id) =>

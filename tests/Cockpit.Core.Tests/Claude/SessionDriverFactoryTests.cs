@@ -5,7 +5,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -40,8 +39,8 @@ public class SessionDriverFactoryTests
 
         var driver = factory.Create(profile);
 
-        driver.Should().BeOfType<PluginSessionDriverAdapter>();
-        driver.Capabilities.SupportsTools.Should().BeTrue();
+        Assert.IsType<PluginSessionDriverAdapter>(driver);
+        Assert.True(driver.Capabilities.SupportsTools);
         driverFactory.Received(1).Create("""{"apiKey":"secret"}""");
     }
 
@@ -75,7 +74,8 @@ public class SessionDriverFactoryTests
         // The factory must hand the effective MCP catalog (registry + plugin-provided servers, AC-11) to the
         // adapter, or the operator's per-session MCP selection never reaches the plugin driver — the
         // "Connected (0 tools)" regression.
-        innerDriver.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("cockpit-orchestrator");
+        var mcpServer = Assert.Single(innerDriver.LastMcpServers!);
+        Assert.Equal("cockpit-orchestrator", mcpServer.Name);
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public class SessionDriverFactoryTests
 
         var driver = factory.Create(profile: null);
 
-        driver.Should().BeOfType<PluginSessionDriverAdapter>();
+        Assert.IsType<PluginSessionDriverAdapter>(driver);
         // A profile-less default session runs the bundled Claude plugin with an empty default config.
         driverFactory.Received(1).Create("{}");
     }
@@ -113,7 +113,8 @@ public class SessionDriverFactoryTests
 
         var act = () => factory.Create(profile);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*unknown-provider*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("unknown-provider", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,7 +129,8 @@ public class SessionDriverFactoryTests
 
         var act = () => factory.Create(profile);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*PluginProviderConfig*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("PluginProviderConfig", ex.Message, StringComparison.Ordinal);
     }
 
     private sealed record _MismatchedProviderConfig() : ProviderConfig(SessionProvider.Plugin);

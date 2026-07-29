@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -32,9 +31,8 @@ public class ScreenshotMarkLayerTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<OutlineMark>().Which
-            .Area.Should().Be(new CaptureRect(50, 80, 60, 40));
+        Assert.Equal(new CaptureRect(50, 80, 60, 40), Assert.IsType<OutlineMark>(Assert.Single(selection.Result!.Marks))
+            .Area);
     }
 
     /// <summary>
@@ -51,11 +49,9 @@ public class ScreenshotMarkLayerTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<OutlineMark>().Which
-            .Area.Should().Be(
-                new CaptureRect(350, 50, 200, 100),
-                "the width is the one that was drawn, not the part that fits");
+        Assert.Equal(
+            new CaptureRect(350, 50, 200, 100),
+            Assert.IsType<OutlineMark>(Assert.Single(selection.Result!.Marks)).Area);
     }
 
     /// <summary>A frame around something that is not being sent points at nothing, so it does not travel either.</summary>
@@ -68,7 +64,7 @@ public class ScreenshotMarkLayerTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().BeEmpty();
+        Assert.Empty(selection.Result!.Marks);
     }
 
     /// <summary>
@@ -85,12 +81,11 @@ public class ScreenshotMarkLayerTests
 
         selection.Undo();
 
-        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<RedactionMark>(
-            "the frame went on last, so the frame comes off first");
+        Assert.IsType<RedactionMark>(Assert.Single(selection.Marks));
 
         selection.Undo();
 
-        selection.Marks.Should().BeEmpty("and the box after it, off the same stack");
+        Assert.Empty(selection.Marks);
     }
 
     /// <summary>Placement order is kept, because it is visible: a frame over a pixelated box is not the same picture as the reverse.</summary>
@@ -105,8 +100,9 @@ public class ScreenshotMarkLayerTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Select(mark => mark.GetType()).Should().Equal(
-            typeof(RedactionMark), typeof(OutlineMark), typeof(RedactionMark));
+        Assert.Equal(
+            new[] { typeof(RedactionMark), typeof(OutlineMark), typeof(RedactionMark) },
+            selection.Result!.Marks.Select(mark => mark.GetType()));
     }
 
     /// <summary>There is nothing to frame until something has been marked out — the same refusal redaction gives.</summary>
@@ -117,8 +113,8 @@ public class ScreenshotMarkLayerTests
 
         selection.Outline(true);
 
-        selection.Outlining.Should().BeFalse();
-        selection.Hint.Should().Contain("Mark out a region first");
+        Assert.False(selection.Outlining);
+        Assert.Contains("Mark out a region first", selection.Hint);
     }
 
     /// <summary>Taking up one mark tool puts the other down — they share the drag, so both being on has no meaning.</summary>
@@ -131,8 +127,8 @@ public class ScreenshotMarkLayerTests
         selection.Redact(true);
         selection.Outline(true);
 
-        selection.Outlining.Should().BeTrue();
-        selection.Redacting.Should().BeFalse();
+        Assert.True(selection.Outlining);
+        Assert.False(selection.Redacting);
     }
 
     /// <summary>The frame is drawn in the colour it was handed, which is the theme's — not one this layer decided on.</summary>
@@ -150,9 +146,8 @@ public class ScreenshotMarkLayerTests
         _MarkOut(selection, 0, 0, 800, 600);
         _DrawFrame(selection, 10, 10, 40, 40);
 
-        selection.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<OutlineMark>().Which
-            .Colour.Should().Be(green);
+        Assert.Equal(green, Assert.IsType<OutlineMark>(Assert.Single(selection.Marks))
+            .Colour);
     }
 
     /// <summary>
@@ -167,13 +162,11 @@ public class ScreenshotMarkLayerTests
         _MarkOut(selection, 0, 0, 800, 600);
         _DrawArrow(selection, 400, 300, 150, 120);
 
-        selection.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<ArrowMark>().Which
-            .Should().BeEquivalentTo(new
+        Assert.Equivalent(new
             {
                 From = new CapturePoint(400, 300),
                 To = new CapturePoint(150, 120),
-            });
+            }, Assert.IsType<ArrowMark>(Assert.Single(selection.Marks)));
     }
 
     /// <summary>
@@ -187,10 +180,10 @@ public class ScreenshotMarkLayerTests
         _MarkOut(selection, 0, 0, 800, 600);
 
         _DrawArrow(selection, 200, 100, 200, 400);
-        selection.Marks.Should().ContainSingle("an arrow that went somewhere is an arrow");
+        Assert.Single(selection.Marks);
 
         _DrawBox(selection, 300, 100, 0, 300);
-        selection.Marks.Should().ContainSingle("but a box with no width covers nothing, so nothing is placed");
+        Assert.Single(selection.Marks);
     }
 
     /// <summary>A press that never moved has no direction, and an arrow with no direction points at nothing.</summary>
@@ -202,7 +195,7 @@ public class ScreenshotMarkLayerTests
 
         _DrawArrow(selection, 200, 200, 200, 200);
 
-        selection.Marks.Should().BeEmpty();
+        Assert.Empty(selection.Marks);
     }
 
     /// <summary>
@@ -222,8 +215,8 @@ public class ScreenshotMarkLayerTests
 
         selection.ChooseRegion();
 
-        selection.MarkingWith.Should().BeNull();
-        selection.DraggingRegion.Should().BeTrue("and the row has to be able to say so");
+        Assert.Null(selection.MarkingWith);
+        Assert.True(selection.DraggingRegion, "and the row has to be able to say so");
     }
 
     /// <summary>
@@ -240,14 +233,14 @@ public class ScreenshotMarkLayerTests
         selection.BeginDrag(100, 100);
         selection.DragTo(300, 260);
 
-        selection.PendingMarkPreview.Should().BeOfType<ArrowMark>().Which
-            .Should().BeEquivalentTo(new { To = new CapturePoint(300, 260) });
+        Assert.Equivalent(new { To = new CapturePoint(300, 260) }, Assert.IsType<ArrowMark>(selection.PendingMarkPreview));
 
         selection.EndDrag();
 
-        selection.PendingMarkPreview.Should().BeNull("the drag is over");
-        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<ArrowMark>().Which
-            .Should().BeEquivalentTo(new { To = new CapturePoint(300, 260) }, "and what was previewed is what was kept");
+        Assert.Null(selection.PendingMarkPreview);
+        Assert.Equivalent(
+            new { To = new CapturePoint(300, 260) },
+            Assert.IsType<ArrowMark>(Assert.Single(selection.Marks)));
     }
 
     /// <summary>
@@ -265,7 +258,7 @@ public class ScreenshotMarkLayerTests
             SurfaceHeight = 540,
         };
 
-        selection.ToSurfaceLength(8).Should().Be(4, "the capture is twice the size of the window drawing it");
+        Assert.Equal(4, selection.ToSurfaceLength(8));
     }
 
     /// <summary>
@@ -282,9 +275,8 @@ public class ScreenshotMarkLayerTests
 
         _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
 
-        selection.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<HighlightMark>().Which
-            .Blend.Should().Be(expected);
+        Assert.Equal(expected, Assert.IsType<HighlightMark>(Assert.Single(selection.Marks))
+            .Blend);
     }
 
     /// <summary>
@@ -305,8 +297,8 @@ public class ScreenshotMarkLayerTests
 
         _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
 
-        asked.Should().NotBeEmpty().And.AllBeEquivalentTo(
-            new CaptureRect(100, 100, 200, 40), "which is the band that was dragged, not the region under it");
+        Assert.NotEmpty(asked);
+        Assert.All(asked, item => Assert.Equivalent(new CaptureRect(100, 100, 200, 40), item));
     }
 
     /// <summary>
@@ -322,9 +314,8 @@ public class ScreenshotMarkLayerTests
 
         _DrawWith(selection, MarkTool.Highlight, 100, 100, 200, 40);
 
-        selection.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<HighlightMark>().Which
-            .Blend.Should().Be(HighlightBlend.Darken);
+        Assert.Equal(HighlightBlend.Darken, Assert.IsType<HighlightMark>(Assert.Single(selection.Marks))
+            .Blend);
     }
 
     /// <summary>
@@ -343,10 +334,9 @@ public class ScreenshotMarkLayerTests
         selection.DragTo(220, 190);
         selection.EndDrag();
 
-        selection.Marks.Should().ContainSingle().Which
-            .Should().BeOfType<StrokeMark>().Which
-            .Points.Should().Equal(
-                new CapturePoint(100, 100), new CapturePoint(140, 180), new CapturePoint(220, 190));
+        Assert.Equal(
+            new[] { new CapturePoint(100, 100), new CapturePoint(140, 180), new CapturePoint(220, 190) },
+            Assert.IsType<StrokeMark>(Assert.Single(selection.Marks)).Points);
     }
 
     /// <summary>
@@ -367,7 +357,7 @@ public class ScreenshotMarkLayerTests
 
         selection.Undo();
 
-        selection.Marks.Should().BeEmpty();
+        Assert.Empty(selection.Marks);
     }
 
     /// <summary>Every mark that has a colour is drawn in the ink that was chosen (AC-375).</summary>
@@ -385,7 +375,7 @@ public class ScreenshotMarkLayerTests
         selection.ChooseInk(red);
         _DrawWith(selection, tool, 100, 100, 200, 120);
 
-        _ColourOf(selection.Marks.Should().ContainSingle().Subject).Should().Be(red);
+        Assert.Equal(red, _ColourOf(Assert.Single(selection.Marks)));
     }
 
     /// <summary>
@@ -403,8 +393,8 @@ public class ScreenshotMarkLayerTests
         selection.ChooseInk(red);
         _DrawFrame(selection, 300, 300, 60, 40);
 
-        _ColourOf(selection.Marks[0]).Should().Be(Accent, "the first was drawn before the ink changed");
-        _ColourOf(selection.Marks[1]).Should().Be(red);
+        Assert.Equal(Accent, _ColourOf(selection.Marks[0]));
+        Assert.Equal(red, _ColourOf(selection.Marks[1]));
     }
 
     /// <summary>The weight scales the lines, in the order the operator would expect and never down to nothing.</summary>
@@ -422,8 +412,9 @@ public class ScreenshotMarkLayerTests
             thicknesses.Add(selection.Marks.OfType<OutlineMark>().Single().Thickness);
         }
 
-        thicknesses.Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
-        thicknesses[0].Should().BeGreaterThan(0, "a line the operator asked to be thin is still a line");
+        Assert.Equal(thicknesses.OrderBy(t => t), thicknesses);
+        Assert.Equal(thicknesses.Distinct().Count(), thicknesses.Count);
+        Assert.True(thicknesses[0] > 0, "a line the operator asked to be thin is still a line");
     }
 
     /// <summary>
@@ -447,7 +438,7 @@ public class ScreenshotMarkLayerTests
             sizes.Add(selection.Marks.OfType<TextMark>().Single().Size);
         }
 
-        sizes[0].Should().Be(sizes[1]);
+        Assert.Equal(sizes[1], sizes[0]);
     }
 
     private static uint _ColourOf(Mark mark) => mark switch

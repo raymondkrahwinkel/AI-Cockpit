@@ -2,7 +2,6 @@ using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Consent;
@@ -48,11 +47,11 @@ public sealed class ConsentServiceTests
         var first = await broker.RequestConsentAsync(request);
         var second = await broker.RequestConsentAsync(request);
 
-        first.IsApproved.Should().BeTrue();
-        second.IsApproved.Should().BeTrue();
-        prompts.Should().HaveCount(2, "a dangerous action is asked afresh every time");
-        prompts.Should().OnlyContain(prompt => !prompt.CanRemember, "the remember option is never offered for the dangerous class");
-        first.Remembered.Should().BeFalse();
+        Assert.True(first.IsApproved);
+        Assert.True(second.IsApproved);
+        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
+        Assert.All(prompts, prompt => Assert.True(!prompt.CanRemember, "the remember option is never offered for the dangerous class"));
+        Assert.False(first.Remembered);
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>
@@ -71,9 +70,9 @@ public sealed class ConsentServiceTests
         var first = await broker.RequestConsentAsync(request);
         var second = await broker.RequestConsentAsync(request);
 
-        prompts.Should().ContainSingle("the operator chose to remember, so the second request is not asked again");
-        first.Remembered.Should().BeTrue();
-        second.Should().Be(new ConsentDecision(ConsentOutcome.Approved, Remembered: true));
+        Assert.Single(prompts);
+        Assert.True(first.Remembered);
+        Assert.Equal(new ConsentDecision(ConsentOutcome.Approved, Remembered: true), second);
     }
 
     /// <summary>
@@ -94,8 +93,8 @@ public sealed class ConsentServiceTests
         await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "workflow.http", action: "GET https://api.github.com/issues"));
         await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "workflow.http", action: "GET https://evil.example/exfil"));
 
-        prompts.Should().HaveCount(2, "a different action under a remembered scope must be shown and asked, not silently approved");
-        prompts[1].Request.Action.Should().Be("GET https://evil.example/exfil", "the operator must see the new action's ground truth");
+        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
+        Assert.Equal("GET https://evil.example/exfil", prompts[1].Request.Action);
     }
 
     /// <summary>
@@ -116,7 +115,7 @@ public sealed class ConsentServiceTests
         await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared", action: "GET https://api.github.com/issues", pluginId: "workflows"));
         await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared", action: "GET https://api.github.com/issues", pluginId: "evil-plugin"));
 
-        prompts.Should().HaveCount(2, "another plugin cannot reuse a remembered approval, even on the same pane and scope");
+        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
     }
 
     /// <summary>A remembered scope only skips the class it was granted for: a dangerous request of the same scope still asks.</summary>
@@ -134,7 +133,7 @@ public sealed class ConsentServiceTests
         await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, allowRemember: true, scope: "shared.scope"));
         await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous, allowRemember: true, scope: "shared.scope"));
 
-        prompts.Should().HaveCount(2, "a remembered low-risk approval must not silence a dangerous request on the same scope");
+        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
     }
 
     /// <summary>With nothing listening to show a prompt, the gate denies rather than blocking forever or passing silently.</summary>
@@ -145,7 +144,7 @@ public sealed class ConsentServiceTests
 
         var decision = await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
 
-        decision.Should().Be(ConsentDecision.Denied);
+        Assert.Equal(ConsentDecision.Denied, decision);
     }
 
     /// <summary>A request whose caller token is cancelled while it waits is denied, and its prompt is taken down.</summary>
@@ -163,8 +162,8 @@ public sealed class ConsentServiceTests
         await cts.CancelAsync();
         var decision = await pending;
 
-        decision.Should().Be(ConsentDecision.Denied);
-        closed.Should().ContainSingle().Which.Should().Be(opened);
+        Assert.Equal(ConsentDecision.Denied, decision);
+        Assert.Equal(opened, Assert.Single(closed));
     }
 
     /// <summary>A denial is never remembered, even with the box ticked — so the next request is asked again.</summary>
@@ -184,8 +183,8 @@ public sealed class ConsentServiceTests
         var first = await broker.RequestConsentAsync(request);
         await broker.RequestConsentAsync(request);
 
-        first.IsApproved.Should().BeFalse();
-        prompts.Should().HaveCount(2, "a denial is not remembered");
+        Assert.False(first.IsApproved);
+        Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
     }
 
     [Fact]
@@ -195,7 +194,7 @@ public sealed class ConsentServiceTests
 
         var act = () => broker.Respond(Guid.NewGuid(), ConsentOutcome.Approved, remember: false);
 
-        act.Should().NotThrow();
+        act();
     }
 
     /// <summary>Every decision reaches the audit trail, carrying the ground-truth action rather than any framing.</summary>
@@ -209,11 +208,11 @@ public sealed class ConsentServiceTests
 
         await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
 
-        entries.Should().ContainSingle();
-        entries[0].Action.Should().Be(ConsentAuditAction.Approved);
-        entries[0].ActionText.Should().Be("rm -rf /tmp/x");
-        entries[0].PluginId.Should().Be("workflows");
-        entries[0].Scope.Should().Be("workflow.command");
+        Assert.Single(entries);
+        Assert.Equal(ConsentAuditAction.Approved, entries[0].Action);
+        Assert.Equal("rm -rf /tmp/x", entries[0].ActionText);
+        Assert.Equal("workflows", entries[0].PluginId);
+        Assert.Equal("workflow.command", entries[0].Scope);
     }
 
     /// <summary>
@@ -230,9 +229,9 @@ public sealed class ConsentServiceTests
 
         var decision = broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
 
-        decision.IsCompleted.Should().BeFalse("the decision must wait for the audit line to be flushed");
+        Assert.False(decision.IsCompleted, "the decision must wait for the audit line to be flushed");
         auditGate.SetResult();
-        (await decision).IsApproved.Should().BeTrue();
+        Assert.True((await decision).IsApproved);
     }
 
     /// <summary>A fail-closed denial is logged too — the "nobody asked but it was refused" line you want afterwards.</summary>
@@ -245,8 +244,8 @@ public sealed class ConsentServiceTests
 
         await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
 
-        entries.Should().ContainSingle();
-        entries[0].Action.Should().Be(ConsentAuditAction.Denied);
+        Assert.Single(entries);
+        Assert.Equal(ConsentAuditAction.Denied, entries[0].Action);
     }
 
     /// <summary>
@@ -277,8 +276,8 @@ public sealed class ConsentServiceTests
             McpRequestContext.Set("P2");
             var forged = await broker.RequestConsentAsync(request); // P2 forging session:"P1" — must be asked afresh
 
-            prompts.Should().HaveCount(2, "P1 was remembered once; the P2 request cannot ride it, so it prompts again");
-            forged.IsApproved.Should().BeTrue("it was approved — but only after asking, not silently on P1's remember");
+            Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
+            Assert.True(forged.IsApproved, "it was approved — but only after asking, not silently on P1's remember");
         }
         finally
         {
@@ -303,6 +302,6 @@ public sealed class ConsentServiceTests
         await broker.RequestConsentAsync(request);
         await broker.RequestConsentAsync(request);
 
-        prompts.Should().ContainSingle("with no verified identity the declared id keys the remember, so the second is skipped");
+        Assert.Single(prompts);
     }
 }

@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -21,11 +20,11 @@ public class GitHubIssuesPluginLoadTests
     public void ActivatesAndContributes_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
-        folder.Should().NotBeNull("the example plugin is built as a test dependency");
+        Assert.NotNull(folder);
 
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        PluginManifest.TryParse(manifestJson, out var manifest, out _).Should().BeTrue();
-        manifest.Should().NotBeNull();
+        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
+        Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "github-issues", manifest, hash, PluginLoadDecision.Load);
@@ -34,17 +33,17 @@ public class GitHubIssuesPluginLoadTests
         var plugin = activator.Activate(discovered);
 
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
-        plugin.Should().NotBeNull();
-        plugin!.Metadata.Id.Should().Be("github-issues");
-        plugin.Metadata.DisplayName.Should().Be("GitHub Issues");
+        Assert.NotNull(plugin);
+        Assert.Equal("github-issues", plugin!.Metadata.Id);
+        Assert.Equal("GitHub Issues", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        host.SettingsRegistered.Should().Be(1);
-        host.SideButtons.Should().ContainSingle().Which.Should().Be("GitHub Issues");
+        Assert.Equal(1, host.SettingsRegistered);
+        Assert.Equal("GitHub Issues", Assert.Single(host.SideButtons));
 
         plugin.Dispose();
     }

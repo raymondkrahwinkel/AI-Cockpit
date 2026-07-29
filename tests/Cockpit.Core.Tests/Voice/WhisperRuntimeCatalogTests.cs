@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -26,7 +25,7 @@ public class WhisperRuntimeCatalogTests
         var package = WhisperRuntimeCatalog.Resolve(backend, platform, "x64");
 
         Assert.NotNull(package);
-        package.PackageId.Should().Be(expectedPackageId);
+        Assert.Equal(expectedPackageId, package.PackageId);
     }
 
     /// <summary>Vulkan is published as one package carrying both the win-x64 and linux-x64 natives.</summary>
@@ -38,7 +37,7 @@ public class WhisperRuntimeCatalogTests
         var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Vulkan, platform, "x64");
 
         Assert.NotNull(package);
-        package.PackageId.Should().Be("Whisper.net.Runtime.Vulkan");
+        Assert.Equal("Whisper.net.Runtime.Vulkan", package.PackageId);
     }
 
     /// <summary>The CPU runtimes ship with the app, so there is nothing to fetch for them.</summary>
@@ -47,7 +46,7 @@ public class WhisperRuntimeCatalogTests
     [InlineData(WhisperRuntimeBackend.CpuNoAvx)]
     public void Resolve_CpuBackends_ResolveToNothingBecauseTheyAreBundled(WhisperRuntimeBackend backend)
     {
-        WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.Windows, "x64").Should().BeNull();
+        Assert.Null(WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.Windows, "x64"));
     }
 
     /// <summary>
@@ -60,7 +59,7 @@ public class WhisperRuntimeCatalogTests
     [InlineData(WhisperRuntimeBackend.Vulkan)]
     public void Resolve_OnMacOs_ResolvesToNothing(WhisperRuntimeBackend backend)
     {
-        WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.MacOs, "arm64").Should().BeNull();
+        Assert.Null(WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.MacOs, "arm64"));
     }
 
     /// <summary>Whisper.net's loader says "macos", not the NuGet RID's "osx" — a wrong segment finds nothing.</summary>
@@ -70,7 +69,7 @@ public class WhisperRuntimeCatalogTests
     [InlineData(WhisperHostPlatform.MacOs, "macos")]
     public void PathSegment_UsesTheLoadersOwnPlatformNames(WhisperHostPlatform platform, string expected)
     {
-        WhisperRuntimeCatalog.PathSegment(platform).Should().Be(expected);
+        Assert.Equal(expected, WhisperRuntimeCatalog.PathSegment(platform));
     }
 
     /// <summary>
@@ -83,8 +82,8 @@ public class WhisperRuntimeCatalogTests
         var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Cuda12, WhisperHostPlatform.Windows, "x64");
 
         Assert.NotNull(package);
-        package.PackageNativeFolder.Should().Be("build/win-x64");
-        package.CacheSubPath.Should().Be(Path.Combine("runtimes", "cuda12", "win-x64"));
+        Assert.Equal("build/win-x64", package.PackageNativeFolder);
+        Assert.Equal(Path.Combine("runtimes", "cuda12", "win-x64"), package.CacheSubPath);
     }
 
     [Fact]
@@ -93,8 +92,8 @@ public class WhisperRuntimeCatalogTests
         var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Vulkan, WhisperHostPlatform.Linux, "x64");
 
         Assert.NotNull(package);
-        package.PackageNativeFolder.Should().Be("build/linux-x64");
-        package.CacheSubPath.Should().Be(Path.Combine("runtimes", "vulkan", "linux-x64"));
+        Assert.Equal("build/linux-x64", package.PackageNativeFolder);
+        Assert.Equal(Path.Combine("runtimes", "vulkan", "linux-x64"), package.CacheSubPath);
     }
 
     /// <summary>
@@ -108,7 +107,7 @@ public class WhisperRuntimeCatalogTests
 
         var searchPath = WhisperRuntimeCatalog.ToLibrarySearchPath(runtimeRoot);
 
-        Path.GetDirectoryName(searchPath).Should().Be(runtimeRoot);
+        Assert.Equal(runtimeRoot, Path.GetDirectoryName(searchPath));
     }
 
     [Fact]
@@ -116,7 +115,7 @@ public class WhisperRuntimeCatalogTests
     {
         var runtimeRoot = Path.Combine(Path.GetTempPath(), "Cockpit") + Path.DirectorySeparatorChar;
 
-        WhisperRuntimeCatalog.ToLibrarySearchPath(runtimeRoot).Should().Be(runtimeRoot);
+        Assert.Equal(runtimeRoot, WhisperRuntimeCatalog.ToLibrarySearchPath(runtimeRoot));
     }
 
     /// <summary>
@@ -131,6 +130,6 @@ public class WhisperRuntimeCatalogTests
     [InlineData("1.9.1", "1.9.1")]
     public void NormalizePackageVersion_DropsBuildMetadataAndKeepsPrerelease(string informational, string expected)
     {
-        WhisperRuntimeCatalog.NormalizePackageVersion(informational).Should().Be(expected);
+        Assert.Equal(expected, WhisperRuntimeCatalog.NormalizePackageVersion(informational));
     }
 }

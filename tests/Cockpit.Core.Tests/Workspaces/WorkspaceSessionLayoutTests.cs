@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -20,9 +19,9 @@ public class WorkspaceSessionLayoutTests
         vm.GlobalSingleSessionLayout = true;
         vm.GlobalStackSessionsVertically = true;
 
-        vm.SingleSessionLayout.Should().BeTrue();
-        vm.StackSessionsVertically.Should().BeTrue();
-        vm.WorkspaceFollowsGlobalLayout.Should().BeTrue();
+        Assert.True(vm.SingleSessionLayout);
+        Assert.True(vm.StackSessionsVertically);
+        Assert.True(vm.WorkspaceFollowsGlobalLayout);
     }
 
     [Fact]
@@ -34,8 +33,8 @@ public class WorkspaceSessionLayoutTests
         vm.WorkspaceFollowsGlobalLayout = false;
         vm.WorkspaceSingleSessionLayout = false;
 
-        vm.SingleSessionLayout.Should().BeFalse();
-        vm.WorkspaceFollowsGlobalLayout.Should().BeFalse();
+        Assert.False(vm.SingleSessionLayout);
+        Assert.False(vm.WorkspaceFollowsGlobalLayout);
     }
 
     /// <summary>
@@ -51,8 +50,8 @@ public class WorkspaceSessionLayoutTests
 
         vm.WorkspaceFollowsGlobalLayout = false;
 
-        vm.SingleSessionLayout.Should().BeTrue();
-        vm.StackSessionsVertically.Should().BeTrue();
+        Assert.True(vm.SingleSessionLayout);
+        Assert.True(vm.StackSessionsVertically);
     }
 
     /// <summary>
@@ -69,8 +68,8 @@ public class WorkspaceSessionLayoutTests
         vm.WorkspaceFollowsGlobalLayout = false;
         vm.WorkspaceSingleSessionLayout = true;
 
-        vm.GlobalSingleSessionLayout.Should().BeFalse("Options holds the default, which this workspace only overrode for itself");
-        vm.SingleSessionLayout.Should().BeTrue();
+        Assert.False(vm.GlobalSingleSessionLayout, "Options holds the default, which this workspace only overrode for itself");
+        Assert.True(vm.SingleSessionLayout);
     }
 
     [Fact]
@@ -83,8 +82,8 @@ public class WorkspaceSessionLayoutTests
 
         vm.WorkspaceFollowsGlobalLayout = true;
 
-        vm.SingleSessionLayout.Should().BeFalse();
-        vm.Workspaces.Active!.SingleSessionLayout.Should().BeNull("null is what following Options looks like on disk");
+        Assert.False(vm.SingleSessionLayout);
+        Assert.Null(vm.Workspaces.Active!.SingleSessionLayout);
     }
 
     /// <summary>An override belongs to its own desk: switching to one that never took control follows Options again.</summary>
@@ -99,10 +98,10 @@ public class WorkspaceSessionLayoutTests
 
         await vm.Workspaces.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Sessions);
         var plain = vm.Workspaces.Active!.Id;
-        plain.Should().NotBe(overriding);
+        Assert.NotEqual(overriding, plain);
 
-        vm.SingleSessionLayout.Should().BeFalse("this desk never took control, so it follows Options");
-        vm.WorkspaceFollowsGlobalLayout.Should().BeTrue();
+        Assert.False(vm.SingleSessionLayout, "this desk never took control, so it follows Options");
+        Assert.True(vm.WorkspaceFollowsGlobalLayout);
     }
 
     /// <summary>A dashboard has its own grid; these two are not its to set, and it must not be able to hold them.</summary>
@@ -115,8 +114,8 @@ public class WorkspaceSessionLayoutTests
 
         await vm.Workspaces.SetSessionLayoutAsync(dashboard.Id, singleSession: true, stackVertically: true);
 
-        vm.Workspaces.Active!.SingleSessionLayout.Should().BeNull();
-        vm.Workspaces.Active!.StackSessionsVertically.Should().BeNull();
+        Assert.Null(vm.Workspaces.Active!.SingleSessionLayout);
+        Assert.Null(vm.Workspaces.Active!.StackSessionsVertically);
     }
 
     private static CockpitViewModel _CreateWithSessionsWorkspace()

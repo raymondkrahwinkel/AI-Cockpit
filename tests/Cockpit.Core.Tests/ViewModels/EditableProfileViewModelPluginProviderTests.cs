@@ -3,7 +3,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -26,11 +25,11 @@ public class EditableProfileViewModelPluginProviderTests
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
 
-        editable.IsPluginProvider.Should().BeTrue();
-        editable.IsClaudeProvider.Should().BeFalse();
-        editable.IsLocalProvider.Should().BeFalse();
-        editable.SelectedProvider.Label.Should().Be("Gemini (OpenAI-compatible)");
-        editable.PluginConfigView.Should().Be(configView);
+        Assert.True(editable.IsPluginProvider);
+        Assert.False(editable.IsClaudeProvider);
+        Assert.False(editable.IsLocalProvider);
+        Assert.Equal("Gemini (OpenAI-compatible)", editable.SelectedProvider.Label);
+        Assert.Equal(configView, editable.PluginConfigView);
     }
 
     [Fact]
@@ -45,10 +44,10 @@ public class EditableProfileViewModelPluginProviderTests
 
         var saved = editable.ToProfile();
 
-        saved.ProviderConfig.Should().BeOfType<PluginProviderConfig>();
+        Assert.IsType<PluginProviderConfig>(saved.ProviderConfig);
         var pluginConfig = (PluginProviderConfig)saved.ProviderConfig!;
-        pluginConfig.ProviderId.Should().Be("gemini-provider.gemini");
-        pluginConfig.ConfigJson.Should().Be("""{"ApiKey":"secret","Model":"gemini-2.5-flash"}""");
+        Assert.Equal("gemini-provider.gemini", pluginConfig.ProviderId);
+        Assert.Equal("""{"ApiKey":"secret","Model":"gemini-2.5-flash"}""", pluginConfig.ConfigJson);
     }
 
     /// <summary>
@@ -64,9 +63,9 @@ public class EditableProfileViewModelPluginProviderTests
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, pluginProviderRegistry: registry);
 
-        editable.IsPluginProvider.Should().BeTrue();
-        editable.PluginConfigView.Should().BeNull();
-        editable.IsPluginProviderMissing.Should().BeTrue();
+        Assert.True(editable.IsPluginProvider);
+        Assert.Null(editable.PluginConfigView);
+        Assert.True(editable.IsPluginProviderMissing);
     }
 
     /// <summary>
@@ -86,9 +85,9 @@ public class EditableProfileViewModelPluginProviderTests
 
         var saved = editable.ToProfile();
 
-        saved.ProviderConfig.Should().BeOfType<PluginProviderConfig>();
-        saved.ProviderConfig.Should().Be(originalConfig);
-        saved.Provider.Should().Be(SessionProvider.Plugin);
+        Assert.IsType<PluginProviderConfig>(saved.ProviderConfig);
+        Assert.Equal(originalConfig, saved.ProviderConfig);
+        Assert.Equal(SessionProvider.Plugin, saved.Provider);
     }
 
     [Fact]
@@ -101,7 +100,7 @@ public class EditableProfileViewModelPluginProviderTests
         var providers = SessionProviderCatalog.AllProviders(registry);
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
 
-        editable.IsValid.Should().BeFalse();
+        Assert.False(editable.IsValid);
     }
 
     [Fact]
@@ -116,8 +115,8 @@ public class EditableProfileViewModelPluginProviderTests
 
         editable.SelectedProvider = providers.Single(option => option.PluginProviderId == "gemini-provider.gemini");
 
-        editable.IsPluginProvider.Should().BeTrue();
-        editable.PluginConfigView.Should().Be(configView);
+        Assert.True(editable.IsPluginProvider);
+        Assert.Equal(configView, editable.PluginConfigView);
     }
 
     [Fact]
@@ -154,16 +153,16 @@ public class EditableProfileViewModelPluginProviderTests
         // Fase 4: a plugin profile's per-profile defaults are rendered generically from the plugin's declared options.
         // The saved default (plan) pre-fills the permission-mode editor and reads its friendly label; the un-stored
         // effort falls back to the option's own declared default (medium).
-        editable.HasPluginOptionDefaults.Should().BeTrue();
+        Assert.True(editable.HasPluginOptionDefaults);
         var permission = editable.PluginOptionDefaults.Single(option => option.Key == "permission-mode");
-        permission.Value.Should().Be("plan");
-        permission.ChoiceItems.Single(choice => choice.Value == "plan").Label.Should().Be("Plan mode");
-        editable.PluginOptionDefaults.Single(option => option.Key == "effort").Value.Should().Be("medium");
+        Assert.Equal("plan", permission.Value);
+        Assert.Equal("Plan mode", permission.ChoiceItems.Single(choice => choice.Value == "plan").Label);
+        Assert.Equal("medium", editable.PluginOptionDefaults.Single(option => option.Key == "effort").Value);
 
         // The selection is written back into the profile's option defaults on save.
         var saved = editable.ToProfile();
-        saved.Defaults!.OptionDefaults!["permission-mode"].Should().Be("plan");
-        saved.Defaults!.OptionDefaults!["effort"].Should().Be("medium");
+        Assert.Equal("plan", saved.Defaults!.OptionDefaults!["permission-mode"]);
+        Assert.Equal("medium", saved.Defaults!.OptionDefaults!["effort"]);
     }
 
     private static SessionProviderRegistration _Registration(string providerId, string displayName, IPluginProviderConfigView configView) => new(

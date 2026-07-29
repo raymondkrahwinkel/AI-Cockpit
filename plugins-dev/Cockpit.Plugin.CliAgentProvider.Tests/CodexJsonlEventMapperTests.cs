@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -17,9 +16,8 @@ public class CodexJsonlEventMapperTests
     {
         var result = CodexJsonlEventMapper.ParseLine("""{"type":"thread.started","thread_id":"thread-123"}""", sessionId: null);
 
-        result.SessionId.Should().Be("thread-123");
-        result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginSessionInitialized>()
-            .Which.SessionId.Should().Be("thread-123");
+        Assert.Equal("thread-123", result.SessionId);
+        Assert.Equal("thread-123", Assert.IsType<PluginSessionInitialized>(Assert.Single(result.Events)).SessionId);
     }
 
     [Fact]
@@ -29,10 +27,10 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.completed","item":{"id":"item_0","item_type":"agent_message","text":"Hello, world!"}}""",
             sessionId: "thread-123");
 
-        result.SessionId.Should().Be("thread-123");
-        var delta = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginAssistantTextDelta>().Subject;
-        delta.Text.Should().Be("Hello, world!");
-        delta.BlockIndex.Should().Be(0);
+        Assert.Equal("thread-123", result.SessionId);
+        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(result.Events));
+        Assert.Equal("Hello, world!", delta.Text);
+        Assert.Equal(0, delta.BlockIndex);
     }
 
     [Fact]
@@ -42,10 +40,10 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.started","item":{"id":"item_1","item_type":"command_execution","command":"ls -la","status":"in_progress"}}""",
             sessionId: "thread-123");
 
-        var toolUse = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolUseRequested>().Subject;
-        toolUse.ToolUseId.Should().Be("item_1");
-        toolUse.ToolName.Should().Be("command_execution");
-        toolUse.InputJson.Should().Be("\"ls -la\"");
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(result.Events));
+        Assert.Equal("item_1", toolUse.ToolUseId);
+        Assert.Equal("command_execution", toolUse.ToolName);
+        Assert.Equal("\"ls -la\"", toolUse.InputJson);
     }
 
     [Fact]
@@ -55,10 +53,10 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.completed","item":{"id":"item_1","item_type":"command_execution","command":"ls -la","aggregated_output":"file1\nfile2","exit_code":0,"status":"completed"}}""",
             sessionId: "thread-123");
 
-        var toolResult = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolResult>().Subject;
-        toolResult.ToolUseId.Should().Be("item_1");
-        toolResult.Content.Should().Be("file1\nfile2");
-        toolResult.IsError.Should().BeFalse();
+        var toolResult = Assert.IsType<PluginToolResult>(Assert.Single(result.Events));
+        Assert.Equal("item_1", toolResult.ToolUseId);
+        Assert.Equal("file1\nfile2", toolResult.Content);
+        Assert.False(toolResult.IsError);
     }
 
     [Fact]
@@ -68,8 +66,7 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.completed","item":{"id":"item_1","item_type":"command_execution","aggregated_output":"not found","exit_code":1,"status":"completed"}}""",
             sessionId: "thread-123");
 
-        result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolResult>()
-            .Which.IsError.Should().BeTrue();
+        Assert.True(Assert.IsType<PluginToolResult>(Assert.Single(result.Events)).IsError);
     }
 
     [Fact]
@@ -79,9 +76,9 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.started","item":{"id":"item_2","item_type":"mcp_tool_call","tool":"read_file","arguments":{"path":"a.txt"}}}""",
             sessionId: "thread-123");
 
-        var toolUse = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolUseRequested>().Subject;
-        toolUse.ToolName.Should().Be("read_file");
-        toolUse.InputJson.Should().Be("""{"path":"a.txt"}""");
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(result.Events));
+        Assert.Equal("read_file", toolUse.ToolName);
+        Assert.Equal("""{"path":"a.txt"}""", toolUse.InputJson);
     }
 
     [Fact]
@@ -91,8 +88,8 @@ public class CodexJsonlEventMapperTests
             """{"type":"item.completed","item":{"id":"item_3","item_type":"reasoning","text":"thinking..."}}""",
             sessionId: "thread-123");
 
-        result.Events.Should().BeEmpty();
-        result.SessionId.Should().Be("thread-123");
+        Assert.Empty(result.Events);
+        Assert.Equal("thread-123", result.SessionId);
     }
 
     [Fact]
@@ -100,7 +97,7 @@ public class CodexJsonlEventMapperTests
     {
         var result = CodexJsonlEventMapper.ParseLine("""{"type":"turn.started"}""", sessionId: "thread-123");
 
-        result.Events.Should().BeEmpty();
+        Assert.Empty(result.Events);
     }
 
     [Fact]
@@ -110,9 +107,9 @@ public class CodexJsonlEventMapperTests
             """{"type":"turn.completed","usage":{"input_tokens":24763,"cached_input_tokens":24448,"output_tokens":122}}""",
             sessionId: "thread-123");
 
-        var turnCompleted = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginTurnCompleted>().Subject;
-        turnCompleted.Subtype.Should().Be("success");
-        turnCompleted.IsError.Should().BeFalse();
+        var turnCompleted = Assert.IsType<PluginTurnCompleted>(Assert.Single(result.Events));
+        Assert.Equal("success", turnCompleted.Subtype);
+        Assert.False(turnCompleted.IsError);
     }
 
     [Fact]
@@ -122,9 +119,9 @@ public class CodexJsonlEventMapperTests
             """{"type":"turn.failed","error":{"message":"sandbox denied write access"}}""",
             sessionId: "thread-123");
 
-        result.Events.Should().HaveCount(2);
-        result.Events[0].Should().BeOfType<PluginSessionError>().Which.Message.Should().Be("sandbox denied write access");
-        result.Events[1].Should().BeOfType<PluginTurnCompleted>().Which.IsError.Should().BeTrue();
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.Events));
+        Assert.Equal("sandbox denied write access", Assert.IsType<PluginSessionError>(result.Events[0]).Message);
+        Assert.True(Assert.IsType<PluginTurnCompleted>(result.Events[1]).IsError);
     }
 
     [Fact]
@@ -132,9 +129,9 @@ public class CodexJsonlEventMapperTests
     {
         var result = CodexJsonlEventMapper.ParseLine("""{"type":"error","message":"connection reset"}""", sessionId: "thread-123");
 
-        result.Events.Should().HaveCount(2);
-        result.Events[0].Should().BeOfType<PluginSessionError>().Which.Message.Should().Be("connection reset");
-        result.Events[1].Should().BeOfType<PluginTurnCompleted>().Which.IsError.Should().BeTrue();
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.Events));
+        Assert.Equal("connection reset", Assert.IsType<PluginSessionError>(result.Events[0]).Message);
+        Assert.True(Assert.IsType<PluginTurnCompleted>(result.Events[1]).IsError);
     }
 
     [Fact]
@@ -142,8 +139,8 @@ public class CodexJsonlEventMapperTests
     {
         var act = () => CodexJsonlEventMapper.ParseLine("""{"type":"item.deleted","item":{"id":"item_9"}}""", sessionId: "thread-123");
 
-        act.Should().NotThrow();
-        act().Events.Should().BeEmpty();
+        act();
+        Assert.Empty(act().Events);
     }
 
     [Fact]
@@ -151,8 +148,8 @@ public class CodexJsonlEventMapperTests
     {
         var act = () => CodexJsonlEventMapper.ParseLine("{not valid json", sessionId: "thread-123");
 
-        act.Should().NotThrow();
-        act().Events.Should().BeEmpty();
+        act();
+        Assert.Empty(act().Events);
     }
 
     [Fact]
@@ -160,7 +157,7 @@ public class CodexJsonlEventMapperTests
     {
         var result = CodexJsonlEventMapper.ParseLine("   ", sessionId: "thread-123");
 
-        result.Events.Should().BeEmpty();
-        result.SessionId.Should().Be("thread-123");
+        Assert.Empty(result.Events);
+        Assert.Equal("thread-123", result.SessionId);
     }
 }

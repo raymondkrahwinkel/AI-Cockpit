@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -24,7 +23,7 @@ public class SessionUsageThresholdOverrideTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 65, null)]);
 
-        session.HasUsageWarning.Should().BeTrue("65% is past the 60 the operator set, though short of the provider's 90");
+        Assert.True(session.HasUsageWarning, "65% is past the 60 the operator set, though short of the provider's 90");
     }
 
     [Fact]
@@ -38,7 +37,8 @@ public class SessionUsageThresholdOverrideTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 65, null)]);
 
-        session.RateLimits.Should().ContainSingle().Which.ThresholdPercent.Should().Be(60);
+        var rateLimit = Assert.Single(session.RateLimits);
+        Assert.Equal(60, rateLimit.ThresholdPercent);
     }
 
     [Fact]
@@ -53,8 +53,8 @@ public class SessionUsageThresholdOverrideTests
         work.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 55, null)]);
         personal.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 55, null)]);
 
-        work.HasUsageWarning.Should().BeTrue();
-        personal.HasUsageWarning.Should().BeFalse("that profile still follows the provider's 90");
+        Assert.True(work.HasUsageWarning);
+        Assert.False(personal.HasUsageWarning, "that profile still follows the provider's 90");
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class SessionUsageThresholdOverrideTests
 
         session.ApplyUsage([Weekly], [new PluginUsageReading("weekly", 95, null)]);
 
-        session.HasUsageWarning.Should().BeTrue();
-        session.RateLimits[0].ThresholdPercent.Should().Be(90);
+        Assert.True(session.HasUsageWarning);
+        Assert.Equal(90, session.RateLimits[0].ThresholdPercent);
     }
 }

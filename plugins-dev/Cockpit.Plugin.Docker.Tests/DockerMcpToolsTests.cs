@@ -6,7 +6,6 @@ using Cockpit.Plugin.Docker.Settings;
 using Cockpit.Plugin.Docker.StatusBar;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Docker.Tests;
@@ -51,13 +50,13 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ListContainers(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["count"]!.GetValue<int>().Should().Be(1);
-        json["containers"]![0]!["name"]!.GetValue<string>().Should().Be("web");
-        json["containers"]![0]!["ports"]![0]!["publicPort"]!.GetValue<int>().Should().Be(8080);
-        h.Asked.Should().ContainSingle();
-        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
-        h.Asked[0].AllowRemember.Should().BeTrue();
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(1, json["count"]!.GetValue<int>());
+        Assert.Equal("web", json["containers"]![0]!["name"]!.GetValue<string>());
+        Assert.Equal(8080, json["containers"]![0]!["ports"]![0]!["publicPort"]!.GetValue<int>());
+        Assert.Single(h.Asked);
+        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
+        Assert.True(h.Asked[0].AllowRemember);
     }
 
     [Fact]
@@ -68,8 +67,8 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ListContainers(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("did not approve");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
     }
 
     [Fact]
@@ -80,9 +79,9 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.DaemonInfo(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["serverVersion"]!.GetValue<string>().Should().Be("27.1.0");
-        json["execEnabled"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("27.1.0", json["serverVersion"]!.GetValue<string>());
+        Assert.True(json["execEnabled"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -93,9 +92,9 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.DaemonInfo(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("could not be reached");
-        json["error"]!.GetValue<string>().Should().NotContain("docker.sock", "the raw endpoint must not leak to the agent");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("could not be reached", json["error"]!.GetValue<string>());
+        Assert.DoesNotContain("docker.sock", json["error"]!.GetValue<string>());
     }
 
     // ---- Mutations ---------------------------------------------------------------------------------------------
@@ -107,10 +106,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.StopContainer(Session, "web"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Engine.Stopped.Should().ContainSingle().Which.Should().Be("web");
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().AllowRemember.Should().BeFalse();
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("web", Assert.Single(h.Engine.Stopped));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
     }
 
     [Fact]
@@ -120,8 +119,8 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.RemoveContainer(Session, "web", force: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        h.Engine.Removed.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(h.Engine.Removed);
     }
 
     // ---- exec / run --------------------------------------------------------------------------------------------
@@ -133,10 +132,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Exec(Session, "web", "ls -la"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("settings");
-        h.Engine.Execs.Should().BeEmpty();
-        h.Asked.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("settings", json["error"]!.GetValue<string>());
+        Assert.Empty(h.Engine.Execs);
+        Assert.Empty(h.Asked);
     }
 
     [Fact]
@@ -147,10 +146,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Exec(Session, "web", "echo hello"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["stdout"]!.GetValue<string>().Should().Be("hello");
-        h.Engine.Execs.Should().ContainSingle();
-        h.Engine.Execs[0].Command.Should().Equal("/bin/sh", "-c", "echo hello");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("hello", json["stdout"]!.GetValue<string>());
+        Assert.Single(h.Engine.Execs);
+        Assert.Equal(new[] { "/bin/sh", "-c", "echo hello" }, h.Engine.Execs[0].Command);
     }
 
     [Fact]
@@ -162,17 +161,17 @@ public sealed class DockerMcpToolsTests
         var json = JsonNode.Parse(await h.Tools.RunContainer(
             Session, "nginx:latest", name: "web", publish: ["8080:80"], volumes: ["/:/host"], privileged: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["id"]!.GetValue<string>().Should().Be("deadbeef");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("deadbeef", json["id"]!.GetValue<string>());
 
         var dangerRequest = h.Asked.Last();
-        dangerRequest.Risk.Should().Be(ConsentRisk.Dangerous);
-        dangerRequest.Action.Should().Contain("--privileged");
-        dangerRequest.Action.Should().Contain("-v /:/host");
-        dangerRequest.Action.Should().Contain("nginx:latest");
+        Assert.Equal(ConsentRisk.Dangerous, dangerRequest.Risk);
+        Assert.Contains("--privileged", dangerRequest.Action);
+        Assert.Contains("-v /:/host", dangerRequest.Action);
+        Assert.Contains("nginx:latest", dangerRequest.Action);
 
-        h.Engine.Runs.Should().ContainSingle();
-        h.Running.Snapshot().Should().ContainSingle().Which.Title.Should().Be("web");
+        Assert.Single(h.Engine.Runs);
+        Assert.Equal("web", Assert.Single(h.Running.Snapshot()).Title);
     }
 
     // ---- Compose -----------------------------------------------------------------------------------------------
@@ -184,12 +183,12 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ComposeUp(Session, "/srv/app", file: "docker-compose.yml", services: ["web"]));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Compose.Calls.Should().ContainSingle();
-        h.Compose.Calls[0].Directory.Should().Be("/srv/app");
-        h.Compose.Calls[0].Args.Should().Equal("-f", "docker-compose.yml", "up", "-d", "--", "web");
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().AllowRemember.Should().BeFalse();
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(h.Compose.Calls);
+        Assert.Equal("/srv/app", h.Compose.Calls[0].Directory);
+        Assert.Equal(new[] { "-f", "docker-compose.yml", "up", "-d", "--", "web" }, h.Compose.Calls[0].Args);
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
     }
 
     [Fact]
@@ -199,10 +198,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ComposeConfig(Session, "/srv/app"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Compose.Calls[0].Args.Should().Equal("config");
-        h.Asked.Should().ContainSingle();
-        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { "config" }, h.Compose.Calls[0].Args);
+        Assert.Single(h.Asked);
+        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
     }
 
     // ---- AC-93: logs, images, pull ----------------------------------------------------------------------------
@@ -215,12 +214,12 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Logs(Session, "web", tail: 50));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["stdout"]!.GetValue<string>().Should().Be("hello from stdout");
-        json["stderr"]!.GetValue<string>().Should().Be("a warning");
-        h.Engine.LogReads.Should().ContainSingle().Which.Should().Be(("web", 50));
-        h.Asked.Should().ContainSingle();
-        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk, "logs is a read behind the one-time connection consent");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("hello from stdout", json["stdout"]!.GetValue<string>());
+        Assert.Equal("a warning", json["stderr"]!.GetValue<string>());
+        Assert.Equal(("web", 50), Assert.Single(h.Engine.LogReads));
+        Assert.Single(h.Asked);
+        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
     }
 
     [Fact]
@@ -231,10 +230,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ListImages(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["count"]!.GetValue<int>().Should().Be(1);
-        json["images"]![0]!["tags"]![0]!.GetValue<string>().Should().Be("nginx:latest");
-        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(1, json["count"]!.GetValue<int>());
+        Assert.Equal("nginx:latest", json["images"]![0]!["tags"]![0]!.GetValue<string>());
+        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
     }
 
     [Fact]
@@ -244,12 +243,12 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Engine.Pulled.Should().ContainSingle().Which.Should().Be("nginx:1.27");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal("nginx:1.27", Assert.Single(h.Engine.Pulled));
         // A mutation first clears the one-time connection consent, then asks for the change itself.
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous, "a pull changes local state, so it is not remembered");
-        h.Asked.Last().AllowRemember.Should().BeFalse();
-        h.Asked.Last().Action.Should().Contain("nginx:1.27");
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+        Assert.Contains("nginx:1.27", h.Asked.Last().Action);
     }
 
     [Fact]
@@ -260,8 +259,8 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        h.Engine.Pulled.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(h.Engine.Pulled);
     }
 
     [Fact]
@@ -274,10 +273,11 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.RunContainer(Session, "nginx:latest"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
         var error = json["error"]!.GetValue<string>();
-        error.Should().Contain("nginx:latest").And.Contain("pull_image");
-        error.Should().NotContain("daemon could not be reached");
+        Assert.Contains("nginx:latest", error);
+        Assert.Contains("pull_image", error);
+        Assert.DoesNotContain("daemon could not be reached", error);
     }
 
     [Fact]
@@ -287,9 +287,9 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.ComposeLogs(Session, "/srv/app", services: new[] { "web" }, tail: 100));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Compose.Calls[0].Args.Should().Equal("logs", "--no-color", "--no-log-prefix", "--tail", "100", "--", "web");
-        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { "logs", "--no-color", "--no-log-prefix", "--tail", "100", "--", "web" }, h.Compose.Calls[0].Args);
+        Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
     }
 
     // ---- AC-93 remaining tiers: consent levels ----------------------------------------------------------------
@@ -310,10 +310,10 @@ public sealed class DockerMcpToolsTests
         {
             var h = _Build(ConsentOutcome.Approved);
             var json = JsonNode.Parse(await read(h));
-            json!["ok"]!.GetValue<bool>().Should().BeTrue();
-            h.Asked.Should().ContainSingle();
-            h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
-            h.Asked[0].AllowRemember.Should().BeTrue();
+            Assert.True(json!["ok"]!.GetValue<bool>());
+            Assert.Single(h.Asked);
+            Assert.Equal(ConsentRisk.LowRisk, h.Asked[0].Risk);
+            Assert.True(h.Asked[0].AllowRemember);
         }
     }
 
@@ -324,11 +324,11 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Tag(Session, "myapp:latest", "reg/myapp:1.2"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Engine.Tagged.Should().ContainSingle().Which.Should().Be(("myapp:latest", "reg/myapp:1.2"));
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().AllowRemember.Should().BeFalse();
-        h.Asked.Last().Action.Should().Contain("reg/myapp:1.2");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(("myapp:latest", "reg/myapp:1.2"), Assert.Single(h.Engine.Tagged));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
+        Assert.Contains("reg/myapp:1.2", h.Asked.Last().Action);
     }
 
     [Fact]
@@ -338,10 +338,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.RemoveVolume(Session, "pgdata", force: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Engine.RemovedVolumes.Should().ContainSingle().Which.Should().Be(("pgdata", true));
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().Action.Should().Contain("pgdata");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(("pgdata", true), Assert.Single(h.Engine.RemovedVolumes));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.Contains("pgdata", h.Asked.Last().Action);
     }
 
     [Fact]
@@ -351,11 +351,11 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Prune(Session, "volumes"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["spaceReclaimedBytes"]!.GetValue<long>().Should().Be(4096);
-        h.Engine.Pruned.Should().ContainSingle().Which.Should().Be(PruneTarget.Volumes);
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().Action.Should().Contain("volumes");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(4096, json["spaceReclaimedBytes"]!.GetValue<long>());
+        Assert.Equal(PruneTarget.Volumes, Assert.Single(h.Engine.Pruned));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.Contains("volumes", h.Asked.Last().Action);
     }
 
     [Fact]
@@ -365,9 +365,9 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Prune(Session, "everything"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        h.Asked.Should().BeEmpty();
-        h.Engine.Pruned.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(h.Asked);
+        Assert.Empty(h.Engine.Pruned);
     }
 
     [Fact]
@@ -377,10 +377,10 @@ public sealed class DockerMcpToolsTests
 
         var json = JsonNode.Parse(await h.Tools.Push(Session, "reg/myapp:1.2"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        h.Docker.Calls.Should().ContainSingle().Which.Should().Equal("push", "reg/myapp:1.2");
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
-        h.Asked.Last().AllowRemember.Should().BeFalse();
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { "push", "reg/myapp:1.2" }, Assert.Single(h.Docker.Calls));
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
+        Assert.False(h.Asked.Last().AllowRemember);
     }
 
     [Fact]
@@ -388,9 +388,9 @@ public sealed class DockerMcpToolsTests
     {
         var h = _Build(ConsentOutcome.Approved, allowExec: false);
 
-        JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"))!["ok"]!.GetValue<bool>().Should().BeFalse();
-        JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>().Should().BeFalse();
-        h.Docker.Calls.Should().BeEmpty("exec-gated tools never reach the CLI while the capability is off");
+        Assert.False(JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"))!["ok"]!.GetValue<bool>());
+        Assert.False(JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>());
+        Assert.Empty(h.Docker.Calls);
     }
 
     [Fact]
@@ -398,11 +398,11 @@ public sealed class DockerMcpToolsTests
     {
         var h = _Build(ConsentOutcome.Approved, allowExec: true);
 
-        JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest", dockerfile: "Dockerfile.prod"))!["ok"]!.GetValue<bool>().Should().BeTrue();
-        JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest", dockerfile: "Dockerfile.prod"))!["ok"]!.GetValue<bool>());
+        Assert.True(JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>());
 
-        h.Docker.Calls[0].Should().Equal("build", "-t", "myapp:latest", "-f", "Dockerfile.prod", "/ctx");
-        h.Docker.Calls[1].Should().Equal("cp", "web:/app/log", "/tmp/log");
-        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
+        Assert.Equal(new[] { "build", "-t", "myapp:latest", "-f", "Dockerfile.prod", "/ctx" }, h.Docker.Calls[0]);
+        Assert.Equal(new[] { "cp", "web:/app/log", "/tmp/log" }, h.Docker.Calls[1]);
+        Assert.Equal(ConsentRisk.Dangerous, h.Asked.Last().Risk);
     }
 }

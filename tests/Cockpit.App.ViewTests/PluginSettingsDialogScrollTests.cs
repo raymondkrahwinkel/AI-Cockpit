@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
-using FluentAssertions;
 using Xunit.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -37,7 +36,7 @@ public class PluginSettingsDialogScrollTests
 
         // Diagnostic: padding set on the ScrollViewer itself is left out of the scroll extent, so the last row's
         // tail cannot be scrolled clear of the footer.
-        gap.Should().BeLessThan(0, "ScrollViewer padding is not counted in the scroll extent");
+        Assert.True(gap < 0, "ScrollViewer padding is not counted in the scroll extent");
     });
 
     [Fact]
@@ -50,7 +49,7 @@ public class PluginSettingsDialogScrollTests
         window.Close();
 
         // When scrolled to the end, the last control's bottom must sit at or above the footer's top: fully visible.
-        gap.Should().BeGreaterThanOrEqualTo(0,
+        Assert.True(gap >= 0,
             "with the inset inside the scrolled content the extent includes it, so the last control scrolls clear");
     });
 
@@ -65,7 +64,7 @@ public class PluginSettingsDialogScrollTests
 
         // Diagnostic only: proves the nested-ScrollViewer structure is what traps content under the footer.
         // A negative gap means the marker renders below the footer's top edge and cannot be scrolled up.
-        gap.Should().BeLessThan(0,
+        Assert.True(gap < 0,
             "a ScrollViewer nested in the host ScrollViewer is measured unbounded and cannot scroll its tail clear");
     });
 

@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Kubernetes.Cluster;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
@@ -55,25 +54,25 @@ public class KubeconfigInspectorTests
     public void Inspect_ExecAuthContext_IsDetected()
     {
         var info = KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: null);
-        info.UsesExecAuth.Should().BeTrue();
-        info.Command.Should().Be("aws");
+        Assert.True(info.UsesExecAuth);
+        Assert.Equal("aws", info.Command);
     }
 
     [Fact]
     public void Inspect_TokenContext_IsNotExecAuth() =>
-        KubeconfigInspector.Inspect(TokenKubeconfig, contextName: null).UsesExecAuth.Should().BeFalse();
+        Assert.False(KubeconfigInspector.Inspect(TokenKubeconfig, contextName: null).UsesExecAuth);
 
     [Fact]
     public void Inspect_BlankContext_FallsBackToCurrentContext() =>
-        KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "").UsesExecAuth.Should().BeTrue();
+        Assert.True(KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "").UsesExecAuth);
 
     [Fact]
     public void Inspect_UnknownContext_IsNotExecAuth() =>
-        KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "no-such-context").UsesExecAuth.Should().BeFalse();
+        Assert.False(KubeconfigInspector.Inspect(ExecAuthKubeconfig, contextName: "no-such-context").UsesExecAuth);
 
     [Fact]
     public void Inspect_UnparseableYaml_DoesNotThrow() =>
-        KubeconfigInspector.Inspect("this: is: not: valid: kubeconfig: [", contextName: null).UsesExecAuth.Should().BeFalse();
+        Assert.False(KubeconfigInspector.Inspect("this: is: not: valid: kubeconfig: [", contextName: null).UsesExecAuth);
 
     private const string MultiContextKubeconfig = """
     apiVersion: v1
@@ -105,20 +104,20 @@ public class KubeconfigInspectorTests
     public void ListContexts_ReturnsNamesAndCurrent()
     {
         var contexts = KubeconfigInspector.ListContexts(MultiContextKubeconfig);
-        contexts.Names.Should().BeEquivalentTo("dev", "prod");
-        contexts.Current.Should().Be("prod");
+        Assert.Equal(new[] { "dev", "prod" }, contexts.Names);
+        Assert.Equal("prod", contexts.Current);
     }
 
     [Fact]
     public void ListContexts_Unparseable_IsEmpty() =>
-        KubeconfigInspector.ListContexts("not a kubeconfig [").Names.Should().BeEmpty();
+        Assert.Empty(KubeconfigInspector.ListContexts("not a kubeconfig [").Names);
 
     [Fact]
     public void ExpandPath_ExpandsLeadingTilde()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        KubeconfigInspector.ExpandPath("~/.kube/config").Should().Be(Path.Combine(home, ".kube/config"));
-        KubeconfigInspector.ExpandPath("/etc/kube/config").Should().Be("/etc/kube/config");
+        Assert.Equal(Path.Combine(home, ".kube/config"), KubeconfigInspector.ExpandPath("~/.kube/config"));
+        Assert.Equal("/etc/kube/config", KubeconfigInspector.ExpandPath("/etc/kube/config"));
     }
 
     [Fact]
@@ -128,10 +127,10 @@ public class KubeconfigInspectorTests
         File.WriteAllText(tmp, "from-file");
         try
         {
-            KubeconfigInspector.ReadYaml(tmp, "from-content").Should().Be("from-file", "a path wins over pasted content");
-            KubeconfigInspector.ReadYaml(null, "from-content").Should().Be("from-content");
-            KubeconfigInspector.ReadYaml("", "").Should().BeNull();
-            KubeconfigInspector.ReadYaml("/no/such/file/at/all", null).Should().BeNull("a missing file yields null, not a throw");
+            Assert.Equal("from-file", KubeconfigInspector.ReadYaml(tmp, "from-content"));
+            Assert.Equal("from-content", KubeconfigInspector.ReadYaml(null, "from-content"));
+            Assert.Null(KubeconfigInspector.ReadYaml("", ""));
+            Assert.Null(KubeconfigInspector.ReadYaml("/no/such/file/at/all", null));
         }
         finally
         {

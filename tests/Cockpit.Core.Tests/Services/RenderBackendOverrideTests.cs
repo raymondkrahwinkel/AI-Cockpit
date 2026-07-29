@@ -1,7 +1,6 @@
 using Avalonia;
 using Cockpit.App.Services;
 using Cockpit.Core.Rendering;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Services;
 
@@ -20,19 +19,18 @@ public class RenderBackendOverrideTests
     {
         var selection = RenderBackendOverride.Parse(value);
 
-        selection.Should().NotBeNull();
-        selection!.Modes.Should().Equal(AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software);
-        selection.Label.Should().Be("OpenGL");
+        Assert.NotNull(selection);
+        Assert.Equal(new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, selection!.Modes);
+        Assert.Equal("OpenGL", selection.Label);
     }
 
     [Fact]
     public void Parse_Software_IsSoftwareOnly() =>
-        RenderBackendOverride.Parse("software")!.Modes.Should().Equal(AvaloniaNativeRenderingMode.Software);
+        Assert.Equal(new[] { AvaloniaNativeRenderingMode.Software }, RenderBackendOverride.Parse("software")!.Modes);
 
     [Fact]
     public void Parse_Metal_PrefersMetalThenSoftware() =>
-        RenderBackendOverride.Parse("metal")!.Modes
-            .Should().Equal(AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software);
+        Assert.Equal(new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software }, RenderBackendOverride.Parse("metal")!.Modes);
 
     [Theory]
     [InlineData(null)]
@@ -41,25 +39,26 @@ public class RenderBackendOverrideTests
     [InlineData("vulkan")]
     [InlineData("metal2")]
     public void Parse_UnknownOrEmpty_IsNoOverride(string? value) =>
-        RenderBackendOverride.Parse(value).Should().BeNull();
+        Assert.Null(RenderBackendOverride.Parse(value));
 
     // AC-67: the Options choice maps through the same modes as the env var.
     [Fact]
     public void FromChoice_Auto_IsNoOverride() =>
-        RenderBackendOverride.FromChoice(RenderBackendChoice.Auto).Should().BeNull();
+        Assert.Null(RenderBackendOverride.FromChoice(RenderBackendChoice.Auto));
 
     [Fact]
     public void FromChoice_OpenGl_PrefersOpenGlThenSoftware()
     {
         var selection = RenderBackendOverride.FromChoice(RenderBackendChoice.OpenGl);
 
-        selection.Should().NotBeNull();
-        selection!.Label.Should().Be("OpenGL");
-        selection.Modes.Should().Equal(AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software);
+        Assert.NotNull(selection);
+        Assert.Equal("OpenGL", selection!.Label);
+        Assert.Equal(new[] { AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software }, selection.Modes);
     }
 
     [Fact]
     public void FromChoice_Metal_PrefersMetalThenSoftware() =>
-        RenderBackendOverride.FromChoice(RenderBackendChoice.Metal)!.Modes
-            .Should().Equal(AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software);
+        Assert.Equal(
+            new[] { AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software },
+            RenderBackendOverride.FromChoice(RenderBackendChoice.Metal)!.Modes);
 }

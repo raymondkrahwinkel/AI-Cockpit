@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Terminal;
 
@@ -21,9 +20,9 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed("$ ls\r\nfile-a  file-b\r\n$ ");
 
-        tracker.ShellIntegrationSeen.Should().BeFalse("prompt-looking text is not a mark, and guessing from it is what this avoids");
-        tracker.AtPrompt.Should().BeFalse();
-        tracker.CommandsFinished.Should().Be(0);
+        Assert.False(tracker.ShellIntegrationSeen, "prompt-looking text is not a mark, and guessing from it is what this avoids");
+        Assert.False(tracker.AtPrompt);
+        Assert.Equal(0, tracker.CommandsFinished);
     }
 
     [Fact]
@@ -32,11 +31,11 @@ public class TerminalShellIntegrationTrackerTests
         var tracker = new TerminalShellIntegrationTracker();
 
         tracker.Feed(Mark("A") + "raymond@box $ " + Mark("B"));
-        tracker.ShellIntegrationSeen.Should().BeTrue();
-        tracker.AtPrompt.Should().BeTrue();
+        Assert.True(tracker.ShellIntegrationSeen);
+        Assert.True(tracker.AtPrompt);
 
         tracker.Feed(Mark("C") + "building...\r\n");
-        tracker.AtPrompt.Should().BeFalse("a command is running, so this is also when a full-screen program would be open");
+        Assert.False(tracker.AtPrompt, "a command is running, so this is also when a full-screen program would be open");
     }
 
     [Fact]
@@ -46,9 +45,9 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed(Mark("B") + Mark("C") + "boom\r\n" + Mark("D;1"));
 
-        tracker.CommandsFinished.Should().Be(1);
-        tracker.LastExitCode.Should().Be(1);
-        tracker.AtPrompt.Should().BeFalse("the next prompt mark is what says it is ready again");
+        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(1, tracker.LastExitCode);
+        Assert.False(tracker.AtPrompt, "the next prompt mark is what says it is ready again");
     }
 
     [Fact]
@@ -58,8 +57,8 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed(Mark("C") + Mark("D"));
 
-        tracker.CommandsFinished.Should().Be(1);
-        tracker.LastExitCode.Should().BeNull("reporting 0 here would invent a success the shell never claimed");
+        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Null(tracker.LastExitCode);
     }
 
     [Fact]
@@ -71,11 +70,11 @@ public class TerminalShellIntegrationTrackerTests
         var mark = Mark("D;0");
 
         tracker.Feed("done\r\n" + mark[..4]);
-        tracker.CommandsFinished.Should().Be(0);
+        Assert.Equal(0, tracker.CommandsFinished);
 
         tracker.Feed(mark[4..]);
-        tracker.CommandsFinished.Should().Be(1);
-        tracker.LastExitCode.Should().Be(0);
+        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(0, tracker.LastExitCode);
     }
 
     [Fact]
@@ -85,8 +84,8 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed($"{Escape}]133;D;7{Escape}\\");
 
-        tracker.CommandsFinished.Should().Be(1);
-        tracker.LastExitCode.Should().Be(7);
+        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(7, tracker.LastExitCode);
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed($"{Escape}]633;B{Bell}");
 
-        tracker.AtPrompt.Should().BeTrue();
+        Assert.True(tracker.AtPrompt);
     }
 
     [Fact]
@@ -108,8 +107,8 @@ public class TerminalShellIntegrationTrackerTests
         // A colour run, a cursor move and a window-title OSC — all common, none of them ours.
         tracker.Feed($"{Escape}[32mgreen{Escape}[0m{Escape}[2K{Escape}]0;a title{Bell}");
 
-        tracker.AtPrompt.Should().BeTrue();
-        tracker.CommandsFinished.Should().Be(0);
+        Assert.True(tracker.AtPrompt);
+        Assert.Equal(0, tracker.CommandsFinished);
     }
 
     [Fact]
@@ -122,9 +121,9 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed($"{Escape}]133;B{Escape}]133;D;0{Bell}");
 
-        tracker.ShellIntegrationSeen.Should().BeTrue();
-        tracker.CommandsFinished.Should().Be(1);
-        tracker.LastExitCode.Should().Be(0);
+        Assert.True(tracker.ShellIntegrationSeen);
+        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(0, tracker.LastExitCode);
     }
 
     [Fact]
@@ -134,12 +133,12 @@ public class TerminalShellIntegrationTrackerTests
         var tracker = new TerminalShellIntegrationTracker();
 
         tracker.Feed(Mark("D;0"));
-        tracker.CommandsStarted.Should().Be(0);
-        tracker.CommandsFinished.Should().Be(1);
+        Assert.Equal(0, tracker.CommandsStarted);
+        Assert.Equal(1, tracker.CommandsFinished);
 
         tracker.Feed(Mark("C") + Mark("D;0"));
-        tracker.CommandsStarted.Should().Be(1);
-        tracker.CommandsFinished.Should().Be(2);
+        Assert.Equal(1, tracker.CommandsStarted);
+        Assert.Equal(2, tracker.CommandsFinished);
     }
 
     [Fact]
@@ -150,6 +149,6 @@ public class TerminalShellIntegrationTrackerTests
         tracker.Feed(Escape + "]133;" + new string('x', 4096));
         tracker.Feed(Mark("D;0"));
 
-        tracker.CommandsFinished.Should().Be(1, "the runaway is dropped, and the next real mark is still read");
+        Assert.Equal(1, tracker.CommandsFinished);
     }
 }

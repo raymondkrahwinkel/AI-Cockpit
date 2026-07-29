@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -23,17 +22,17 @@ public class EmbeddedSessionBusyTests
         var events = new List<bool>();
         embedded.BusyChanged += events.Add;
 
-        embedded.IsBusy.Should().BeFalse();
+        Assert.False(embedded.IsBusy);
 
         session.IsBusy = true;
-        embedded.IsBusy.Should().BeTrue();
+        Assert.True(embedded.IsBusy);
 
         // A touch that does not change the value must not fan out a redundant event.
         session.IsBusy = true;
 
         session.IsBusy = false;
-        embedded.IsBusy.Should().BeFalse();
+        Assert.False(embedded.IsBusy);
 
-        events.Should().Equal(true, false);
+        Assert.Equal(new[] { true, false }, events);
     });
 }

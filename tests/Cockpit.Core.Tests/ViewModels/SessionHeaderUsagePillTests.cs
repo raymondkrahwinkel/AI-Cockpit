@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -15,7 +14,7 @@ public class SessionHeaderUsagePillTests
     public void WithAContextFigure_ThePillShows()
     {
         // The design-time constructor seeds ctx + two windows.
-        new SessionViewModel().HasUsagePill.Should().BeTrue();
+        Assert.True(new SessionViewModel().HasUsagePill);
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class SessionHeaderUsagePillTests
     {
         var vm = new SessionViewModel { ContextUsedPercent = null };
 
-        vm.HasUsagePill.Should().BeTrue("the 5h/wk windows are only reachable through the pill's flyout");
+        Assert.True(vm.HasUsagePill, "the 5h/wk windows are only reachable through the pill's flyout");
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class SessionHeaderUsagePillTests
         var vm = new SessionViewModel { ContextUsedPercent = null };
         vm.RateLimits.Clear();
 
-        vm.HasUsagePill.Should().BeFalse();
+        Assert.False(vm.HasUsagePill);
     }
 
     [Fact]
@@ -40,13 +39,13 @@ public class SessionHeaderUsagePillTests
     {
         var vm = new SessionViewModel { ContextUsedPercent = null };
         vm.RateLimits.Clear();
-        vm.HasUsagePill.Should().BeFalse();
+        Assert.False(vm.HasUsagePill);
 
         var raised = false;
         vm.PropertyChanged += (_, e) => raised |= e.PropertyName == nameof(SessionViewModel.HasUsagePill);
         vm.RateLimits.Add(new SessionRateWindow("5h", 50, null));
 
-        raised.Should().BeTrue("HasUsagePill depends on the RateLimits collection");
-        vm.HasUsagePill.Should().BeTrue();
+        Assert.True(raised, "HasUsagePill depends on the RateLimits collection");
+        Assert.True(vm.HasUsagePill);
     }
 }

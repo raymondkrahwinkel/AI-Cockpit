@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
@@ -37,9 +36,9 @@ public class ScreenshotInjectionTests : IDisposable
 
         var reason = await session.InjectScreenshotAsync(Png);
 
-        reason.Should().NotBeNull();
-        reason.Should().Contain("image input");
-        session.PendingAttachments.Should().BeEmpty();
+        Assert.NotNull(reason);
+        Assert.Contains("image input", reason);
+        Assert.Empty(session.PendingAttachments);
     }
 
     /// <summary>
@@ -56,10 +55,10 @@ public class ScreenshotInjectionTests : IDisposable
 
         var reason = await session.InjectScreenshotAsync(Png);
 
-        reason.Should().BeNull();
-        var path = pasted.Should().ContainSingle().Which;
-        File.Exists(path).Should().BeTrue("the agent reads the file the path points at, so it has to be there when the path arrives");
-        (await File.ReadAllBytesAsync(path)).Should().Equal(Png, "what the agent reads has to be the capture the operator confirmed");
+        Assert.Null(reason);
+        var path = Assert.Single(pasted);
+        Assert.True(File.Exists(path), "the agent reads the file the path points at, so it has to be there when the path arrives");
+        Assert.Equal(Png, await File.ReadAllBytesAsync(path));
     }
 
     /// <summary>
@@ -79,8 +78,8 @@ public class ScreenshotInjectionTests : IDisposable
 
         var reason = await session.InjectScreenshotAsync(Png);
 
-        reason.Should().NotBeNull();
-        pasted.Should().BeEmpty("pasting a path to a file that was never written is worse than saying so");
+        Assert.NotNull(reason);
+        Assert.Empty(pasted);
     }
 
     /// <summary>
@@ -98,8 +97,8 @@ public class ScreenshotInjectionTests : IDisposable
         await session.DisposeAsync();
         var reason = await session.InjectScreenshotAsync(Png);
 
-        reason.Should().NotBeNull("the session is gone, and silence is what this whole path exists to prevent");
-        pasted.Should().BeEmpty();
+        Assert.NotNull(reason);
+        Assert.Empty(pasted);
     }
 
     /// <summary>
@@ -121,9 +120,9 @@ public class ScreenshotInjectionTests : IDisposable
         var injection = session.InjectScreenshotAsync(Png);
         await pasteStarted.Task;
 
-        injection.IsCompleted.Should().BeFalse("the paste is still running");
+        Assert.False(injection.IsCompleted, "the paste is still running");
         releasePaste.SetResult();
-        (await injection).Should().BeNull();
+        Assert.Null(await injection);
     }
 
     /// <summary>
@@ -145,8 +144,8 @@ public class ScreenshotInjectionTests : IDisposable
 
         await session.InjectScreenshotAsync(Png);
 
-        File.Exists(spent).Should().BeFalse("two days is long past any prompt the operator was still typing");
-        File.Exists(recent).Should().BeTrue("an agent may not have got round to reading this one yet");
+        Assert.False(File.Exists(spent), "two days is long past any prompt the operator was still typing");
+        Assert.True(File.Exists(recent), "an agent may not have got round to reading this one yet");
     }
 
     /// <summary>
@@ -160,8 +159,8 @@ public class ScreenshotInjectionTests : IDisposable
 
         var reason = await session.InjectScreenshotAsync(Png);
 
-        reason.Should().NotBeNull();
-        Directory.Exists(_spillDirectory).Should().BeFalse("a capture with nowhere to go is not worth spilling");
+        Assert.NotNull(reason);
+        Assert.False(Directory.Exists(_spillDirectory), "a capture with nowhere to go is not worth spilling");
     }
 
     /// <summary>
@@ -175,8 +174,8 @@ public class ScreenshotInjectionTests : IDisposable
 
         var reason = await session.InjectScreenshotAsync([]);
 
-        reason.Should().NotBeNull();
-        session.PendingAttachments.Should().BeEmpty();
+        Assert.NotNull(reason);
+        Assert.Empty(session.PendingAttachments);
     }
 
     private static SessionViewModel _CreateSdkSession()

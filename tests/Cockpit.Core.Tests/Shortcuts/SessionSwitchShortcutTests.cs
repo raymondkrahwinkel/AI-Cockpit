@@ -1,5 +1,4 @@
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -14,15 +13,15 @@ public class SessionSwitchShortcutTests
     [Fact]
     public void Catalog_BindsTheSessionSwitchToCtrlShiftArrowByDefault()
     {
-        ShortcutCatalog.DefaultGesture(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
-        ShortcutCatalog.DefaultGesture(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
+        Assert.Equal("Ctrl+Shift+Up", ShortcutCatalog.DefaultGesture(ShortcutAction.PreviousSession));
+        Assert.Equal("Ctrl+Shift+Down", ShortcutCatalog.DefaultGesture(ShortcutAction.NextSession));
     }
 
     [Fact]
     public void Catalog_ListsTheSessionSwitchAsAnEditableAction()
     {
-        ShortcutCatalog.All.Should().Contain(descriptor => descriptor.Action == ShortcutAction.PreviousSession)
-            .And.Contain(descriptor => descriptor.Action == ShortcutAction.NextSession);
+        Assert.Contains(ShortcutCatalog.All, descriptor => descriptor.Action == ShortcutAction.PreviousSession);
+        Assert.Contains(ShortcutCatalog.All, descriptor => descriptor.Action == ShortcutAction.NextSession);
     }
 
     [Fact]
@@ -30,12 +29,12 @@ public class SessionSwitchShortcutTests
     {
         // The navigation shortcuts fire over a focused terminal (Raymond's call): switching session or
         // workspace, plus create and duplicate — the actions you reach for while driving a running TUI.
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousSession).Should().BeTrue();
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextSession).Should().BeTrue();
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousWorkspace).Should().BeTrue();
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextWorkspace).Should().BeTrue();
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewSession).Should().BeTrue();
-        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.DuplicateSession).Should().BeTrue();
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousSession));
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextSession));
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousWorkspace));
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextWorkspace));
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewSession));
+        Assert.True(ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.DuplicateSession));
 
         // The dialog-opening actions still stand down over the terminal, so a single-key shell binding reaches
         // the shell rather than being swallowed.
@@ -53,8 +52,9 @@ public class SessionSwitchShortcutTests
                 continue;
             }
 
-            ShortcutCatalog.StaysActiveInTerminal(descriptor.Action).Should().BeFalse(
-                "{0} would otherwise swallow a keystroke meant for the terminal", descriptor.Action);
+            Assert.False(
+                ShortcutCatalog.StaysActiveInTerminal(descriptor.Action),
+                $"{descriptor.Action} would otherwise swallow a keystroke meant for the terminal");
         }
     }
 
@@ -63,7 +63,7 @@ public class SessionSwitchShortcutTests
     {
         var settings = ShortcutSettings.Default.With(ShortcutAction.NextSession, "Alt+Right");
 
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Right");
+        Assert.Equal("Alt+Right", settings.GestureFor(ShortcutAction.NextSession));
     }
 
     [Fact]
@@ -71,6 +71,6 @@ public class SessionSwitchShortcutTests
     {
         var settings = ShortcutSettings.Default.With(ShortcutAction.PreviousSession, string.Empty);
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().BeEmpty();
+        Assert.Empty(settings.GestureFor(ShortcutAction.PreviousSession));
     }
 }

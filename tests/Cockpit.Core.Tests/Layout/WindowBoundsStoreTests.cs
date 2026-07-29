@@ -2,7 +2,6 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Layout;
 
@@ -27,7 +26,7 @@ public class WindowBoundsStoreTests : IDisposable
     {
         var store = new WindowBoundsStore(_configFilePath);
 
-        (await store.LoadAsync()).Should().BeNull();
+        Assert.Null((await store.LoadAsync()));
     }
 
     [Fact]
@@ -38,7 +37,7 @@ public class WindowBoundsStoreTests : IDisposable
 
         await store.SaveAsync(bounds);
 
-        (await store.LoadAsync()).Should().Be(bounds);
+        Assert.Equal(bounds, (await store.LoadAsync()));
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public class WindowBoundsStoreTests : IDisposable
         var store = new WindowBoundsStore(_configFilePath);
         await store.SaveAsync(new WindowBounds(0, 0, 1280, 820, IsMaximized: false));
 
-        (await notificationStore.LoadAsync()).WebhookUrl.Should().Be("https://example/webhook");
-        (await store.LoadAsync())!.Width.Should().Be(1280);
+        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
+        Assert.Equal(1280, (await store.LoadAsync())!.Width);
     }
 
     [Theory]
@@ -59,7 +58,7 @@ public class WindowBoundsStoreTests : IDisposable
     [InlineData(400, true)]
     [InlineData(1280, true)]
     public void HasUsableSize_GuardsAgainstDegenerateSizes(int size, bool expected)
-        => new WindowBounds(0, 0, size, size, false).HasUsableSize.Should().Be(expected);
+        => Assert.Equal(expected, new WindowBounds(0, 0, size, size, false).HasUsableSize);
 
     public void Dispose()
     {

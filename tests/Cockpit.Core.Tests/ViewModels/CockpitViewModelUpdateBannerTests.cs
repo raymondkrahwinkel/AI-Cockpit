@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Updates;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -23,9 +22,9 @@ public class CockpitViewModelUpdateBannerTests
 
         await vm.CheckForUpdatesAsync();
 
-        vm.HasUpdate.Should().BeTrue();
-        vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("1.2.3");
+        Assert.True(vm.HasUpdate);
+        Assert.True(vm.UpdateBannerVisible);
+        Assert.Equal("1.2.3", vm.UpdateName);
     }
 
     [Fact]
@@ -39,9 +38,9 @@ public class CockpitViewModelUpdateBannerTests
 
         vm.DismissUpdateCommand.Execute(null);
 
-        vm.UpdateBannerVisible.Should().BeFalse();
+        Assert.False(vm.UpdateBannerVisible);
         // Dismiss is about the banner, not the fact of the update — the release is still there to open.
-        vm.HasUpdate.Should().BeTrue();
+        Assert.True(vm.HasUpdate);
     }
 
     [Fact]
@@ -56,7 +55,7 @@ public class CockpitViewModelUpdateBannerTests
 
         await vm.CheckForUpdatesAsync();
 
-        vm.UpdateBannerVisible.Should().BeFalse();
+        Assert.False(vm.UpdateBannerVisible);
     }
 
     [Fact]
@@ -73,8 +72,8 @@ public class CockpitViewModelUpdateBannerTests
 
         await vm.CheckForUpdatesAsync();
 
-        vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("1.2.4");
+        Assert.True(vm.UpdateBannerVisible);
+        Assert.Equal("1.2.4", vm.UpdateName);
     }
 
     [Fact]
@@ -87,8 +86,8 @@ public class CockpitViewModelUpdateBannerTests
 
         await vm.CheckForUpdatesAsync();
 
-        vm.UpdateBannerVisible.Should().BeFalse();
-        vm.HasUpdate.Should().BeFalse();
+        Assert.False(vm.UpdateBannerVisible);
+        Assert.False(vm.HasUpdate);
     }
 
     [Fact]
@@ -101,9 +100,9 @@ public class CockpitViewModelUpdateBannerTests
 
         await vm.RunPeriodicUpdateCheckAsync();
 
-        vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("1.2.3");
-        vm.Toasts.Should().ContainSingle();
+        Assert.True(vm.UpdateBannerVisible);
+        Assert.Equal("1.2.3", vm.UpdateName);
+        Assert.Single(vm.Toasts);
     }
 
     [Fact]
@@ -118,8 +117,8 @@ public class CockpitViewModelUpdateBannerTests
         await vm.RunPeriodicUpdateCheckAsync();
 
         // The same release must not nag every hour — one toast for the build, and the banner is still up.
-        vm.Toasts.Should().ContainSingle();
-        vm.UpdateBannerVisible.Should().BeTrue();
+        Assert.Single(vm.Toasts);
+        Assert.True(vm.UpdateBannerVisible);
     }
 
     [Fact]
@@ -135,8 +134,8 @@ public class CockpitViewModelUpdateBannerTests
         await vm.RunPeriodicUpdateCheckAsync();
 
         await updates.DidNotReceive().CheckAsync(Arg.Any<UpdateChannel>(), Arg.Any<CancellationToken>());
-        vm.UpdateBannerVisible.Should().BeFalse();
-        vm.Toasts.Should().BeEmpty();
+        Assert.False(vm.UpdateBannerVisible);
+        Assert.Empty(vm.Toasts);
     }
 
     [Fact]
@@ -152,10 +151,10 @@ public class CockpitViewModelUpdateBannerTests
         await vm.RunPeriodicUpdateCheckAsync();
         await vm.RunPeriodicUpdateCheckAsync();
 
-        vm.UpdateBannerVisible.Should().BeTrue();
-        vm.UpdateName.Should().Be("1.2.4");
+        Assert.True(vm.UpdateBannerVisible);
+        Assert.Equal("1.2.4", vm.UpdateName);
         // A newer build is worth telling about again: one toast per distinct release.
-        vm.Toasts.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(vm.Toasts));
     }
 
     [Fact]
@@ -171,8 +170,8 @@ public class CockpitViewModelUpdateBannerTests
         await vm.RunPeriodicUpdateCheckAsync();
 
         // Dismissed and unchanged: no new toast, and the banner stays down.
-        vm.Toasts.Should().ContainSingle();
-        vm.UpdateBannerVisible.Should().BeFalse();
+        Assert.Single(vm.Toasts);
+        Assert.False(vm.UpdateBannerVisible);
     }
 
     private static AppRelease Release(string version) => new(version, "notes", $"https://example.test/{version}");

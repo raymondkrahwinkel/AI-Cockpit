@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -23,9 +22,9 @@ public class StrokeMarkTests
 
         var kept = _Stroke(crawl).Thinned();
 
-        kept.Should().HaveCountLessThan(crawl.Count / 2, "a pixel at a time is the sampling, not the gesture");
-        kept[0].Should().Be(new CapturePoint(100, 100), "a stroke starts where the operator put the pen down");
-        kept[^1].Should().Be(new CapturePoint(139, 100), "and ends where they lifted it");
+        Assert.True(kept.Count < crawl.Count / 2, "a pixel at a time is the sampling, not the gesture");
+        Assert.Equal(new CapturePoint(100, 100), kept[0]);
+        Assert.Equal(new CapturePoint(139, 100), kept[^1]);
     }
 
     /// <summary>
@@ -43,7 +42,7 @@ public class StrokeMarkTests
         // this one well off it, which is what makes the corner a bend rather than a hinge. Measured as a distance
         // rather than as "not zero": a curve that has been flattened to a straight line still misses zero by a
         // rounding error, and an assertion that accepts that accepts a straight line.
-        Math.Abs(first.SecondControl.Y).Should().BeGreaterThan(5);
+        Assert.True(Math.Abs(first.SecondControl.Y) > 5);
     }
 
     /// <summary>A press that never moved is not a gesture, so there is nothing to draw and nothing to carry.</summary>
@@ -52,10 +51,10 @@ public class StrokeMarkTests
     {
         var still = _Stroke([new(50, 50)]);
 
-        still.Curve().Should().BeEmpty();
-        still.Start().Should().BeNull();
-        still.Bounds().Should().BeNull();
-        still.ClipTo(new CaptureRect(0, 0, 500, 500)).Should().BeNull();
+        Assert.Empty(still.Curve());
+        Assert.Null(still.Start());
+        Assert.Null(still.Bounds());
+        Assert.Null(still.ClipTo(new CaptureRect(0, 0, 500, 500)));
     }
 
     /// <summary>
@@ -69,18 +68,18 @@ public class StrokeMarkTests
         var clipped = _Stroke([new(150, 180), new(400, 260), new(700, 300)])
             .ClipTo(new CaptureRect(100, 100, 500, 400));
 
-        clipped.Should().BeOfType<StrokeMark>().Which
-            .Points.Should().Equal(
-                new CapturePoint(50, 80), new CapturePoint(300, 160), new CapturePoint(600, 200));
+        var strokeClipped = Assert.IsType<StrokeMark>(clipped);
+        Assert.Equal(
+            new[] { new CapturePoint(50, 80), new CapturePoint(300, 160), new CapturePoint(600, 200) },
+            strokeClipped.Points);
     }
 
     /// <summary>A line drawn over something that is not being sent points at nothing, so it does not travel either.</summary>
     [Fact]
     public void AStrokeThatCannotReachTheRegion_IsNotCarried()
     {
-        _Stroke([new(700, 700), new(800, 800)])
-            .ClipTo(new CaptureRect(0, 0, 500, 500))
-            .Should().BeNull();
+        Assert.Null(_Stroke([new(700, 700), new(800, 800)])
+            .ClipTo(new CaptureRect(0, 0, 500, 500)));
     }
 
     /// <summary>The box covers the line's own width, or a stroke at the edge of a crop would be dropped while its ink was still in the picture.</summary>
@@ -90,8 +89,8 @@ public class StrokeMarkTests
         var stroke = _Stroke([new(100, 100), new(300, 100)]);
         var bounds = stroke.Bounds()!.Value;
 
-        bounds.Y.Should().BeLessThanOrEqualTo(100 - (Thickness / 2));
-        bounds.Bottom.Should().BeGreaterThanOrEqualTo(100 + (Thickness / 2));
+        Assert.True(bounds.Y <= 100 - (Thickness / 2));
+        Assert.True(bounds.Bottom >= 100 + (Thickness / 2));
     }
 
     private static StrokeMark _Stroke(IReadOnlyList<CapturePoint> points) => new(points, Accent, Thickness);

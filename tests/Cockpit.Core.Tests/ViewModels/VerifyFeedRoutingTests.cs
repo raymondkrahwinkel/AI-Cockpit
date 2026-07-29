@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -28,7 +27,7 @@ public class VerifyFeedRoutingTests
 
         var shown = await vm.FeedVerifyResultAsync(Caption, Screenshot);
 
-        shown.Should().BeTrue();
+        Assert.True(shown);
         await driver.Received(1).SendUserMessageAsync(
             Caption,
             Arg.Is<IReadOnlyList<ImageAttachment>>(images => images.Count == 1),
@@ -45,7 +44,7 @@ public class VerifyFeedRoutingTests
 
         var shown = await vm.FeedVerifyResultAsync(Caption, Screenshot);
 
-        shown.Should().BeFalse();
+        Assert.False(shown);
         await driver.DidNotReceive().SendUserMessageAsync(
             Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
     }
@@ -61,8 +60,8 @@ public class VerifyFeedRoutingTests
         var shown = await vm.FeedVerifyResultAsync(Caption, Screenshot);
 
         // A pty carries no image and the snapshot is on the tool result — nothing is typed, so no premature submits.
-        shown.Should().BeFalse();
-        writes.Should().BeEmpty();
+        Assert.False(shown);
+        Assert.Empty(writes);
     }
 
     private static async Task<(SessionViewModel Vm, ISessionDriver Driver)> _StartedSdkAsync(SessionCapabilities capabilities)

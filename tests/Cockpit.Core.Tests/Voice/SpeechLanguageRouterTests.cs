@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -15,9 +14,9 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("Here is the answer.");
 
-        segments.Should().ContainSingle();
-        segments[0].Language.Should().Be("en");
-        segments[0].Sentences.Should().Equal("Here is the answer.");
+        Assert.Single(segments);
+        Assert.Equal("en", segments[0].Language);
+        Assert.Equal(new[] { "Here is the answer." }, segments[0].Sentences);
     }
 
     [Fact]
@@ -25,11 +24,11 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("[[en]]Here is the answer. [[nl]]Dit is het antwoord.");
 
-        segments.Should().HaveCount(2);
-        segments[0].Language.Should().Be("en");
-        segments[0].Sentences.Should().Equal("Here is the answer.");
-        segments[1].Language.Should().Be("nl");
-        segments[1].Sentences.Should().Equal("Dit is het antwoord.");
+        Assert.Equal(2, System.Linq.Enumerable.Count(segments));
+        Assert.Equal("en", segments[0].Language);
+        Assert.Equal(new[] { "Here is the answer." }, segments[0].Sentences);
+        Assert.Equal("nl", segments[1].Language);
+        Assert.Equal(new[] { "Dit is het antwoord." }, segments[1].Sentences);
     }
 
     [Fact]
@@ -37,11 +36,11 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("Intro. [[nl]]Hallo daar.");
 
-        segments.Should().HaveCount(2);
-        segments[0].Language.Should().Be("en");
-        segments[0].Sentences.Should().Equal("Intro.");
-        segments[1].Language.Should().Be("nl");
-        segments[1].Sentences.Should().Equal("Hallo daar.");
+        Assert.Equal(2, System.Linq.Enumerable.Count(segments));
+        Assert.Equal("en", segments[0].Language);
+        Assert.Equal(new[] { "Intro." }, segments[0].Sentences);
+        Assert.Equal("nl", segments[1].Language);
+        Assert.Equal(new[] { "Hallo daar." }, segments[1].Sentences);
     }
 
     [Fact]
@@ -49,9 +48,9 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("[[en]]One thing. [[en]]Another thing.");
 
-        segments.Should().ContainSingle();
-        segments[0].Language.Should().Be("en");
-        segments[0].Sentences.Should().Equal("One thing.", "Another thing.");
+        Assert.Single(segments);
+        Assert.Equal("en", segments[0].Language);
+        Assert.Equal(new[] { "One thing.", "Another thing." }, segments[0].Sentences);
     }
 
     [Fact]
@@ -59,14 +58,14 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("[[fr]]Bonjour tout le monde.");
 
-        segments.Should().ContainSingle();
-        segments[0].Language.Should().Be("en");
+        Assert.Single(segments);
+        Assert.Equal("en", segments[0].Language);
     }
 
     [Fact]
     public void Route_WhitespaceOnly_ReturnsNoSegments()
     {
-        SpeechLanguageRouter.Route("   ").Should().BeEmpty();
+        Assert.Empty(SpeechLanguageRouter.Route("   "));
     }
 
     [Fact]
@@ -74,8 +73,8 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("Dit is het antwoord.", "nl");
 
-        segments.Should().ContainSingle();
-        segments[0].Language.Should().Be("nl");
+        Assert.Single(segments);
+        Assert.Equal("nl", segments[0].Language);
     }
 
     [Fact]
@@ -83,8 +82,8 @@ public class SpeechLanguageRouterTests
     {
         var segments = SpeechLanguageRouter.Route("Dit is Dutch. [[en]]This part is English.", "nl");
 
-        segments.Should().HaveCount(2);
-        segments[0].Language.Should().Be("nl");
-        segments[1].Language.Should().Be("en");
+        Assert.Equal(2, System.Linq.Enumerable.Count(segments));
+        Assert.Equal("nl", segments[0].Language);
+        Assert.Equal("en", segments[1].Language);
     }
 }

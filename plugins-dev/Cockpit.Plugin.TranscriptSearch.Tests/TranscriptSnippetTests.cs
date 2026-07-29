@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
@@ -8,8 +7,7 @@ public class TranscriptSnippetTests
     [Fact]
     public void Build_CollapsesWhitespaceToSingleSpaces()
     {
-        TranscriptSnippet.Build("line one\n\n  line   two", "line", radius: 100)
-            .Should().Be("line one line two");
+        Assert.Equal("line one line two", TranscriptSnippet.Build("line one\n\n  line   two", "line", radius: 100));
     }
 
     [Fact]
@@ -19,23 +17,21 @@ public class TranscriptSnippetTests
 
         var snippet = TranscriptSnippet.Build(text, "NEEDLE", radius: 10);
 
-        snippet.Should().StartWith("…");
-        snippet.Should().EndWith("…");
-        snippet.Should().Contain("NEEDLE");
-        snippet.Should().Be("…" + new string('a', 10) + "NEEDLE" + new string('b', 10) + "…");
+        Assert.StartsWith("…", snippet);
+        Assert.EndsWith("…", snippet);
+        Assert.Contains("NEEDLE", snippet);
+        Assert.Equal("…" + new string('a', 10) + "NEEDLE" + new string('b', 10) + "…", snippet);
     }
 
     [Fact]
     public void Build_NoEllipsisWhenMatchIsNearTheStartAndTextIsShort()
     {
-        TranscriptSnippet.Build("NEEDLE at the front", "NEEDLE", radius: 60)
-            .Should().Be("NEEDLE at the front");
+        Assert.Equal("NEEDLE at the front", TranscriptSnippet.Build("NEEDLE at the front", "NEEDLE", radius: 60));
     }
 
     [Fact]
     public void Build_MatchIsCaseInsensitive()
     {
-        TranscriptSnippet.Build("The Login Bug", "login", radius: 60)
-            .Should().Be("The Login Bug");
+        Assert.Equal("The Login Bug", TranscriptSnippet.Build("The Login Bug", "login", radius: 60));
     }
 }

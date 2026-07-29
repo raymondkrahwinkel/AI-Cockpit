@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -87,7 +86,7 @@ public class TtyLauncherTests
 
         var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
 
-        process.Should().BeSameAs(expectedProcess);
+        Assert.Same(expectedProcess, process);
     }
 
     [Fact]
@@ -450,14 +449,14 @@ public class TtyLauncherTests
 
             var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
 
-            File.Exists(sessionFile).Should().BeTrue("the CLI reads it while the session is alive");
-            File.Exists(statusFile).Should().BeTrue("the header polls it while the session is alive");
+            Assert.True(File.Exists(sessionFile), "the CLI reads it while the session is alive");
+            Assert.True(File.Exists(statusFile), "the header polls it while the session is alive");
 
             process.Dispose();
 
             innerProcess.Received(1).Dispose();
-            File.Exists(sessionFile).Should().BeFalse("a credential must not outlive the session that needed it");
-            File.Exists(statusFile).Should().BeFalse("the limits of a session that has ended are nobody's business");
+            Assert.False(File.Exists(sessionFile), "a credential must not outlive the session that needed it");
+            Assert.False(File.Exists(statusFile), "the limits of a session that has ended are nobody's business");
         }
         finally
         {
@@ -479,12 +478,12 @@ public class TtyLauncherTests
 
         var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
 
-        keyring.LivePaneCount.Should().Be(1, "the launch minted this pane's token");
+        Assert.Equal(1, keyring.LivePaneCount);
 
         process.Dispose();
 
-        keyring.LivePaneCount.Should().Be(0, "the token must not outlive the TTY session it was minted for");
-        keyring.LiveTokenCount.Should().Be(0);
+        Assert.Equal(0, keyring.LivePaneCount);
+        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     // A TTY session launched with no pane id (no session to name) never touches the keyring at all — nothing was
@@ -499,8 +498,8 @@ public class TtyLauncherTests
         var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
         process.Dispose();
 
-        keyring.LivePaneCount.Should().Be(0);
-        keyring.LiveTokenCount.Should().Be(0);
+        Assert.Equal(0, keyring.LivePaneCount);
+        Assert.Equal(0, keyring.LiveTokenCount);
     }
 
     // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the
@@ -518,7 +517,7 @@ public class TtyLauncherTests
 
         // The keyring mints a 64-character hex string (32 random bytes); no log call's rendered message anywhere
         // in this path may contain a substring shaped like one.
-        logger.ReceivedCalls().Should().NotContain(call =>
+        Assert.DoesNotContain(logger.ReceivedCalls(), call =>
             call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
     }
 

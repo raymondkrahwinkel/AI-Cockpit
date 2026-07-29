@@ -1,5 +1,4 @@
 using Cockpit.App.Controls;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Controls;
 
@@ -16,10 +15,10 @@ public class StackPaneMathTests
         var slots = StackPaneMath.Layout([1, 1, 1], totalHeight: 320, gutter: 10);
 
         // 320 - 2*10 gutters = 300 content / 3 = 100 each.
-        slots.Should().HaveCount(3);
-        slots[0].Should().Be(new StackPaneMath.Slot(0, 100));
-        slots[1].Should().Be(new StackPaneMath.Slot(110, 100));
-        slots[2].Should().Be(new StackPaneMath.Slot(220, 100));
+        Assert.Equal(3, System.Linq.Enumerable.Count(slots));
+        Assert.Equal(new StackPaneMath.Slot(0, 100), slots[0]);
+        Assert.Equal(new StackPaneMath.Slot(110, 100), slots[1]);
+        Assert.Equal(new StackPaneMath.Slot(220, 100), slots[2]);
     }
 
     [Fact]
@@ -28,19 +27,19 @@ public class StackPaneMathTests
         var slots = StackPaneMath.Layout([1, 3], totalHeight: 210, gutter: 10);
 
         // content = 200, split 1:3 -> 50 / 150.
-        slots[0].Height.Should().BeApproximately(50, 1e-9);
-        slots[1].Top.Should().BeApproximately(60, 1e-9);
-        slots[1].Height.Should().BeApproximately(150, 1e-9);
+        Assert.True(Math.Abs(slots[0].Height - 50) < 1e-9);
+        Assert.True(Math.Abs(slots[1].Top - 60) < 1e-9);
+        Assert.True(Math.Abs(slots[1].Height - 150) < 1e-9);
     }
 
     [Fact]
     public void Layout_EmptyOrTooShort_DoesNotThrowOrGoNegative()
     {
-        StackPaneMath.Layout([], 100, 10).Should().BeEmpty();
+        Assert.Empty(StackPaneMath.Layout([], 100, 10));
 
         // Gutters alone exceed the height: fall back to equal, non-negative slices.
         var slots = StackPaneMath.Layout([1, 1], totalHeight: 5, gutter: 10);
-        slots.Should().OnlyContain(s => s.Height >= 0);
+        Assert.All(slots, s => Assert.True(s.Height >= 0));
     }
 
     [Theory]
@@ -54,7 +53,7 @@ public class StackPaneMathTests
     {
         var slots = StackPaneMath.Layout([1, 1, 1], totalHeight: 320, gutter: 10);
 
-        StackPaneMath.GutterAt(slots, y, gutter: 10, grab: 6).Should().Be(expected);
+        Assert.Equal(expected, StackPaneMath.GutterAt(slots, y, gutter: 10, grab: 6));
     }
 
     [Fact]
@@ -66,9 +65,9 @@ public class StackPaneMathTests
 
         // Pair (0,1) shared 200px; upper grows to 130, lower shrinks to 70; pane 2 untouched.
         var sum = result[0] + result[1] + result[2];
-        (300 * result[0] / sum).Should().BeApproximately(130, 1e-6);
-        (300 * result[1] / sum).Should().BeApproximately(70, 1e-6);
-        result[2].Should().BeApproximately(weights[2], 1e-9);
+        Assert.True(Math.Abs((300 * result[0] / sum) - 130) < 1e-6);
+        Assert.True(Math.Abs((300 * result[1] / sum) - 70) < 1e-6);
+        Assert.True(Math.Abs(result[2] - weights[2]) < 1e-9);
     }
 
     [Fact]
@@ -79,8 +78,8 @@ public class StackPaneMathTests
         var result = StackPaneMath.Resize(weights, gutterIndex: 0, pixelDelta: 500, contentHeight: 200, minPixels: 40);
 
         var sum = result[0] + result[1];
-        (200 * result[1] / sum).Should().BeApproximately(40, 1e-6); // lower pinned at the minimum
-        (200 * result[0] / sum).Should().BeApproximately(160, 1e-6);
+        Assert.True(Math.Abs((200 * result[1] / sum) - 40) < 1e-6); // lower pinned at the minimum
+        Assert.True(Math.Abs((200 * result[0] / sum) - 160) < 1e-6);
     }
 
     [Theory]
@@ -93,11 +92,11 @@ public class StackPaneMathTests
     {
         var slots = StackPaneMath.Layout([1, 1, 1], totalHeight: 300, gutter: 0); // 100 each
 
-        StackPaneMath.SlotAt(slots, pos).Should().Be(expected);
+        Assert.Equal(expected, StackPaneMath.SlotAt(slots, pos));
     }
 
     [Fact]
-    public void SlotAt_EmptyIsZero() => StackPaneMath.SlotAt([], 42).Should().Be(0);
+    public void SlotAt_EmptyIsZero() => Assert.Equal(0, StackPaneMath.SlotAt([], 42));
 
     [Fact]
     public void ReorderTarget_DraggingDownPastANeighbourCentre_MovesAfterIt()
@@ -105,10 +104,10 @@ public class StackPaneMathTests
         var slots = StackPaneMath.Layout([1, 1, 1], totalHeight: 300, gutter: 0); // 100 each
 
         // Dragging pane 0 down to y=160 -> past pane 1's centre (150), not past pane 2's (250) -> index 1.
-        StackPaneMath.ReorderTarget(slots, draggedIndex: 0, pointerY: 160).Should().Be(1);
+        Assert.Equal(1, StackPaneMath.ReorderTarget(slots, draggedIndex: 0, pointerY: 160));
         // Down to the bottom -> last slot.
-        StackPaneMath.ReorderTarget(slots, draggedIndex: 0, pointerY: 295).Should().Be(2);
+        Assert.Equal(2, StackPaneMath.ReorderTarget(slots, draggedIndex: 0, pointerY: 295));
         // Held in place -> unchanged.
-        StackPaneMath.ReorderTarget(slots, draggedIndex: 1, pointerY: 120).Should().Be(1);
+        Assert.Equal(1, StackPaneMath.ReorderTarget(slots, draggedIndex: 1, pointerY: 120));
     }
 }

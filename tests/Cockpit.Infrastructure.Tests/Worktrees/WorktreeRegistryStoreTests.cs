@@ -1,6 +1,5 @@
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -25,7 +24,7 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
     {
         var store = new WorktreeRegistryStore(_configPath);
 
-        (await store.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await store.ListAsync()));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
 
         var reloaded = await new WorktreeRegistryStore(_configPath).ListAsync();
 
-        reloaded.Should().ContainSingle().Which.Should().BeEquivalentTo(record);
+        Assert.Equivalent(record, Assert.Single(reloaded));
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
 
         var records = await store.ListAsync();
 
-        records.Should().ContainSingle().Which.Branch.Should().Be("cockpit/one-again");
+        Assert.Equal("cockpit/one-again", Assert.Single(records).Branch);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
 
         await store.RemoveAsync("/wt/one");
 
-        (await store.ListAsync()).Should().ContainSingle().Which.Path.Should().Be(Path.GetFullPath("/wt/two"));
+        Assert.Equal(Path.GetFullPath("/wt/two"), Assert.Single((await store.ListAsync())).Path);
     }
 
     private static WorktreeRecord _Record(string repositoryRoot, string path, string branch) =>

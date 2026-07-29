@@ -3,7 +3,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -45,8 +44,8 @@ public class LiveSessionRegistryDependencyInjectionTests
 
         var sources = provider.GetServices<ILiveSessionSource>().ToList();
 
-        sources.Should().ContainSingle(source => source.GetType().Name == "DelegationService");
-        provider.GetRequiredService<ILiveSessionRegistry>().Should().BeOfType<LiveSessionRegistry>();
+        Assert.Single(sources, source => source.GetType().Name == "DelegationService");
+        Assert.IsType<LiveSessionRegistry>(provider.GetRequiredService<ILiveSessionRegistry>());
     }
 
     [Fact]
@@ -56,10 +55,12 @@ public class LiveSessionRegistryDependencyInjectionTests
         // A second instance of either would answer about tasks nobody started, which reads as "nothing is live".
         await using var provider = BuildProvider();
 
-        provider.GetRequiredService<ILiveSessionRegistry>()
-            .Should().BeSameAs(provider.GetRequiredService<LiveSessionRegistry>());
-        provider.GetServices<ILiveSessionSource>().Single()
-            .Should().BeSameAs(provider.GetRequiredService<Cockpit.Core.Abstractions.Delegation.IDelegationService>());
+        Assert.Same(
+            provider.GetRequiredService<LiveSessionRegistry>(),
+            provider.GetRequiredService<ILiveSessionRegistry>());
+        Assert.Same(
+            provider.GetRequiredService<Cockpit.Core.Abstractions.Delegation.IDelegationService>(),
+            provider.GetServices<ILiveSessionSource>().Single());
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public class LiveSessionRegistryDependencyInjectionTests
 
         var cockpit = provider.GetRequiredService<CockpitViewModel>();
 
-        cockpit.Worktrees.LiveSessionIds.Should().NotBeNull();
-        cockpit.Worktrees.LiveSessionIds!().Should().Contain("task-with-no-tab");
+        Assert.NotNull(cockpit.Worktrees.LiveSessionIds);
+        Assert.Contains("task-with-no-tab", cockpit.Worktrees.LiveSessionIds!());
     }
 }

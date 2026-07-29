@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
@@ -11,7 +10,7 @@ public class GitStatusSettingsTests
     [Fact]
     public void ShowBranchName_DefaultsToTrue_WhenNothingSaved()
     {
-        new GitStatusSettings(new InMemoryPluginStorage()).ShowBranchName.Should().BeTrue();
+        Assert.True(new GitStatusSettings(new InMemoryPluginStorage()).ShowBranchName);
     }
 
     [Theory]
@@ -23,6 +22,6 @@ public class GitStatusSettingsTests
 
         settings.ShowBranchName = value;
 
-        settings.ShowBranchName.Should().Be(value);
+        Assert.Equal(value, settings.ShowBranchName);
     }
 }

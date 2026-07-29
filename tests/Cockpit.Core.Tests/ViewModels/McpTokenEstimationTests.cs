@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -15,38 +14,38 @@ public class McpTokenEstimationTests
     public void TokenLabel_ReflectsTheRowsEstimateState()
     {
         var item = new McpServerSelectionItemViewModel("youtrack");
-        item.TokenLabel.Should().BeEmpty("no estimate has been computed yet");
+        Assert.Empty(item.TokenLabel);
 
         item.IsEstimatingTokens = true;
-        item.TokenLabel.Should().Be("…");
+        Assert.Equal("…", item.TokenLabel);
 
         item.IsEstimatingTokens = false;
         item.TokenEstimate = McpServerToolEstimate.Unavailable("youtrack");
-        item.TokenLabel.Should().Be("?");
+        Assert.Equal("?", item.TokenLabel);
 
         item.TokenEstimate = new McpServerToolEstimate("youtrack", ToolCount: 6, EstimatedTokens: 4200, Available: true);
-        item.TokenLabel.Should().Be("~4.2k");
+        Assert.Equal("~4.2k", item.TokenLabel);
     }
 
     [Fact]
     public void TokenTooltip_ExplainsTheFigure_EspeciallyTheUnknownCase()
     {
         var item = new McpServerSelectionItemViewModel("cockpit-workflows");
-        item.TokenTooltip.Should().BeNull("nothing to explain before an estimate exists");
+        Assert.Null(item.TokenTooltip);
 
         item.IsEstimatingTokens = true;
-        item.TokenTooltip.Should().Be("Counting this server's tools…");
+        Assert.Equal("Counting this server's tools…", item.TokenTooltip);
         item.IsEstimatingTokens = false;
 
         // The "?" is the case worth a hover — a server that could not be reached reads as unknown, not zero.
         item.TokenEstimate = McpServerToolEstimate.Unavailable("cockpit-workflows");
-        item.TokenTooltip.Should().Contain("Couldn't reach this server");
+        Assert.Contains("Couldn't reach this server", item.TokenTooltip);
 
         item.TokenEstimate = new McpServerToolEstimate("cockpit-workflows", ToolCount: 1, EstimatedTokens: 300, Available: true);
-        item.TokenTooltip.Should().Be("1 tool, ~300 tokens (estimate)", "one tool is singular");
+        Assert.Equal("1 tool, ~300 tokens (estimate)", item.TokenTooltip);
 
         item.TokenEstimate = new McpServerToolEstimate("cockpit-workflows", ToolCount: 6, EstimatedTokens: 4200, Available: true);
-        item.TokenTooltip.Should().Be("6 tools, ~4.2k tokens (estimate)");
+        Assert.Equal("6 tools, ~4.2k tokens (estimate)", item.TokenTooltip);
     }
 
     [Fact]
@@ -64,26 +63,24 @@ public class McpTokenEstimationTests
 
         var (tokens, anyEstimating, anyUnknown) = McpTokenEstimation.Total([ticked, alsoTicked, unticked, estimating, unknown]);
 
-        tokens.Should().Be(1500, "only the ticked, known rows count — the unticked 9000 is excluded");
-        anyEstimating.Should().BeTrue();
-        anyUnknown.Should().BeTrue();
+        Assert.Equal(1500, tokens);
+        Assert.True(anyEstimating);
+        Assert.True(anyUnknown);
     }
 
     [Fact]
     public void SummaryLabel_ReadsAsAToolsOnlyEstimate_AndCallsOutEstimatingAndUnknown()
     {
-        McpTokenEstimation.SummaryLabel([_Item("a", 4200)])
-            .Should().Be("MCP tools: ~4.2k tokens (estimate, tools only)");
+        Assert.Equal("MCP tools: ~4.2k tokens (estimate, tools only)", McpTokenEstimation.SummaryLabel([_Item("a", 4200)]));
 
         var unknown = _Item("b", 0);
         unknown.TokenEstimate = McpServerToolEstimate.Unavailable("b");
-        McpTokenEstimation.SummaryLabel([_Item("a", 1000), unknown])
-            .Should().Be("MCP tools: ~1k tokens (estimate, tools only) + some unknown");
+        Assert.Equal("MCP tools: ~1k tokens (estimate, tools only) + some unknown", McpTokenEstimation.SummaryLabel([_Item("a", 1000), unknown]));
 
         var estimating = _Item("c", 0);
         estimating.IsEstimatingTokens = true;
         estimating.TokenEstimate = null;
-        McpTokenEstimation.SummaryLabel([_Item("a", 1000), estimating]).Should().Be("MCP tools: estimating…");
+        Assert.Equal("MCP tools: estimating…", McpTokenEstimation.SummaryLabel([_Item("a", 1000), estimating]));
     }
 
     [Fact]
@@ -98,10 +95,10 @@ public class McpTokenEstimationTests
 
         await McpTokenEstimation.EstimateAllAsync(items, estimator, refresh: false, CancellationToken.None);
 
-        items[0].TokenEstimate!.EstimatedTokens.Should().Be(1200);
-        items[1].TokenEstimate!.EstimatedTokens.Should().Be(9000);
-        items.Should().OnlyContain(item => !item.IsEstimatingTokens);
-        McpTokenEstimation.Total(items).Tokens.Should().Be(10200);
+        Assert.Equal(1200, items[0].TokenEstimate!.EstimatedTokens);
+        Assert.Equal(9000, items[1].TokenEstimate!.EstimatedTokens);
+        Assert.All(items, item => Assert.False(item.IsEstimatingTokens));
+        Assert.Equal(10200, McpTokenEstimation.Total(items).Tokens);
     }
 
     private static McpServerSelectionItemViewModel _Item(string name, int tokens) =>

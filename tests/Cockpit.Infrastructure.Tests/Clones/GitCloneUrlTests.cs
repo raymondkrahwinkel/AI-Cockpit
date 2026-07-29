@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Clones;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Clones;
 
@@ -15,17 +14,16 @@ public sealed class GitCloneUrlTests
     {
         var parsed = GitCloneUrl.Parse("https://github.com/org/repo.git");
 
-        parsed.Host.Should().Be("github.com");
-        parsed.Segments.Should().Equal("org", "repo");
-        parsed.Slug.Should().Be("github.com/org/repo");
-        parsed.RemoteUrl.Should().Be("https://github.com/org/repo");
+        Assert.Equal("github.com", parsed.Host);
+        Assert.Equal(new[] { "org", "repo" }, parsed.Segments);
+        Assert.Equal("github.com/org/repo", parsed.Slug);
+        Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
     }
 
     [Fact]
     public void Parse_HttpsUrlWithoutGitSuffix_IsEquivalentToWithIt()
     {
-        GitCloneUrl.Parse("https://github.com/org/repo").NormalizedKey
-            .Should().Be(GitCloneUrl.Parse("https://github.com/org/repo.git").NormalizedKey);
+        Assert.Equal(GitCloneUrl.Parse("https://github.com/org/repo.git").NormalizedKey, GitCloneUrl.Parse("https://github.com/org/repo").NormalizedKey);
     }
 
     // The load-bearing security property (a binding rule): a token in an HTTPS URL is dropped before git ever sees
@@ -35,16 +33,15 @@ public sealed class GitCloneUrlTests
     {
         var parsed = GitCloneUrl.Parse("https://x-access-token:ghp_secretsecret@github.com/org/repo.git");
 
-        parsed.RemoteUrl.Should().Be("https://github.com/org/repo");
-        parsed.RemoteUrl.Should().NotContain("ghp_secretsecret");
-        parsed.RemoteUrl.Should().NotContain("@");
+        Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
+        Assert.DoesNotContain("ghp_secretsecret", parsed.RemoteUrl);
+        Assert.DoesNotContain("@", parsed.RemoteUrl);
     }
 
     [Fact]
     public void Parse_HttpsUrlWithNonDefaultPort_KeepsThePort()
     {
-        GitCloneUrl.Parse("https://ghe.example.com:8443/org/repo.git").RemoteUrl
-            .Should().Be("https://ghe.example.com:8443/org/repo");
+        Assert.Equal("https://ghe.example.com:8443/org/repo", GitCloneUrl.Parse("https://ghe.example.com:8443/org/repo.git").RemoteUrl);
     }
 
     [Fact]
@@ -52,10 +49,10 @@ public sealed class GitCloneUrlTests
     {
         var parsed = GitCloneUrl.Parse("git@github.com:org/repo.git");
 
-        parsed.Host.Should().Be("github.com");
-        parsed.Segments.Should().Equal("org", "repo");
+        Assert.Equal("github.com", parsed.Host);
+        Assert.Equal(new[] { "org", "repo" }, parsed.Segments);
         // The git@ user is the SSH login, not a secret, and the clone needs it — kept verbatim.
-        parsed.RemoteUrl.Should().Be("git@github.com:org/repo.git");
+        Assert.Equal("git@github.com:org/repo.git", parsed.RemoteUrl);
     }
 
     [Fact]
@@ -63,9 +60,9 @@ public sealed class GitCloneUrlTests
     {
         var parsed = GitCloneUrl.Parse("ssh://git@github.com/org/repo.git");
 
-        parsed.Host.Should().Be("github.com");
-        parsed.Slug.Should().Be("github.com/org/repo");
-        parsed.RemoteUrl.Should().Be("ssh://git@github.com/org/repo.git");
+        Assert.Equal("github.com", parsed.Host);
+        Assert.Equal("github.com/org/repo", parsed.Slug);
+        Assert.Equal("ssh://git@github.com/org/repo.git", parsed.RemoteUrl);
     }
 
     // The same binding rule as HTTPS, for the one scheme that kept its userinfo: an ssh:// URL may carry the git@
@@ -76,23 +73,21 @@ public sealed class GitCloneUrlTests
     {
         var parsed = GitCloneUrl.Parse("ssh://git:s3cr3t-token@github.com/org/repo.git");
 
-        parsed.RemoteUrl.Should().Be("ssh://git@github.com/org/repo.git");
-        parsed.RemoteUrl.Should().NotContain("s3cr3t-token");
+        Assert.Equal("ssh://git@github.com/org/repo.git", parsed.RemoteUrl);
+        Assert.DoesNotContain("s3cr3t-token", parsed.RemoteUrl);
     }
 
     [Fact]
     public void Parse_NestedGroup_KeepsEverySegment()
     {
-        GitCloneUrl.Parse("https://gitlab.com/group/subgroup/repo.git").Slug
-            .Should().Be("gitlab.com/group/subgroup/repo");
+        Assert.Equal("gitlab.com/group/subgroup/repo", GitCloneUrl.Parse("https://gitlab.com/group/subgroup/repo.git").Slug);
     }
 
     [Fact]
     public void SameRepositoryAs_HttpsAndScpForTheSameRepo_Match()
     {
-        GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("git@github.com:org/repo.git")
-            .Should().BeTrue();
+        Assert.True(GitCloneUrl.Parse("https://github.com/org/repo.git")
+            .SameRepositoryAs("git@github.com:org/repo.git"));
     }
 
     [Fact]
@@ -100,25 +95,22 @@ public sealed class GitCloneUrlTests
     {
         // GitHub treats org/repo case-insensitively; the slug is lowercased so the same repository is not cloned
         // twice under two folders.
-        GitCloneUrl.Parse("https://github.com/Org/Repo.git")
-            .SameRepositoryAs("https://github.com/org/repo")
-            .Should().BeTrue();
+        Assert.True(GitCloneUrl.Parse("https://github.com/Org/Repo.git")
+            .SameRepositoryAs("https://github.com/org/repo"));
     }
 
     [Fact]
     public void SameRepositoryAs_DifferentRepository_DoesNotMatch()
     {
-        GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("https://github.com/org/other.git")
-            .Should().BeFalse();
+        Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
+            .SameRepositoryAs("https://github.com/org/other.git"));
     }
 
     [Fact]
     public void SameRepositoryAs_UnparseableRemote_IsTreatedAsNotMatching()
     {
-        GitCloneUrl.Parse("https://github.com/org/repo.git")
-            .SameRepositoryAs("not a url")
-            .Should().BeFalse();
+        Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
+            .SameRepositoryAs("not a url"));
     }
 
     [Theory]
@@ -131,14 +123,13 @@ public sealed class GitCloneUrlTests
     {
         var act = () => GitCloneUrl.Parse(url);
 
-        act.Should().Throw<FormatException>();
+        Assert.Throws<FormatException>(act);
     }
 
     [Fact]
     public void Parse_TraversalInPath_IsSanitizedAwayRatherThanEscapingTheRoot()
     {
         // A pasted "..“ segment must never become a real parent-directory hop in the managed clones root.
-        GitCloneUrl.Parse("https://github.com/../../etc/repo.git").Segments
-            .Should().NotContain("..");
+        Assert.DoesNotContain("..", GitCloneUrl.Parse("https://github.com/../../etc/repo.git").Segments);
     }
 }

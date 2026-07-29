@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -22,9 +21,9 @@ public class SessionWorkspaceSeparationTests
 
         _SwitchToASecondWorkspace(workspaces);
 
-        mine.IsPaneVisible.Should().BeFalse("the other desk's session is hidden, not closed");
-        cockpit.Sessions.Should().Contain(mine, "hiding a session must never remove it — its pty keeps running");
-        cockpit.VisibleSessions.Should().NotContain(mine);
+        Assert.False(mine.IsPaneVisible, "the other desk's session is hidden, not closed");
+        Assert.Contains(mine, cockpit.Sessions);
+        Assert.DoesNotContain(mine, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -37,11 +36,11 @@ public class SessionWorkspaceSeparationTests
         var second = _SwitchToASecondWorkspace(workspaces);
         var onSecond = _AddSession(cockpit, second.Id);
 
-        cockpit.VisibleSessions.Should().ContainSingle().Which.Should().Be(onSecond);
+        Assert.Equal(onSecond, Assert.Single(cockpit.VisibleSessions));
 
         workspaces.SelectWorkspaceCommand.Execute(first.Id);
 
-        cockpit.VisibleSessions.Should().ContainSingle().Which.Should().Be(onFirst);
+        Assert.Equal(onFirst, Assert.Single(cockpit.VisibleSessions));
     }
 
     [Fact]
@@ -49,14 +48,14 @@ public class SessionWorkspaceSeparationTests
     {
         var cockpit = _Create(out var workspaces);
         _AddSession(cockpit, workspaces.Active!.Id);
-        cockpit.ShowSessionEmptyState.Should().BeFalse();
+        Assert.False(cockpit.ShowSessionEmptyState);
 
         _SwitchToASecondWorkspace(workspaces);
 
-        cockpit.HasSessionsHere.Should().BeFalse();
-        cockpit.ShowSessionEmptyState.Should().BeTrue();
-        cockpit.ShowSessionGrid.Should().BeFalse();
-        cockpit.HasSessions.Should().BeTrue("the first workspace's session is still running");
+        Assert.False(cockpit.HasSessionsHere);
+        Assert.True(cockpit.ShowSessionEmptyState);
+        Assert.False(cockpit.ShowSessionGrid);
+        Assert.True(cockpit.HasSessions, "the first workspace's session is still running");
     }
 
     [Fact]
@@ -66,11 +65,11 @@ public class SessionWorkspaceSeparationTests
         var legacy = new SessionViewModel { Title = "From before workspaces" };
         cockpit.Sessions.Add(legacy);
 
-        cockpit.VisibleSessions.Should().Contain(legacy);
+        Assert.Contains(legacy, cockpit.VisibleSessions);
 
         _SwitchToASecondWorkspace(workspaces);
 
-        cockpit.VisibleSessions.Should().NotContain(legacy);
+        Assert.DoesNotContain(legacy, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -81,10 +80,10 @@ public class SessionWorkspaceSeparationTests
 
         workspaces.AddWorkspaceCommand.Execute(WorkspaceType.Dashboard);
 
-        cockpit.VisibleSessions.Should().BeEmpty();
-        mine.IsPaneVisible.Should().BeFalse();
-        cockpit.ShowSessionEmptyState.Should().BeFalse("a dashboard has its own empty state");
-        cockpit.ShowSessionGrid.Should().BeFalse();
+        Assert.Empty(cockpit.VisibleSessions);
+        Assert.False(mine.IsPaneVisible);
+        Assert.False(cockpit.ShowSessionEmptyState, "a dashboard has its own empty state");
+        Assert.False(cockpit.ShowSessionGrid);
     }
 
     [Fact]
@@ -94,13 +93,13 @@ public class SessionWorkspaceSeparationTests
         var first = workspaces.Active!;
         _AddSession(cockpit, first.Id);
         _AddSession(cockpit, first.Id);
-        cockpit.GridColumns.Should().Be(2);
+        Assert.Equal(2, cockpit.GridColumns);
 
         var second = _SwitchToASecondWorkspace(workspaces);
         _AddSession(cockpit, second.Id);
 
-        cockpit.GridColumns.Should().Be(1, "one session on this desk lays out as one, however full the other is");
-        cockpit.ShowZoomButton.Should().BeFalse();
+        Assert.Equal(1, cockpit.GridColumns);
+        Assert.False(cockpit.ShowZoomButton);
     }
 
     [Fact]
@@ -116,10 +115,10 @@ public class SessionWorkspaceSeparationTests
 
         await cockpit.CloseWorkspaceAsync(first.Id);
 
-        cockpit.Sessions.Should().NotContain(mine);
-        cockpit.Sessions.Should().Contain(survivor, "the other desk's session is none of this workspace's business");
-        workspaces.Settings.Workspaces.Should().HaveCount(2, "the survivor, plus the fixed overview that was there all along");
-        workspaces.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Id.Should().Be(second.Id);
+        Assert.DoesNotContain(mine, cockpit.Sessions);
+        Assert.Contains(survivor, cockpit.Sessions);
+        Assert.Equal(2, System.Linq.Enumerable.Count(workspaces.Settings.Workspaces));
+        Assert.Equal(second.Id, workspaces.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Id);
     }
 
     [Fact]
@@ -136,8 +135,8 @@ public class SessionWorkspaceSeparationTests
 
         await cockpit.CloseWorkspaceAsync(overview.Id);
 
-        cockpit.Sessions.Should().Contain(session);
-        workspaces.Settings.Workspaces.Should().Contain(workspace => workspace.Id == overview.Id);
+        Assert.Contains(session, cockpit.Sessions);
+        Assert.Contains(workspaces.Settings.Workspaces, workspace => workspace.Id == overview.Id);
     }
 
     [Fact]
@@ -150,7 +149,7 @@ public class SessionWorkspaceSeparationTests
 
         await cockpit.CloseWorkspaceAsync(dashboard.Id);
 
-        cockpit.Sessions.Should().Contain(session);
+        Assert.Contains(session, cockpit.Sessions);
     }
 
     private static CockpitViewModel _Create(out WorkspacesViewModel workspaces)

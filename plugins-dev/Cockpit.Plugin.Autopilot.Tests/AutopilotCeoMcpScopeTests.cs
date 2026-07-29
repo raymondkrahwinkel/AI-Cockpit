@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -14,11 +13,9 @@ public class AutopilotCeoMcpScopeTests
     {
         // A CEO-first run has no source issue, so no tracker read servers — the planning CEO only emits the plan through
         // AutopilotPlanTools; nothing else is needed to plan.
-        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: null)
-            .Should().ContainSingle().Which.Should().Be(AutopilotPlanTools.EndpointName);
-        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: [])
-            .Should().ContainSingle().Which.Should().Be(AutopilotPlanTools.EndpointName);
-        AutopilotPlanTools.EndpointName.Should().Be("cockpit-autopilot-plan");
+        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: null)));
+        Assert.Equal(AutopilotPlanTools.EndpointName, Assert.Single(AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: [])));
+        Assert.Equal("cockpit-autopilot-plan", AutopilotPlanTools.EndpointName);
     }
 
     [Fact]
@@ -31,8 +28,8 @@ public class AutopilotCeoMcpScopeTests
         // run's job (the CEO validator plus the coordinator's auto-advance, AC-202).
         var scope = AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: ["YouTrack: Personal"]);
 
-        scope.Should().BeEquivalentTo(new[] { AutopilotPlanTools.EndpointName, "YouTrack: Personal" });
-        scope.Should().NotContain(AutopilotCeoTools.EndpointName);
+        Assert.Equivalent(new[] { AutopilotPlanTools.EndpointName, "YouTrack: Personal" }, scope);
+        Assert.DoesNotContain(AutopilotCeoTools.EndpointName, scope);
     }
 
     [Fact]
@@ -40,8 +37,7 @@ public class AutopilotCeoMcpScopeTests
     {
         // The validator CEO calls autopilot_validate and the tracker-stage/note tools — all on the CEO endpoint. Mounting
         // it explicitly guarantees the tracker-stage flow works (the AC-197 uncertainty), rather than left to chance.
-        AutopilotRunContext.ValidatorCeoMcpServers
-            .Should().ContainSingle().Which.Should().Be(AutopilotCeoTools.EndpointName);
-        AutopilotCeoTools.EndpointName.Should().Be("cockpit-autopilot-ceo");
+        Assert.Equal(AutopilotCeoTools.EndpointName, Assert.Single(AutopilotRunContext.ValidatorCeoMcpServers));
+        Assert.Equal("cockpit-autopilot-ceo", AutopilotCeoTools.EndpointName);
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -16,20 +15,20 @@ public class TerminalHeaderStateTests
     public void ATerminal_HasNoUsagePill()
     {
         // A shell has no context/rate feed, so the ctx pill (and its 5h/wk flyout) must not show.
-        TtyViewModel.DesignTerminal().HasUsagePill.Should().BeFalse();
+        Assert.False(TtyViewModel.DesignTerminal().HasUsagePill);
     }
 
     [Fact]
     public void ATerminal_HidesPluginHeaderItems()
     {
         // A plain shell is not an agent session, so a plugin session indicator has nothing to say about it.
-        TtyViewModel.DesignTerminal().ShowPluginHeaderItems.Should().BeFalse();
+        Assert.False(TtyViewModel.DesignTerminal().ShowPluginHeaderItems);
     }
 
     [Fact]
     public void ATerminal_KeepsTheTtyKindChip()
     {
-        TtyViewModel.DesignTerminal().KindLabel.Should().Be("TTY");
+        Assert.Equal("TTY", TtyViewModel.DesignTerminal().KindLabel);
     }
 
     [Fact]
@@ -39,7 +38,8 @@ public class TerminalHeaderStateTests
 
         // The shell name is the title; ActiveProfileLabel carries it only for the cwd tooltip, not a second
         // visible label — the double-shell-name AC-29 flagged before the AC-37 header consolidation.
-        vm.Title.Should().Contain(vm.ActiveProfileLabel);
-        vm.IsTerminal.Should().BeTrue();
+        Assert.NotNull(vm.ActiveProfileLabel);
+        Assert.Contains(vm.ActiveProfileLabel, vm.Title);
+        Assert.True(vm.IsTerminal);
     }
 }

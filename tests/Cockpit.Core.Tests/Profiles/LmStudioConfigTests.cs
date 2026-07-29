@@ -1,5 +1,4 @@
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Profiles;
 
@@ -17,10 +16,10 @@ public class LmStudioConfigTests
 
         var text = config.ToString();
 
-        text.Should().NotContain("super-secret-key");
-        text.Should().Contain("***");
-        text.Should().Contain("qwen2.5-7b-instruct");
-        text.Should().Contain("http://localhost:1234");
+        Assert.DoesNotContain("super-secret-key", text);
+        Assert.Contains("***", text);
+        Assert.Contains("qwen2.5-7b-instruct", text);
+        Assert.Contains("http://localhost:1234", text);
     }
 
     [Fact]
@@ -30,6 +29,6 @@ public class LmStudioConfigTests
 
         var text = config.ToString();
 
-        text.Should().Contain("ApiKey = null");
+        Assert.Contains("ApiKey = null", text);
     }
 }

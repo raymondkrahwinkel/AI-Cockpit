@@ -1,6 +1,5 @@
 using Avalonia.Input;
 using Cockpit.App.Services;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -15,30 +14,30 @@ public class PushToTalkKeyGateTests
     [Fact]
     public void ShouldHandleLocally_MatchingKey_GlobalDisabled_ReturnsTrue()
     {
-        PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: false, openMicListening: false).Should().BeTrue();
+        Assert.True(PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: false, openMicListening: false));
     }
 
     [Fact]
     public void ShouldHandleLocally_MatchingKey_GlobalEnabled_ReturnsFalse()
     {
-        PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: true, openMicListening: false).Should().BeFalse();
+        Assert.False(PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: true, openMicListening: false));
     }
 
     [Fact]
     public void ShouldHandleLocally_MatchingKey_OpenMicListening_ReturnsFalse()
     {
-        PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: false, openMicListening: true).Should().BeFalse();
+        Assert.False(PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "F9", globalPushToTalkEnabled: false, openMicListening: true));
     }
 
     [Fact]
     public void ShouldHandleLocally_NonMatchingKey_ReturnsFalse()
     {
-        PushToTalkKeyGate.ShouldHandleLocally(Key.F8, "F9", globalPushToTalkEnabled: false, openMicListening: false).Should().BeFalse();
+        Assert.False(PushToTalkKeyGate.ShouldHandleLocally(Key.F8, "F9", globalPushToTalkEnabled: false, openMicListening: false));
     }
 
     [Fact]
     public void ShouldHandleLocally_UnparsableConfiguredKeyName_ReturnsFalse()
     {
-        PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "not-a-key", globalPushToTalkEnabled: false, openMicListening: false).Should().BeFalse();
+        Assert.False(PushToTalkKeyGate.ShouldHandleLocally(Key.F9, "not-a-key", globalPushToTalkEnabled: false, openMicListening: false));
     }
 }

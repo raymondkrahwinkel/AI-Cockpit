@@ -1,5 +1,4 @@
 using Cockpit.Core.WorkingPaths;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.WorkingPaths;
 
@@ -16,7 +15,7 @@ public class WorkingPathHistoryTests
             .WithRecent(@"C:\a")
             .WithRecent(@"C:\b");
 
-        history.Recent.Should().Equal(@"C:\b", @"C:\a");
+        Assert.Equal(new[] { @"C:\b", @"C:\a" }, history.Recent);
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class WorkingPathHistoryTests
             .WithRecent(@"C:\b")
             .WithRecent(@"C:\a");
 
-        history.Recent.Should().Equal(@"C:\a", @"C:\b");
+        Assert.Equal(new[] { @"C:\a", @"C:\b" }, history.Recent);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class WorkingPathHistoryTests
             .WithRecent(@"C:\Proj")
             .WithRecent(@"c:\proj\");
 
-        history.Recent.Should().ContainSingle().Which.Should().Be(@"c:\proj\");
+        Assert.Equal(@"c:\proj\", Assert.Single(history.Recent));
     }
 
     [Fact]
@@ -49,27 +48,27 @@ public class WorkingPathHistoryTests
             history = history.WithRecent($@"C:\p{i}");
         }
 
-        history.Recent.Should().HaveCount(WorkingPathHistory.MaxRecent);
-        history.Recent[0].Should().Be($@"C:\p{WorkingPathHistory.MaxRecent + 4}");
+        Assert.Equal(WorkingPathHistory.MaxRecent, System.Linq.Enumerable.Count(history.Recent));
+        Assert.Equal($@"C:\p{WorkingPathHistory.MaxRecent + 4}", history.Recent[0]);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void WithRecent_IgnoresBlankPaths(string? path)
-        => WorkingPathHistory.Empty.WithRecent(path).Recent.Should().BeEmpty();
+    public void WithRecent_IgnoresBlankPaths(string? path) =>
+        Assert.Empty(WorkingPathHistory.Empty.WithRecent(path).Recent);
 
     [Fact]
     public void WithFavorite_PinsAndUnpins()
     {
         var pinned = WorkingPathHistory.Empty.WithFavorite(@"C:\fav", favorite: true);
-        pinned.Favorites.Should().Equal(@"C:\fav");
-        pinned.IsFavorite(@"c:\fav\").Should().BeTrue();
+        Assert.Equal(new[] { @"C:\fav" }, pinned.Favorites);
+        Assert.True(pinned.IsFavorite(@"c:\fav\"));
 
         var unpinned = pinned.WithFavorite(@"C:\fav", favorite: false);
-        unpinned.Favorites.Should().BeEmpty();
-        unpinned.IsFavorite(@"C:\fav").Should().BeFalse();
+        Assert.Empty(unpinned.Favorites);
+        Assert.False(unpinned.IsFavorite(@"C:\fav"));
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class WorkingPathHistoryTests
             .WithFavorite(@"C:\fav", favorite: true)
             .WithFavorite(@"c:\fav\", favorite: true);
 
-        history.Favorites.Should().ContainSingle();
+        Assert.Single(history.Favorites);
     }
 
     [Fact]
@@ -89,13 +88,13 @@ public class WorkingPathHistoryTests
             .WithFavorite(@"C:\fav", favorite: true)
             .WithRecent(@"C:\other");
 
-        history.Favorites.Should().Equal(@"C:\fav");
-        history.Recent.Should().Equal(@"C:\other");
+        Assert.Equal(new[] { @"C:\fav" }, history.Favorites);
+        Assert.Equal(new[] { @"C:\other" }, history.Recent);
     }
 
     [Fact]
-    public void MaxRecent_IsFive_SeparateFromTheUncappedFavorites()
-        => WorkingPathHistory.MaxRecent.Should().Be(5);
+    public void MaxRecent_IsFive_SeparateFromTheUncappedFavorites() =>
+        Assert.Equal(5, WorkingPathHistory.MaxRecent);
 
     [Fact]
     public void WithoutPath_RemovesFromBothRecentAndFavorites()
@@ -105,8 +104,8 @@ public class WorkingPathHistoryTests
         var history = new WorkingPathHistory([@"C:\proj", @"C:\other"], [@"C:\proj"])
             .WithoutPath(@"c:\proj\");
 
-        history.Recent.Should().Equal(@"C:\other");
-        history.Favorites.Should().BeEmpty();
+        Assert.Equal(new[] { @"C:\other" }, history.Recent);
+        Assert.Empty(history.Favorites);
     }
 
     [Theory]
@@ -117,6 +116,6 @@ public class WorkingPathHistoryTests
     {
         var history = new WorkingPathHistory([@"C:\a"], [@"C:\fav"]);
 
-        history.WithoutPath(path).Should().BeEquivalentTo(history);
+        Assert.Equivalent(history, history.WithoutPath(path));
     }
 }

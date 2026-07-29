@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GeminiProvider.Tests;
 
@@ -17,9 +16,9 @@ public class OpenAiCompatConfigTests
 
         var text = config.ToString();
 
-        text.Should().NotContain("super-secret-key");
-        text.Should().Contain("***");
-        text.Should().Contain("gemini-2.5-flash");
-        text.Should().Contain("https://generativelanguage.googleapis.com/v1beta/openai/");
+        Assert.DoesNotContain("super-secret-key", text);
+        Assert.Contains("***", text);
+        Assert.Contains("gemini-2.5-flash", text);
+        Assert.Contains("https://generativelanguage.googleapis.com/v1beta/openai/", text);
     }
 }

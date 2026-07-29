@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Infrastructure;
@@ -38,7 +37,7 @@ public class UpdateDependencyInjectionTests
         var updates = provider.GetRequiredService<IUpdateService>();
 
         // It must know what it is, or it cannot say what is newer than it.
-        updates.Current.Version.Should().NotBeEmpty();
+        Assert.NotEmpty(updates.Current.Version);
     }
 
     [Fact]
@@ -46,6 +45,6 @@ public class UpdateDependencyInjectionTests
     {
         await using var provider = BuildProvider();
 
-        provider.GetRequiredService<CockpitViewModel>().CanCheckForUpdates.Should().BeTrue();
+        Assert.True(provider.GetRequiredService<CockpitViewModel>().CanCheckForUpdates);
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -14,8 +13,8 @@ public class CodexMcpConfigTests
     [Fact]
     public void Build_WithNoServers_IsEmpty()
     {
-        CodexMcpConfig.Build(null).Should().BeSameAs(CodexMcpLaunch.Empty);
-        CodexMcpConfig.Build([]).Should().BeSameAs(CodexMcpLaunch.Empty);
+        Assert.Same(CodexMcpLaunch.Empty, CodexMcpConfig.Build(null));
+        Assert.Same(CodexMcpLaunch.Empty, CodexMcpConfig.Build([]));
     }
 
     [Fact]
@@ -23,8 +22,8 @@ public class CodexMcpConfigTests
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" }]);
 
-        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }""");
-        launch.EnvironmentVariables.Should().BeEmpty();
+        Assert.Equal(new[] { "-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }""" }, launch.ConfigArgs);
+        Assert.Empty(launch.EnvironmentVariables);
     }
 
     [Fact]
@@ -34,8 +33,8 @@ public class CodexMcpConfigTests
         // at it and this builder emits no per-server env var of its own.
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "cockpit-session", Url = "http://127.0.0.1:8765/mcp", CockpitHosted = true }]);
 
-        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""");
-        launch.EnvironmentVariables.Should().BeEmpty();
+        Assert.Equal(new[] { "-c", """mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""" }, launch.ConfigArgs);
+        Assert.Empty(launch.EnvironmentVariables);
     }
 
     [Fact]
@@ -45,9 +44,9 @@ public class CodexMcpConfigTests
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = token }]);
 
         // The arg carries only the env-var name, so the secret is not in the command line.
-        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }""");
-        launch.ConfigArgs.Should().NotContain(arg => arg.Contains(token));
-        launch.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", token));
+        Assert.Equal(new[] { "-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }""" }, launch.ConfigArgs);
+        Assert.DoesNotContain(launch.ConfigArgs, arg => arg.Contains(token));
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", token), launch.EnvironmentVariables);
     }
 
     [Fact]
@@ -59,8 +58,8 @@ public class CodexMcpConfigTests
             new PluginMcpServer { Name = "b", Url = "http://b/mcp", BearerToken = "token-b" },
         ]);
 
-        launch.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"));
-        launch.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"));
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "token-a"), launch.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", "token-b"), launch.EnvironmentVariables);
     }
 
     [Fact]
@@ -68,8 +67,8 @@ public class CodexMcpConfigTests
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "fs", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem"] }]);
 
-        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.fs={ command = "npx", args = ["-y", "@modelcontextprotocol/server-filesystem"] }""");
-        launch.EnvironmentVariables.Should().BeEmpty();
+        Assert.Equal(new[] { "-c", """mcp_servers.fs={ command = "npx", args = ["-y", "@modelcontextprotocol/server-filesystem"] }""" }, launch.ConfigArgs);
+        Assert.Empty(launch.EnvironmentVariables);
     }
 
     [Fact]
@@ -84,9 +83,11 @@ public class CodexMcpConfigTests
             new PluginMcpServer { Name = "SQL Explorer", Url = "http://y/mcp" },
         ]);
 
-        launch.ConfigArgs.Should().Equal(
+        Assert.Equal(new[]
+        {
             "-c", """mcp_servers.YouTrack__Personal={ url = "http://x/mcp" }""",
-            "-c", """mcp_servers.SQL_Explorer={ url = "http://y/mcp" }""");
+            "-c", """mcp_servers.SQL_Explorer={ url = "http://y/mcp" }""",
+        }, launch.ConfigArgs);
     }
 
     [Fact]
@@ -98,9 +99,11 @@ public class CodexMcpConfigTests
             new PluginMcpServer { Name = "a:b", Url = "http://y/mcp" },
         ]);
 
-        launch.ConfigArgs.Should().Equal(
+        Assert.Equal(new[]
+        {
             "-c", """mcp_servers.a_b={ url = "http://x/mcp" }""",
-            "-c", """mcp_servers.a_b_2={ url = "http://y/mcp" }""");
+            "-c", """mcp_servers.a_b_2={ url = "http://y/mcp" }""",
+        }, launch.ConfigArgs);
     }
 
     [Fact]
@@ -108,7 +111,7 @@ public class CodexMcpConfigTests
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "：（）", Url = "http://x/mcp" }]);
 
-        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.server_0={ url = "http://x/mcp" }""");
+        Assert.Equal(new[] { "-c", """mcp_servers.server_0={ url = "http://x/mcp" }""" }, launch.ConfigArgs);
     }
 
     [Fact]
@@ -116,7 +119,7 @@ public class CodexMcpConfigTests
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "x", Url = """http://h/"a"\b""" }]);
 
-        launch.ConfigArgs[1].Should().Be("""mcp_servers.x={ url = "http://h/\"a\"\\b" }""");
+        Assert.Equal("""mcp_servers.x={ url = "http://h/\"a\"\\b" }""", launch.ConfigArgs[1]);
     }
 
     [Fact]
@@ -124,6 +127,6 @@ public class CodexMcpConfigTests
     {
         var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "broken" }]);
 
-        launch.ConfigArgs.Should().BeEmpty();
+        Assert.Empty(launch.ConfigArgs);
     }
 }

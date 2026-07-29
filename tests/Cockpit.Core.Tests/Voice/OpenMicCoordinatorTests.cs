@@ -5,7 +5,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -106,10 +105,10 @@ public class OpenMicCoordinatorTests
         await coordinator.StartAsync();
 
         await coordinator.ToggleOpenMicCommand.ExecuteAsync(null);
-        coordinator.IsListening.Should().BeTrue();
+        Assert.True(coordinator.IsListening);
 
         await coordinator.ToggleOpenMicCommand.ExecuteAsync(null);
-        coordinator.IsListening.Should().BeFalse();
+        Assert.False(coordinator.IsListening);
 
         await listener.Received(1).StartAsync(Arg.Any<CancellationToken>());
         await listener.Received(1).StopAsync();
@@ -123,8 +122,8 @@ public class OpenMicCoordinatorTests
             new VoiceSettings { IsEnabled = false });
         await coordinator.StartAsync();
 
-        coordinator.IsAvailable.Should().BeFalse();
-        coordinator.ToggleOpenMicCommand.CanExecute(null).Should().BeFalse();
+        Assert.False(coordinator.IsAvailable);
+        Assert.False(coordinator.ToggleOpenMicCommand.CanExecute(null));
     }
 
     /// <summary>
@@ -141,13 +140,13 @@ public class OpenMicCoordinatorTests
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
         await coordinator.StartAsync();
 
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden, "listening to silence is not worth a pill");
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
 
         coordinator.HandleSpeechStarted();
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Listening);
+        Assert.Equal(VoiceOverlayState.Listening, overlayCoordinator.Overlay.State);
 
         coordinator.HandleSpeechEnded();
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Transcribing);
+        Assert.Equal(VoiceOverlayState.Transcribing, overlayCoordinator.Overlay.State);
     }
 
     /// <summary>The pill is released once the text lands, not when the speaking stopped — the cleanup pass runs in between.</summary>
@@ -164,7 +163,7 @@ public class OpenMicCoordinatorTests
 
         await coordinator.InjectUtteranceAsync("open the file");
 
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
     }
 
     /// <summary>An utterance that cannot be cleaned up or injected still ends. The alternative is a spinner over a sentence that is never coming.</summary>
@@ -179,10 +178,10 @@ public class OpenMicCoordinatorTests
         await coordinator.StartAsync();
         coordinator.HandleSpeechStarted();
 
-        var act = async () => await coordinator.InjectUtteranceAsync("open the file");
+        var act = () => coordinator.InjectUtteranceAsync("open the file");
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
     }
 
     /// <summary>Read-aloud pauses the mic; the pill is how you see why it went quiet rather than wondering.</summary>
@@ -197,14 +196,14 @@ public class OpenMicCoordinatorTests
 
         // Active but no audio yet = preparing (the local-LLM rewrite + text-to-sound synthesis).
         coordinator.HandlePlaybackActiveChanged(true);
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        Assert.Equal(VoiceOverlayState.Preparing, overlayCoordinator.Overlay.State);
 
         // The first clip plays: now it is actually reading aloud.
         coordinator.HandleSpeakingStarted();
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Speaking);
+        Assert.Equal(VoiceOverlayState.Speaking, overlayCoordinator.Overlay.State);
 
         coordinator.HandlePlaybackActiveChanged(false);
-        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+        Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
     }
 
     /// <summary>
@@ -283,10 +282,9 @@ public class OpenMicCoordinatorTests
         var logger = new CapturingLogger<OpenMicCoordinator>();
         var coordinator = _NewCoordinator(new FakeOpenMicListener(), voiceSettingsStore, logger);
 
-        var act = async () => await coordinator.StartAsync();
+        await coordinator.StartAsync();
 
-        await act.Should().NotThrowAsync();
-        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
     }
 
     /// <summary>A microphone that will not open leaves the coordinator wired to a listener that is not running — and it would stay wired for the session.</summary>
@@ -301,9 +299,9 @@ public class OpenMicCoordinatorTests
 
         await coordinator.StartAsync();
 
-        listener.UtteranceSubscriberCount.Should().Be(0);
-        coordinator.IsListening.Should().BeFalse();
-        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is InvalidOperationException);
+        Assert.Equal(0, listener.UtteranceSubscriberCount);
+        Assert.False(coordinator.IsListening);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Exception is InvalidOperationException);
     }
 
     /// <summary>Voice is on even when open-mic will not start: the toggle is what the operator retries with, and a failed start must not disable it.</summary>
@@ -317,8 +315,8 @@ public class OpenMicCoordinatorTests
 
         await coordinator.StartAsync();
 
-        coordinator.IsAvailable.Should().BeTrue();
-        coordinator.ToggleOpenMicCommand.CanExecute(null).Should().BeTrue();
+        Assert.True(coordinator.IsAvailable);
+        Assert.True(coordinator.ToggleOpenMicCommand.CanExecute(null));
     }
 
     private static OpenMicCoordinator _NewCoordinator(

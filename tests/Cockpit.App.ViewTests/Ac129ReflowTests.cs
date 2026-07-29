@@ -1,6 +1,5 @@
 using System.Text;
 using Exclr8.Terminal.Buffer;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -32,11 +31,11 @@ public class Ac129ReflowTests
         var buffer = new TerminalBuffer(startCols, 8) { ScrollbackLimit = 5000 };
         buffer.Write(Encoding.UTF8.GetBytes(Line));
 
-        _VisibleText(buffer).Should().Be(Line, "the soft-wrapped line reads back verbatim before any resize");
+        Assert.Equal(Line, _VisibleText(buffer));
 
         buffer.Resize(newCols, 8);
 
-        _VisibleText(buffer).Should().Be(Line, "reflow must re-wrap the line without dropping or shifting characters");
+        Assert.Equal(Line, _VisibleText(buffer));
     }
 
     /// <summary>The whole visible screen as one string, continuation halves and trailing blanks dropped —

@@ -2,7 +2,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -43,12 +42,13 @@ public class UsageThresholdSettingsScreenTests
 
         await screen.LoadAsync([("claude", "Claude", Declared)]);
 
-        screen.HasProviders.Should().BeTrue();
-        var provider = screen.Providers.Should().ContainSingle().Which;
-        provider.DisplayName.Should().Be("Claude");
-        provider.Signals.Select(row => row.Label)
-            .Should().BeEquivalentTo(["Context window", "Session (5 hours)", "Week"]);
-        provider.Signals.Select(row => row.Declared).Should().BeEquivalentTo([50d, 90d, 90d]);
+        Assert.True(screen.HasProviders);
+        var provider = Assert.Single(screen.Providers);
+        Assert.Equal("Claude", provider.DisplayName);
+        Assert.Equivalent(
+            new object[] { "Context window", "Session (5 hours)", "Week" },
+            provider.Signals.Select(row => row.Label));
+        Assert.Equivalent(new object[] { 50d, 90d, 90d }, provider.Signals.Select(row => row.Declared));
     }
 
     [Fact]
@@ -58,8 +58,8 @@ public class UsageThresholdSettingsScreenTests
 
         await screen.LoadAsync([("shell", "Shell", Array.Empty<PluginUsageSignal>())]);
 
-        screen.HasProviders.Should().BeFalse("a frame around controls that would do nothing is worse than no frame");
-        screen.Providers.Should().BeEmpty();
+        Assert.False(screen.HasProviders, "a frame around controls that would do nothing is worse than no frame");
+        Assert.Empty(screen.Providers);
     }
 
     [Fact]
@@ -73,12 +73,12 @@ public class UsageThresholdSettingsScreenTests
         week.Threshold = 70;
         await screen.SaveAsync();
 
-        store.Settings.Resolve("claude", null, "weekly", declared: 90).Should().Be(70);
+        Assert.Equal(70, store.Settings.Resolve("claude", null, "weekly", declared: 90));
 
         week.Threshold = null;
         await screen.SaveAsync();
 
-        store.Settings.Resolve("claude", null, "weekly", declared: 90).Should().Be(90);
+        Assert.Equal(90, store.Settings.Resolve("claude", null, "weekly", declared: 90));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class UsageThresholdSettingsScreenTests
         await screen.LoadAsync([("claude", "Claude", Declared)]);
 
         var context = screen.Providers[0].Signals.Single(row => row.SignalKey == "context");
-        context.Threshold.Should().Be(35);
-        context.FollowsLabel.Should().Be("Follows the provider (50%)");
+        Assert.Equal(35, context.Threshold);
+        Assert.Equal("Follows the provider (50%)", context.FollowsLabel);
     }
 }

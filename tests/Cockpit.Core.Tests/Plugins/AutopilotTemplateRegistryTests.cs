@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
@@ -25,10 +24,10 @@ public class AutopilotTemplateRegistryTests
 
         registry.Register("autopilot", Template("autopilot.triage", "Triage", "Triage {{issue.id}}"));
 
-        var registration = registry.Registrations.Should().ContainSingle().Subject;
-        registration.OwnerPluginId.Should().Be("autopilot");
-        registration.Template.Id.Should().Be("autopilot.triage");
-        registration.Template.Body.Should().Be("Triage {{issue.id}}");
+        var registration = Assert.Single(registry.Registrations);
+        Assert.Equal("autopilot", registration.OwnerPluginId);
+        Assert.Equal("autopilot.triage", registration.Template.Id);
+        Assert.Equal("Triage {{issue.id}}", registration.Template.Body);
     }
 
     [Fact]
@@ -39,9 +38,9 @@ public class AutopilotTemplateRegistryTests
         registry.Register("acme", Template("acme.brief", "First", "one"));
         registry.Register("acme", Template("acme.brief", "Second", "two"));
 
-        var registration = registry.Registrations.Should().ContainSingle().Subject;
-        registration.Template.Name.Should().Be("Second");
-        registration.Template.Body.Should().Be("two");
+        var registration = Assert.Single(registry.Registrations);
+        Assert.Equal("Second", registration.Template.Name);
+        Assert.Equal("two", registration.Template.Body);
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class AutopilotTemplateRegistryTests
         registry.Register("acme", Template("brief"));
         registry.Register("globex", Template("brief"));
 
-        registry.Registrations.Select(registration => registration.OwnerPluginId).Should().BeEquivalentTo("acme", "globex");
+        Assert.Equivalent(new object[] { "acme", "globex" }, registry.Registrations.Select(registration => registration.OwnerPluginId));
     }
 
     [Fact]
@@ -64,9 +63,8 @@ public class AutopilotTemplateRegistryTests
 
         host.RegisterAutopilotTemplate(Template("acme.triage", "Triage", "body"));
 
-        host.RegisteredAutopilotTemplates.Should().ContainSingle()
-            .Which.OwnerPluginId.Should().Be("acme"); // stamped from the host's own id, not composed by the caller
-        registry.Registrations.Should().ContainSingle();
+        Assert.Equal("acme", Assert.Single(host.RegisteredAutopilotTemplates).OwnerPluginId); // stamped from the host's own id, not composed by the caller
+        Assert.Single(registry.Registrations);
     }
 
     // The defaults are a no-op, so a plugin built against this SDK still loads on a host that predates the
@@ -78,8 +76,8 @@ public class AutopilotTemplateRegistryTests
 
         var register = () => host.RegisterAutopilotTemplate(Template("x"));
 
-        register.Should().NotThrow();
-        host.RegisteredAutopilotTemplates.Should().BeEmpty();
+        register();
+        Assert.Empty(host.RegisteredAutopilotTemplates);
     }
 
     /// <summary>A host that predates the template contribution point: it implements only the older contract and inherits the new members' default no-op.</summary>

@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -27,8 +26,8 @@ public class OrchestratorToolsTests
         var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
-        document.RootElement.GetProperty("rejected").GetBoolean().Should().BeTrue();
-        document.RootElement.GetProperty("reason").GetString().Should().Contain("not available as a delegation target");
+        Assert.True(document.RootElement.GetProperty("rejected").GetBoolean());
+        Assert.Contains("not available as a delegation target", document.RootElement.GetProperty("reason").GetString());
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class OrchestratorToolsTests
         var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
-        document.RootElement.GetProperty("TaskId").GetString().Should().Be("task-1");
+        Assert.Equal("task-1", document.RootElement.GetProperty("TaskId").GetString());
     }
 
     [Fact]
@@ -61,11 +60,11 @@ public class OrchestratorToolsTests
         var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
-        document.RootElement.GetProperty("queued").GetBoolean().Should().BeTrue();
+        Assert.True(document.RootElement.GetProperty("queued").GetBoolean());
         var note = document.RootElement.GetProperty("note").GetString();
-        note.Should().Contain("Do not call delegate_task again");
-        note.Should().Contain("get_task_status");
-        document.RootElement.GetProperty("task").GetProperty("TaskId").GetString().Should().Be("task-2");
+        Assert.Contains("Do not call delegate_task again", note);
+        Assert.Contains("get_task_status", note);
+        Assert.Equal("task-2", document.RootElement.GetProperty("task").GetProperty("TaskId").GetString());
     }
 
     [Fact]
@@ -77,7 +76,7 @@ public class OrchestratorToolsTests
 
         var json = tools.GetTaskResult("nope");
 
-        json.Should().Contain("No task");
+        Assert.Contains("No task", json);
     }
 
     [Fact]
@@ -92,8 +91,8 @@ public class OrchestratorToolsTests
         var json = tools.GetTaskResult("task-1");
 
         using var document = JsonDocument.Parse(json);
-        document.RootElement.GetProperty("result").GetString().Should().Be("the summary");
-        document.RootElement.GetProperty("status").GetString().Should().Be("Completed");
+        Assert.Equal("the summary", document.RootElement.GetProperty("result").GetString());
+        Assert.Equal("Completed", document.RootElement.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -109,9 +108,9 @@ public class OrchestratorToolsTests
         var json = tools.GetTaskOutput("task-1");
 
         using var document = JsonDocument.Parse(json);
-        document.RootElement.GetProperty("cursor").GetInt32().Should().Be(1);
-        document.RootElement.GetProperty("done").GetBoolean().Should().BeFalse();
-        document.RootElement.GetProperty("events")[0].GetProperty("text").GetString().Should().Be("working on it");
+        Assert.Equal(1, document.RootElement.GetProperty("cursor").GetInt32());
+        Assert.False(document.RootElement.GetProperty("done").GetBoolean());
+        Assert.Equal("working on it", document.RootElement.GetProperty("events")[0].GetProperty("text").GetString());
     }
 
     // AC-100/AC-113: a tool result carries its content back to the poller — above all a gate denial / tool error,
@@ -135,9 +134,9 @@ public class OrchestratorToolsTests
         using var document = JsonDocument.Parse(json);
         var events = document.RootElement.GetProperty("events");
         // A normal tool result surfaces its content verbatim (was null before the fix)...
-        events[0].GetProperty("text").GetString().Should().Be("wrote 1 file");
+        Assert.Equal("wrote 1 file", events[0].GetProperty("text").GetString());
         // ...and an error result is marked so a poll can tell a denial from a normal return.
-        events[1].GetProperty("text").GetString().Should().Be("[error] write_file was blocked");
+        Assert.Equal("[error] write_file was blocked", events[1].GetProperty("text").GetString());
     }
 
     private static DelegatedTaskView _View(string id, DelegatedTaskStatus status, string? result = null) => new(

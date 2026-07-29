@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Reflection;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -15,7 +14,7 @@ public class AutopilotRunToolsTests
     private static string BlockedDescription()
     {
         var method = typeof(AutopilotRunTools).GetMethod(nameof(AutopilotRunTools.Blocked), BindingFlags.Instance | BindingFlags.Public);
-        method.Should().NotBeNull();
+        Assert.NotNull(method);
         return method!.GetCustomAttribute<DescriptionAttribute>()!.Description;
     }
 
@@ -25,9 +24,9 @@ public class AutopilotRunToolsTests
         var description = BlockedDescription();
 
         // AC-193: the old "Use this instead of guessing" steered the agent to block on any uncertainty. It is gone.
-        description.Should().NotContain("instead of guessing");
+        Assert.DoesNotContain("instead of guessing", description);
         // It still prefers a documented assumption + carrying on before escalating.
-        description.Should().Contain("documented, reasonable assumption");
+        Assert.Contains("documented, reasonable assumption", description);
     }
 
     [Fact]
@@ -37,8 +36,8 @@ public class AutopilotRunToolsTests
 
         // AC-201: autopilot_blocked now routes to the worker's manager (the CEO), which answers or escalates — the tool
         // must say so, and say it does NOT go straight to the operator.
-        description.Should().Contain("manager");
-        description.Should().Contain("does NOT go straight to the operator");
-        description.Should().Contain("escalates");
+        Assert.Contains("manager", description);
+        Assert.Contains("does NOT go straight to the operator", description);
+        Assert.Contains("escalates", description);
     }
 }

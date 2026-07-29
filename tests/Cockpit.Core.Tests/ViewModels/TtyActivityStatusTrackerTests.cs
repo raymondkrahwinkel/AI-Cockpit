@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -21,7 +20,7 @@ public class TtyActivityStatusTrackerTests
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
 
-        tracker.Poll(T0).Should().Be(SessionStatus.Idle);
+        Assert.Equal(SessionStatus.Idle, tracker.Poll(T0));
     }
 
     [Fact]
@@ -29,7 +28,7 @@ public class TtyActivityStatusTrackerTests
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
 
-        tracker.OnActivity(SessionActivity.Busy, T0).Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.Busy, T0));
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class TtyActivityStatusTrackerTests
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
 
-        tracker.OnActivity(SessionActivity.TurnComplete, T0).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.OnActivity(SessionActivity.TurnComplete, T0));
     }
 
     [Fact]
@@ -47,8 +46,7 @@ public class TtyActivityStatusTrackerTests
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.Busy, T0);
 
-        tracker.OnActivity(SessionActivity.BackgroundBusy, T0 + TimeSpan.FromSeconds(1))
-            .Should().Be(SessionStatus.WorkingBackground);
+        Assert.Equal(SessionStatus.WorkingBackground, tracker.OnActivity(SessionActivity.BackgroundBusy, T0 + TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -66,7 +64,7 @@ public class TtyActivityStatusTrackerTests
             status = tracker.OnActivity(SessionActivity.BackgroundBusy, T0 + t);
         }
 
-        status.Should().Be(SessionStatus.WorkingBackground);
+        Assert.Equal(SessionStatus.WorkingBackground, status);
     }
 
     [Fact]
@@ -77,7 +75,7 @@ public class TtyActivityStatusTrackerTests
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.Busy, T0);
 
-        tracker.Poll(T0 + TimeSpan.FromSeconds(30)).Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, tracker.Poll(T0 + TimeSpan.FromSeconds(30)));
     }
 
     [Fact]
@@ -87,7 +85,7 @@ public class TtyActivityStatusTrackerTests
         tracker.OnActivity(SessionActivity.Busy, T0);
 
         // A metadata reading (None) carries no signal, so the prior Busy stands.
-        tracker.OnActivity(SessionActivity.None, T0 + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.None, T0 + TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -96,7 +94,7 @@ public class TtyActivityStatusTrackerTests
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.Busy, T0);
 
-        tracker.Poll(T0 + SafetyTimeout).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + SafetyTimeout));
     }
 
     [Fact]
@@ -104,9 +102,9 @@ public class TtyActivityStatusTrackerTests
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.TurnComplete, T0);
-        tracker.Poll(T0 + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(1)));
 
-        tracker.OnActivity(SessionActivity.Busy, T0 + TimeSpan.FromSeconds(2)).Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, tracker.OnActivity(SessionActivity.Busy, T0 + TimeSpan.FromSeconds(2)));
     }
 
     [Fact]
@@ -124,7 +122,7 @@ public class TtyActivityStatusTrackerTests
             status = tracker.OnAlive(T0 + t);
         }
 
-        status.Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, status);
     }
 
     [Fact]
@@ -134,7 +132,7 @@ public class TtyActivityStatusTrackerTests
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.TurnComplete, T0);
 
-        tracker.OnAlive(T0 + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.OnAlive(T0 + TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -142,7 +140,7 @@ public class TtyActivityStatusTrackerTests
     {
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
 
-        tracker.OnAlive(T0).Should().Be(SessionStatus.Idle);
+        Assert.Equal(SessionStatus.Idle, tracker.OnAlive(T0));
     }
 
     [Fact]
@@ -153,9 +151,9 @@ public class TtyActivityStatusTrackerTests
         // read Busy. Contrast a TurnComplete Done, which stays Done (OnAlive_AfterATurnCompleted_...).
         var tracker = new TtyActivityStatusTracker(SafetyTimeout);
         tracker.OnActivity(SessionActivity.Busy, T0);
-        tracker.Poll(T0 + SafetyTimeout).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + SafetyTimeout));
 
-        tracker.OnAlive(T0 + SafetyTimeout + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, tracker.OnAlive(T0 + SafetyTimeout + TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -168,6 +166,6 @@ public class TtyActivityStatusTrackerTests
         tracker.OnAlive(T0 + TimeSpan.FromSeconds(30));
 
         // Last liveness signal at T0+30s; nothing after → times out 120s later.
-        tracker.Poll(T0 + TimeSpan.FromSeconds(30) + SafetyTimeout).Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, tracker.Poll(T0 + TimeSpan.FromSeconds(30) + SafetyTimeout));
     }
 }

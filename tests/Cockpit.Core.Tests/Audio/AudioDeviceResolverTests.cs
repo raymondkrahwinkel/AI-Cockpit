@@ -1,5 +1,4 @@
 using Cockpit.Core.Audio;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Audio;
 
@@ -11,30 +10,30 @@ public class AudioDeviceResolverTests
     [Fact]
     public void FindIndex_EmptyName_ReturnsSystemDefaultSentinel()
     {
-        AudioDeviceResolver.FindIndex("", Devices).Should().Be(-1);
+        Assert.Equal(-1, AudioDeviceResolver.FindIndex("", Devices));
     }
 
     [Fact]
     public void FindIndex_NullName_ReturnsSystemDefaultSentinel()
     {
-        AudioDeviceResolver.FindIndex(null, Devices).Should().Be(-1);
+        Assert.Equal(-1, AudioDeviceResolver.FindIndex(null, Devices));
     }
 
     [Fact]
     public void FindIndex_KnownName_ReturnsItsIndex()
     {
-        AudioDeviceResolver.FindIndex("Yeti Stereo Microphone", Devices).Should().Be(1);
+        Assert.Equal(1, AudioDeviceResolver.FindIndex("Yeti Stereo Microphone", Devices));
     }
 
     [Fact]
     public void FindIndex_NameNoLongerPresent_FallsBackToSystemDefault()
     {
-        AudioDeviceResolver.FindIndex("Unplugged Headset", Devices).Should().Be(-1);
+        Assert.Equal(-1, AudioDeviceResolver.FindIndex("Unplugged Headset", Devices));
     }
 
     [Fact]
     public void FindIndex_MatchIsCaseSensitive_SinceDeviceNamesAreExact()
     {
-        AudioDeviceResolver.FindIndex("yeti stereo microphone", Devices).Should().Be(-1);
+        Assert.Equal(-1, AudioDeviceResolver.FindIndex("yeti stereo microphone", Devices));
     }
 }

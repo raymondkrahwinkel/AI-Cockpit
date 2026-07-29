@@ -42,7 +42,7 @@ public class FanOutWorkspaceBodyTests
         // Spelled out rather than read back from FanOutTileLayout: asking the layout where it put the tiles and
         // then checking the tiles are there would pass whatever the layout said. Three arms sit abreast.
         Assert.Equal(3, tiles.ColumnDefinitions.Count);
-        Assert.Equal(1, tiles.RowDefinitions.Count);
+        Assert.Single(tiles.RowDefinitions);
         Assert.Equal(3, tiles.Children.Count);
 
         for (var column = 0; column < 3; column++)

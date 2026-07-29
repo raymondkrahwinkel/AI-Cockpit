@@ -1,5 +1,4 @@
 using Cockpit.Core.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -21,7 +20,7 @@ public class McpServerRegistryFilterTests
     {
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, ServerB], enabledServerNames: null);
 
-        result.Should().Equal(ServerA, ServerB);
+        Assert.Equal(new[] { ServerA, ServerB }, result);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class McpServerRegistryFilterTests
         // must not inherit the CEO/step tools. Red without the fix, which returned the registry verbatim here.
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, InternalServer, ServerB], enabledServerNames: null);
 
-        result.Should().Equal(ServerA, ServerB);
+        Assert.Equal(new[] { ServerA, ServerB }, result);
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class McpServerRegistryFilterTests
         var result = McpServerRegistryFilter.ApplySessionSelection(
             [ServerA, InternalServer, ServerB], new HashSet<string> { InternalServer.Name });
 
-        result.Should().ContainSingle().Which.Should().Be(InternalServer);
+        Assert.Equal(InternalServer, Assert.Single(result));
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class McpServerRegistryFilterTests
     {
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, ServerB], new HashSet<string> { "server-a" });
 
-        result.Should().ContainSingle().Which.Should().Be(ServerA);
+        Assert.Equal(ServerA, Assert.Single(result));
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class McpServerRegistryFilterTests
     {
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, ServerB], new HashSet<string>());
 
-        result.Should().BeEmpty();
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -73,7 +72,7 @@ public class McpServerRegistryFilterTests
         // The checklist only ever offers enabled registry servers, so a disabled one — e.g. one that
         // deliberately overrides and suppresses a local-model built-in default (#26) — was never a
         // checkbox the operator could uncheck, and must keep passing through untouched.
-        result.Should().Equal(ServerA, disabled);
+        Assert.Equal(new[] { ServerA, disabled }, result);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class McpServerRegistryFilterTests
         var result = McpServerRegistryFilter.EffectiveSessionSelection(
             new HashSet<string> { "server-a" }, profileSelection: ["server-b"]);
 
-        result.Should().BeEquivalentTo(["server-a"]);
+        Assert.Equivalent(new object[] { "server-a" }, result);
     }
 
     [Fact]
@@ -93,13 +92,13 @@ public class McpServerRegistryFilterTests
         // profile's checklist (#44/AC-130).
         var result = McpServerRegistryFilter.EffectiveSessionSelection(sessionSelection: null, profileSelection: ["server-b"]);
 
-        result.Should().BeEquivalentTo(["server-b"]);
+        Assert.Equivalent(new object[] { "server-b" }, result);
     }
 
     [Fact]
     public void EffectiveSessionSelection_WithNeither_IsNull_MeaningNoRestriction()
     {
-        McpServerRegistryFilter.EffectiveSessionSelection(sessionSelection: null, profileSelection: null).Should().BeNull();
+        Assert.Null(McpServerRegistryFilter.EffectiveSessionSelection(sessionSelection: null, profileSelection: null));
     }
 
     [Fact]
@@ -109,7 +108,7 @@ public class McpServerRegistryFilterTests
         // launch has — so it must win over the profile's set rather than fall back to it.
         var result = McpServerRegistryFilter.EffectiveSessionSelection(new HashSet<string>(), profileSelection: ["server-b"]);
 
-        result.Should().BeEmpty();
+        Assert.Empty(result!);
     }
 
     [Fact]
@@ -119,8 +118,8 @@ public class McpServerRegistryFilterTests
         // the absence that falls back to "all" — so a programmatic launch under such a profile gets zero servers.
         var result = McpServerRegistryFilter.EffectiveSessionSelection(sessionSelection: null, profileSelection: []);
 
-        result.Should().NotBeNull();
-        result.Should().BeEmpty();
+        Assert.NotNull(result);
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -131,7 +130,7 @@ public class McpServerRegistryFilterTests
         // silently drop a server whose registered casing differs from the profile's saved name.
         var result = McpServerRegistryFilter.EffectiveSessionSelection(sessionSelection: null, profileSelection: ["Server-A"]);
 
-        result.Should().NotBeNull();
-        result!.Contains("server-a").Should().BeTrue();
+        Assert.NotNull(result);
+        Assert.True(result.Contains("server-a"));
     }
 }

@@ -7,7 +7,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -37,12 +36,12 @@ public class DescribeTargetTests
             tags: ["code", "local"],
             taskTypes: ["review"]);
 
-        target.Purpose.Should().Be("frontend review — fast, local, weak on architecture");
-        target.Tags.Should().Equal("code", "local");
-        target.AllowedTaskTypes.Should().Equal("review");
+        Assert.Equal("frontend review — fast, local, weak on architecture", target.Purpose);
+        Assert.Equal(new[] { "code", "local" }, target.Tags);
+        Assert.Equal(new[] { "review" }, target.AllowedTaskTypes);
 
         var saved = _Saved(store).Single();
-        saved.DelegationPolicy.Purpose.Should().Be("frontend review — fast, local, weak on architecture");
+        Assert.Equal("frontend review — fast, local, weak on architecture", saved.DelegationPolicy.Purpose);
     }
 
     // The three fields a caller may set are the three fields it sets: everything that governs what a delegated session
@@ -63,12 +62,12 @@ public class DescribeTargetTests
         await service.DescribeTargetAsync("qwen", "anything at all", tags: ["dangerous"], taskTypes: []);
 
         var policy = _Saved(store).Single().DelegationPolicy;
-        policy.AllowedAsTarget.Should().BeTrue();
-        policy.MaxConcurrent.Should().Be(2);
-        policy.PermissionCeiling.Should().Be("acceptEdits");
-        policy.AllowedWorkingDirs.Should().Equal("/home/raymond/RiderProjects");
-        policy.MayDelegateFurther.Should().BeFalse();
-        policy.TimeoutMinutes.Should().Be(15);
+        Assert.True(policy.AllowedAsTarget);
+        Assert.Equal(2, policy.MaxConcurrent);
+        Assert.Equal("acceptEdits", policy.PermissionCeiling);
+        Assert.Equal(new[] { "/home/raymond/RiderProjects" }, policy.AllowedWorkingDirs);
+        Assert.False(policy.MayDelegateFurther);
+        Assert.Equal(15, policy.TimeoutMinutes);
     }
 
     // Enrolling a profile as a delegation target is the operator's call. A caller that could do it could make itself
@@ -80,7 +79,8 @@ public class DescribeTargetTests
 
         var describe = async () => await service.DescribeTargetAsync("personal", "let me in", tags: null, taskTypes: null);
 
-        await describe.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*not a delegation target*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(describe);
+        Assert.Contains("not a delegation target", thrown.Message);
     }
 
     [Fact]
@@ -92,9 +92,9 @@ public class DescribeTargetTests
         await service.DescribeTargetAsync("qwen", purpose: null, tags: ["local"], taskTypes: null);
 
         var policy = _Saved(store).Single().DelegationPolicy;
-        policy.Purpose.Should().Be("coding");
-        policy.AllowedTaskTypes.Should().Equal("review");
-        policy.Tags.Should().Equal("local");
+        Assert.Equal("coding", policy.Purpose);
+        Assert.Equal(new[] { "review" }, policy.AllowedTaskTypes);
+        Assert.Equal(new[] { "local" }, policy.Tags);
     }
 
     [Fact]
@@ -104,7 +104,8 @@ public class DescribeTargetTests
 
         var describe = async () => await service.DescribeTargetAsync("nope", "x", tags: null, taskTypes: null);
 
-        await describe.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*No profile named*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(describe);
+        Assert.Contains("No profile named", thrown.Message);
     }
 
     private static SessionProfile _Target(string label, Func<DelegationPolicy, DelegationPolicy>? tune = null)

@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Engine;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -17,11 +16,11 @@ public class ShellQuotingTests
     [InlineData("back`tick`", "'back`tick`'")]
     [InlineData("a | b > c", "'a | b > c'")]
     public void QuotePosix_WrapsTheValueSoTheShellReadsItAsOneLiteralArgument(string value, string expected) =>
-        ShellQuoting.QuotePosix(value).Should().Be(expected);
+        Assert.Equal(expected, ShellQuoting.QuotePosix(value));
 
     [Fact]
     public void QuotePosix_ClosesAndReopensAroundAnEmbeddedSingleQuote_TheOneCharacterItCannotHold() =>
-        ShellQuoting.QuotePosix("it's").Should().Be("'it'\\''s'");
+        Assert.Equal("'it'\\''s'", ShellQuoting.QuotePosix("it's"));
 
     [Theory]
     [InlineData("a & calc", "a ^& calc")]
@@ -29,5 +28,5 @@ public class ShellQuotingTests
     [InlineData("a > out", "a ^> out")]
     [InlineData("(grouped)", "^(grouped^)")]
     public void QuoteCmd_CaretEscapesTheSeparatorsThatWouldChainOrRedirectACommand(string value, string expected) =>
-        ShellQuoting.QuoteCmd(value).Should().Be(expected);
+        Assert.Equal(expected, ShellQuoting.QuoteCmd(value));
 }

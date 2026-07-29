@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -20,13 +18,13 @@ public class YouTrackMcpRegistrationTests
     [InlineData("https://myjetbrains.com/youtrack/api", "https://myjetbrains.com/youtrack/mcp")]
     public void DeriveMcpEndpoint_MapsTheApiBaseUrlToTheMcpEndpoint(string instanceBaseUrl, string expected)
     {
-        YouTrackMcpRegistration.DeriveMcpEndpoint(instanceBaseUrl).Should().Be(expected);
+        Assert.Equal(expected, YouTrackMcpRegistration.DeriveMcpEndpoint(instanceBaseUrl));
     }
 
     [Fact]
     public void BuildContributions_NoInstances_ReturnsNothing()
     {
-        YouTrackMcpRegistration.BuildContributions([]).Should().BeEmpty();
+        Assert.Empty(YouTrackMcpRegistration.BuildContributions([]));
     }
 
     [Fact]
@@ -39,7 +37,7 @@ public class YouTrackMcpRegistrationTests
             new("Blank token", "https://x.youtrack.cloud/api", "   ", string.Empty),
         };
 
-        YouTrackMcpRegistration.BuildContributions(instances).Should().BeEmpty();
+        Assert.Empty(YouTrackMcpRegistration.BuildContributions(instances));
     }
 
     [Fact]
@@ -52,10 +50,10 @@ public class YouTrackMcpRegistrationTests
 
         var contributions = YouTrackMcpRegistration.BuildContributions(instances);
 
-        contributions.Should().ContainSingle();
-        contributions[0].Name.Should().Be("YouTrack: Prod");
-        contributions[0].Url.Should().Be("https://x.youtrack.cloud/mcp");
-        contributions[0].BearerToken.Should().Be("secret-token");
+        Assert.Single(contributions);
+        Assert.Equal("YouTrack: Prod", contributions[0].Name);
+        Assert.Equal("https://x.youtrack.cloud/mcp", contributions[0].Url);
+        Assert.Equal("secret-token", contributions[0].BearerToken);
     }
 
     [Fact]
@@ -67,7 +65,7 @@ public class YouTrackMcpRegistrationTests
             new("Prod", "https://x.youtrack.cloud/api", "secret-token", "PROJ", AddMcpToSessions: false),
         };
 
-        YouTrackMcpRegistration.BuildContributions(instances).Should().BeEmpty();
+        Assert.Empty(YouTrackMcpRegistration.BuildContributions(instances));
     }
 
     [Fact]
@@ -82,8 +80,9 @@ public class YouTrackMcpRegistrationTests
             new("Opted out", "https://x.youtrack.cloud/api", "token", string.Empty, AddMcpToSessions: false),
         };
 
-        YouTrackMcpRegistration.ManagedServerNames(instances)
-            .Should().BeEquivalentTo("YouTrack: Prod", "YouTrack: No token", "YouTrack: Opted out");
+        Assert.Equivalent(
+            new object[] { "YouTrack: Prod", "YouTrack: No token", "YouTrack: Opted out" },
+            YouTrackMcpRegistration.ManagedServerNames(instances));
     }
 
     [Fact]
@@ -97,7 +96,9 @@ public class YouTrackMcpRegistrationTests
 
         var contributions = YouTrackMcpRegistration.BuildContributions(instances);
 
-        contributions.Should().HaveCount(2);
-        contributions.Select(contribution => contribution.Name).Should().BeEquivalentTo("YouTrack: Prod", "YouTrack: Staging");
+        Assert.Equal(2, System.Linq.Enumerable.Count(contributions));
+        Assert.Equivalent(
+            new object[] { "YouTrack: Prod", "YouTrack: Staging" },
+            contributions.Select(contribution => contribution.Name));
     }
 }

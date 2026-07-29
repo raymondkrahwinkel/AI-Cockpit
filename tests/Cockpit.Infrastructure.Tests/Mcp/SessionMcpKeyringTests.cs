@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
@@ -14,10 +13,10 @@ public class SessionMcpKeyringTests
         var a = keyring.TokenFor("pane-a");
         var b = keyring.TokenFor("pane-b");
 
-        a.Should().NotBe(b);
-        keyring.PaneFor(a).Should().Be("pane-a");
-        keyring.PaneFor(b).Should().Be("pane-b");
-        keyring.PaneFor("not-a-token").Should().BeNull();
+        Assert.NotEqual(b, a);
+        Assert.Equal("pane-a", keyring.PaneFor(a));
+        Assert.Equal("pane-b", keyring.PaneFor(b));
+        Assert.Null(keyring.PaneFor("not-a-token"));
     }
 
     [Fact]
@@ -28,9 +27,9 @@ public class SessionMcpKeyringTests
         var first = keyring.TokenFor("pane-a");
         var second = keyring.TokenFor("pane-a");
 
-        second.Should().NotBe(first);
-        keyring.PaneFor(first).Should().BeNull("a restarted pane's old token must not still name it");
-        keyring.PaneFor(second).Should().Be("pane-a");
+        Assert.NotEqual(first, second);
+        Assert.Null(keyring.PaneFor(first));
+        Assert.Equal("pane-a", keyring.PaneFor(second));
     }
 
     [Fact]
@@ -41,7 +40,7 @@ public class SessionMcpKeyringTests
 
         keyring.Revoke("pane-a", token);
 
-        keyring.PaneFor(token).Should().BeNull();
+        Assert.Null(keyring.PaneFor(token));
     }
 
     /// <summary>
@@ -61,6 +60,6 @@ public class SessionMcpKeyringTests
         // Only the live token is asserted here: the superseded one stopped resolving at the second mint, not at this
         // revoke, and TokenFor_MintingAgainForAPane_ReplacesTheOldToken… is what pins that. Asserting it again would
         // read as coverage this test does not provide.
-        keyring.PaneFor(live).Should().Be("pane-a", "the restarted session is still using this one");
+        Assert.Equal("pane-a", keyring.PaneFor(live));
     }
 }

@@ -3,7 +3,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -22,7 +21,7 @@ public class WidgetConfigTests
         // A clock has nothing to configure — and must therefore show no gear.
         var clock = new WidgetRegistration("clock.time", "Clock", _ => new TextBlock());
 
-        clock.HasConfig.Should().BeFalse();
+        Assert.False(clock.HasConfig);
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class WidgetConfigTests
             CreateConfigView = _ => new TextBlock(),
         };
 
-        monitor.HasConfig.Should().BeTrue();
+        Assert.True(monitor.HasConfig);
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class WidgetConfigTests
         registration.CreateView(context);
         registration.CreateConfigView!(context);
 
-        viewContext.Should().BeSameAs(configContext);
+        Assert.Same(configContext, viewContext);
     }
 
     [Fact]
@@ -64,8 +63,8 @@ public class WidgetConfigTests
         first.Storage.Set("metrics", "cpu");
         second.Storage.Set("metrics", "ram");
 
-        first.Storage.Get<string>("metrics").Should().Be("cpu");
-        second.Storage.Get<string>("metrics").Should().Be("ram");
+        Assert.Equal("cpu", first.Storage.Get<string>("metrics"));
+        Assert.Equal("ram", second.Storage.Get<string>("metrics"));
     }
 
     [Fact]
@@ -78,8 +77,8 @@ public class WidgetConfigTests
         plugin.Set("metrics", "plugin-level");
         widget.Storage.Set("metrics", "widget-level");
 
-        plugin.Get<string>("metrics").Should().Be("plugin-level");
-        widget.Storage.Get<string>("metrics").Should().Be("widget-level");
+        Assert.Equal("plugin-level", plugin.Get<string>("metrics"));
+        Assert.Equal("widget-level", widget.Storage.Get<string>("metrics"));
     }
 
     [Fact]
@@ -102,7 +101,7 @@ public class WidgetConfigTests
 
         context.RequestRefresh();
 
-        refreshed.Should().Be(1);
+        Assert.Equal(1, refreshed);
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public class WidgetConfigTests
     {
         var act = () => _CreateContext("instance-1").RequestRefresh();
 
-        act.Should().NotThrow();
+        act();
     }
 
     private static WidgetContext _CreateContext(string instanceId) =>

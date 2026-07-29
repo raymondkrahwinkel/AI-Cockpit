@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -28,10 +27,10 @@ public class CliSubprocessPluginSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.Should().ContainSingle(evt => evt is PluginSessionInitialized);
-        string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)).Should().Be("Hello, world!");
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
-        driver.SessionId.Should().Be("thread-1");
+        Assert.Single(events, evt => evt is PluginSessionInitialized);
+        Assert.Equal("Hello, world!", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        Assert.Equal("thread-1", driver.SessionId);
     }
 
     [Fact]
@@ -45,11 +44,11 @@ public class CliSubprocessPluginSessionDriverTests
         fake.CompleteStdout();
         await _CollectUntilTurnCompletedOrEmptyAsync(driver);
 
-        fake.Arguments.Should().NotBeNull();
-        fake.Arguments!.Should().NotContain("resume");
-        fake.Arguments!.Should().Contain("exec");
-        fake.Arguments!.Should().Contain("do the thing");
-        fake.WorkingDirectory.Should().Be(_DefaultConfig().WorkingDirectory);
+        Assert.NotNull(fake.Arguments);
+        Assert.DoesNotContain("resume", fake.Arguments!);
+        Assert.Contains("exec", fake.Arguments!);
+        Assert.Contains("do the thing", fake.Arguments!);
+        Assert.Equal(_DefaultConfig().WorkingDirectory, fake.WorkingDirectory);
     }
 
     [Fact]
@@ -71,10 +70,10 @@ public class CliSubprocessPluginSessionDriverTests
         second.CompleteStdout();
         await _CollectUntilTurnCompletedOrEmptyAsync(driver);
 
-        second.Arguments.Should().NotBeNull();
+        Assert.NotNull(second.Arguments);
         var resumeIndex = second.Arguments!.ToList().IndexOf("resume");
-        resumeIndex.Should().BeGreaterThanOrEqualTo(0);
-        second.Arguments![resumeIndex + 1].Should().Be("thread-42");
+        Assert.True(resumeIndex >= 0);
+        Assert.Equal("thread-42", second.Arguments![resumeIndex + 1]);
     }
 
     [Fact]
@@ -91,8 +90,8 @@ public class CliSubprocessPluginSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        fake.Disposed.Should().BeTrue("InterruptAsync has no in-band cancel message for a headless CLI — it must kill the child outright");
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.StopReason.Should().Be("interrupt");
+        Assert.True(fake.Disposed, "InterruptAsync has no in-band cancel message for a headless CLI — it must kill the child outright");
+        Assert.Equal("interrupt", Assert.Single(events.OfType<PluginTurnCompleted>()).StopReason);
     }
 
     [Fact]
@@ -109,8 +108,8 @@ public class CliSubprocessPluginSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<PluginSessionError>().Should().ContainSingle().Which.Message.Should().Be("sandbox denied write access");
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Equal("sandbox denied write access", Assert.Single(events.OfType<PluginSessionError>()).Message);
+        Assert.True(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -127,8 +126,8 @@ public class CliSubprocessPluginSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.Should().ContainSingle(evt => evt is PluginSessionError);
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Single(events, evt => evt is PluginSessionError);
+        Assert.True(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -151,14 +150,14 @@ public class CliSubprocessPluginSessionDriverTests
             }
         });
         var finishedInTime = await Task.WhenAny(pushStderr, Task.Delay(TimeSpan.FromSeconds(3))) == pushStderr;
-        finishedInTime.Should().BeTrue("a dedicated stderr-drain task must keep a bounded stderr pipe from blocking the turn");
+        Assert.True(finishedInTime, "a dedicated stderr-drain task must keep a bounded stderr pipe from blocking the turn");
 
         await fake.PushStdoutAsync("""{"type":"thread.started","thread_id":"thread-1"}""");
         await fake.PushStdoutAsync("""{"type":"turn.completed"}""");
         fake.CompleteStdout();
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -169,7 +168,7 @@ public class CliSubprocessPluginSessionDriverTests
 
         var arguments = driver.BuildArguments("do the thing");
 
-        arguments.Should().NotContain("do the thing");
+        Assert.DoesNotContain("do the thing", arguments);
     }
 
     [Fact]
@@ -181,8 +180,8 @@ public class CliSubprocessPluginSessionDriverTests
         var arguments = driver.BuildArguments("hi");
 
         var sandboxIndex = arguments.ToList().IndexOf("--sandbox");
-        sandboxIndex.Should().BeGreaterThanOrEqualTo(0);
-        arguments[sandboxIndex + 1].Should().Be("workspace-write");
+        Assert.True(sandboxIndex >= 0);
+        Assert.Equal("workspace-write", arguments[sandboxIndex + 1]);
     }
 
     private static Task<List<PluginSessionEvent>> _CollectUntilTurnCompletedAsync(IPluginSessionDriver driver) =>

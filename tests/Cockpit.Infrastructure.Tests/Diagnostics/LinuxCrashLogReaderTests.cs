@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Diagnostics;
 
@@ -27,6 +26,7 @@ public class LinuxCrashLogReaderTests
         // would fail the test here. The contract is then just: a list, capped at the requested count.
         var entries = reader.RecentEntries(3);
 
-        entries.Should().NotBeNull().And.HaveCountLessThanOrEqualTo(3);
+        Assert.NotNull(entries);
+        Assert.True(System.Linq.Enumerable.Count(entries) <= 3);
     }
 }

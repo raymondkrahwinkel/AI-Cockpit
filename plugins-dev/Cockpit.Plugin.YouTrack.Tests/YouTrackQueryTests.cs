@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -12,25 +11,21 @@ public class YouTrackQueryTests
 {
     [Fact]
     public void ByDefault_OnlyUnresolvedIssues() =>
-        YouTrackClient.BuildQuery(projectTag: null, filter: null, assignedToMe: false)
-            .Should().Be("#Unresolved");
+        Assert.Equal("#Unresolved", YouTrackClient.BuildQuery(projectTag: null, filter: null, assignedToMe: false));
 
     [Fact]
     public void AProject_NarrowsIt() =>
-        YouTrackClient.BuildQuery("EVE", filter: null, assignedToMe: false)
-            .Should().Be("project:EVE #Unresolved");
+        Assert.Equal("project:EVE #Unresolved", YouTrackClient.BuildQuery("EVE", filter: null, assignedToMe: false));
 
     [Fact]
     public void AssignedToMe_UsesYouTracksOwnClause() =>
-        YouTrackClient.BuildQuery("EVE", filter: null, assignedToMe: true)
-            .Should().Be("project:EVE #Unresolved for: me");
+        Assert.Equal("project:EVE #Unresolved for: me", YouTrackClient.BuildQuery("EVE", filter: null, assignedToMe: true));
 
     [Fact]
     public void TheOperatorsFilter_ReplacesTheDefault_RatherThanBeingAddedToIt() =>
-        YouTrackClient.BuildQuery("EVE", "State: {In Progress}", assignedToMe: true)
-            .Should().Be("project:EVE State: {In Progress} for: me");
+        Assert.Equal("project:EVE State: {In Progress} for: me", YouTrackClient.BuildQuery("EVE", "State: {In Progress}", assignedToMe: true));
 
     [Fact]
     public void AFilterThatIsOnlySpaces_IsNoFilter() =>
-        YouTrackClient.BuildQuery(null, "   ", assignedToMe: false).Should().Be("#Unresolved");
+        Assert.Equal("#Unresolved", YouTrackClient.BuildQuery(null, "   ", assignedToMe: false));
 }

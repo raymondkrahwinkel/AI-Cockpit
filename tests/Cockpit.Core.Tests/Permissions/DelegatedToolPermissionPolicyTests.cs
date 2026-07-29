@@ -1,5 +1,4 @@
 using Cockpit.Core.Sessions.Permissions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Permissions;
 
@@ -25,7 +24,7 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData(null, true, ToolPermissionClass.Unknown)]
     public void Classify_MapsAnnotationsToClass(bool? readOnlyHint, bool? destructiveHint, ToolPermissionClass expected)
     {
-        DelegatedToolPermissionPolicy.Classify(readOnlyHint, destructiveHint).Should().Be(expected);
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.Classify(readOnlyHint, destructiveHint));
     }
 
     // --- ClassifyWellKnown: first-party fallback for annotation-less built-in tools (AC-100/AC-112) ---
@@ -37,7 +36,7 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("move_file")]
     public void ClassifyWellKnown_FilesystemWrites_AreWrite(string toolName)
     {
-        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().Be(ToolPermissionClass.Write);
+        Assert.Equal(ToolPermissionClass.Write, DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
     }
 
     [Theory]
@@ -53,7 +52,7 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("list_allowed_directories")]
     public void ClassifyWellKnown_FilesystemReads_AreReadOnly(string toolName)
     {
-        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().Be(ToolPermissionClass.ReadOnly);
+        Assert.Equal(ToolPermissionClass.ReadOnly, DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
     }
 
     [Theory]
@@ -62,7 +61,7 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("")]
     public void ClassifyWellKnown_UnrecognisedName_IsNull_SoAnnotationClassIsKept(string toolName)
     {
-        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().BeNull();
+        Assert.Null(DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName));
     }
 
     [Fact]
@@ -72,12 +71,12 @@ public class DelegatedToolPermissionPolicyTests
         // the fallback write_file is Unknown and blocked at every ceiling; with it, write_file is a Write and a
         // local coder profile at the default acceptEdits ceiling can finally write — while plan/default stay read-only.
         var toolClass = DelegatedToolPermissionPolicy.ClassifyWellKnown("write_file");
-        toolClass.Should().Be(ToolPermissionClass.Write);
+        Assert.Equal(ToolPermissionClass.Write, toolClass);
 
-        DelegatedToolPermissionPolicy.Decide("acceptEdits", toolClass!.Value, "write_file", onAllowList: false)
-            .IsAllowed.Should().BeTrue();
-        DelegatedToolPermissionPolicy.Decide("default", toolClass.Value, "write_file", onAllowList: false)
-            .IsAllowed.Should().BeFalse();
+        Assert.True(DelegatedToolPermissionPolicy.Decide("acceptEdits", toolClass!.Value, "write_file", onAllowList: false)
+            .IsAllowed);
+        Assert.False(DelegatedToolPermissionPolicy.Decide("default", toolClass.Value, "write_file", onAllowList: false)
+            .IsAllowed);
     }
 
     // --- Decide: read-only runs under every ceiling ---
@@ -89,8 +88,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("bypassPermissions")]
     public void Decide_ReadOnly_IsAllowedUnderEveryCeiling(string ceiling)
     {
-        DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.ReadOnly, "search", onAllowList: false)
-            .IsAllowed.Should().BeTrue();
+        Assert.True(DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.ReadOnly, "search", onAllowList: false)
+            .IsAllowed);
     }
 
     // --- Decide: a write needs acceptEdits or bypass ---
@@ -102,8 +101,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("bypassPermissions", true)]
     public void Decide_Write_IsAllowedOnlyAtAcceptEditsOrBypass(string ceiling, bool expectedAllowed)
     {
-        DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Write, "write_file", onAllowList: false)
-            .IsAllowed.Should().Be(expectedAllowed);
+        Assert.Equal(expectedAllowed, DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Write, "write_file", onAllowList: false)
+            .IsAllowed);
     }
 
     // --- Decide: a destructive tool needs bypass ---
@@ -115,8 +114,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("bypassPermissions", true)]
     public void Decide_Destructive_IsAllowedOnlyAtBypass(string ceiling, bool expectedAllowed)
     {
-        DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Destructive, "delete_repo", onAllowList: false)
-            .IsAllowed.Should().Be(expectedAllowed);
+        Assert.Equal(expectedAllowed, DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Destructive, "delete_repo", onAllowList: false)
+            .IsAllowed);
     }
 
     // --- Decide: an unknown tool is denied unless allow-listed, at every ceiling short of the allow-list ---
@@ -130,9 +129,9 @@ public class DelegatedToolPermissionPolicyTests
     {
         var decision = DelegatedToolPermissionPolicy.Decide(ceiling, ToolPermissionClass.Unknown, "mystery_tool", onAllowList: false);
 
-        decision.IsAllowed.Should().BeFalse();
-        decision.DenyMessage.Should().NotBeNullOrWhiteSpace();
-        decision.DenyMessage.Should().Contain("mystery_tool");
+        Assert.False(decision.IsAllowed);
+        Assert.False(string.IsNullOrWhiteSpace(decision.DenyMessage));
+        Assert.Contains("mystery_tool", decision.DenyMessage);
     }
 
     // --- Decide: the allow-list is the explicit yes and overrides class + ceiling ---
@@ -144,8 +143,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData(ToolPermissionClass.Unknown)]
     public void Decide_OnAllowList_IsAllowedRegardlessOfClassOrCeiling(ToolPermissionClass toolClass)
     {
-        DelegatedToolPermissionPolicy.Decide("plan", toolClass, "trusted_tool", onAllowList: true)
-            .IsAllowed.Should().BeTrue();
+        Assert.True(DelegatedToolPermissionPolicy.Decide("plan", toolClass, "trusted_tool", onAllowList: true)
+            .IsAllowed);
     }
 
     // --- Decide: an unrecognised/blank ceiling is treated as the most restrictive (read-only only) ---
@@ -153,12 +152,12 @@ public class DelegatedToolPermissionPolicyTests
     [Fact]
     public void Decide_UnrecognisedCeiling_AllowsOnlyReadOnly()
     {
-        DelegatedToolPermissionPolicy.Decide("something-invented", ToolPermissionClass.ReadOnly, "search", onAllowList: false)
-            .IsAllowed.Should().BeTrue();
-        DelegatedToolPermissionPolicy.Decide("something-invented", ToolPermissionClass.Write, "write_file", onAllowList: false)
-            .IsAllowed.Should().BeFalse();
-        DelegatedToolPermissionPolicy.Decide(null, ToolPermissionClass.Write, "write_file", onAllowList: false)
-            .IsAllowed.Should().BeFalse();
+        Assert.True(DelegatedToolPermissionPolicy.Decide("something-invented", ToolPermissionClass.ReadOnly, "search", onAllowList: false)
+            .IsAllowed);
+        Assert.False(DelegatedToolPermissionPolicy.Decide("something-invented", ToolPermissionClass.Write, "write_file", onAllowList: false)
+            .IsAllowed);
+        Assert.False(DelegatedToolPermissionPolicy.Decide(null, ToolPermissionClass.Write, "write_file", onAllowList: false)
+            .IsAllowed);
     }
 
     [Fact]
@@ -166,9 +165,9 @@ public class DelegatedToolPermissionPolicyTests
     {
         var decision = DelegatedToolPermissionPolicy.Decide("plan", ToolPermissionClass.Write, "write_file", onAllowList: false);
 
-        decision.IsAllowed.Should().BeFalse();
-        decision.DenyMessage.Should().Contain("write_file");
-        decision.DenyMessage.Should().Contain("plan");
+        Assert.False(decision.IsAllowed);
+        Assert.Contains("write_file", decision.DenyMessage);
+        Assert.Contains("plan", decision.DenyMessage);
     }
 
     // --- Fail-safe defaults / collision reconciliation (security hardening) ---
@@ -177,9 +176,9 @@ public class DelegatedToolPermissionPolicyTests
     public void Default_ToolPermissionClass_IsUnknown_SoAMissingClassFailsClosed()
     {
         // Unknown must be the zero value: a missing/uninitialised class must deny, not allow.
-        default(ToolPermissionClass).Should().Be(ToolPermissionClass.Unknown);
-        DelegatedToolPermissionPolicy.Decide("bypassPermissions", default, "x", onAllowList: false)
-            .IsAllowed.Should().BeFalse();
+        Assert.Equal(ToolPermissionClass.Unknown, default(ToolPermissionClass));
+        Assert.False(DelegatedToolPermissionPolicy.Decide("bypassPermissions", default, "x", onAllowList: false)
+            .IsAllowed);
     }
 
     [Theory]
@@ -194,8 +193,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData(ToolPermissionClass.Destructive, ToolPermissionClass.Unknown, ToolPermissionClass.Unknown)]
     public void MoreRestrictive_TakesTheHarderToRunClass_EitherOrder(ToolPermissionClass a, ToolPermissionClass b, ToolPermissionClass expected)
     {
-        DelegatedToolPermissionPolicy.MoreRestrictive(a, b).Should().Be(expected);
-        DelegatedToolPermissionPolicy.MoreRestrictive(b, a).Should().Be(expected, "the reconciliation is order-independent");
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictive(a, b));
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictive(b, a));
     }
 
     // --- MoreRestrictiveCeiling: clamp a per-task requested ceiling to the profile's own (AC-117) ---
@@ -208,8 +207,8 @@ public class DelegatedToolPermissionPolicyTests
     [InlineData("acceptEdits", "acceptEdits", "acceptEdits")]
     public void MoreRestrictiveCeiling_TakesTheLowerCeiling_EitherOrder(string a, string b, string expected)
     {
-        DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(a, b).Should().Be(expected);
-        DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(b, a).Should().Be(expected, "the clamp is order-independent");
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(a, b));
+        Assert.Equal(expected, DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(b, a));
     }
 
     [Fact]
@@ -219,7 +218,7 @@ public class DelegatedToolPermissionPolicyTests
         // restrictive, and the resulting ceiling denies a write just like read-only does.
         var effective = DelegatedToolPermissionPolicy.MoreRestrictiveCeiling("acceptEdits", "nonsense");
 
-        DelegatedToolPermissionPolicy.Decide(effective, ToolPermissionClass.Write, "write_file", onAllowList: false)
-            .IsAllowed.Should().BeFalse();
+        Assert.False(DelegatedToolPermissionPolicy.Decide(effective, ToolPermissionClass.Write, "write_file", onAllowList: false)
+            .IsAllowed);
     }
 }

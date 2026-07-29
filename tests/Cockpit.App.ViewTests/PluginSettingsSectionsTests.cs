@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -24,10 +23,8 @@ public class PluginSettingsSectionsTests
 
         var body = PluginSettingsBodyBuilder.Build(view);
 
-        body.HasRail.Should().BeFalse("a view that does not declare sections keeps the dialog it has today");
-        body.Content.Should().BeOfType<ScrollViewer>()
-            .Which.Content.Should().BeOfType<Border>()
-            .Which.Child.Should().BeSameAs(view);
+        Assert.False(body.HasRail, "a view that does not declare sections keeps the dialog it has today");
+        Assert.Same(view, Assert.IsType<Border>(Assert.IsType<ScrollViewer>(body.Content).Content).Child);
     });
 
     [Fact]
@@ -35,8 +32,8 @@ public class PluginSettingsSectionsTests
     {
         var body = PluginSettingsBodyBuilder.Build(new SectionedView("Everything"));
 
-        body.HasRail.Should().BeFalse("a rail beside one page costs width and navigates nothing");
-        body.Content.Should().BeOfType<ScrollViewer>();
+        Assert.False(body.HasRail, "a rail beside one page costs width and navigates nothing");
+        Assert.IsType<ScrollViewer>(body.Content);
     });
 
     [Fact]
@@ -46,22 +43,21 @@ public class PluginSettingsSectionsTests
 
         var body = PluginSettingsBodyBuilder.Build(view);
 
-        body.HasRail.Should().BeTrue();
-        var split = body.Content.Should().BeOfType<Grid>().Subject;
+        Assert.True(body.HasRail);
+        var split = Assert.IsType<Grid>(body.Content);
         var rail = split.Children.OfType<Border>().Single();
-        rail.Classes.Should().Contain("subnavRail", "the rail reuses the Options styles rather than a second visual language");
+        Assert.Contains("subnavRail", rail.Classes);
 
-        rail.GetLogicalDescendants().OfType<TextBlock>().Single().Text.Should().Be("SETTINGS");
+        Assert.Equal("SETTINGS", rail.GetLogicalDescendants().OfType<TextBlock>().Single().Text);
 
         var items = rail.GetLogicalDescendants().OfType<ListBox>().Single();
-        items.Classes.Should().Contain("subnav");
-        items.ItemsSource.Should().BeEquivalentTo(new[] { "Run safety", "Templates" }, options => options.WithStrictOrdering());
+        Assert.Contains("subnav", items.Classes);
+        Assert.Equivalent(new[] { "Run safety", "Templates" }, items.ItemsSource);
 
         // The view is still the scrolled content: it stays attached for the whole dialog, so a settings view that
         // loads on attach or unsubscribes on detach behaves exactly as it does without a rail.
-        split.Children.OfType<ScrollViewer>().Single()
-            .Content.Should().BeOfType<Border>()
-            .Which.Child.Should().BeSameAs(view);
+        Assert.Same(view, Assert.IsType<Border>(split.Children.OfType<ScrollViewer>().Single()
+            .Content).Child);
     });
 
     [Fact]
@@ -71,7 +67,7 @@ public class PluginSettingsSectionsTests
 
         PluginSettingsBodyBuilder.Build(view);
 
-        view.Shown.Should().Equal(0);
+        Assert.Equal(new[] { 0 }, view.Shown);
     });
 
     [Fact]
@@ -85,13 +81,13 @@ public class PluginSettingsSectionsTests
         var scroll = split.Children.OfType<ScrollViewer>().Single();
         scroll.Offset = new Vector(0, scroll.Extent.Height);
         window.UpdateLayout();
-        scroll.Offset.Y.Should().BeGreaterThan(0, "the first section has to be scrolled for the reset to mean anything");
+        Assert.True(scroll.Offset.Y > 0, "the first section has to be scrolled for the reset to mean anything");
 
         split.Children.OfType<Border>().Single().GetLogicalDescendants().OfType<ListBox>().Single().SelectedIndex = 1;
         window.UpdateLayout();
 
-        view.Shown.Should().Equal(0, 1);
-        scroll.Offset.Y.Should().Be(0, "a section opens at its top, not where the previous one was left");
+        Assert.Equal(new[] { 0, 1 }, view.Shown);
+        Assert.Equal(0, scroll.Offset.Y);
 
         window.Close();
     });
@@ -108,8 +104,8 @@ public class PluginSettingsSectionsTests
         // selected, and the host must not turn that into a request for section -1 the view would throw on.
         titles.Clear();
 
-        rail.SelectedIndex.Should().Be(-1, "the rail has nothing left to select");
-        view.Shown.Should().Equal(0);
+        Assert.Equal(-1, rail.SelectedIndex);
+        Assert.Equal(new[] { 0 }, view.Shown);
     });
 
     [Fact]
@@ -117,9 +113,9 @@ public class PluginSettingsSectionsTests
     {
         // The dialog has to widen itself before the rail exists to be measured, so it reads the width from the same
         // token the style uses. If this key ever stops resolving, it grows by nothing and says nothing.
-        Application.Current!.TryFindResource("CockpitSubnavRailWidth", out var width).Should().BeTrue();
+        Assert.True(Application.Current!.TryFindResource("CockpitSubnavRailWidth", out var width));
 
-        width.Should().Be(184d);
+        Assert.Equal(184d, width);
     });
 
     [Fact]
@@ -127,8 +123,8 @@ public class PluginSettingsSectionsTests
     {
         var (width, minWidth) = PluginSettingsBodyBuilder.GrowForRail(640, 720, maximum: 1200, railWidth: 184);
 
-        width.Should().Be(824);
-        minWidth.Should().Be(904, "the settings column keeps the 720 it had, and the rail is added to it");
+        Assert.Equal(824, width);
+        Assert.Equal(904, minWidth);
     }
 
     [Fact]
@@ -136,8 +132,8 @@ public class PluginSettingsSectionsTests
     {
         var (width, minWidth) = PluginSettingsBodyBuilder.GrowForRail(640, 720, maximum: 658, railWidth: 184);
 
-        width.Should().Be(658, "a dialog wider than the window behind it opens with its content cut off");
-        minWidth.Should().Be(658);
+        Assert.Equal(658, width);
+        Assert.Equal(658, minWidth);
     }
 
     private static Window Show(Control body)

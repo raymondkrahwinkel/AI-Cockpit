@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -16,7 +15,7 @@ public class ConPtyHostFactoryTests
     {
         var quoted = ConPtyHostFactory.QuoteArgument(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe");
 
-        quoted.Should().Be(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe");
+        Assert.Equal(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe", quoted);
     }
 
     [Fact]
@@ -24,7 +23,7 @@ public class ConPtyHostFactoryTests
     {
         var quoted = ConPtyHostFactory.QuoteArgument(@"C:\Program Files\Claude\claude.exe");
 
-        quoted.Should().Be(@"""C:\Program Files\Claude\claude.exe""");
+        Assert.Equal(@"""C:\Program Files\Claude\claude.exe""", quoted);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class ConPtyHostFactoryTests
     {
         var quoted = ConPtyHostFactory.QuoteArgument("claude");
 
-        quoted.Should().Be("claude");
+        Assert.Equal("claude", quoted);
     }
 
     /// <summary>
@@ -47,7 +46,7 @@ public class ConPtyHostFactoryTests
     {
         var quoted = ConPtyHostFactory.QuoteArgument(@"{""statusLine"":{""type"":""command""}}");
 
-        quoted.Should().Be(@"""{\""statusLine\"":{\""type\"":\""command\""}}""");
+        Assert.Equal(@"""{\""statusLine\"":{\""type\"":\""command\""}}""", quoted);
     }
 
     /// <summary>
@@ -60,7 +59,7 @@ public class ConPtyHostFactoryTests
     {
         var quoted = ConPtyHostFactory.QuoteArgument(@"\""");
 
-        quoted.Should().Be(@"""\\\""""");
+        Assert.Equal(@"""\\\""""", quoted);
     }
 
     [Fact]
@@ -68,7 +67,7 @@ public class ConPtyHostFactoryTests
     {
         var commandLine = ConPtyHostFactory.BuildCommandLine("claude", []);
 
-        commandLine.Should().Be("claude");
+        Assert.Equal("claude", commandLine);
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class ConPtyHostFactoryTests
             "claude",
             ["--permission-mode", "acceptEdits", "--model", "opus", "--effort", "high"]);
 
-        commandLine.Should().Be("claude --permission-mode acceptEdits --model opus --effort high");
+        Assert.Equal("claude --permission-mode acceptEdits --model opus --effort high", commandLine);
     }
 
     [Fact]
@@ -88,7 +87,7 @@ public class ConPtyHostFactoryTests
             @"C:\Program Files\Claude\claude.exe",
             ["--model", "opus"]);
 
-        commandLine.Should().Be(@"""C:\Program Files\Claude\claude.exe"" --model opus");
+        Assert.Equal(@"""C:\Program Files\Claude\claude.exe"" --model opus", commandLine);
     }
 
     [Fact]
@@ -98,6 +97,6 @@ public class ConPtyHostFactoryTests
             "claude",
             ["--settings", @"{""statusLine"":{""type"":""command""}}"]);
 
-        commandLine.Should().Be(@"claude --settings ""{\""statusLine\"":{\""type\"":\""command\""}}""");
+        Assert.Equal(@"claude --settings ""{\""statusLine\"":{\""type\"":\""command\""}}""", commandLine);
     }
 }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -34,12 +34,12 @@ public class AutopilotRunQueueTests
         queue.Enqueue(_Plan("first"));
         queue.Enqueue(_Plan("second"));
 
-        queue.Count.Should().Be(2);
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("first", "second");
+        Assert.Equal(2, queue.Count);
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "first", "second"));
 
-        queue.TryDequeue(out var front).Should().BeTrue();
-        front!.Goal.Should().Be("first");
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("second");
+        Assert.True(queue.TryDequeue(out var front));
+        Assert.Equal("first", front!.Goal);
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "second"));
     }
 
     [Fact]
@@ -47,8 +47,8 @@ public class AutopilotRunQueueTests
     {
         var queue = new AutopilotRunQueue(new FakeStorage());
 
-        queue.TryDequeue(out var plan).Should().BeFalse();
-        plan.Should().BeNull();
+        Assert.False(queue.TryDequeue(out var plan));
+        Assert.Null(plan);
     }
 
     [Fact]
@@ -60,19 +60,19 @@ public class AutopilotRunQueueTests
         queue.Enqueue(_Plan("c"));
 
         queue.MoveUp(2); // c ahead of b
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("a", "c", "b");
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "a", "c", "b"));
 
         queue.MoveDown(0); // a after c
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("c", "a", "b");
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "c", "a", "b"));
 
         queue.RemoveAt(1); // drop a
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("c", "b");
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "c", "b"));
 
         // Out-of-range operations are no-ops rather than throwing.
         queue.MoveUp(0);
         queue.MoveDown(1);
         queue.RemoveAt(9);
-        queue.Items.Select(plan => plan.Goal).Should().ContainInOrder("c", "b");
+        Assert.True(SequenceAssert.ContainsInOrder(queue.Items.Select(plan => plan.Goal), "c", "b"));
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public class AutopilotRunQueueTests
         // A fresh queue over the same storage is the restart: the staged plans come back, in order and with their steps.
         var restored = new AutopilotRunQueue(storage);
 
-        restored.Count.Should().Be(2);
-        restored.Items.Select(plan => plan.Goal).Should().ContainInOrder("keep me", "and me");
-        restored.Items[0].Steps.Should().ContainSingle().Which.Title.Should().Be("Step");
+        Assert.Equal(2, restored.Count);
+        Assert.True(SequenceAssert.ContainsInOrder(restored.Items.Select(plan => plan.Goal), "keep me", "and me"));
+        Assert.Equal("Step", Assert.Single(restored.Items[0].Steps).Title);
     }
 
     [Fact]
@@ -104,6 +104,6 @@ public class AutopilotRunQueueTests
         queue.RemoveAt(0);
         queue.TryDequeue(out _);
 
-        fired.Should().Be(5);
+        Assert.Equal(5, fired);
     }
 }

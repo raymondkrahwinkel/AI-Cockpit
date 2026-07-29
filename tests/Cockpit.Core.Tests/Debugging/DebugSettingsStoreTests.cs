@@ -2,7 +2,6 @@ using Cockpit.Core.Debugging;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Infrastructure.Debugging;
 using Cockpit.Infrastructure.SessionBehavior;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Debugging;
 
@@ -29,7 +28,7 @@ public class DebugSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.ShowDebugControls.Should().BeFalse();
+        Assert.False(settings.ShowDebugControls);
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class DebugSettingsStoreTests : IDisposable
         await store.SaveAsync(new DebugSettings { ShowDebugControls = true });
         var loaded = await store.LoadAsync();
 
-        loaded.ShowDebugControls.Should().BeTrue();
+        Assert.True(loaded.ShowDebugControls);
     }
 
     [Fact]
@@ -52,8 +51,8 @@ public class DebugSettingsStoreTests : IDisposable
         var debugStore = new DebugSettingsStore(_configFilePath);
         await debugStore.SaveAsync(new DebugSettings { ShowDebugControls = true });
 
-        (await behaviorStore.LoadAsync()).AutoCloseOnExit.Should().BeTrue();
-        (await debugStore.LoadAsync()).ShowDebugControls.Should().BeTrue();
+        Assert.True((await behaviorStore.LoadAsync()).AutoCloseOnExit);
+        Assert.True((await debugStore.LoadAsync()).ShowDebugControls);
     }
 
     public void Dispose()

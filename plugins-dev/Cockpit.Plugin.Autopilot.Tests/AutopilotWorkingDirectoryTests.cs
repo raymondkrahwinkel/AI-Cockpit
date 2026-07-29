@@ -1,6 +1,5 @@
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -21,21 +20,21 @@ public class AutopilotWorkingDirectoryTests
     [Fact]
     public void Resolve_PrefersTheChosenFolder_OverTheActiveSession()
     {
-        AutopilotWorkingDirectory.Resolve(_Context(ActiveSession), ChosenFolder).Should().Be(ChosenFolder);
+        Assert.Equal(ChosenFolder, AutopilotWorkingDirectory.Resolve(_Context(ActiveSession), ChosenFolder));
     }
 
     [Fact]
     public void Resolve_FallsBackToTheActiveSession_WhenNoFolderChosen()
     {
         var context = _Context(ActiveSession);
-        AutopilotWorkingDirectory.Resolve(context, null).Should().Be(ActiveSession);
-        AutopilotWorkingDirectory.Resolve(context, "   ").Should().Be(ActiveSession);
+        Assert.Equal(ActiveSession, AutopilotWorkingDirectory.Resolve(context, null));
+        Assert.Equal(ActiveSession, AutopilotWorkingDirectory.Resolve(context, "   "));
     }
 
     [Fact]
     public void Resolve_FallsBackToTheCurrentDirectory_WhenNeitherIsSet()
     {
-        AutopilotWorkingDirectory.Resolve(_Context(null), null).Should().Be(Directory.GetCurrentDirectory());
+        Assert.Equal(Directory.GetCurrentDirectory(), AutopilotWorkingDirectory.Resolve(_Context(null), null));
     }
 
     [Fact]
@@ -53,9 +52,9 @@ public class AutopilotWorkingDirectoryTests
         var chosen = AutopilotWorkingDirectory.Resolve(_Context(null), relative);
         var session = AutopilotWorkingDirectory.Resolve(_Context(relative), null);
 
-        Path.IsPathFullyQualified(chosen).Should().BeTrue();
-        chosen.Should().Be(expected);
-        session.Should().Be(expected);
+        Assert.True(Path.IsPathFullyQualified(chosen));
+        Assert.Equal(expected, chosen);
+        Assert.Equal(expected, session);
     }
 
     private static IWorkspaceContext _Context(string? activeSessionDirectory)

@@ -8,7 +8,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -29,8 +28,8 @@ public class DelegationGuardTests
 
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("private", "do work"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>()
-            .WithMessage("*not available as a delegation target*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("not available as a delegation target", thrown.Message);
     }
 
     [Fact]
@@ -42,7 +41,8 @@ public class DelegationGuardTests
 
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("no-such-profile", "do work"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*No profile named*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("No profile named", thrown.Message);
     }
 
     [Fact]
@@ -52,7 +52,8 @@ public class DelegationGuardTests
 
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("local", "rm -rf", TaskType: "refactor"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*only accepts these task types*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("only accepts these task types", thrown.Message);
     }
 
     [Fact]
@@ -63,7 +64,8 @@ public class DelegationGuardTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("local", "read the secrets", WorkingDirectory: "/etc"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*does not allow a task to run in*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("does not allow a task to run in", thrown.Message);
     }
 
     [Fact]
@@ -75,7 +77,7 @@ public class DelegationGuardTests
         var delegate_ = async () => await service.DelegateAsync(
             new DelegationRequest("local", "escape", WorkingDirectory: "/home/raymond/projects/../../.ssh"));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>();
+        await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
     }
 
     [Fact]
@@ -86,7 +88,8 @@ public class DelegationGuardTests
 
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("local", "and again", Depth: 1));
 
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*may not delegate further*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("may not delegate further", thrown.Message);
     }
 
     [Fact]
@@ -99,8 +102,8 @@ public class DelegationGuardTests
         var first = await service.DelegateAsync(new DelegationRequest("local", "first"));
         var second = await service.DelegateAsync(new DelegationRequest("local", "second"));
 
-        first.Status.Should().Be(DelegatedTaskStatus.Running);
-        second.Status.Should().Be(DelegatedTaskStatus.Queued);
+        Assert.Equal(DelegatedTaskStatus.Running, first.Status);
+        Assert.Equal(DelegatedTaskStatus.Queued, second.Status);
     }
 
     [Fact]
@@ -113,10 +116,10 @@ public class DelegationGuardTests
 
         var targets = await service.ListTargetsAsync();
 
-        targets.Should().ContainSingle();
-        targets[0].ProfileLabel.Should().Be("local");
-        targets[0].Purpose.Should().Be("cheap bulk work");
-        targets[0].Tags.Should().Contain("cheap");
+        Assert.Single(targets);
+        Assert.Equal("local", targets[0].ProfileLabel);
+        Assert.Equal("cheap bulk work", targets[0].Purpose);
+        Assert.Contains("cheap", targets[0].Tags);
     }
 
     [Fact]
@@ -210,7 +213,7 @@ public class DelegationGuardTests
             "summarise the changelog",
             Arg.Any<IReadOnlyList<Cockpit.Core.Sessions.ImageAttachment>?>(),
             Arg.Any<CancellationToken>());
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(task.TaskId)!.Status);
     }
 
     [Fact]
@@ -285,12 +288,12 @@ public class DelegationGuardTests
 
         // The whole point is the follow-up landing on an *answered* task, so assert that state before sending —
         // without this the test passes against the bug simply because the turn had not completed yet.
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Completed);
+        Assert.Equal(DelegatedTaskStatus.Completed, service.GetTask(task.TaskId)!.Status);
 
         await service.SendFollowUpAsync(task.TaskId, "and now the tests");
 
         await driver.Received(1).SendUserMessageAsync("and now the tests", Arg.Any<IReadOnlyList<Cockpit.Core.Sessions.ImageAttachment>?>(), Arg.Any<CancellationToken>());
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(task.TaskId)!.Status);
     }
 
     [Fact]
@@ -314,13 +317,13 @@ public class DelegationGuardTests
         await _WaitUntilAsync(() => service.GetTask(first.TaskId)!.Status == DelegatedTaskStatus.Completed);
 
         var second = await service.DelegateAsync(new DelegationRequest("local", "second"));
-        service.GetTask(second.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(second.TaskId)!.Status);
 
         var followUp = async () => await service.SendFollowUpAsync(first.TaskId, "one more thing");
 
-        await followUp.Should().ThrowAsync<DelegationRejectedException>()
-            .WithMessage("*already running as many tasks as it allows*");
-        service.GetTask(first.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Completed, "the refused follow-up must not put it back to work");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(followUp);
+        Assert.Contains("already running as many tasks as it allows", thrown.Message);
+        Assert.Equal(DelegatedTaskStatus.Completed, service.GetTask(first.TaskId)!.Status);
     }
 
     [Fact]
@@ -333,7 +336,8 @@ public class DelegationGuardTests
 
         var followUp = async () => await service.SendFollowUpAsync(task.TaskId, "more please");
 
-        await followUp.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*no live session*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(followUp);
+        Assert.Contains("no live session", thrown.Message);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)
@@ -371,8 +375,8 @@ public class DelegationGuardTests
 
         var task = await service.DelegateAsync(new DelegationRequest("local", "work"));
 
-        task.Status.Should().Be(DelegatedTaskStatus.Failed);
-        task.Error.Should().Contain("no such plugin provider");
+        Assert.Equal(DelegatedTaskStatus.Failed, task.Status);
+        Assert.Contains("no such plugin provider", task.Error);
     }
 
     private static SessionProfile _Target(string label, Func<DelegationPolicy, DelegationPolicy>? tune = null)

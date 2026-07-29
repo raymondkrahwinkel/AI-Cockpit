@@ -2,7 +2,6 @@ using System.Text;
 using Avalonia.Controls;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -34,9 +33,9 @@ public class TtyMultiByteRenderTests
         terminal.Write(Encoding.UTF8.GetBytes(Line + "\r\n"));
 
         var screen = _ReadScreen(terminal);
-        screen.Should().Contain("0.22.0→0.22.1");
-        screen.Should().Contain("store — done ✅");
-        screen.Should().Contain("toggles");
+        Assert.Contains("0.22.0→0.22.1", screen);
+        Assert.Contains("store — done ✅", screen);
+        Assert.Contains("toggles", screen);
     });
 
     [Fact]
@@ -54,9 +53,9 @@ public class TtyMultiByteRenderTests
         terminal.Write(bytes[split..]);
 
         var screen = _ReadScreen(terminal);
-        screen.Should().Contain("0.22.0→0.22.1");
-        screen.Should().Contain("store — done ✅");
-        screen.Should().Contain("toggles");
+        Assert.Contains("0.22.0→0.22.1", screen);
+        Assert.Contains("store — done ✅", screen);
+        Assert.Contains("toggles", screen);
     });
 
     private static TerminalControl _NewTerminal()
@@ -71,7 +70,7 @@ public class TtyMultiByteRenderTests
     private static int _IndexOfFirstByte(byte[] bytes, byte value)
     {
         var index = Array.IndexOf(bytes, value);
-        index.Should().BeGreaterThan(0, "the multi-byte character has to be present to split it");
+        Assert.True(index > 0, "the multi-byte character has to be present to split it");
         return index;
     }
 

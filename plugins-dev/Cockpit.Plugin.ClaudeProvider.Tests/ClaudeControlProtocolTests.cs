@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -19,13 +18,12 @@ public class ClaudeControlProtocolTests
         """;
         using var document = JsonDocument.Parse(line);
 
-        ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out var requestId, out var toolUseId, out var toolName, out var inputJson)
-            .Should().BeTrue();
+        Assert.True(ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out var requestId, out var toolUseId, out var toolName, out var inputJson));
 
-        requestId.Should().Be("req-1");
-        toolUseId.Should().Be("toolu_9");
-        toolName.Should().Be("Bash");
-        JsonDocument.Parse(inputJson).RootElement.GetProperty("command").GetString().Should().Be("ls -la");
+        Assert.Equal("req-1", requestId);
+        Assert.Equal("toolu_9", toolUseId);
+        Assert.Equal("Bash", toolName);
+        Assert.Equal("ls -la", JsonDocument.Parse(inputJson).RootElement.GetProperty("command").GetString());
     }
 
     [Fact]
@@ -36,11 +34,10 @@ public class ClaudeControlProtocolTests
         var line = """{"type":"control_request","request_id":"req-2","request":{"subtype":"can_use_tool","tool_name":"Read","input":{}}}""";
         using var document = JsonDocument.Parse(line);
 
-        ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out var requestId, out var toolUseId, out _, out _)
-            .Should().BeTrue();
+        Assert.True(ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out var requestId, out var toolUseId, out _, out _));
 
-        requestId.Should().Be("req-2");
-        toolUseId.Should().Be("req-2");
+        Assert.Equal("req-2", requestId);
+        Assert.Equal("req-2", toolUseId);
     }
 
     [Theory]
@@ -52,8 +49,7 @@ public class ClaudeControlProtocolTests
     {
         using var document = JsonDocument.Parse(line);
 
-        ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out _, out _, out _, out _)
-            .Should().BeFalse();
+        Assert.False(ClaudeControlProtocol.TryParsePermissionRequest(document.RootElement, out _, out _, out _, out _));
     }
 
     [Fact]
@@ -63,16 +59,16 @@ public class ClaudeControlProtocolTests
 
         using var document = JsonDocument.Parse(line);
         var root = document.RootElement;
-        root.GetProperty("type").GetString().Should().Be("control_response");
+        Assert.Equal("control_response", root.GetProperty("type").GetString());
 
         var response = root.GetProperty("response");
-        response.GetProperty("subtype").GetString().Should().Be("success");
-        response.GetProperty("request_id").GetString().Should().Be("req-1");
+        Assert.Equal("success", response.GetProperty("subtype").GetString());
+        Assert.Equal("req-1", response.GetProperty("request_id").GetString());
 
         var decision = response.GetProperty("response");
-        decision.GetProperty("behavior").GetString().Should().Be("allow");
+        Assert.Equal("allow", decision.GetProperty("behavior").GetString());
         // updatedInput rides back as an object, not a re-escaped string.
-        decision.GetProperty("updatedInput").GetProperty("command").GetString().Should().Be("ls");
+        Assert.Equal("ls", decision.GetProperty("updatedInput").GetProperty("command").GetString());
     }
 
     [Fact]
@@ -83,11 +79,11 @@ public class ClaudeControlProtocolTests
         using var document = JsonDocument.Parse(line);
         var response = document.RootElement.GetProperty("response");
         // A deny is a successful callback that returned a deny decision — subtype stays "success".
-        response.GetProperty("subtype").GetString().Should().Be("success");
+        Assert.Equal("success", response.GetProperty("subtype").GetString());
 
         var decision = response.GetProperty("response");
-        decision.GetProperty("behavior").GetString().Should().Be("deny");
-        decision.GetProperty("message").GetString().Should().Be("No.");
+        Assert.Equal("deny", decision.GetProperty("behavior").GetString());
+        Assert.Equal("No.", decision.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -97,8 +93,8 @@ public class ClaudeControlProtocolTests
 
         using var document = JsonDocument.Parse(line);
         var root = document.RootElement;
-        root.GetProperty("type").GetString().Should().Be("control_request");
-        root.GetProperty("request_id").GetString().Should().Be("init-1");
-        root.GetProperty("request").GetProperty("subtype").GetString().Should().Be("initialize");
+        Assert.Equal("control_request", root.GetProperty("type").GetString());
+        Assert.Equal("init-1", root.GetProperty("request_id").GetString());
+        Assert.Equal("initialize", root.GetProperty("request").GetProperty("subtype").GetString());
     }
 }

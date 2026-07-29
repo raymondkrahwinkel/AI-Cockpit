@@ -1,7 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Tests.Voice;
 using Cockpit.Core.Toasts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Toasts;
 
@@ -21,9 +20,9 @@ public class ToastServiceTests
 
         service.ShowOnUiThread("Plugin update available", ToastSeverity.Information, "View", null);
 
-        cockpit.Toasts.Should().ContainSingle();
-        cockpit.Toasts[0].Message.Should().Be("Plugin update available");
-        cockpit.Toasts[0].Severity.Should().Be(ToastSeverity.Information);
-        cockpit.Toasts[0].ActionLabel.Should().Be("View");
+        Assert.Single(cockpit.Toasts);
+        Assert.Equal("Plugin update available", cockpit.Toasts[0].Message);
+        Assert.Equal(ToastSeverity.Information, cockpit.Toasts[0].Severity);
+        Assert.Equal("View", cockpit.Toasts[0].ActionLabel);
     }
 }

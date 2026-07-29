@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -33,8 +32,8 @@ public class ScreenshotPanelDragTests
 
         _Drag(surface, from, from + new Vector(120, 240));
 
-        Canvas.GetLeft(surface.MarkControls).Should().BeApproximately(before.X + 120, 1);
-        Canvas.GetTop(surface.MarkControls).Should().BeApproximately(before.Y + 240, 1);
+        Assert.True(Math.Abs(Canvas.GetLeft(surface.MarkControls) - (before.X + 120)) <= 1);
+        Assert.True(Math.Abs(Canvas.GetTop(surface.MarkControls) - (before.Y + 240)) <= 1);
     });
 
     /// <summary>
@@ -50,8 +49,8 @@ public class ScreenshotPanelDragTests
 
         surface.MouseMove(new Point(SurfaceWidth * 0.2, SurfaceHeight * 0.8));
 
-        Canvas.GetLeft(surface.MarkControls).Should().Be(placed.X);
-        Canvas.GetTop(surface.MarkControls).Should().Be(placed.Y);
+        Assert.Equal(placed.X, Canvas.GetLeft(surface.MarkControls));
+        Assert.Equal(placed.Y, Canvas.GetTop(surface.MarkControls));
     });
 
     /// <summary>The other panel is untouched by it — that is the whole point of there being two.</summary>
@@ -63,8 +62,8 @@ public class ScreenshotPanelDragTests
 
         _Drag(surface, from, from + new Vector(200, 300));
 
-        Canvas.GetLeft(surface.Controls).Should().Be(before.X);
-        Canvas.GetTop(surface.Controls).Should().Be(before.Y);
+        Assert.Equal(before.X, Canvas.GetLeft(surface.Controls));
+        Assert.Equal(before.Y, Canvas.GetTop(surface.Controls));
     });
 
     /// <summary>
@@ -78,7 +77,7 @@ public class ScreenshotPanelDragTests
 
         _Drag(surface, from, from + new Vector(300, 200));
 
-        _Model(surface).Selection.Should().BeNull("the drag was on the panel, which is not the picture");
+        Assert.Null(_Model(surface).Selection);
     });
 
     /// <summary>
@@ -102,8 +101,8 @@ public class ScreenshotPanelDragTests
         surface.MouseMove(onTheTool + new Vector(3, 3), RawInputModifiers.LeftMouseButton);
         surface.MouseUp(onTheTool + new Vector(3, 3), MouseButton.Left);
 
-        selection.Outlining.Should().BeTrue("the press chose the tool");
-        Canvas.GetLeft(surface.MarkControls).Should().Be(before.X, "and did not carry the panel with it");
+        Assert.True(selection.Outlining, "the press chose the tool");
+        Assert.Equal(before.X, Canvas.GetLeft(surface.MarkControls));
     });
 
     /// <summary>A panel cannot be dragged out of reach — one half off the window is a tool you cannot press.</summary>
@@ -117,10 +116,10 @@ public class ScreenshotPanelDragTests
         var left = Canvas.GetLeft(surface.MarkControls);
         var top = Canvas.GetTop(surface.MarkControls);
 
-        left.Should().BeLessThanOrEqualTo(SurfaceWidth - surface.MarkControls.Bounds.Width);
-        top.Should().BeLessThanOrEqualTo(SurfaceHeight - surface.MarkControls.Bounds.Height);
-        left.Should().BeGreaterThanOrEqualTo(0);
-        top.Should().BeGreaterThanOrEqualTo(0);
+        Assert.True(left <= SurfaceWidth - surface.MarkControls.Bounds.Width);
+        Assert.True(top <= SurfaceHeight - surface.MarkControls.Bounds.Height);
+        Assert.True(left >= 0);
+        Assert.True(top >= 0);
     });
 
     /// <summary>Both panels fit on the display they are put on — the promise AC-358 made, now made twice.</summary>
@@ -129,9 +128,9 @@ public class ScreenshotPanelDragTests
     {
         foreach (var panel in new[] { surface.Controls, surface.MarkControls })
         {
-            panel.Bounds.Width.Should().BeLessThanOrEqualTo(SurfaceWidth / 2.0, "a screen may be half the surface");
-            (Canvas.GetLeft(panel) + panel.Bounds.Width).Should().BeLessThanOrEqualTo(SurfaceWidth);
-            (Canvas.GetTop(panel) + panel.Bounds.Height).Should().BeLessThanOrEqualTo(SurfaceHeight);
+            Assert.True(panel.Bounds.Width <= SurfaceWidth / 2.0, "a screen may be half the surface");
+            Assert.True(Canvas.GetLeft(panel) + panel.Bounds.Width <= SurfaceWidth);
+            Assert.True(Canvas.GetTop(panel) + panel.Bounds.Height <= SurfaceHeight);
         }
     });
 
@@ -142,7 +141,7 @@ public class ScreenshotPanelDragTests
         var taking = _BoundsOf(surface.Controls);
         var marking = _BoundsOf(surface.MarkControls);
 
-        taking.Intersects(marking).Should().BeFalse();
+        Assert.False(taking.Intersects(marking));
     });
 
     /// <summary>
@@ -152,25 +151,25 @@ public class ScreenshotPanelDragTests
     [Fact]
     public void PressingAnInk_MarksItAndUnmarksTheOther() => _OnTheSurface(surface =>
     {
-        surface.InkAccent.Classes.Should().Contain("active", "the theme's accent is what a mark starts out in");
+        Assert.Contains("active", surface.InkAccent.Classes);
 
         _Press(surface, surface.InkRed);
 
-        surface.InkRed.Classes.Should().Contain("active");
-        surface.InkAccent.Classes.Should().NotContain("active");
+        Assert.Contains("active", surface.InkRed.Classes);
+        Assert.DoesNotContain("active", surface.InkAccent.Classes);
     });
 
     /// <summary>The same for the line weights, which start at what every mark was drawn at before there was a choice.</summary>
     [Fact]
     public void PressingAWeight_MarksItAndUnmarksTheOther() => _OnTheSurface(surface =>
     {
-        surface.WeightMedium.Classes.Should().Contain("active");
+        Assert.Contains("active", surface.WeightMedium.Classes);
 
         _Press(surface, surface.WeightThick);
 
-        surface.WeightThick.Classes.Should().Contain("active");
-        surface.WeightMedium.Classes.Should().NotContain("active");
-        _Model(surface).Weight.Should().Be(MarkWeight.Thick);
+        Assert.Contains("active", surface.WeightThick.Classes);
+        Assert.DoesNotContain("active", surface.WeightMedium.Classes);
+        Assert.Equal(MarkWeight.Thick, _Model(surface).Weight);
     });
 
     /// <summary>Pressing one picks up no panel — they are on a panel, and a press on a control is that control's.</summary>
@@ -181,7 +180,7 @@ public class ScreenshotPanelDragTests
 
         _Press(surface, surface.InkGreen);
 
-        Canvas.GetLeft(surface.MarkControls).Should().Be(before);
+        Assert.Equal(before, Canvas.GetLeft(surface.MarkControls));
     });
 
     private static void _Press(ScreenshotSelectionWindow surface, Control control)
@@ -220,8 +219,7 @@ public class ScreenshotPanelDragTests
 
     private static void _OnTheSurface(Action<ScreenshotSelectionWindow> assert) => HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight)
-            .Should().BeOfType<ScreenshotSelectionWindow>().Subject;
+        var surface = Assert.IsType<ScreenshotSelectionWindow>(Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight));
 
         surface.Show();
         try

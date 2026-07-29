@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -34,13 +33,13 @@ public class WorkflowJsonTests
 
         var loaded = WorkflowJson.Read(WorkflowJson.Write(workflow));
 
-        loaded.Should().NotBeNull();
-        loaded!.Name.Should().Be("PR review");
-        loaded.Nodes.Should().HaveCount(2);
-        loaded.Node("t")!.Kind.Should().Be(WorkflowNodeKind.Trigger);
-        loaded.Node("a")!.X.Should().Be(380);
-        loaded.Node("a")!.Parameters["Message"].Should().Be("Review requested");
-        loaded.Connections.Should().ContainSingle(connection => connection.FromNodeId == "t" && connection.ToNodeId == "a");
+        Assert.NotNull(loaded);
+        Assert.Equal("PR review", loaded!.Name);
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Nodes));
+        Assert.Equal(WorkflowNodeKind.Trigger, loaded.Node("t")!.Kind);
+        Assert.Equal(380, loaded.Node("a")!.X);
+        Assert.Equal("Review requested", loaded.Node("a")!.Parameters["Message"]);
+        Assert.Single(loaded.Connections, connection => connection.FromNodeId == "t" && connection.ToNodeId == "a");
     }
 
     [Fact]
@@ -53,15 +52,15 @@ public class WorkflowJsonTests
             Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.text-match", Name = "Trigger" } },
         };
 
-        WorkflowJson.Write(workflow).Should().Contain("cockpit.text-match");
+        Assert.Contains("cockpit.text-match", WorkflowJson.Write(workflow));
     }
 
     [Fact]
     public void Read_OfSomethingThatIsNotAWorkflow_CostsYouThatFlowRatherThanThePlugin()
     {
-        WorkflowJson.Read("{ this is not json").Should().BeNull();
-        WorkflowJson.ReadAll("nonsense").Should().BeEmpty();
-        WorkflowJson.ReadAll(null).Should().BeEmpty();
+        Assert.Null(WorkflowJson.Read("{ this is not json"));
+        Assert.Empty(WorkflowJson.ReadAll("nonsense"));
+        Assert.Empty(WorkflowJson.ReadAll(null));
     }
 
     [Fact]
@@ -73,6 +72,6 @@ public class WorkflowJsonTests
             new() { Id = "2", Name = "Second" },
         };
 
-        WorkflowJson.ReadAll(WorkflowJson.WriteAll(flows)).Select(flow => flow.Name).Should().Equal("First", "Second");
+        Assert.Equal(new[] { "First", "Second" }, WorkflowJson.ReadAll(WorkflowJson.WriteAll(flows)).Select(flow => flow.Name));
     }
 }

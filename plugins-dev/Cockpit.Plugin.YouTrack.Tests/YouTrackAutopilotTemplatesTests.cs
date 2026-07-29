@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -15,8 +14,7 @@ public class YouTrackAutopilotTemplatesTests
     [Fact]
     public void All_RegistersBugFixFeatureAndEpic()
     {
-        YouTrackAutopilotTemplates.All.Select(template => template.Id)
-            .Should().Contain(["youtrack.bugfix", "youtrack.feature", "youtrack.epic"]);
+        Assert.Equal(new[] { "youtrack.bugfix", "youtrack.feature", "youtrack.epic" }, YouTrackAutopilotTemplates.All.Select(template => template.Id));
     }
 
     [Fact]
@@ -24,18 +22,18 @@ public class YouTrackAutopilotTemplatesTests
     {
         var epic = YouTrackAutopilotTemplates.All.Single(template => template.Id == "youtrack.epic");
 
-        epic.Name.Should().Be("Epic");
+        Assert.Equal("Epic", epic.Name);
         // Fetch the sub-items from the "parent for" child links (AC-158's shape), not from the description.
-        epic.Body.Should().Contain("parent for");
-        epic.Body.Should().Contain("child issues");
-        epic.Body.Should().Contain("read tools");
-        epic.Body.Should().Contain("not the description");
+        Assert.Contains("parent for", epic.Body);
+        Assert.Contains("child issues", epic.Body);
+        Assert.Contains("read tools", epic.Body);
+        Assert.Contains("not the description", epic.Body);
         // One coherent run to one PR, with the ids recorded so the PR names what it closes.
-        epic.Body.Should().Contain("ONE plan");
-        epic.Body.Should().Contain("ONE pull request");
-        epic.Body.Should().Contain("{{issue.id}}");
+        Assert.Contains("ONE plan", epic.Body);
+        Assert.Contains("ONE pull request", epic.Body);
+        Assert.Contains("{{issue.id}}", epic.Body);
         // Carries the issue placeholders Autopilot fills at run time.
-        epic.RequiredPlaceholders.Should().Contain(["issue.id", "issue.title"]);
+        Assert.Equal(new[] { "issue.id", "issue.title" }, epic.RequiredPlaceholders);
     }
 
     [Theory]
@@ -47,7 +45,7 @@ public class YouTrackAutopilotTemplatesTests
         // An epic is a code run too: it accumulates its children on one branch and lands one merge-ready PR, so the
         // AC-216 finalizer must fire for it — the signal is stamped on the registration, not only on bug fix/feature.
         var template = YouTrackAutopilotTemplates.All.Single(t => t.Id == id);
-        template.DeliversPullRequest.Should().BeTrue();
+        Assert.True(template.DeliversPullRequest);
     }
 
     [Theory]
@@ -56,9 +54,9 @@ public class YouTrackAutopilotTemplatesTests
     public void CodeTemplates_TellTheAgentToCommitPushAndOpenAPr(string id)
     {
         var body = YouTrackAutopilotTemplates.All.Single(t => t.Id == id).Body.ToLowerInvariant();
-        body.Should().Contain("commit");
-        body.Should().Contain("push");
-        body.Should().Contain("pull request");
+        Assert.Contains("commit", body);
+        Assert.Contains("push", body);
+        Assert.Contains("pull request", body);
     }
 
     [Theory]
@@ -67,7 +65,7 @@ public class YouTrackAutopilotTemplatesTests
     public void CodeTemplates_ForbidCoAuthorAndAiMentionsInCommits(string id)
     {
         var body = YouTrackAutopilotTemplates.All.Single(t => t.Id == id).Body;
-        body.Should().Contain("Co-Authored-By");
-        body.ToLowerInvariant().Should().Contain("no mention of an ai");
+        Assert.Contains("Co-Authored-By", body);
+        Assert.Contains("no mention of an ai", body.ToLowerInvariant());
     }
 }

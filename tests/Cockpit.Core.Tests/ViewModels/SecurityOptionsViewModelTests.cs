@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Secrets;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -17,7 +16,7 @@ public class SecurityOptionsViewModelTests
 
         await vm.RefreshAsync();
 
-        vm.ShowUnprotectedBanner.Should().BeTrue();
+        Assert.True(vm.ShowUnprotectedBanner);
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class SecurityOptionsViewModelTests
 
         await vm.RefreshAsync();
 
-        vm.ShowUnprotectedBanner.Should().BeFalse();
+        Assert.False(vm.ShowUnprotectedBanner);
     }
 
     [Fact]
@@ -39,8 +38,8 @@ public class SecurityOptionsViewModelTests
 
         await vm.DismissBannerCommand.ExecuteAsync(null);
 
-        vm.ShowUnprotectedBanner.Should().BeFalse("the operator dismissed it");
-        protection.DismissCalls.Should().Be(1, "the dismissal is persisted through the service, not just hidden");
+        Assert.False(vm.ShowUnprotectedBanner, "the operator dismissed it");
+        Assert.Equal(1, protection.DismissCalls);
     }
 
     private sealed class FakeProtection : ISecretProtectionService

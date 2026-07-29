@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <!-- The plugin project marks these ExcludeAssets="runtime" (the host supplies its own copies at load
          time) — this test project runs standalone, so it needs its own runtime copies to exercise
          KimiProviderPlugin.Initialize against an ICockpitHost implementation. -->

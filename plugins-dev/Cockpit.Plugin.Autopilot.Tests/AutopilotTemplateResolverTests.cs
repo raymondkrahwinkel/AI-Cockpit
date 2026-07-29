@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -25,8 +25,8 @@ public class AutopilotTemplateResolverTests
 
         var result = AutopilotTemplateResolver.Resolve(body, _IntentData());
 
-        result.Text.Should().Be("youtrack AC-189: Autopilot templates\nBuild the template foundation.\nhttps://youtrack/AC-189");
-        result.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal("youtrack AC-189: Autopilot templates\nBuild the template foundation.\nhttps://youtrack/AC-189", result.Text);
+        Assert.Empty(result.MissingPlaceholders);
     }
 
     [Fact]
@@ -36,8 +36,8 @@ public class AutopilotTemplateResolverTests
 
         var result = AutopilotTemplateResolver.Resolve("Work on {{input.branch}}, ask {{input.reviewer}}.", intentData: null, input: input);
 
-        result.Text.Should().Be("Work on feat/AC-189, ask Zyra.");
-        result.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal("Work on feat/AC-189, ask Zyra.", result.Text);
+        Assert.Empty(result.MissingPlaceholders);
     }
 
     [Fact]
@@ -45,8 +45,8 @@ public class AutopilotTemplateResolverTests
     {
         var result = AutopilotTemplateResolver.Resolve("{{ issue.id }} / {{  input.branch  }}", _IntentData(), new Dictionary<string, string> { ["branch"] = "b" });
 
-        result.Text.Should().Be("AC-189 / b");
-        result.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal("AC-189 / b", result.Text);
+        Assert.Empty(result.MissingPlaceholders);
     }
 
     [Fact]
@@ -58,9 +58,9 @@ public class AutopilotTemplateResolverTests
 
         var act = () => AutopilotTemplateResolver.Resolve(body, data, input: null);
 
-        var result = act.Should().NotThrow().Subject;
-        result.Text.Should().Be("AC-189|||");
-        result.MissingPlaceholders.Should().ContainInOrder("issue.url", "input.branch", "foo.bar");
+        var result = act();
+        Assert.Equal("AC-189|||", result.Text);
+        Assert.True(SequenceAssert.ContainsInOrder(result.MissingPlaceholders, "issue.url", "input.branch", "foo.bar"));
     }
 
     [Fact]
@@ -68,8 +68,8 @@ public class AutopilotTemplateResolverTests
     {
         var result = AutopilotTemplateResolver.Resolve("{{input.x}} {{input.y}} {{input.x}}", intentData: null, input: null);
 
-        result.MissingPlaceholders.Should().ContainInOrder("input.x", "input.y");
-        result.MissingPlaceholders.Should().HaveCount(2);
+        Assert.True(SequenceAssert.ContainsInOrder(result.MissingPlaceholders, "input.x", "input.y"));
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.MissingPlaceholders));
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public class AutopilotTemplateResolverTests
 
         var result = AutopilotTemplateResolver.Resolve("[{{issue.description}}]", data);
 
-        result.Text.Should().Be("[]");
-        result.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal("[]", result.Text);
+        Assert.Empty(result.MissingPlaceholders);
     }
 
     [Fact]
@@ -92,6 +92,6 @@ public class AutopilotTemplateResolverTests
 
         var result = AutopilotTemplateResolver.Resolve(body, new Dictionary<string, string> { ["issue"] = "AC-189" });
 
-        result.Text.Should().Be("Ship it. Cost {price} and AC-189 only.");
+        Assert.Equal("Ship it. Cost {price} and AC-189 only.", result.Text);
     }
 }

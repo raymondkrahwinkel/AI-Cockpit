@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -15,25 +14,25 @@ public class NewSessionResultNameTests
 {
     [Fact]
     public void ANameFromTheDialog_IsOneSomebodyChose() =>
-        _Result("release work").NameIsChosen.Should().BeTrue();
+        Assert.True(_Result("release work").NameIsChosen);
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     public void NoNameAtAll_IsNobodys(string? name) =>
-        _Result(name).NameIsChosen.Should().BeFalse();
+        Assert.False(_Result(name).NameIsChosen);
 
     // "Cockpit 2", "Claude — 14:22", "webshop (copy)": a start route putting a name together for itself is not the
     // operator naming it, however unlike a placeholder the result reads.
     [Fact]
     public void ANameAStartRouteComposed_IsNobodys() =>
-        (_Result("Cockpit 2") with { NameIsComposed = true }).NameIsChosen.Should().BeFalse();
+        Assert.False((_Result("Cockpit 2") with { NameIsComposed = true }).NameIsChosen);
 
     // A copy is only as deliberate as what it was copied from, which is why the flag is passed rather than assumed.
     [Fact]
     public void ACopyOfADeliberateName_StaysDeliberate() =>
-        (_Result("release work (copy)") with { NameIsComposed = false }).NameIsChosen.Should().BeTrue();
+        Assert.True((_Result("release work (copy)") with { NameIsComposed = false }).NameIsChosen);
 
     private static NewSessionResult _Result(string? name) => new(
         SessionKind.Sdk,

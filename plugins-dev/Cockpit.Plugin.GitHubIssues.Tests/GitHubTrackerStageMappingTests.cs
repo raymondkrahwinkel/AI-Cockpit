@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Tracking;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -14,7 +13,7 @@ public class GitHubTrackerStageMappingTests
     [InlineData(TrackerWorkStage.InReview, "in review")]
     [InlineData(TrackerWorkStage.Done, "done")]
     public void SuggestStageName_MapsEachStage_ToAConventionalLabel(TrackerWorkStage stage, string expected) =>
-        new GitHubTrackerProvider().SuggestStageName(stage).Should().Be(expected);
+        Assert.Equal(expected, new GitHubTrackerProvider().SuggestStageName(stage));
 
     [Fact]
     public void ReadToolMcpServerNames_IsEmpty_BecauseGitHubIssuesReadsViaTheGhCli_NotAnMcpServer() =>
@@ -22,5 +21,5 @@ public class GitHubTrackerStageMappingTests
         // gh CLI), so it advertises no read servers — a source-triggered plan simply scopes none in for it, and the CEO
         // reads via gh instead. Only a tracker with an MCP read server (YouTrack) contributes names. Read through the
         // interface: the empty list is the default ITrackerProvider member, which GitHub does not override.
-        ((ITrackerProvider)new GitHubTrackerProvider()).ReadToolMcpServerNames.Should().BeEmpty();
+        Assert.Empty(((ITrackerProvider)new GitHubTrackerProvider()).ReadToolMcpServerNames);
 }

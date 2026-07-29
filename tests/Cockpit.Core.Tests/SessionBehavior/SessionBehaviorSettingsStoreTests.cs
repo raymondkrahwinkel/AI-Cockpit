@@ -4,7 +4,6 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.SessionBehavior;
 using Cockpit.Infrastructure.TranscriptDisplay;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.SessionBehavior;
 
@@ -32,8 +31,8 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.AutoCloseOnExit.Should().BeFalse();
-        settings.CombineQueuedMessages.Should().BeFalse();
+        Assert.False(settings.AutoCloseOnExit);
+        Assert.False(settings.CombineQueuedMessages);
     }
 
     [Fact]
@@ -44,8 +43,8 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
         await store.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = true, CombineQueuedMessages = true });
         var loaded = await store.LoadAsync();
 
-        loaded.AutoCloseOnExit.Should().BeTrue();
-        loaded.CombineQueuedMessages.Should().BeTrue();
+        Assert.True(loaded.AutoCloseOnExit);
+        Assert.True(loaded.CombineQueuedMessages);
     }
 
     [Fact]
@@ -64,9 +63,9 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
         var reloadedDisplay = await displayStore.LoadAsync();
         var reloadedBehavior = await behaviorStore.LoadAsync();
 
-        reloadedNotifications.WebhookUrl.Should().Be("https://example/webhook");
-        reloadedDisplay.ShowTimestamps.Should().BeTrue();
-        reloadedBehavior.AutoCloseOnExit.Should().BeTrue();
+        Assert.Equal("https://example/webhook", reloadedNotifications.WebhookUrl);
+        Assert.True(reloadedDisplay.ShowTimestamps);
+        Assert.True(reloadedBehavior.AutoCloseOnExit);
     }
 
     public void Dispose()

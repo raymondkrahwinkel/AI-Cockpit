@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -18,10 +17,8 @@ public class CockpitActionsStartSessionDefaultsTests
     {
         ICockpitActions actions = new NoSessions();
 
-        await actions.Invoking(host => host.StartSessionAsync("Claude"))
-            .Should().ThrowAsync<NotSupportedException>();
-        await actions.Invoking(host => host.StartSessionAsync("Claude", null, null, "AC-312"))
-            .Should().ThrowAsync<NotSupportedException>();
+        await Assert.ThrowsAsync<NotSupportedException>(() => actions.StartSessionAsync("Claude"));
+        await Assert.ThrowsAsync<NotSupportedException>(() => actions.StartSessionAsync("Claude", null, null, "AC-312"));
     }
 
     [Fact]
@@ -29,11 +26,10 @@ public class CockpitActionsStartSessionDefaultsTests
     {
         ICockpitActions actions = new UnnamedSessionsOnly();
 
-        (await actions.StartSessionAsync("Claude")).Should().Be("started");
+        Assert.Equal("started", (await actions.StartSessionAsync("Claude")));
 
         // Silently starting an unnamed session here would leave the caller believing its name had been applied.
-        await actions.Invoking(host => host.StartSessionAsync("Claude", null, null, "AC-312"))
-            .Should().ThrowAsync<NotSupportedException>();
+        await Assert.ThrowsAsync<NotSupportedException>(() => actions.StartSessionAsync("Claude", null, null, "AC-312"));
     }
 
     private sealed class NoSessions : ICockpitActions

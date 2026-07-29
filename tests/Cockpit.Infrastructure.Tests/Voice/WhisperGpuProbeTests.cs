@@ -1,6 +1,5 @@
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Voice;
 
@@ -20,7 +19,7 @@ public class WhisperGpuProbeTests
     [InlineData(WhisperRuntimeBackend.CpuNoAvx)]
     public void IsUsable_CpuBackends_AreNeverSomethingToFetch(WhisperRuntimeBackend backend)
     {
-        WhisperGpuProbe.IsUsable(backend).Should().BeFalse();
+        Assert.False(WhisperGpuProbe.IsUsable(backend));
     }
 
     /// <summary>
@@ -35,7 +34,7 @@ public class WhisperGpuProbeTests
     {
         var probing = () => WhisperGpuProbe.IsUsable(backend);
 
-        probing.Should().NotThrow();
+        probing();
     }
 
     /// <summary>
@@ -49,6 +48,6 @@ public class WhisperGpuProbeTests
         var cuda = WhisperGpuProbe.IsUsable(WhisperRuntimeBackend.Cuda);
         var cuda12 = WhisperGpuProbe.IsUsable(WhisperRuntimeBackend.Cuda12);
 
-        (cuda && cuda12).Should().BeFalse();
+        Assert.False((cuda && cuda12));
     }
 }

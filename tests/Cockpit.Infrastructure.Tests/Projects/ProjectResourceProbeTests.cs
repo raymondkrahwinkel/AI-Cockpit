@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Projects;
 
@@ -29,7 +28,7 @@ public class ProjectResourceProbeTests : IDisposable
         var missing = Path.Combine(_root, "does-not-exist");
         var resources = new[] { new ProjectResource(missing, ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().Contain(missing);
+        Assert.Contains(missing, ProjectResourceProbe.FindUnresolved(resources));
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class ProjectResourceProbeTests : IDisposable
         File.WriteAllText(file, "hello");
         var resources = new[] { new ProjectResource(file, ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class ProjectResourceProbeTests : IDisposable
         Directory.CreateDirectory(_root);
         var resources = new[] { new ProjectResource(_root, ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     /// <summary>
@@ -61,7 +60,7 @@ public class ProjectResourceProbeTests : IDisposable
     {
         var resources = new[] { new ProjectResource("depot:cockpit", ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     /// <summary>
@@ -73,7 +72,7 @@ public class ProjectResourceProbeTests : IDisposable
     {
         var resources = new[] { new ProjectResource("notes/does-not-exist-either", ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class ProjectResourceProbeTests : IDisposable
     {
         var resources = new[] { new ProjectResource("   ", ProjectResourceRole.Reference) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     /// <summary>
@@ -99,8 +98,8 @@ public class ProjectResourceProbeTests : IDisposable
         var result = ProjectResourceProbe.FindUnresolved(resources);
         stopwatch.Stop();
 
-        result.Should().BeEmpty("this probe cannot afford to judge a UNC path cheaply, so it says nothing about one");
-        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(500), "skipping a UNC path must not touch the network at all");
+        Assert.Empty(result);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(500), "skipping a UNC path must not touch the network at all");
     }
 
     /// <summary>
@@ -115,7 +114,7 @@ public class ProjectResourceProbeTests : IDisposable
         var missing = Path.Combine(_root, "does-not-exist");
         var resources = new[] { new ProjectResource(missing, ProjectResourceRole.Memory) { ReachesSessions = false } };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().BeEmpty();
+        Assert.Empty(ProjectResourceProbe.FindUnresolved(resources));
     }
 
     /// <summary>
@@ -143,9 +142,9 @@ public class ProjectResourceProbeTests : IDisposable
             });
         stopwatch.Stop();
 
-        result.Should().BeEmpty("a row that did not answer within the time budget must not be reported broken");
-        stopwatch.Elapsed.Should().BeLessThan(
-            TimeSpan.FromSeconds(1), "the call itself must return once its budget is spent, not wait for the slow check to finish");
+        Assert.Empty(result);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(1), "the call itself must return once its budget is spent, not wait for the slow check to finish");
     }
 
     /// <summary>
@@ -166,8 +165,7 @@ public class ProjectResourceProbeTests : IDisposable
         var badPath = OperatingSystem.IsWindows() ? @"C:\bad<>|?*\0name.md" : "/bad<>|?*\0name.md";
         var resources = new[] { new ProjectResource(badPath, ProjectResourceRole.Memory) };
 
-        ProjectResourceProbe.FindUnresolved(resources).Should().Contain(
-            badPath, ".NET 10's File.Exists returns false rather than throwing for invalid characters, so this is reported broken, not left out");
+        Assert.Contains(badPath, ProjectResourceProbe.FindUnresolved(resources));
     }
 
     /// <summary>
@@ -183,7 +181,7 @@ public class ProjectResourceProbeTests : IDisposable
 
         var act = () => ProjectResourceProbe.FindUnresolved(resources);
 
-        act.Should().NotThrow("the probe must never throw regardless of how the underlying File.Exists behaves for an absurd path");
-        ProjectResourceProbe.FindUnresolved(resources).Should().Contain(longPath);
+        act();
+        Assert.Contains(longPath, ProjectResourceProbe.FindUnresolved(resources));
     }
 }

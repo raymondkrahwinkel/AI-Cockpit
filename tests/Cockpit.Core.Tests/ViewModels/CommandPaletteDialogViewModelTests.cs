@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -19,8 +18,8 @@ public class CommandPaletteDialogViewModelTests
 
         vm.Query = "se";
 
-        vm.Visible.Select(c => c.Title).Should().Equal("New session", "Search transcripts");
-        vm.Selected!.Title.Should().Be("New session");
+        Assert.Equal(new[] { "New session", "Search transcripts" }, vm.Visible.Select(c => c.Title));
+        Assert.Equal("New session", vm.Selected!.Title);
     }
 
     [Fact]
@@ -29,12 +28,12 @@ public class CommandPaletteDialogViewModelTests
         var vm = new CommandPaletteDialogViewModel([Cmd("A"), Cmd("B"), Cmd("C")]);
 
         vm.Move(-1);
-        vm.Selected!.Title.Should().Be("A");
+        Assert.Equal("A", vm.Selected!.Title);
 
         vm.Move(1);
         vm.Move(1);
         vm.Move(1);
-        vm.Selected!.Title.Should().Be("C");
+        Assert.Equal("C", vm.Selected!.Title);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class CommandPaletteDialogViewModelTests
         vm.RunCommand.Execute(null);
         vm.Chosen!.Invoke();
 
-        ran.Should().Be(1);
+        Assert.Equal(1, ran);
     }
 
     [Fact]
@@ -55,6 +54,6 @@ public class CommandPaletteDialogViewModelTests
     {
         var vm = new CommandPaletteDialogViewModel([Cmd("A"), Cmd("B")]);
 
-        vm.Visible.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(vm.Visible));
     }
 }

@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Portal;
@@ -44,7 +43,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         await capture.CaptureAsync();
 
-        asked.Should().ContainKey("interactive").WhoseValue.Should().Be(false);
+        Assert.NotNull(asked);
+        Assert.Equal(false, asked["interactive"]);
     }
 
     /// <summary>A desktop with no screenshot portal has to be known before the operator presses anything, not after — the button reads this to disable itself with a reason.</summary>
@@ -58,7 +58,7 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         await capture.ProbeVersionForTestAsync();
 
-        capture.IsSupported.Should().BeFalse();
+        Assert.False(capture.IsSupported);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         await capture.ProbeVersionForTestAsync();
 
-        capture.IsSupported.Should().BeTrue();
+        Assert.True(capture.IsSupported);
     }
 
     /// <summary>
@@ -86,14 +86,14 @@ public class PortalScreenshotCaptureTests : IDisposable
         capture.UseTestHarness(_ => answered.Task, (_, _) => Task.FromResult(_Wrote(_Png(1920, 1080))));
         var probe = capture.ProbeVersionForTestAsync();
 
-        capture.SupportSettled.IsCompleted.Should().BeFalse();
-        capture.IsSupported.Should().BeFalse();
+        Assert.False(capture.SupportSettled.IsCompleted);
+        Assert.False(capture.IsSupported);
 
         answered.SetResult(2u);
         await probe;
 
-        capture.SupportSettled.IsCompleted.Should().BeTrue();
-        capture.IsSupported.Should().BeTrue();
+        Assert.True(capture.SupportSettled.IsCompleted);
+        Assert.True(capture.IsSupported);
     }
 
     /// <summary>Until the probe has answered, the honest answer is "no" — the alternative is a live button on a desktop that turns out to have no portal.</summary>
@@ -104,7 +104,7 @@ public class PortalScreenshotCaptureTests : IDisposable
             new StubDesktopDisplays([]),
             NullLogger<PortalScreenshotCapture>.Instance);
 
-        capture.IsSupported.Should().BeFalse();
+        Assert.False(capture.IsSupported);
     }
 
     /// <summary>The layout the selection UI crops by comes back with the pixels, placed against the image that actually arrived.</summary>
@@ -116,10 +116,10 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var result = await capture.CaptureAsync();
 
-        result.Should().NotBeNull();
-        result!.Displays.Should().ContainSingle();
-        result.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
-        result.Displays[0].DesktopBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
+        Assert.NotNull(result);
+        Assert.Single(result!.Displays);
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), result.Displays[0].ImageBounds);
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), result.Displays[0].DesktopBounds);
     }
 
     /// <summary>
@@ -135,7 +135,9 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*3840*1080*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("3840", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("1080", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>No displays, no mapping — and a capture that cannot be selected from is not one to hand on in silence.</summary>
@@ -147,7 +149,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no displays*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("no displays", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>Something other than the image came back. A size read out of bytes that are not a PNG would be a number, and a plausible one.</summary>
@@ -159,7 +162,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not a readable PNG*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("not a readable PNG", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>Consent declined. An ordinary answer, not a failure — the caller passes over it in silence, as it does a selection nobody completed.</summary>
@@ -171,7 +175,7 @@ public class PortalScreenshotCaptureTests : IDisposable
             _ => Task.FromResult(2u),
             (_, _) => Task.FromResult(new PortalResponse(1, new Dictionary<string, object>())));
 
-        (await capture.CaptureAsync()).Should().BeNull();
+        Assert.Null((await capture.CaptureAsync()));
     }
 
     /// <summary>A portal that answers with a code nobody asked for is broken, and broken is not cancelled — the operator pressed a key and is owed the difference.</summary>
@@ -185,7 +189,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*response code 2*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("response code 2", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>Success without a location is a portal that did not do what it said. Nothing to read, and nothing to invent.</summary>
@@ -199,7 +204,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*where the image is*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("where the image is", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>The file the portal wrote is gone by the time the capture returns — a successful read is no reason to leave a picture of the operator's screen in a cache directory.</summary>
@@ -215,7 +221,7 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         await capture.CaptureAsync();
 
-        File.Exists(path).Should().BeFalse();
+        Assert.False(File.Exists(path));
     }
 
     [Fact]
@@ -227,8 +233,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var bytes = await _Capture().ReadAndDiscardForTestAsync(new Uri(path).AbsoluteUri, CancellationToken.None);
 
-        bytes.Should().Equal(written);
-        File.Exists(path).Should().BeFalse("nothing ever comes back for it, so leaving it is leaving a screenshot behind");
+        Assert.Equal(written, bytes);
+        Assert.False(File.Exists(path), "nothing ever comes back for it, so leaving it is leaving a screenshot behind");
     }
 
     /// <summary>
@@ -246,8 +252,8 @@ public class PortalScreenshotCaptureTests : IDisposable
 
         var act = async () => await _Capture().ReadAndDiscardForTestAsync(new Uri(path).AbsoluteUri, cancellation.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
-        File.Exists(path).Should().BeFalse("a failed read is no reason to leave a screenshot of the operator's screen lying about");
+        await Assert.ThrowsAsync<TaskCanceledException>(act);
+        Assert.False(File.Exists(path), "a failed read is no reason to leave a screenshot of the operator's screen lying about");
     }
 
     /// <summary>A portal that answers with something other than a file is a broken portal, not a capture to guess at — and nothing is deleted on a path we did not understand.</summary>
@@ -256,7 +262,7 @@ public class PortalScreenshotCaptureTests : IDisposable
     {
         var act = async () => await _Capture().ReadAndDiscardForTestAsync("https://example.invalid/shot.png", CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
     }
 
     private PortalScreenshotCapture _Capture(IDesktopDisplays? displays = null) =>

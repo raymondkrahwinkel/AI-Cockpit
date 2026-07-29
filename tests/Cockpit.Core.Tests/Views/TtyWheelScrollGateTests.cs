@@ -1,5 +1,4 @@
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Views;
 
@@ -16,14 +15,14 @@ public class TtyWheelScrollGateTests
     [Fact]
     public void Decide_AltScreenWithoutMouseTracking_ReturnsForwardArrowKeys()
     {
-        TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode: 0).Should().Be(TtyWheelScrollAction.ForwardArrowKeys);
+        Assert.Equal(TtyWheelScrollAction.ForwardArrowKeys, TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode: 0));
     }
 
     [Fact]
     public void Decide_PrimaryScreen_ReturnsNativeScroll()
     {
         // #57: the primary screen has real scrollback — scroll Exclr8's buffer directly.
-        TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode: 0).Should().Be(TtyWheelScrollAction.NativeScroll);
+        Assert.Equal(TtyWheelScrollAction.NativeScroll, TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode: 0));
     }
 
     [Theory]
@@ -34,7 +33,7 @@ public class TtyWheelScrollGateTests
     {
         // Mouse-tracking modes only mean anything on the alternate screen in this codebase's usage —
         // still native-scroll the primary screen regardless of a stray MouseMode value.
-        TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode).Should().Be(TtyWheelScrollAction.NativeScroll);
+        Assert.Equal(TtyWheelScrollAction.NativeScroll, TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode));
     }
 
     [Theory]
@@ -44,34 +43,38 @@ public class TtyWheelScrollGateTests
     public void Decide_AltScreenWithMouseTrackingRequested_ReturnsPassThrough(int mouseMode)
     {
         // The app asked for mouse reporting — TerminalControl's own SGR-mouse-report path already covers it.
-        TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode).Should().Be(TtyWheelScrollAction.PassThrough);
+        Assert.Equal(TtyWheelScrollAction.PassThrough, TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode));
     }
 
     [Fact]
     public void EncodeArrowKey_ScrollUp_NormalMode_ReturnsCsiUp()
     {
-        TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: false)
-            .Should().Equal(0x1b, (byte)'[', (byte)'A');
+        Assert.Equal(
+            new byte[] { 0x1b, (byte)'[', (byte)'A' },
+            TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: false));
     }
 
     [Fact]
     public void EncodeArrowKey_ScrollDown_NormalMode_ReturnsCsiDown()
     {
-        TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: false)
-            .Should().Equal(0x1b, (byte)'[', (byte)'B');
+        Assert.Equal(
+            new byte[] { 0x1b, (byte)'[', (byte)'B' },
+            TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: false));
     }
 
     [Fact]
     public void EncodeArrowKey_ScrollUp_ApplicationCursorKeys_ReturnsSs3Up()
     {
-        TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: true)
-            .Should().Equal(0x1b, (byte)'O', (byte)'A');
+        Assert.Equal(
+            new byte[] { 0x1b, (byte)'O', (byte)'A' },
+            TtyWheelScrollGate.EncodeArrowKey(scrollUp: true, applicationCursorKeys: true));
     }
 
     [Fact]
     public void EncodeArrowKey_ScrollDown_ApplicationCursorKeys_ReturnsSs3Down()
     {
-        TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: true)
-            .Should().Equal(0x1b, (byte)'O', (byte)'B');
+        Assert.Equal(
+            new byte[] { 0x1b, (byte)'O', (byte)'B' },
+            TtyWheelScrollGate.EncodeArrowKey(scrollUp: false, applicationCursorKeys: true));
     }
 }

@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 using Xunit.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -52,10 +51,10 @@ public class ProjectDialogScrollTests
                        $"viewport={scroll.Viewport.Height:0.#} extent={scroll.Extent.Height:0.#}");
         window.Close();
 
-        scroll.Extent.Height.Should().BeGreaterThan(scroll.Viewport.Height, "the checklist has to overflow for this to mean anything");
+        Assert.True(scroll.Extent.Height > scroll.Viewport.Height, "the checklist has to overflow for this to mean anything");
         // Not merely non-negative: a row that ends exactly on the footer's edge still reads as pressed against it,
         // which is what Raymond saw next. The clearance is part of the fix, so it is part of the assertion.
-        gap.Should().BeGreaterThanOrEqualTo(16, "the last row must end with air under it, not against the bar");
+        Assert.True(gap >= 16, "the last row must end with air under it, not against the bar");
     });
 
     [Fact]
@@ -85,7 +84,7 @@ public class ProjectDialogScrollTests
         }
 
         window.Close();
-        overflowing.Should().BeEmpty("every control has to fit the dialog it is in");
+        Assert.Empty(overflowing);
     });
 
     private static ProjectDialogViewModel _ViewModelWithManyServers()

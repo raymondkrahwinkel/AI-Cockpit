@@ -19,7 +19,6 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -37,9 +36,9 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
 
-        vm.Sessions.Should().BeEmpty();
-        vm.HasSessions.Should().BeFalse();
-        vm.SelectedSession.Should().BeNull();
+        Assert.Empty(vm.Sessions);
+        Assert.False(vm.HasSessions);
+        Assert.Null(vm.SelectedSession);
     }
 
     [Fact]
@@ -62,8 +61,8 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions.Should().BeEmpty();
-        vm.HasSessions.Should().BeFalse();
+        Assert.Empty(vm.Sessions);
+        Assert.False(vm.HasSessions);
     }
 
     [Fact]
@@ -80,10 +79,10 @@ public class CockpitViewModelTests
         // The id handed back is the started session's own PaneId (== ICockpitSessionObserver.ActivePaneId), so a
         // plugin's onStarted can act on that exact pane — the load-bearing #AC-96 contract.
         var session = vm.Sessions.Single();
-        paneId.Should().Be(session.PaneId);
+        Assert.Equal(session.PaneId, paneId);
 
         // The prefill's initial prompt lands in that session's composer through the inject seam, for the operator to send.
-        ((SessionViewModel)session).InputText.Should().Be("Investigate AC-96");
+        Assert.Equal("Investigate AC-96", ((SessionViewModel)session).InputText);
 
         // The prefill is forwarded to the dialog so its fields are pre-filled for the operator.
         await dialogService.Received(1).ShowNewSessionDialogAsync(prefill, Arg.Any<bool>());
@@ -99,8 +98,8 @@ public class CockpitViewModelTests
 
         var paneId = await vm.ShowNewSessionDialogForPluginAsync(new NewSessionPrefill(ProfileLabel: "default"));
 
-        paneId.Should().BeNull();
-        vm.Sessions.Should().BeEmpty();
+        Assert.Null(paneId);
+        Assert.Empty(vm.Sessions);
     }
 
     [Fact]
@@ -162,11 +161,11 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions.Should().ContainSingle();
-        vm.HasSessions.Should().BeTrue();
-        vm.SelectedSession.Should().Be(vm.Sessions[0]);
-        vm.SelectedSession!.IsSelected.Should().BeTrue();
-        vm.SelectedSession.Title.Should().Be("default - 1");
+        Assert.Single(vm.Sessions);
+        Assert.True(vm.HasSessions);
+        Assert.Equal(vm.Sessions[0], vm.SelectedSession);
+        Assert.True(vm.SelectedSession!.IsSelected);
+        Assert.Equal("default - 1", vm.SelectedSession.Title);
     }
 
     [Fact]
@@ -176,16 +175,16 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions.Single();
 
-        vm.SetSessionStatusline(session.PaneId, "AC-13").Should().BeTrue();
-        session.Statusline.Should().Be("AC-13");
+        Assert.True(vm.SetSessionStatusline(session.PaneId, "AC-13"));
+        Assert.Equal("AC-13", session.Statusline);
 
         // An unknown pane id changes nothing and says it did nothing — a plugin/agent targeting a closed session.
-        vm.SetSessionStatusline("no-such-pane", "AC-99").Should().BeFalse();
-        session.Statusline.Should().Be("AC-13");
+        Assert.False(vm.SetSessionStatusline("no-such-pane", "AC-99"));
+        Assert.Equal("AC-13", session.Statusline);
 
         // An empty string clears it (hides the line).
-        vm.SetSessionStatusline(session.PaneId, "").Should().BeTrue();
-        session.Statusline.Should().BeEmpty();
+        Assert.True(vm.SetSessionStatusline(session.PaneId, ""));
+        Assert.Empty(session.Statusline);
     }
 
     [Fact]
@@ -200,7 +199,7 @@ public class CockpitViewModelTests
 
         await vm.SetSessionStatusCommand.ExecuteAsync(session);
 
-        session.Statusline.Should().Be("AC-32");
+        Assert.Equal("AC-32", session.Statusline);
     }
 
     [Fact]
@@ -217,7 +216,7 @@ public class CockpitViewModelTests
 
         await vm.SetSessionStatusCommand.ExecuteAsync(session);
 
-        session.Statusline.Should().BeEmpty();
+        Assert.Empty(session.Statusline);
     }
 
     [Fact]
@@ -235,7 +234,7 @@ public class CockpitViewModelTests
 
         // Cancel seeds the dialog with the current status and returns null → the line stays as it was.
         await dialogService.Received().ShowSetStatusDialogAsync("AC-13");
-        session.Statusline.Should().Be("AC-13");
+        Assert.Equal("AC-13", session.Statusline);
     }
 
     [Fact]
@@ -248,7 +247,7 @@ public class CockpitViewModelTests
 
         vm.ClearSessionStatusCommand.Execute(session);
 
-        session.Statusline.Should().BeEmpty();
+        Assert.Empty(session.Statusline);
     }
 
     [Fact]
@@ -258,12 +257,12 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions.Single();
 
-        vm.SetSessionName(session.PaneId, "  Working on AC-13  ").Should().BeTrue();
-        session.Title.Should().Be("Working on AC-13");
+        Assert.True(vm.SetSessionName(session.PaneId, "  Working on AC-13  "));
+        Assert.Equal("Working on AC-13", session.Title);
 
         // A blank name is ignored — the title stays, and it says it did nothing.
-        vm.SetSessionName(session.PaneId, "   ").Should().BeFalse();
-        session.Title.Should().Be("Working on AC-13");
+        Assert.False(vm.SetSessionName(session.PaneId, "   "));
+        Assert.Equal("Working on AC-13", session.Title);
     }
 
     [Fact]
@@ -272,17 +271,17 @@ public class CockpitViewModelTests
         var vm = NewVm();
         await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions.Single();
-        session.Title.Should().Be("default - 1");
+        Assert.Equal("default - 1", session.Title);
 
-        vm.SuggestSessionName(session.PaneId, "  AC-310  ").Should().BeTrue();
-        session.Title.Should().Be("AC-310");
+        Assert.True(vm.SuggestSessionName(session.PaneId, "  AC-310  "));
+        Assert.Equal("AC-310", session.Title);
 
         // A suggested name is still one nobody chose, so linking a second ticket relabels rather than sticking
         // on the first — the session shows what it is working on now.
-        vm.SuggestSessionName(session.PaneId, "AC-311").Should().BeTrue();
-        session.Title.Should().Be("AC-311");
+        Assert.True(vm.SuggestSessionName(session.PaneId, "AC-311"));
+        Assert.Equal("AC-311", session.Title);
 
-        vm.SuggestSessionName("no-such-pane", "AC-312").Should().BeFalse();
+        Assert.False(vm.SuggestSessionName("no-such-pane", "AC-312"));
     }
 
     [Fact]
@@ -296,8 +295,8 @@ public class CockpitViewModelTests
         session.EditTitle = "release work";
         session.CommitRename();
 
-        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
-        session.Title.Should().Be("release work");
+        Assert.False(vm.SuggestSessionName(session.PaneId, "AC-310"));
+        Assert.Equal("release work", session.Title);
     }
 
     [Fact]
@@ -309,10 +308,10 @@ public class CockpitViewModelTests
         var vm = NewVm(dialogService);
         await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions.Single();
-        session.Title.Should().Be("release work");
+        Assert.Equal("release work", session.Title);
 
-        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
-        session.Title.Should().Be("release work");
+        Assert.False(vm.SuggestSessionName(session.PaneId, "AC-310"));
+        Assert.Equal("release work", session.Title);
     }
 
     [Fact]
@@ -323,10 +322,10 @@ public class CockpitViewModelTests
         var session = vm.Sessions.Single();
 
         // SetSessionName is the "I mean it" call — a workflow or the agent naming the session deliberately.
-        vm.SetSessionName(session.PaneId, "release work").Should().BeTrue();
+        Assert.True(vm.SetSessionName(session.PaneId, "release work"));
 
-        vm.SuggestSessionName(session.PaneId, "AC-310").Should().BeFalse();
-        session.Title.Should().Be("release work");
+        Assert.False(vm.SuggestSessionName(session.PaneId, "AC-310"));
+        Assert.Equal("release work", session.Title);
     }
 
     [Fact]
@@ -340,8 +339,8 @@ public class CockpitViewModelTests
         // "default - 1 (copy)" is composed here, and a copy of a session nobody named is equally unnamed — so it
         // must not end up more protected from a ticket link than the session it came from (#AC-310).
         var copy = vm.Sessions.Last();
-        copy.Title.Should().Be("default - 1 (copy)");
-        vm.SuggestSessionName(copy.PaneId, "AC-310").Should().BeTrue();
+        Assert.Equal("default - 1 (copy)", copy.Title);
+        Assert.True(vm.SuggestSessionName(copy.PaneId, "AC-310"));
     }
 
     [Fact]
@@ -356,8 +355,8 @@ public class CockpitViewModelTests
         await vm.DuplicateSessionCommand.ExecuteAsync(original);
 
         var copy = vm.Sessions.Last();
-        copy.Title.Should().Be("release work (copy)");
-        vm.SuggestSessionName(copy.PaneId, "AC-310").Should().BeFalse();
+        Assert.Equal("release work (copy)", copy.Title);
+        Assert.False(vm.SuggestSessionName(copy.PaneId, "AC-310"));
     }
 
     [Fact]
@@ -369,7 +368,7 @@ public class CockpitViewModelTests
 
         vm.ShowTimestamps = true;
 
-        vm.Sessions.Should().OnlyContain(s => s.ShowTimestamps);
+        Assert.All(vm.Sessions, s => Assert.True(s.ShowTimestamps));
     }
 
     [Fact]
@@ -380,7 +379,7 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions.Single().ShowTimestamps.Should().BeTrue();
+        Assert.True(vm.Sessions.Single().ShowTimestamps);
     }
 
     [Fact]
@@ -392,7 +391,7 @@ public class CockpitViewModelTests
 
         vm.AutoCloseOnExit = true;
 
-        vm.Sessions.Should().OnlyContain(s => s.AutoCloseOnExit);
+        Assert.All(vm.Sessions, s => Assert.True(s.AutoCloseOnExit));
     }
 
     [Fact]
@@ -404,22 +403,22 @@ public class CockpitViewModelTests
         vm.CombineQueuedMessages = true; // reaches the already-open session live
         await vm.NewSessionCommand.ExecuteAsync(null); // and is seeded onto a session created afterwards
 
-        vm.Sessions.OfType<SessionViewModel>().Should().NotBeEmpty();
-        vm.Sessions.OfType<SessionViewModel>().Should().OnlyContain(s => s.CombineQueuedMessages);
+        Assert.NotEmpty(vm.Sessions.OfType<SessionViewModel>());
+        Assert.All(vm.Sessions.OfType<SessionViewModel>(), s => Assert.True(s.CombineQueuedMessages));
     }
 
     [Fact]
     public void ShowSinglePane_IsTrueWhenEitherZoomedOrSingleLayout()
     {
         var vm = NewVm();
-        vm.ShowSinglePane.Should().BeFalse();
+        Assert.False(vm.ShowSinglePane);
 
         vm.IsZoomed = true;
-        vm.ShowSinglePane.Should().BeTrue();
+        Assert.True(vm.ShowSinglePane);
 
         vm.IsZoomed = false;
         vm.GlobalSingleSessionLayout = true;
-        vm.ShowSinglePane.Should().BeTrue();
+        Assert.True(vm.ShowSinglePane);
     }
 
     [Fact]
@@ -431,7 +430,7 @@ public class CockpitViewModelTests
 
         session.RequestSelfClose();
 
-        vm.Sessions.Should().NotContain(session);
+        Assert.DoesNotContain(session, vm.Sessions);
     }
 
     [Fact]
@@ -449,7 +448,7 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions[0].Title.Should().Be("My debug session");
+        Assert.Equal("My debug session", vm.Sessions[0].Title);
     }
 
     [Fact]
@@ -460,8 +459,8 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions[0].Title.Should().Be("default - 1");
-        vm.Sessions[1].Title.Should().Be("default - 2");
+        Assert.Equal("default - 1", vm.Sessions[0].Title);
+        Assert.Equal("default - 2", vm.Sessions[1].Title);
     }
 
     [Fact]
@@ -475,9 +474,9 @@ public class CockpitViewModelTests
 
         vm.SelectSessionCommand.Execute(second);
 
-        vm.SelectedSession.Should().Be(second);
-        first.IsSelected.Should().BeFalse();
-        second.IsSelected.Should().BeTrue();
+        Assert.Equal(second, vm.SelectedSession);
+        Assert.False(first.IsSelected);
+        Assert.True(second.IsSelected);
     }
 
     [Fact]
@@ -489,7 +488,7 @@ public class CockpitViewModelTests
 
         await vm.CloseSessionCommand.ExecuteAsync(session);
 
-        vm.Sessions.Should().NotContain(session);
+        Assert.DoesNotContain(session, vm.Sessions);
     }
 
     [Fact]
@@ -504,7 +503,7 @@ public class CockpitViewModelTests
 
         await vm.CloseSessionCommand.ExecuteAsync(first);
 
-        vm.SelectedSession.Should().Be(second);
+        Assert.Equal(second, vm.SelectedSession);
     }
 
     [Fact]
@@ -517,9 +516,9 @@ public class CockpitViewModelTests
 
         await vm.CloseSessionCommand.ExecuteAsync(session);
 
-        vm.SelectedSession.Should().BeNull();
-        vm.IsZoomed.Should().BeFalse();
-        vm.HasSessions.Should().BeFalse();
+        Assert.Null(vm.SelectedSession);
+        Assert.False(vm.IsZoomed);
+        Assert.False(vm.HasSessions);
     }
 
     [Fact]
@@ -532,8 +531,8 @@ public class CockpitViewModelTests
 
         await vm.RequestCloseSessionCommand.ExecuteAsync(session);
 
-        vm.Sessions.Should().NotContain(session);
-        session.IsConfirmingClose.Should().BeFalse();
+        Assert.DoesNotContain(session, vm.Sessions);
+        Assert.False(session.IsConfirmingClose);
     }
 
     [Fact]
@@ -546,8 +545,8 @@ public class CockpitViewModelTests
 
         await vm.RequestCloseSessionCommand.ExecuteAsync(session);
 
-        vm.Sessions.Should().Contain(session);
-        session.IsConfirmingClose.Should().BeTrue();
+        Assert.Contains(session, vm.Sessions);
+        Assert.True(session.IsConfirmingClose);
     }
 
     [Fact]
@@ -561,8 +560,8 @@ public class CockpitViewModelTests
 
         await vm.ConfirmCloseSessionCommand.ExecuteAsync(session);
 
-        vm.Sessions.Should().NotContain(session);
-        session.IsConfirmingClose.Should().BeFalse();
+        Assert.DoesNotContain(session, vm.Sessions);
+        Assert.False(session.IsConfirmingClose);
     }
 
     [Fact]
@@ -576,8 +575,8 @@ public class CockpitViewModelTests
 
         vm.CancelCloseSessionCommand.Execute(session);
 
-        vm.Sessions.Should().Contain(session);
-        session.IsConfirmingClose.Should().BeFalse();
+        Assert.Contains(session, vm.Sessions);
+        Assert.False(session.IsConfirmingClose);
     }
 
     [Fact]
@@ -589,10 +588,10 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions.Should().ContainSingle();
-        vm.Sessions[0].Should().BeOfType<TtyViewModel>();
-        vm.SelectedSession.Should().Be(vm.Sessions[0]);
-        vm.SelectedSession!.IsSelected.Should().BeTrue();
+        Assert.Single(vm.Sessions);
+        Assert.IsType<TtyViewModel>(vm.Sessions[0]);
+        Assert.Equal(vm.Sessions[0], vm.SelectedSession);
+        Assert.True(vm.SelectedSession!.IsSelected);
     }
 
     [Fact]
@@ -607,8 +606,8 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions[0].Title.Should().Be("default - 1");
-        vm.Sessions[1].Title.Should().Be("default - 2");
+        Assert.Equal("default - 1", vm.Sessions[0].Title);
+        Assert.Equal("default - 2", vm.Sessions[1].Title);
     }
 
     [Fact]
@@ -617,10 +616,10 @@ public class CockpitViewModelTests
         var vm = NewVm();
 
         vm.ToggleZoomCommand.Execute(null);
-        vm.IsZoomed.Should().BeTrue();
+        Assert.True(vm.IsZoomed);
 
         vm.ToggleZoomCommand.Execute(null);
-        vm.IsZoomed.Should().BeFalse();
+        Assert.False(vm.IsZoomed);
     }
 
     [Fact]
@@ -631,7 +630,7 @@ public class CockpitViewModelTests
 
         vm.SelectNextSession();
 
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        Assert.Equal(vm.Sessions[1], vm.SelectedSession);
     }
 
     [Fact]
@@ -642,7 +641,7 @@ public class CockpitViewModelTests
 
         vm.SelectNextSession();
 
-        vm.SelectedSession.Should().Be(vm.Sessions[0]);
+        Assert.Equal(vm.Sessions[0], vm.SelectedSession);
     }
 
     [Fact]
@@ -653,7 +652,7 @@ public class CockpitViewModelTests
 
         vm.SelectPreviousSession();
 
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        Assert.Equal(vm.Sessions[1], vm.SelectedSession);
     }
 
     [Fact]
@@ -664,7 +663,7 @@ public class CockpitViewModelTests
 
         vm.SelectPreviousSession();
 
-        vm.SelectedSession.Should().Be(vm.Sessions[2]);
+        Assert.Equal(vm.Sessions[2], vm.SelectedSession);
     }
 
     [Fact]
@@ -675,8 +674,8 @@ public class CockpitViewModelTests
 
         vm.SelectNextSession();
 
-        vm.Sessions[0].IsSelected.Should().BeFalse();
-        vm.Sessions[1].IsSelected.Should().BeTrue();
+        Assert.False(vm.Sessions[0].IsSelected);
+        Assert.True(vm.Sessions[1].IsSelected);
     }
 
     [Fact]
@@ -688,8 +687,8 @@ public class CockpitViewModelTests
         vm.SelectNextSession();
         vm.SelectPreviousSession();
 
-        vm.SelectedSession.Should().Be(only);
-        only.IsSelected.Should().BeTrue();
+        Assert.Equal(only, vm.SelectedSession);
+        Assert.True(only.IsSelected);
     }
 
     [Fact]
@@ -700,24 +699,24 @@ public class CockpitViewModelTests
         vm.SelectNextSession();
         vm.SelectPreviousSession();
 
-        vm.SelectedSession.Should().BeNull();
-        vm.Sessions.Should().BeEmpty();
+        Assert.Null(vm.SelectedSession);
+        Assert.Empty(vm.Sessions);
     }
 
     [Fact]
     public async Task GridColumns_IsOneForZeroOrOneSessionAndTwoForMore()
     {
         var vm = NewVm();
-        vm.GridColumns.Should().Be(1);
+        Assert.Equal(1, vm.GridColumns);
 
         await vm.NewSessionCommand.ExecuteAsync(null);
-        vm.GridColumns.Should().Be(1);
+        Assert.Equal(1, vm.GridColumns);
 
         await vm.NewSessionCommand.ExecuteAsync(null);
-        vm.GridColumns.Should().Be(2);
+        Assert.Equal(2, vm.GridColumns);
 
         await vm.NewSessionCommand.ExecuteAsync(null);
-        vm.GridColumns.Should().Be(2);
+        Assert.Equal(2, vm.GridColumns);
     }
 
     [Fact]
@@ -759,12 +758,12 @@ public class CockpitViewModelTests
         await voiceSettingsStore.Received(1).SaveAsync(Arg.Any<VoiceSettings>(), Arg.Any<CancellationToken>());
         await terminalSettingsStore.Received(1).SaveAsync(Arg.Any<TerminalSettings>(), Arg.Any<CancellationToken>());
 
-        vm.NotificationSettingsStatus.Should().Be("Saved");
-        vm.TranscriptDisplaySettingsStatus.Should().Be("Saved");
-        vm.SessionBehaviorSettingsStatus.Should().Be("Saved");
-        vm.LayoutSettingsStatus.Should().Be("Saved");
-        vm.VoiceSettingsStatus.Should().Be("Saved");
-        vm.TerminalSettingsStatus.Should().Be("Saved");
+        Assert.Equal("Saved", vm.NotificationSettingsStatus);
+        Assert.Equal("Saved", vm.TranscriptDisplaySettingsStatus);
+        Assert.Equal("Saved", vm.SessionBehaviorSettingsStatus);
+        Assert.Equal("Saved", vm.LayoutSettingsStatus);
+        Assert.Equal("Saved", vm.VoiceSettingsStatus);
+        Assert.Equal("Saved", vm.TerminalSettingsStatus);
     }
 
     [Fact]
@@ -772,7 +771,7 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
 
-        vm.SidebarWidth.Should().Be(LayoutSettings.DefaultSidebarWidth);
+        Assert.Equal(LayoutSettings.DefaultSidebarWidth, vm.SidebarWidth);
     }
 
     [Fact]
@@ -784,7 +783,7 @@ public class CockpitViewModelTests
         var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
         await Task.Delay(50);
 
-        vm.SidebarWidth.Should().Be(300);
+        Assert.Equal(300, vm.SidebarWidth);
     }
 
     [Fact]
@@ -796,7 +795,7 @@ public class CockpitViewModelTests
 
         await vm.SetSidebarWidthAsync(320);
 
-        vm.SidebarWidth.Should().Be(320);
+        Assert.Equal(320, vm.SidebarWidth);
         await layoutSettingsStore.Received(1).SaveAsync(
             Arg.Is<LayoutSettings>(s => s.SidebarWidth == 320), Arg.Any<CancellationToken>());
     }
@@ -812,7 +811,7 @@ public class CockpitViewModelTests
 
         await vm.SetSidebarWidthAsync(requested);
 
-        vm.SidebarWidth.Should().Be(expected);
+        Assert.Equal(expected, vm.SidebarWidth);
         await layoutSettingsStore.Received(1).SaveAsync(
             Arg.Is<LayoutSettings>(s => s.SidebarWidth == expected), Arg.Any<CancellationToken>());
     }
@@ -829,8 +828,8 @@ public class CockpitViewModelTests
         // sections); give it a beat to complete before asserting.
         await Task.Delay(50);
 
-        vm.TerminalFontFamily.Should().Be("JetBrains Mono");
-        vm.TerminalFontSize.Should().Be(18);
+        Assert.Equal("JetBrains Mono", vm.TerminalFontFamily);
+        Assert.Equal(18, vm.TerminalFontSize);
     }
 
     [Fact]
@@ -847,9 +846,9 @@ public class CockpitViewModelTests
         await terminalSettingsStore.Received(1).SaveAsync(
             Arg.Is<TerminalSettings>(s => s.FontFamily == "Cascadia Mono, Consolas, monospace" && s.FontSize == TerminalSettings.MaxFontSize),
             Arg.Any<CancellationToken>());
-        vm.TerminalFontFamily.Should().Be("Cascadia Mono, Consolas, monospace");
-        vm.TerminalFontSize.Should().Be(TerminalSettings.MaxFontSize);
-        vm.TerminalSettingsStatus.Should().Be("Saved");
+        Assert.Equal("Cascadia Mono, Consolas, monospace", vm.TerminalFontFamily);
+        Assert.Equal(TerminalSettings.MaxFontSize, vm.TerminalFontSize);
+        Assert.Equal("Saved", vm.TerminalSettingsStatus);
     }
 
     [Fact]
@@ -863,9 +862,9 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
-        tty.TerminalFontFamily.Should().Be("Fira Code");
-        tty.TerminalFontSize.Should().Be(20);
+        var tty = Assert.IsType<TtyViewModel>(vm.Sessions[0]);
+        Assert.Equal("Fira Code", tty.TerminalFontFamily);
+        Assert.Equal(20, tty.TerminalFontSize);
     }
 
     [Fact]
@@ -875,13 +874,13 @@ public class CockpitViewModelTests
         dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
         var vm = NewVm(dialogService);
         await vm.NewSessionCommand.ExecuteAsync(null);
-        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
+        var tty = Assert.IsType<TtyViewModel>(vm.Sessions[0]);
 
         vm.TerminalFontFamily = "DejaVu Sans Mono";
         vm.TerminalFontSize = 24;
 
-        tty.TerminalFontFamily.Should().Be("DejaVu Sans Mono");
-        tty.TerminalFontSize.Should().Be(24);
+        Assert.Equal("DejaVu Sans Mono", tty.TerminalFontFamily);
+        Assert.Equal(24, tty.TerminalFontSize);
     }
 
     [Fact]
@@ -893,8 +892,8 @@ public class CockpitViewModelTests
         var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
         await Task.Delay(50);
 
-        vm.TerminalFontSelection.Should().Be("JetBrains Mono");
-        vm.IsTerminalFontCustom.Should().BeFalse();
+        Assert.Equal("JetBrains Mono", vm.TerminalFontSelection);
+        Assert.False(vm.IsTerminalFontCustom);
     }
 
     [Fact]
@@ -906,10 +905,10 @@ public class CockpitViewModelTests
         var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
         await Task.Delay(50);
 
-        vm.TerminalFontSelection.Should().Be(CockpitViewModel.CustomFontChoice);
-        vm.IsTerminalFontCustom.Should().BeTrue();
-        vm.TerminalCustomFontFamily.Should().Be("Comic Mono");
-        vm.TerminalFontFamily.Should().Be("Comic Mono");
+        Assert.Equal(CockpitViewModel.CustomFontChoice, vm.TerminalFontSelection);
+        Assert.True(vm.IsTerminalFontCustom);
+        Assert.Equal("Comic Mono", vm.TerminalCustomFontFamily);
+        Assert.Equal("Comic Mono", vm.TerminalFontFamily);
     }
 
     [Fact]
@@ -922,8 +921,8 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
-        tty.IsVerticalLayout.Should().BeTrue();
+        var tty = Assert.IsType<TtyViewModel>(vm.Sessions[0]);
+        Assert.True(tty.IsVerticalLayout);
     }
 
     [Fact]
@@ -933,11 +932,11 @@ public class CockpitViewModelTests
         dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
         var vm = NewVm(dialogService);
         await vm.NewSessionCommand.ExecuteAsync(null);
-        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
+        var tty = Assert.IsType<TtyViewModel>(vm.Sessions[0]);
 
         vm.GlobalStackSessionsVertically = true;
 
-        tty.IsVerticalLayout.Should().BeTrue();
+        Assert.True(tty.IsVerticalLayout);
     }
 
     [Fact]
@@ -946,11 +945,11 @@ public class CockpitViewModelTests
         var vm = NewVm();
 
         vm.TerminalFontSelection = CockpitViewModel.CustomFontChoice;
-        vm.IsTerminalFontCustom.Should().BeTrue();
+        Assert.True(vm.IsTerminalFontCustom);
 
         vm.TerminalCustomFontFamily = "Comic Mono, monospace";
 
-        vm.TerminalFontFamily.Should().Be("Comic Mono, monospace");
+        Assert.Equal("Comic Mono, monospace", vm.TerminalFontFamily);
     }
 
     [Fact]
@@ -962,8 +961,8 @@ public class CockpitViewModelTests
 
         vm.TerminalFontSelection = "Consolas";
 
-        vm.IsTerminalFontCustom.Should().BeFalse();
-        vm.TerminalFontFamily.Should().Be("Consolas");
+        Assert.False(vm.IsTerminalFontCustom);
+        Assert.Equal("Consolas", vm.TerminalFontFamily);
     }
 
     // #52: a settings-Save should let a plugin's already-built contributions (e.g. a side-menu section that
@@ -982,8 +981,8 @@ public class CockpitViewModelTests
 
         sink.NotifySettingsSaved("github-pull-requests");
 
-        prCalls.Should().Be(1);
-        youTrackCalls.Should().Be(0);
+        Assert.Equal(1, prCalls);
+        Assert.Equal(0, youTrackCalls);
     }
 
     [Fact]
@@ -998,8 +997,8 @@ public class CockpitViewModelTests
 
         sink.NotifySettingsSaved("youtrack");
 
-        firstCalls.Should().Be(1);
-        secondCalls.Should().Be(1);
+        Assert.Equal(1, firstCalls);
+        Assert.Equal(1, secondCalls);
     }
 
     [Fact]
@@ -1010,7 +1009,7 @@ public class CockpitViewModelTests
 
         var act = () => sink.NotifySettingsSaved("no-such-plugin");
 
-        act.Should().NotThrow();
+        act();
     }
 
     // Settings are now reachable from several places (the manager's gear, the gear on a plugin's left-menu entry
@@ -1058,7 +1057,7 @@ public class CockpitViewModelTests
 
         await vm.OpenPluginSettingsAsync("youtrack");
 
-        saves.Should().Be(1);
+        Assert.Equal(1, saves);
     }
 
     [Fact]
@@ -1069,7 +1068,7 @@ public class CockpitViewModelTests
 
         await vm.OpenPluginSettingsAsync("youtrack");
 
-        vm.HasPluginSettings("youtrack").Should().BeFalse();
+        Assert.False(vm.HasPluginSettings("youtrack"));
         await dialogHost.DidNotReceiveWithAnyArgs().ShowSettingsDialogAsync(default!, default!, default, default, default);
     }
 
@@ -1108,17 +1107,17 @@ public class CockpitViewModelTests
         var duplicateSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Duplicate active session");
         var manageProfiles = vm.ActiveShortcuts.Single(binding => binding.Label == "Manage profiles");
 
-        previousSession.Gesture.Should().Be("Ctrl+Shift+Up");
-        previousSession.ActiveInTerminal.Should().BeTrue();
-        nextSession.Gesture.Should().Be("Ctrl+Shift+Down");
-        nextSession.ActiveInTerminal.Should().BeTrue();
+        Assert.Equal("Ctrl+Shift+Up", previousSession.Gesture);
+        Assert.True(previousSession.ActiveInTerminal);
+        Assert.Equal("Ctrl+Shift+Down", nextSession.Gesture);
+        Assert.True(nextSession.ActiveInTerminal);
 
         // Session-management actions fire over a focused terminal (Raymond's call).
-        newSession.ActiveInTerminal.Should().BeTrue();
-        duplicateSession.ActiveInTerminal.Should().BeTrue();
+        Assert.True(newSession.ActiveInTerminal);
+        Assert.True(duplicateSession.ActiveInTerminal);
 
         // A dialog-opener on a single-key shell gesture (Ctrl+R) stays gated so it reaches the shell.
-        manageProfiles.ActiveInTerminal.Should().BeFalse();
+        Assert.False(manageProfiles.ActiveInTerminal);
     }
 
     [Fact]
@@ -1130,13 +1129,13 @@ public class CockpitViewModelTests
         vm.SelectSessionCommand.Execute(vm.Sessions[0]);
 
         vm.SelectNextSessionCommand.Execute(null);
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        Assert.Equal(vm.Sessions[1], vm.SelectedSession);
 
         vm.SelectNextSessionCommand.Execute(null);
-        vm.SelectedSession.Should().Be(vm.Sessions[0]);
+        Assert.Equal(vm.Sessions[0], vm.SelectedSession);
 
         vm.SelectPreviousSessionCommand.Execute(null);
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        Assert.Equal(vm.Sessions[1], vm.SelectedSession);
     }
 
     [Fact]

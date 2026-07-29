@@ -1,6 +1,5 @@
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -28,14 +27,14 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
     [Fact]
     public void Resolve_WhenGitConfirmedARepository_IsRepository()
     {
-        GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: true).Should().Be(GitDirectoryStatus.Repository);
+        Assert.Equal(GitDirectoryStatus.Repository, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: true));
     }
 
     [Fact]
     public void Resolve_WithNoGitAnywhereInTheTree_IsNotARepository()
     {
         // The one case that licenses running unisolated: a plain folder with no .git up the tree.
-        GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false).Should().Be(GitDirectoryStatus.NotARepository);
+        Assert.Equal(GitDirectoryStatus.NotARepository, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false));
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
         var nested = Path.Combine(_root, "src", "app");
         Directory.CreateDirectory(nested);
 
-        GitDirectoryStatusResolver.Resolve(nested, gitConfirmedRepository: false).Should().Be(GitDirectoryStatus.Unknown);
+        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(nested, gitConfirmedRepository: false));
     }
 
     [Fact]
@@ -57,20 +56,19 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
         // probe there is Unknown, not NotARepository.
         File.WriteAllText(Path.Combine(_root, ".git"), "gitdir: /somewhere/.git/worktrees/x");
 
-        GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false).Should().Be(GitDirectoryStatus.Unknown);
+        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: false));
     }
 
     [Fact]
     public void Resolve_WithAMissingDirectory_IsUnknown_NotNotARepository()
     {
-        GitDirectoryStatusResolver.Resolve(Path.Combine(_root, "does-not-exist"), gitConfirmedRepository: false)
-            .Should().Be(GitDirectoryStatus.Unknown);
+        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(Path.Combine(_root, "does-not-exist"), gitConfirmedRepository: false));
     }
 
     [Fact]
     public void Resolve_WithABlankDirectory_IsUnknown()
     {
-        GitDirectoryStatusResolver.Resolve("  ", gitConfirmedRepository: false).Should().Be(GitDirectoryStatus.Unknown);
+        Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve("  ", gitConfirmedRepository: false));
     }
 
     [Fact]
@@ -87,7 +85,7 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
         Directory.CreateSymbolicLink(link, realSub);
         try
         {
-            GitDirectoryStatusResolver.Resolve(link, gitConfirmedRepository: false).Should().Be(GitDirectoryStatus.Unknown);
+            Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(link, gitConfirmedRepository: false));
         }
         finally
         {

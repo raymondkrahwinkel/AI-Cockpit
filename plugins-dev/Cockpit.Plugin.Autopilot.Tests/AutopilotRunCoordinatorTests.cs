@@ -3,7 +3,6 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -24,7 +23,7 @@ public class AutopilotRunCoordinatorTests
     {
         var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), new AutopilotPlanController());
 
-        coordinator.ReportStepDone("nobody", "done").Should().BeFalse();
+        Assert.False(coordinator.ReportStepDone("nobody", "done"));
     }
 
     [Fact]
@@ -34,8 +33,8 @@ public class AutopilotRunCoordinatorTests
         plan.BindSession("ceo-pane");
         var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), plan);
 
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: null).Should().BeFalse();
-        coordinator.ReportValidation("intruder", passed: true, reason: null).Should().BeFalse();
+        Assert.False(coordinator.ReportValidation("ceo-pane", passed: true, reason: null));
+        Assert.False(coordinator.ReportValidation("intruder", passed: true, reason: null));
     }
 
     [Fact]
@@ -54,13 +53,13 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
 
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
         await stepSession.Received(1).CloseAsync();
     }
 
@@ -72,7 +71,7 @@ public class AutopilotRunCoordinatorTests
         var plan = new AutopilotPlanController();
         plan.BeginPlanning(new AutopilotPlan("goal", null, [_HardStep("1")]) { DeliversPullRequest = true });
         plan.BindSession("ceo-pane");
-        plan.Approve().Should().BeTrue();
+        Assert.True(plan.Approve());
 
         var host = _Host();
         var stepSession = _Session("step-pane");
@@ -91,12 +90,12 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "meets acceptance"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
         Assert.True(plan.PullRequestMissing);
     }
 
@@ -115,14 +114,14 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "tried but it does not compile").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "tried but it does not compile"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: false, reason: "does not meet acceptance").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: false, reason: "does not meet acceptance"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        Assert.Equal(AutopilotPlanPhase.Blocked, plan.Phase);
         // The CEO's reason is surfaced on the step, so a failed step says why it was not accepted.
-        plan.Plan!.Steps[0].Note.Should().Contain("does not meet acceptance");
+        Assert.Contains("does not meet acceptance", plan.Plan!.Steps[0].Note);
     }
 
     [Fact]
@@ -145,15 +144,15 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
         // No verdict will ever arrive: the CEO's session ended with the host's refusal instead.
         ceoEnded.TrySetResult("Could not confine this run: the \"kimi\" profile does not confine its file tools to its working directory.");
 
         // The Timeout is the assertion: before this, the run waited here forever.
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
-        plan.Plan!.Steps[0].Note.Should().Contain("does not confine its file tools");
+        Assert.Equal(AutopilotPlanPhase.Blocked, plan.Phase);
+        Assert.Contains("does not confine its file tools", plan.Plan!.Steps[0].Note);
     }
 
     [Fact]
@@ -174,13 +173,13 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane", ceoEnded.Task), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "opened PR #1"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: null).Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: null));
         ceoEnded.TrySetResult("the workspace closed");
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     [Fact]
@@ -289,9 +288,9 @@ public class AutopilotRunCoordinatorTests
         stepSession.Received(1).SetInputEnabled(true);
 
         // Let the step settle cleanly so the run finishes.
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
         await run.WaitAsync(Timeout);
     }
 
@@ -300,7 +299,7 @@ public class AutopilotRunCoordinatorTests
     {
         var coordinator = new AutopilotRunCoordinator(_Host(), new AutopilotPlanController());
 
-        coordinator.Invoking(c => c.EnableCurrentStepInput()).Should().NotThrow();
+        coordinator.EnableCurrentStepInput();
     }
 
     [Fact]
@@ -323,11 +322,11 @@ public class AutopilotRunCoordinatorTests
         ended.TrySetResult("Could not isolate this run: the Qwen (local) profile's provider does not confine its file tools to the worktree.");
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        Assert.Equal(AutopilotPlanPhase.Blocked, plan.Phase);
         // The step never reported done, so the CEO is never asked to validate it.
         await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
         // The failure reason is surfaced on the step so it is not a silent red dot.
-        plan.Plan!.Steps[0].Note.Should().Contain("does not confine its file tools to the worktree");
+        Assert.Contains("does not confine its file tools to the worktree", plan.Plan!.Steps[0].Note);
     }
 
     [Fact]
@@ -362,15 +361,15 @@ public class AutopilotRunCoordinatorTests
 
         await _Until(() => shownCount >= 2);
         // Second attempt (a fresh session): report done normally and have the CEO accept it.
-        coordinator.ReportStepDone("step-pane-2", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane-2", "done"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
         var step = plan.Plan!.Steps[0];
-        step.Attempts.Should().Be(2);
-        step.Reworks.Should().Be(0);
+        Assert.Equal(2, step.Attempts);
+        Assert.Equal(0, step.Reworks);
     }
 
     [Fact]
@@ -395,11 +394,11 @@ public class AutopilotRunCoordinatorTests
         await shown.Task.WaitAsync(Timeout);
         await run.WaitAsync(Timeout);
 
-        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        Assert.Equal(AutopilotPlanPhase.Blocked, plan.Phase);
         // The agent got its single nudge before the stall deadline gave up on it.
         await host.Received().SendToSessionAsync("step-pane", Arg.Any<string>());
         // The failed step explains itself as stalled rather than a silent red dot.
-        plan.Plan!.Steps[0].Note.Should().Contain("stalled");
+        Assert.Contains("stalled", plan.Plan!.Steps[0].Note);
         // A step that never reported is never handed to the CEO to validate.
         await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
     }
@@ -437,13 +436,13 @@ public class AutopilotRunCoordinatorTests
         }
 
         // Never failed as stalled: it reports done and reaches the CEO's validation, and the run settles merge-ready.
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
-        plan.Plan!.Steps[0].Note.Should().NotContain("stalled");
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.DoesNotContain("stalled", plan.Plan!.Steps[0].Note);
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     [Fact]
@@ -464,22 +463,22 @@ public class AutopilotRunCoordinatorTests
 
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await _Until(() => ceoSends >= 1); // the validation turn reached the CEO — a validation is now pending
 
         // A worker consult during the validation window is escalated to the operator, moving the run to AwaitingOperator
         // while the validation is still pending.
-        (await coordinator.ReportConsultAsync("step-pane", "one more question")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "one more question")));
         await _Until(() => ceoSends >= 2); // the consult reached the CEO
-        coordinator.EscalateToOperator("ceo-pane", "operator, please decide").Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeFalse();
+        Assert.True(coordinator.EscalateToOperator("ceo-pane", "operator, please decide"));
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, plan.Phase);
+        Assert.False(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         // Once answered and running again, the pending validation resolves as normal and the run settles.
         await coordinator.AnswerBlockadeAsync("go ahead");
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     [Fact]
@@ -502,15 +501,15 @@ public class AutopilotRunCoordinatorTests
         await shown.Task.WaitAsync(Timeout);
 
         // Park the run on the operator through the live mechanism: a worker consults, the CEO escalates it to the operator.
-        (await coordinator.ReportConsultAsync("step-pane", "need a decision")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "need a decision")));
         await _Until(() => ceoSends >= 1);
-        coordinator.EscalateToOperator("ceo-pane", "operator, please decide").Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
+        Assert.True(coordinator.EscalateToOperator("ceo-pane", "operator, please decide"));
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, plan.Phase);
 
         // A blank operator answer still relays a "Continue." turn to the worker's session and resumes the run.
         await coordinator.AnswerBlockadeAsync("   ");
         await host.Received(1).SendToSessionAsync("step-pane", "Continue.");
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
 
         cts.Cancel();
         await run.WaitAsync(Timeout);
@@ -522,12 +521,12 @@ public class AutopilotRunCoordinatorTests
         var plan = _RunningPlan(_HardStep("1"));
         plan.SettleStep("1", AutopilotStepStatus.Passed);
         plan.Settle();
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
 
         var coordinator = new AutopilotRunCoordinator(_Host(), plan);
         await coordinator.AnswerBlockadeAsync("a stray click after the run is done");
 
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     [Fact]
@@ -541,7 +540,7 @@ public class AutopilotRunCoordinatorTests
         host.TrackerProviders.Returns(new[] { provider });
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
-        (await coordinator.ReportTrackerStageAsync("ceo-pane", "Review")).Should().BeTrue();
+        Assert.True((await coordinator.ReportTrackerStageAsync("ceo-pane", "Review")));
         await provider.Received(1).SetStageAsync("AC-1", "Review", Arg.Any<CancellationToken>());
     }
 
@@ -555,7 +554,7 @@ public class AutopilotRunCoordinatorTests
         host.TrackerProviders.Returns(new[] { provider });
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
-        (await coordinator.ReportTrackerStageAsync("intruder", "Review")).Should().BeFalse();
+        Assert.False((await coordinator.ReportTrackerStageAsync("intruder", "Review")));
         await provider.DidNotReceive().SetStageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -569,7 +568,7 @@ public class AutopilotRunCoordinatorTests
         host.TrackerProviders.Returns(new[] { provider });
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
-        (await coordinator.ReportTrackerNoteAsync("ceo-pane", "evidence")).Should().BeFalse();
+        Assert.False((await coordinator.ReportTrackerNoteAsync("ceo-pane", "evidence")));
         await provider.DidNotReceive().PostCommentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -594,17 +593,17 @@ public class AutopilotRunCoordinatorTests
 
         await shown.Task.WaitAsync(Timeout);
         // The run moved the issue to Develop the moment it started — before any step reports, so it never sits on Backlog.
-        provider.StageCalls.Should().ContainSingle().Which.Should().Be(("AC-1", "Develop"));
+        Assert.Equal(("AC-1", "Develop"), Assert.Single(provider.StageCalls));
 
-        coordinator.ReportStepDone("step-pane", "opened PR").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "opened PR"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
         // Merge-ready moved it to Review (the tracker's own vocabulary via SuggestStageName) — the work is done, the
         // merge is left to the human, so it is not closed to Done automatically.
-        provider.StageCalls.Should().Equal(("AC-1", "Develop"), ("AC-1", "Review"));
+        Assert.Equal(new[] { ("AC-1", "Develop"), ("AC-1", "Review") }, provider.StageCalls);
     }
 
     [Fact]
@@ -624,13 +623,13 @@ public class AutopilotRunCoordinatorTests
 
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
-        provider.StageCalls.Should().BeEmpty();
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
+        Assert.Empty(provider.StageCalls);
     }
 
     [Fact]
@@ -646,7 +645,7 @@ public class AutopilotRunCoordinatorTests
         await coordinator.AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress);
 
         // The same lifecycle edge fired twice sets the stage once — a re-render or a retried edge does not re-move it.
-        provider.StageCalls.Should().ContainSingle().Which.Should().Be(("AC-1", "Develop"));
+        Assert.Equal(("AC-1", "Develop"), Assert.Single(provider.StageCalls));
     }
 
     [Fact]
@@ -666,13 +665,13 @@ public class AutopilotRunCoordinatorTests
 
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
-        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done"));
         await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         // The run completes without faulting despite the tracker throwing on every stage move.
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     // A concrete tracker provider that records SetStageAsync calls (a substitute cannot intercept SuggestStageName — it
@@ -732,14 +731,14 @@ public class AutopilotRunCoordinatorTests
 
         // The worker consults its manager — the question is relayed into the CEO session and the run stays Running (a
         // consult is not an operator blockade).
-        (await coordinator.ReportConsultAsync("step-pane", "Which database should it use?")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "Which database should it use?")));
         await _Until(() => ceoSends >= 1);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
 
         // Only one consult may be open at a time — a second, while the first is unanswered, is turned down.
-        (await coordinator.ReportConsultAsync("step-pane", "and another?")).Should().BeFalse();
+        Assert.False((await coordinator.ReportConsultAsync("step-pane", "and another?")));
         // A pane that is not a live step worker cannot consult.
-        (await coordinator.ReportConsultAsync("intruder", "let me in")).Should().BeFalse();
+        Assert.False((await coordinator.ReportConsultAsync("intruder", "let me in")));
 
         cts.Cancel();
         await run.WaitAsync(Timeout);
@@ -761,19 +760,19 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
-        (await coordinator.ReportConsultAsync("step-pane", "Which db?")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "Which db?")));
         await _Until(() => ceoSends >= 1);
 
         // Only the run's CEO session answers a consult — an intruder cannot.
-        (await coordinator.AnswerWorkerAsync("intruder", "not you")).Should().BeFalse();
+        Assert.False((await coordinator.AnswerWorkerAsync("intruder", "not you")));
 
         // The CEO's answer is relayed into the worker's session as a turn; the phase never left Running.
-        (await coordinator.AnswerWorkerAsync("ceo-pane", "Use Postgres.")).Should().BeTrue();
+        Assert.True((await coordinator.AnswerWorkerAsync("ceo-pane", "Use Postgres.")));
         await host.Received(1).SendToSessionAsync("step-pane", "Use Postgres.");
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
 
         // The consult is cleared: a second answer with none pending is rejected.
-        (await coordinator.AnswerWorkerAsync("ceo-pane", "again?")).Should().BeFalse();
+        Assert.False((await coordinator.AnswerWorkerAsync("ceo-pane", "again?")));
 
         cts.Cancel();
         await run.WaitAsync(Timeout);
@@ -795,21 +794,21 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
         await shown.Task.WaitAsync(Timeout);
 
-        (await coordinator.ReportConsultAsync("step-pane", "Need a prod credential.")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "Need a prod credential.")));
         await _Until(() => ceoSends >= 1);
 
         // Only the CEO session escalates a consult.
-        coordinator.EscalateToOperator("intruder", "nope").Should().BeFalse();
+        Assert.False(coordinator.EscalateToOperator("intruder", "nope"));
 
         // The CEO decides it is genuinely the operator's call: the run parks on the operator, and the pending pane is the
         // WORKER (not the CEO), so the operator's answer is later relayed to the worker through the unchanged AnswerBlockadeAsync.
-        coordinator.EscalateToOperator("ceo-pane", "The step needs a production credential.").Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        plan.PendingQuestion.Should().Be("The step needs a production credential.");
+        Assert.True(coordinator.EscalateToOperator("ceo-pane", "The step needs a production credential."));
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, plan.Phase);
+        Assert.Equal("The step needs a production credential.", plan.PendingQuestion);
 
         await coordinator.AnswerBlockadeAsync("Here is the credential: XYZ.");
         await host.Received(1).SendToSessionAsync("step-pane", "Here is the credential: XYZ.");
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
 
         cts.Cancel();
         await run.WaitAsync(Timeout);
@@ -831,9 +830,9 @@ public class AutopilotRunCoordinatorTests
         await shown.Task.WaitAsync(Timeout);
 
         // Fail-closed: with no live CEO the consult goes straight to the operator instead of being dropped.
-        (await coordinator.ReportConsultAsync("step-pane", "Which db?")).Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        plan.PendingQuestion.Should().Be("Which db?");
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "Which db?")));
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, plan.Phase);
+        Assert.Equal("Which db?", plan.PendingQuestion);
         // Nothing was relayed to the (ended) CEO session.
         await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
 
@@ -861,38 +860,38 @@ public class AutopilotRunCoordinatorTests
 
         // Step 1: first consult reaches the CEO (count 1, not over the cap of 1).
         await _Until(() => embeds >= 1);
-        (await coordinator.ReportConsultAsync("step-pane", "q1")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "q1")));
         await _Until(() => ceoSends >= 1);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
-        (await coordinator.AnswerWorkerAsync("ceo-pane", "a1")).Should().BeTrue();
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
+        Assert.True((await coordinator.AnswerWorkerAsync("ceo-pane", "a1")));
 
         // Step 1: the second consult exceeds the cap → it goes to the operator, not the CEO (ceoSends stays 1).
-        (await coordinator.ReportConsultAsync("step-pane", "q2")).Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        plan.PendingQuestion.Should().Be("q2");
-        ceoSends.Should().Be(1);
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "q2")));
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, plan.Phase);
+        Assert.Equal("q2", plan.PendingQuestion);
+        Assert.Equal(1, ceoSends);
 
         // The operator answers (relayed to the worker), which then finishes step 1 and the CEO validates it.
         await coordinator.AnswerBlockadeAsync("operator says X");
-        coordinator.ReportStepDone("step-pane", "done 1").Should().BeTrue();
+        Assert.True(coordinator.ReportStepDone("step-pane", "done 1"));
         await _Until(() => ceoSends >= 2); // the validation turn was sent to the CEO
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         // Step 2 starts with a fresh consult budget: its first consult reaches the CEO again (proving the per-step reset —
         // without it the count would still be over the cap and this would go to the operator).
         await _Until(() => embeds >= 2);
-        (await coordinator.ReportConsultAsync("step-pane", "q3")).Should().BeTrue();
+        Assert.True((await coordinator.ReportConsultAsync("step-pane", "q3")));
         await _Until(() => ceoSends >= 3);
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.Equal(AutopilotPlanPhase.Running, plan.Phase);
 
         // Finish step 2 cleanly so the run settles.
-        (await coordinator.AnswerWorkerAsync("ceo-pane", "a3")).Should().BeTrue();
-        coordinator.ReportStepDone("step-pane", "done 2").Should().BeTrue();
+        Assert.True((await coordinator.AnswerWorkerAsync("ceo-pane", "a3")));
+        Assert.True(coordinator.ReportStepDone("step-pane", "done 2"));
         await _Until(() => ceoSends >= 4);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+        Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
 
         await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, plan.Phase);
     }
 
     [Fact]
@@ -1001,7 +1000,7 @@ public class AutopilotRunCoordinatorTests
         var plan = new AutopilotPlanController();
         plan.BeginPlanning(new AutopilotPlan("goal", null, [step]));
         plan.BindSession("ceo-pane");
-        plan.Approve().Should().BeTrue();
+        Assert.True(plan.Approve());
         return plan;
     }
 
@@ -1010,7 +1009,7 @@ public class AutopilotRunCoordinatorTests
         var plan = new AutopilotPlanController();
         plan.BeginPlanning(new AutopilotPlan("goal", null, steps));
         plan.BindSession("ceo-pane");
-        plan.Approve().Should().BeTrue();
+        Assert.True(plan.Approve());
         return plan;
     }
 
@@ -1019,7 +1018,7 @@ public class AutopilotRunCoordinatorTests
         var plan = new AutopilotPlanController();
         plan.BeginPlanning(new AutopilotPlan("goal", source, [step]));
         plan.BindSession("ceo-pane");
-        plan.Approve().Should().BeTrue();
+        Assert.True(plan.Approve());
         return plan;
     }
 
@@ -1122,7 +1121,7 @@ public class AutopilotRunCoordinatorTests
             await Task.Delay(10);
         }
 
-        condition().Should().BeTrue("the condition should hold within the timeout");
+        Assert.True(condition(), "the condition should hold within the timeout");
     }
 
     private static AutopilotRunEnvironment _Env(bool isolate = true) => new("/repo", null, isolate);

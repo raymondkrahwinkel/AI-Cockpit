@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -28,8 +27,8 @@ public class SessionRuntimeTests
         await runtime.StartAsync(profile: null);
         await _DrainAsync(runtime, expectedEvents: 2);
 
-        seen.Should().HaveCount(2);
-        runtime.IsRunning.Should().BeTrue();
+        Assert.Equal(2, seen.Count);
+        Assert.True(runtime.IsRunning);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class SessionRuntimeTests
         await runtime.StartAsync(profile: null);
         await _DrainAsync(runtime, expectedEvents: 3);
 
-        runtime.LastAssistantText.Should().Be("first\n\nsecond");
+        Assert.Equal("first\n\nsecond", runtime.LastAssistantText);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public class SessionRuntimeTests
         await runtime.StartAsync(profile: null);
         await _DrainAsync(runtime, expectedEvents: 2);
 
-        runtime.LastAssistantText.Should().Be("the final result");
+        Assert.Equal("the final result", runtime.LastAssistantText);
     }
 
     [Fact]
@@ -78,12 +77,12 @@ public class SessionRuntimeTests
 
         var (events, cursor) = runtime.EventsSince(0);
 
-        events.Should().HaveCount(2);
-        cursor.Should().Be(2);
+        Assert.Equal(2, events.Count);
+        Assert.Equal(2, cursor);
 
         var (afterCursor, nextCursor) = runtime.EventsSince(cursor);
-        afterCursor.Should().BeEmpty("everything up to the cursor has already been handed out");
-        nextCursor.Should().Be(2);
+        Assert.Empty(afterCursor);
+        Assert.Equal(2, nextCursor);
     }
 
     [Fact]

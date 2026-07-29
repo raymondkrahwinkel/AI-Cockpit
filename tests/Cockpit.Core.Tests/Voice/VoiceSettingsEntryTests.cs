@@ -1,6 +1,5 @@
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -17,7 +16,7 @@ public class VoiceSettingsEntryTests
     {
         var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = null, OllamaBaseUrl = "http://legacy:9999" };
 
-        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://legacy:9999");
+        Assert.Equal("http://legacy:9999", entry.ToDomain().VoiceLlmBaseUrl);
     }
 
     [Fact]
@@ -25,7 +24,7 @@ public class VoiceSettingsEntryTests
     {
         var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = "http://cleanup:1234" };
 
-        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://cleanup:1234");
+        Assert.Equal("http://cleanup:1234", entry.ToDomain().VoiceLlmBaseUrl);
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class VoiceSettingsEntryTests
     {
         var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = "http://new:1234", CleanupBaseUrl = "http://old:1", OllamaBaseUrl = "http://legacy:9999" };
 
-        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://new:1234");
+        Assert.Equal("http://new:1234", entry.ToDomain().VoiceLlmBaseUrl);
     }
 
     [Fact]
@@ -41,7 +40,7 @@ public class VoiceSettingsEntryTests
     {
         var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = null, OllamaBaseUrl = null };
 
-        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://localhost:11434");
+        Assert.Equal("http://localhost:11434", entry.ToDomain().VoiceLlmBaseUrl);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class VoiceSettingsEntryTests
     {
         var entry = new VoiceSettingsEntry { VoiceLlmModel = null, CleanupModel = "qwen2.5:3b-instruct" };
 
-        entry.ToDomain().VoiceLlmModel.Should().Be("qwen2.5:3b-instruct");
+        Assert.Equal("qwen2.5:3b-instruct", entry.ToDomain().VoiceLlmModel);
     }
 
     [Fact]
@@ -58,7 +57,7 @@ public class VoiceSettingsEntryTests
         // No model key at all = "Auto" (empty), which the resolver reads as "let auto-detect choose".
         var entry = new VoiceSettingsEntry { VoiceLlmModel = null, CleanupModel = null };
 
-        entry.ToDomain().VoiceLlmModel.Should().BeEmpty();
+        Assert.Empty(entry.ToDomain().VoiceLlmModel);
     }
 
     [Fact]
@@ -67,11 +66,11 @@ public class VoiceSettingsEntryTests
         var entry = VoiceSettingsEntry.FromDomain(new VoiceSettings { VoiceLlmBaseUrl = "http://x:1", VoiceLlmModel = "m" });
 
         // Legacy keys stay null so they are not written back (JsonIgnore WhenWritingNull), leaving only the neutral keys on disk.
-        entry.OllamaBaseUrl.Should().BeNull();
-        entry.CleanupBaseUrl.Should().BeNull();
-        entry.CleanupModel.Should().BeNull();
-        entry.VoiceLlmBaseUrl.Should().Be("http://x:1");
-        entry.VoiceLlmModel.Should().Be("m");
+        Assert.Null(entry.OllamaBaseUrl);
+        Assert.Null(entry.CleanupBaseUrl);
+        Assert.Null(entry.CleanupModel);
+        Assert.Equal("http://x:1", entry.VoiceLlmBaseUrl);
+        Assert.Equal("m", entry.VoiceLlmModel);
     }
 
     [Fact]
@@ -81,20 +80,20 @@ public class VoiceSettingsEntryTests
         // so a missing key must not flip the model to the recommendation behind the operator's back.
         var entry = new VoiceSettingsEntry { ModelName = "small", ModelAutoSelected = null };
 
-        entry.ToDomain().ModelAutoSelected.Should().BeFalse();
+        Assert.False(entry.ToDomain().ModelAutoSelected);
     }
 
     [Fact]
     public void ModelAutoSelected_RoundTrips_WhenSetExplicitly()
     {
-        new VoiceSettingsEntry { ModelAutoSelected = true }.ToDomain().ModelAutoSelected.Should().BeTrue();
-        VoiceSettingsEntry.FromDomain(new VoiceSettings { ModelAutoSelected = true }).ModelAutoSelected.Should().Be(true);
+        Assert.True(new VoiceSettingsEntry { ModelAutoSelected = true }.ToDomain().ModelAutoSelected);
+        Assert.Equal(true, VoiceSettingsEntry.FromDomain(new VoiceSettings { ModelAutoSelected = true }).ModelAutoSelected);
     }
 
     [Fact]
     public void AFreshInstall_DefaultsToTheAutoModel()
     {
         // The domain default is Auto, so a brand-new config (no voice section on disk) starts on the recommendation.
-        new VoiceSettings().ModelAutoSelected.Should().BeTrue();
+        Assert.True(new VoiceSettings().ModelAutoSelected);
     }
 }

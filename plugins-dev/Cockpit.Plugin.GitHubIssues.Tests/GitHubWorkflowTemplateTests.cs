@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -17,9 +16,9 @@ public class GitHubWorkflowTemplateTests
         {
             var flow = JsonDocument.Parse(template.Json).RootElement;
 
-            flow.GetProperty("Name").GetString().Should().NotBeNullOrWhiteSpace();
-            flow.GetProperty("Nodes").GetArrayLength().Should().BeGreaterThan(0, "a template with no steps is a blank canvas with a name");
-            flow.GetProperty("IsActive").GetBoolean().Should().BeFalse("a flow nobody has read yet must not already be armed");
+            Assert.False(string.IsNullOrWhiteSpace(flow.GetProperty("Name").GetString()));
+            Assert.True(flow.GetProperty("Nodes").GetArrayLength() > 0, "a template with no steps is a blank canvas with a name");
+            Assert.False(flow.GetProperty("IsActive").GetBoolean(), "a flow nobody has read yet must not already be armed");
         }
     }
 
@@ -38,8 +37,8 @@ public class GitHubWorkflowTemplateTests
 
             foreach (var wire in flow.GetProperty("Connections").EnumerateArray())
             {
-                ids.Should().Contain(wire.GetProperty("FromNodeId").GetString(), $"'{template.Id}' wires from a step it does not have");
-                ids.Should().Contain(wire.GetProperty("ToNodeId").GetString(), $"'{template.Id}' wires to a step it does not have");
+                Assert.Contains(wire.GetProperty("FromNodeId").GetString(), ids);
+                Assert.Contains(wire.GetProperty("ToNodeId").GetString(), ids);
             }
         }
     }
@@ -67,7 +66,7 @@ public class GitHubWorkflowTemplateTests
             {
                 var resolvable = typeId.StartsWith("cockpit.", StringComparison.Ordinal) || contributed.Contains(typeId);
 
-                resolvable.Should().BeTrue($"'{template.Id}' uses '{typeId}', which is neither a cockpit step nor one this plugin contributes");
+                Assert.True(resolvable, $"'{template.Id}' uses '{typeId}', which is neither a cockpit step nor one this plugin contributes");
             }
         }
     }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Notifications;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
@@ -13,28 +12,24 @@ public class FinishedNotificationDecisionTests
     [Fact]
     public void WatchingThatSession_StaysSilent()
     {
-        FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Present)
-            .Should().BeFalse();
+        Assert.False(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Present));
     }
 
     [Fact]
     public void AnotherSessionSelected_Notifies()
     {
-        FinishedNotificationDecision.ShouldNotify(isSelected: false, isWindowActive: true, PresenceState.Present)
-            .Should().BeTrue();
+        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: false, isWindowActive: true, PresenceState.Present));
     }
 
     [Fact]
     public void WindowInTheBackground_Notifies()
     {
-        FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: false, PresenceState.Present)
-            .Should().BeTrue();
+        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: false, PresenceState.Present));
     }
 
     [Fact]
     public void AwayFromThePc_NotifiesEvenForTheSelectedSessionInAFocusedWindow()
     {
-        FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Away)
-            .Should().BeTrue();
+        Assert.True(FinishedNotificationDecision.ShouldNotify(isSelected: true, isWindowActive: true, PresenceState.Away));
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.ManagedCli;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -27,7 +26,7 @@ public class CodexManagedCliTests
     [InlineData("0.144.5", "0.144.5")]
     public void ParseVersion_StripsTheRustPrefix(string tag, string expected)
     {
-        CodexManagedCli.ParseVersion(tag).Should().Be(expected);
+        Assert.Equal(expected, CodexManagedCli.ParseVersion(tag));
     }
 
     [Theory]
@@ -37,7 +36,7 @@ public class CodexManagedCliTests
     [InlineData("win32", "x64", false, "x86_64-pc-windows-msvc")]
     public void TargetTriple_MapsOsAndArch_AndIsAlwaysMuslOnLinux(string os, string arch, bool musl, string expected)
     {
-        CodexManagedCli.TargetTriple(new ManagedCliPlatform(os, arch, musl)).Should().Be(expected);
+        Assert.Equal(expected, CodexManagedCli.TargetTriple(new ManagedCliPlatform(os, arch, musl)));
     }
 
     [Theory]
@@ -45,7 +44,7 @@ public class CodexManagedCliTests
     [InlineData("win32", "codex-x86_64-pc-windows-msvc.exe.tar.gz")]
     public void AssetName_AddsExeOnlyOnWindows(string os, string expected)
     {
-        CodexManagedCli.AssetName(new ManagedCliPlatform(os, "x64", false)).Should().Be(expected);
+        Assert.Equal(expected, CodexManagedCli.AssetName(new ManagedCliPlatform(os, "x64", false)));
     }
 
     [Fact]
@@ -53,12 +52,12 @@ public class CodexManagedCliTests
     {
         var plan = CodexManagedCli.BuildPlan(new ManagedCliPlatform("linux", "x64", false), Release);
 
-        plan.Url.Should().Be("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-unknown-linux-musl.tar.gz");
-        plan.ExpectedSha256.Should().Be("1111aaaa"); // the "sha256:" prefix is stripped
-        plan.ArchiveFormat.Should().Be(ManagedCliArchiveFormat.TarGz);
-        plan.ExecutableEntryName.Should().Be("codex-x86_64-unknown-linux-musl");
-        plan.ExecutableFileName.Should().Be("codex");
-        plan.NeedsExecutableBit.Should().BeTrue();
+        Assert.Equal("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-unknown-linux-musl.tar.gz", plan.Url);
+        Assert.Equal("1111aaaa", plan.ExpectedSha256); // the "sha256:" prefix is stripped
+        Assert.Equal(ManagedCliArchiveFormat.TarGz, plan.ArchiveFormat);
+        Assert.Equal("codex-x86_64-unknown-linux-musl", plan.ExecutableEntryName);
+        Assert.Equal("codex", plan.ExecutableFileName);
+        Assert.True(plan.NeedsExecutableBit);
     }
 
     [Fact]
@@ -66,11 +65,11 @@ public class CodexManagedCliTests
     {
         var plan = CodexManagedCli.BuildPlan(new ManagedCliPlatform("win32", "x64", false), Release);
 
-        plan.Url.Should().Be("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-pc-windows-msvc.exe.tar.gz");
-        plan.ExpectedSha256.Should().Be("3333cccc");
-        plan.ExecutableEntryName.Should().Be("codex-x86_64-pc-windows-msvc.exe");
-        plan.ExecutableFileName.Should().Be("codex.exe");
-        plan.NeedsExecutableBit.Should().BeFalse();
+        Assert.Equal("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-pc-windows-msvc.exe.tar.gz", plan.Url);
+        Assert.Equal("3333cccc", plan.ExpectedSha256);
+        Assert.Equal("codex-x86_64-pc-windows-msvc.exe", plan.ExecutableEntryName);
+        Assert.Equal("codex.exe", plan.ExecutableFileName);
+        Assert.False(plan.NeedsExecutableBit);
     }
 
     [Fact]
@@ -84,7 +83,8 @@ public class CodexManagedCliTests
 
         var act = () => CodexManagedCli.BuildPlan(new ManagedCliPlatform("linux", "x64", false), release);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*untrusted*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("untrusted", ex.Message);
     }
 
     [Fact]
@@ -93,6 +93,7 @@ public class CodexManagedCliTests
         // arm64 windows is not in the fixture — a missing asset must fail loudly, not silently pick the wrong one.
         var act = () => CodexManagedCli.BuildPlan(new ManagedCliPlatform("win32", "arm64", false), Release);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*aarch64-pc-windows-msvc*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("aarch64-pc-windows-msvc", ex.Message);
     }
 }

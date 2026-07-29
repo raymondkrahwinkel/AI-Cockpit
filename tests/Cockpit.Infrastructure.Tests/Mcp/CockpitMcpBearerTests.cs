@@ -1,6 +1,5 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
@@ -17,7 +16,7 @@ public class CockpitMcpBearerTests
         var key = new McpAuthKey();
         var server = new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", CockpitHosted = true };
 
-        CockpitMcpBearer.For(server, key).Should().Be(key.Value);
+        Assert.Equal(key.Value, CockpitMcpBearer.For(server, key));
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class CockpitMcpBearerTests
             ApiKey = "the-servers-own-key",
         };
 
-        CockpitMcpBearer.For(server, key).Should().Be("the-servers-own-key");
+        Assert.Equal("the-servers-own-key", CockpitMcpBearer.For(server, key));
     }
 
     [Fact]
@@ -42,7 +41,7 @@ public class CockpitMcpBearerTests
         var key = new McpAuthKey();
         var server = new McpServerConfig { Name = "local", Transport = McpTransport.Http, Url = "http://127.0.0.1:9/mcp" };
 
-        CockpitMcpBearer.For(server, key).Should().BeNull();
+        Assert.Null(CockpitMcpBearer.For(server, key));
     }
 
     // The spawned-CLI path (adapters) writes only a user server's own key as a literal; a cockpit-hosted endpoint's
@@ -60,7 +59,7 @@ public class CockpitMcpBearerTests
         };
         var cockpitHosted = new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", CockpitHosted = true };
 
-        CockpitMcpBearer.UserApiKey(apiKeyServer).Should().Be("the-servers-own-key");
-        CockpitMcpBearer.UserApiKey(cockpitHosted).Should().BeNull();
+        Assert.Equal("the-servers-own-key", CockpitMcpBearer.UserApiKey(apiKeyServer));
+        Assert.Null(CockpitMcpBearer.UserApiKey(cockpitHosted));
     }
 }

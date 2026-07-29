@@ -3,7 +3,6 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Projects;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -60,8 +59,8 @@ public class ProjectDialogResourceRowTests
         var roleBox = RoleComboBox(window);
         window.Close();
 
-        viewModel.ResourceRows.Should().ContainSingle();
-        roleBox.SelectedItem.Should().Be(ProjectResourceRole.Memory, "a freshly added row defaults to Memory, the role the old standalone row always was");
+        Assert.Single(viewModel.ResourceRows);
+        Assert.Equal(ProjectResourceRole.Memory, roleBox.SelectedItem);
     });
 
     [Fact]
@@ -78,7 +77,7 @@ public class ProjectDialogResourceRowTests
         window.UpdateLayout();
         window.Close();
 
-        viewModel.ResourceRows.Should().BeEmpty();
+        Assert.Empty(viewModel.ResourceRows);
     });
 
     [Fact]
@@ -94,7 +93,7 @@ public class ProjectDialogResourceRowTests
         window.UpdateLayout();
         window.Close();
 
-        viewModel.ResourceRows.Single().Role.Should().Be(ProjectResourceRole.Instructions);
+        Assert.Equal(ProjectResourceRole.Instructions, viewModel.ResourceRows.Single().Role);
     });
 
     [Fact]
@@ -110,7 +109,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "could not be found");
         window.Close();
 
-        hint.Should().NotBeNull("a reference the probe could not resolve must be visible in the editor itself");
+        Assert.NotNull(hint);
     });
 
     [Fact]
@@ -125,7 +124,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "could not be found");
         window.Close();
 
-        hint.Should().BeNull();
+        Assert.Null(hint);
     });
 
     [Fact]
@@ -141,7 +140,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "specific to this machine");
         window.Close();
 
-        hint.Should().NotBeNull("an absolute, unshared path must be visible as such rather than only failing silently on another machine");
+        Assert.NotNull(hint);
     });
 
     [Fact]
@@ -156,7 +155,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "specific to this machine");
         window.Close();
 
-        hint.Should().BeNull();
+        Assert.Null(hint);
     });
 
     /// <summary>
@@ -191,8 +190,8 @@ public class ProjectDialogResourceRowTests
         window.UpdateLayout();
         window.Close();
 
-        row.Reference.Should().Be(typed, "what is on screen is what the row holds, here as everywhere else in this app");
-        row.IsBroken.Should().BeFalse(
+        Assert.Equal(typed, row.Reference);
+        Assert.False(row.IsBroken,
             "a half-typed path is a path that does not exist — judging it while the operator is still writing it is how the row turns red under their hands");
     });
 
@@ -231,8 +230,8 @@ public class ProjectDialogResourceRowTests
         var saved = viewModel.ToProject();
         window.Close();
 
-        saved.Resources.Should().ContainSingle()
-            .Which.Reference.Should().Be("docs/handbook.md", "a reference typed and saved without leaving the box must not be dropped");
+        var resource = Assert.Single(saved.Resources);
+        Assert.Equal("docs/handbook.md", resource.Reference);
     });
 
     /// <summary>
@@ -255,10 +254,9 @@ public class ProjectDialogResourceRowTests
             .ToList();
         window.Close();
 
-        dividers.Should().HaveCount(3);
-        dividers[0].BorderThickness.Bottom.Should().Be(1, "a divider must still separate this row from the next");
-        dividers[1].BorderThickness.Bottom.Should().Be(1, "a divider must still separate this row from the next");
-        dividers[2].BorderThickness.Bottom.Should().Be(
-            0, "the last row must not draw a trailing hairline with nothing below it but the Add row button");
+        Assert.Equal(3, dividers.Count);
+        Assert.Equal(1, dividers[0].BorderThickness.Bottom);
+        Assert.Equal(1, dividers[1].BorderThickness.Bottom);
+        Assert.Equal(0, dividers[2].BorderThickness.Bottom);
     });
 }

@@ -8,7 +8,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -32,15 +31,15 @@ public class AddLocalModelProfileTests
             "qwen-coder", provider: "ollama", model: "qwen2.5-coder:7b",
             baseUrl: null, purpose: "cheap local coding", tags: ["code", "local"]);
 
-        created.Provider.Should().Be(SessionProvider.Ollama.ToString());
-        created.Model.Should().Be("qwen2.5-coder:7b");
-        created.BaseUrl.Should().Be("http://localhost:11434");
-        created.Purpose.Should().Be("cheap local coding");
-        created.Tags.Should().Equal("code", "local");
+        Assert.Equal(SessionProvider.Ollama.ToString(), created.Provider);
+        Assert.Equal("qwen2.5-coder:7b", created.Model);
+        Assert.Equal("http://localhost:11434", created.BaseUrl);
+        Assert.Equal("cheap local coding", created.Purpose);
+        Assert.Equal(new[] { "code", "local" }, created.Tags);
 
         var saved = store.Profiles.Single(profile => profile.Label == "qwen-coder");
-        saved.ProviderConfig.Should().BeOfType<OllamaConfig>()
-            .Which.Should().BeEquivalentTo(new { BaseUrl = "http://localhost:11434", Model = "qwen2.5-coder:7b" });
+        var ollamaConfig = Assert.IsType<OllamaConfig>(saved.ProviderConfig);
+        Assert.Equivalent(new { BaseUrl = "http://localhost:11434", Model = "qwen2.5-coder:7b" }, ollamaConfig);
     }
 
     [Fact]
@@ -54,12 +53,13 @@ public class AddLocalModelProfileTests
             baseUrl: null, purpose: "review", tags: ["review"]);
 
         // The whole point: a caller can add a local model, but not enrol it as something it may delegate to.
-        store.Profiles.Single().DelegationPolicy.AllowedAsTarget.Should().BeFalse();
-        (await service.ListTargetsAsync()).Should().BeEmpty("adding a profile must not make it a delegation target");
+        Assert.False(store.Profiles.Single().DelegationPolicy.AllowedAsTarget);
+        Assert.Empty(await service.ListTargetsAsync());
 
         // ...and delegating to it is refused for exactly that reason, until the operator turns it on.
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("qwen", "do a thing"));
-        await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*not available as a delegation target*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(delegate_);
+        Assert.Contains("not available as a delegation target", thrown.Message);
     }
 
     [Fact]
@@ -71,8 +71,8 @@ public class AddLocalModelProfileTests
         var created = await service.AddLocalModelProfileAsync(
             "lm", provider: "lmstudio", model: "some-model", baseUrl: null, purpose: null, tags: null);
 
-        created.BaseUrl.Should().Be("http://localhost:1234");
-        store.Profiles.Single().ProviderConfig.Should().BeOfType<LmStudioConfig>();
+        Assert.Equal("http://localhost:1234", created.BaseUrl);
+        Assert.IsType<LmStudioConfig>(store.Profiles.Single().ProviderConfig);
     }
 
     [Fact]
@@ -84,7 +84,8 @@ public class AddLocalModelProfileTests
         var add = async () => await service.AddLocalModelProfileAsync(
             "QWEN", provider: "ollama", model: "m", baseUrl: null, purpose: null, tags: null);
 
-        await add.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*already exists*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(add);
+        Assert.Contains("already exists", thrown.Message);
     }
 
     [Fact]
@@ -95,7 +96,8 @@ public class AddLocalModelProfileTests
         var add = async () => await service.AddLocalModelProfileAsync(
             "sneaky", provider: "some-cloud-agent", model: "big-model", baseUrl: null, purpose: null, tags: null);
 
-        await add.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*not a local model provider*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(add);
+        Assert.Contains("not a local model provider", thrown.Message);
     }
 
     [Fact]
@@ -106,7 +108,8 @@ public class AddLocalModelProfileTests
         var add = async () => await service.AddLocalModelProfileAsync(
             "qwen", provider: "ollama", model: "   ", baseUrl: null, purpose: null, tags: null);
 
-        await add.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*model id*");
+        var thrown = await Assert.ThrowsAsync<DelegationRejectedException>(add);
+        Assert.Contains("model id", thrown.Message);
     }
 
     private sealed class InMemoryProfileStore : ISessionProfileStore
@@ -167,12 +170,12 @@ public class AddLocalModelProfileTests
 
         // The two local providers are the caller's to scaffold with add_profile; the plugin provider is the
         // operator's to create (it carries a login), so it is listed but not addable this way.
-        providers.Should().ContainSingle(p => p.Name == "ollama")
-            .Which.Should().BeEquivalentTo(new { DisplayName = "Ollama", Kind = "local", AddableWithAddProfile = true });
-        providers.Should().ContainSingle(p => p.Name == "lmstudio")
-            .Which.Should().BeEquivalentTo(new { DisplayName = "LM Studio", Kind = "local", AddableWithAddProfile = true });
-        providers.Should().ContainSingle(p => p.Name == "sample-agent")
-            .Which.Should().BeEquivalentTo(new { DisplayName = "Sample Agent", Kind = "plugin", AddableWithAddProfile = false });
+        var ollama = Assert.Single(providers, p => p.Name == "ollama");
+        Assert.Equivalent(new { DisplayName = "Ollama", Kind = "local", AddableWithAddProfile = true }, ollama);
+        var lmstudio = Assert.Single(providers, p => p.Name == "lmstudio");
+        Assert.Equivalent(new { DisplayName = "LM Studio", Kind = "local", AddableWithAddProfile = true }, lmstudio);
+        var sampleAgent = Assert.Single(providers, p => p.Name == "sample-agent");
+        Assert.Equivalent(new { DisplayName = "Sample Agent", Kind = "plugin", AddableWithAddProfile = false }, sampleAgent);
     }
 
     private static async IAsyncEnumerable<SessionEvent> _EmptyStream()

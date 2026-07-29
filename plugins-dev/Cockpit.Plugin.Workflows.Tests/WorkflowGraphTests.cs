@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -19,8 +18,7 @@ public class WorkflowGraphTests
         _Wire(workflow, "trigger", "a");
         _Wire(workflow, "a", "c");
 
-        WorkflowGraph.Ancestors(workflow, "c").Select(node => node.Id)
-            .Should().BeEquivalentTo(["trigger", "a"], "b is not upstream of c, however early it ran");
+        Assert.Equivalent(new[] { "trigger", "a" }, WorkflowGraph.Ancestors(workflow, "c").Select(node => node.Id));
     }
 
     [Fact]
@@ -32,7 +30,7 @@ public class WorkflowGraphTests
         _Wire(workflow, "trigger", "a");
         _Wire(workflow, "trigger", "b");
 
-        WorkflowGraph.Ancestors(workflow, "a").Select(node => node.Id).Should().BeEquivalentTo(["trigger"]);
+        Assert.Equivalent(new object[] { "trigger" }, WorkflowGraph.Ancestors(workflow, "a").Select(node => node.Id));
     }
 
     [Fact]
@@ -43,8 +41,7 @@ public class WorkflowGraphTests
         _Wire(workflow, "a", "b");
         _Wire(workflow, "b", "c");
 
-        WorkflowGraph.Ancestors(workflow, "c").Select(node => node.Id)
-            .Should().BeEquivalentTo(["trigger", "a", "b"]);
+        Assert.Equivalent(new object[] { "trigger", "a", "b" }, WorkflowGraph.Ancestors(workflow, "c").Select(node => node.Id));
     }
 
     [Fact]
@@ -56,7 +53,7 @@ public class WorkflowGraphTests
         _Wire(workflow, "a", "b");
         _Wire(workflow, "b", "a");
 
-        WorkflowGraph.Ancestors(workflow, "b").Select(node => node.Id).Should().BeEquivalentTo(["trigger", "a"]);
+        Assert.Equivalent(new object[] { "trigger", "a" }, WorkflowGraph.Ancestors(workflow, "b").Select(node => node.Id));
     }
 
     [Fact]
@@ -65,7 +62,7 @@ public class WorkflowGraphTests
         var workflow = _Flow();
         _Wire(workflow, "trigger", "a");
 
-        WorkflowGraph.Ancestors(workflow, "trigger").Should().BeEmpty();
+        Assert.Empty(WorkflowGraph.Ancestors(workflow, "trigger"));
     }
 
     private static Workflow _Flow()

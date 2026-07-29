@@ -2,7 +2,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Security;
 
@@ -50,17 +49,17 @@ public sealed class ScreenLockKeepsKeyTests : IDisposable
         // The UI lock never touches the holder — this is what "the screen is up" looks like to the write seam: the
         // app is still unlocked, the key is still in memory. Assert that precondition so the test cannot silently pass
         // for the wrong reason (a key wipe sneaking back in).
-        _holder.Protector.Should().NotBeNull("a UI lock leaves the encryption key in memory");
+        Assert.NotNull(_holder.Protector);
 
         // A background writer — a running agent adding an MCP credential — writes a whole section through the shared
         // seam while the operator stares at the unlock screen. Earlier this was refused; now it must go through.
         var store = new McpServerStore(ConfigPath, _holder);
         var write = async () => await store.SaveAsync([Server(Token)]);
 
-        await write.Should().NotThrowAsync("a UI lock must not block a running agent's config write");
+        await write();
 
         // And because the key was present, the credential landed encrypted, not in the clear — nothing leaked.
-        File.ReadAllText(ConfigPath).Should().NotContain(Token, "the key was in memory, so the write went out encrypted");
-        (await store.LoadAsync()).Single().ApiKey.Should().Be(Token, "it reads back through the same key");
+        Assert.DoesNotContain(Token, File.ReadAllText(ConfigPath), StringComparison.Ordinal);
+        Assert.Equal(Token, (await store.LoadAsync()).Single().ApiKey);
     }
 }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -35,8 +35,8 @@ public class AutopilotRunHistoryTests
         history.Add(_Record("first"));
         history.Add(_Record("second"));
 
-        history.Count.Should().Be(2);
-        history.Items.Select(record => record.Name).Should().ContainInOrder("second", "first");
+        Assert.Equal(2, history.Count);
+        Assert.True(SequenceAssert.ContainsInOrder(history.Items.Select(record => record.Name), "second", "first"));
     }
 
     [Fact]
@@ -49,12 +49,12 @@ public class AutopilotRunHistoryTests
         // A fresh history over the same storage is the restart: the record comes back with its outcome and steps intact.
         var restored = new AutopilotRunHistory(storage);
 
-        restored.Count.Should().Be(1);
+        Assert.Equal(1, restored.Count);
         var record = restored.Items[0];
-        record.Name.Should().Be("kept");
-        record.Outcome.Should().Be(AutopilotPlanPhase.Blocked);
-        record.BlockReason.Should().Be("a hard step failed");
-        record.Steps.Should().ContainSingle().Which.Status.Should().Be(AutopilotStepStatus.Passed);
+        Assert.Equal("kept", record.Name);
+        Assert.Equal(AutopilotPlanPhase.Blocked, record.Outcome);
+        Assert.Equal("a hard step failed", record.BlockReason);
+        Assert.Equal(AutopilotStepStatus.Passed, Assert.Single(record.Steps).Status);
     }
 
     [Fact]
@@ -66,11 +66,11 @@ public class AutopilotRunHistoryTests
             history.Add(_Record($"run-{i}"));
         }
 
-        history.Count.Should().Be(50);
+        Assert.Equal(50, history.Count);
         // The newest is at the front; the five oldest (run-0..run-4) fell off the end.
-        history.Items[0].Name.Should().Be("run-54");
-        history.Items.Select(record => record.Name).Should().NotContain("run-4");
-        history.Items.Select(record => record.Name).Should().Contain("run-5");
+        Assert.Equal("run-54", history.Items[0].Name);
+        Assert.DoesNotContain("run-4", history.Items.Select(record => record.Name));
+        Assert.Contains("run-5", history.Items.Select(record => record.Name));
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class AutopilotRunHistoryTests
         history.Clear();           // 2
         history.Clear();           // no-op — already empty, does not fire
 
-        history.Count.Should().Be(0);
-        fired.Should().Be(2);
+        Assert.Equal(0, history.Count);
+        Assert.Equal(2, fired);
     }
 }

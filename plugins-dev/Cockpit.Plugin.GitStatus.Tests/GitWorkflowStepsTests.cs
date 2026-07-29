@@ -1,6 +1,5 @@
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.TestSupport;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
@@ -43,9 +42,9 @@ public class GitWorkflowStepsTests : IDisposable
     {
         var result = await _Run("git.branch", ("Branch", "web-14-fix-it"), ("Working directory", _repo));
 
-        result.Items[0]["created"].Should().Be("true");
-        result.Items[0]["branch"].Should().Be("web-14-fix-it");
-        _Git("rev-parse", "--abbrev-ref", "HEAD").Trim().Should().Be("web-14-fix-it");
+        Assert.Equal("true", result.Items[0]["created"]);
+        Assert.Equal("web-14-fix-it", result.Items[0]["branch"]);
+        Assert.Equal("web-14-fix-it", _Git("rev-parse", "--abbrev-ref", "HEAD").Trim());
     }
 
     [Fact]
@@ -55,7 +54,7 @@ public class GitWorkflowStepsTests : IDisposable
 
         var result = await _Run("git.branch", ("Branch", "already-here"), ("Working directory", _repo));
 
-        result.Items[0]["created"].Should().Be("false");
+        Assert.Equal("false", result.Items[0]["created"]);
     }
 
     [Fact]
@@ -65,7 +64,8 @@ public class GitWorkflowStepsTests : IDisposable
 
         var run = async () => await _Run("git.branch", ("Branch", "somewhere-else"), ("Working directory", _repo));
 
-        (await run.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*uncommitted changes*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("uncommitted changes", ex.Message);
     }
 
     [Fact]
@@ -75,9 +75,9 @@ public class GitWorkflowStepsTests : IDisposable
 
         var result = await _Run("git.commit", ("Message", "added: a new file"), ("Working directory", _repo));
 
-        result.Items[0]["commit"].Should().NotBeEmpty();
-        result.Items[0]["branch"].Should().Be("main");
-        _Git("log", "-1", "--pretty=%s").Trim().Should().Be("added: a new file");
+        Assert.NotEmpty(result.Items[0]["commit"]);
+        Assert.Equal("main", result.Items[0]["branch"]);
+        Assert.Equal("added: a new file", _Git("log", "-1", "--pretty=%s").Trim());
     }
 
     [Fact]
@@ -87,9 +87,9 @@ public class GitWorkflowStepsTests : IDisposable
 
         var result = await _Run("git.commit", ("Message", "nothing happened"), ("Working directory", _repo));
 
-        result.Output.Should().Be("Nothing to commit.");
-        result.Items.Should().BeEmpty();
-        _Git("rev-parse", "HEAD").Trim().Should().Be(before);
+        Assert.Equal("Nothing to commit.", result.Output);
+        Assert.Empty(result.Items);
+        Assert.Equal(before, _Git("rev-parse", "HEAD").Trim());
     }
 
     [Fact]
@@ -97,7 +97,8 @@ public class GitWorkflowStepsTests : IDisposable
     {
         var run = async () => await _Run("git.commit", ("Message", "x"), ("Working directory", string.Empty));
 
-        (await run.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*{directory}*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("{directory}", ex.Message);
     }
 
     private static async Task<WorkflowStepResult> _Run(string typeId, params (string Name, string Value)[] parameters)

@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -20,8 +19,8 @@ public class McpServersViewModelTests
 
         vm.AddServerCommand.Execute(null);
 
-        vm.Servers.Should().ContainSingle();
-        vm.SelectedServer.Should().Be(vm.Servers[0]);
+        Assert.Single(vm.Servers);
+        Assert.Equal(vm.Servers[0], vm.SelectedServer);
     }
 
     [Fact]
@@ -34,7 +33,7 @@ public class McpServersViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Servers.Should().ContainSingle().Which.Name.Should().Be("github");
+        Assert.Equal("github", Assert.Single(vm.Servers).Name);
     }
 
     // AC-40: the cockpit's own loopback servers are answered live, not edited here. They are hidden by name, so even
@@ -54,7 +53,7 @@ public class McpServersViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Servers.Select(server => server.Name).Should().Equal("youtrack");
+        Assert.Equal(new[] { "youtrack" }, vm.Servers.Select(server => server.Name));
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public class McpServersViewModelTests
             Arg.Is<IReadOnlyList<McpServerConfig>>(list =>
                 list.Count == 1 && list[0].Name == "fs" && list[0].Command == "npx" && list[0].Args.Count == 3),
             Arg.Any<CancellationToken>());
-        closed.Should().BeTrue();
+        Assert.True(closed);
     }
 
     [Fact]
@@ -92,7 +91,7 @@ public class McpServersViewModelTests
         await vm.SaveCommand.ExecuteAsync(null);
 
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
-        vm.StatusMessage.Should().NotBeNullOrEmpty();
+        Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
     }
 
     [Fact]
@@ -113,11 +112,11 @@ public class McpServersViewModelTests
 
         var config = editable.ToConfig();
 
-        config.Command.Should().BeNull();
-        config.Args.Should().BeEmpty();
-        config.Url.Should().Be("https://x/mcp");
-        config.Auth.Should().Be(McpServerAuth.ApiKey);
-        config.ApiKey.Should().Be("k");
+        Assert.Null(config.Command);
+        Assert.Empty(config.Args);
+        Assert.Equal("https://x/mcp", config.Url);
+        Assert.Equal(McpServerAuth.ApiKey, config.Auth);
+        Assert.Equal("k", config.ApiKey);
     }
 
     private sealed class FakeInternalMcpProvider(params McpServerConfig[] servers) : ICockpitInternalMcpProvider

@@ -5,7 +5,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -22,11 +21,11 @@ public class CliAgentProviderPluginLoadTests
     public void ActivatesAndRegistersTheCodexSessionProvider_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
-        folder.Should().NotBeNull("the CLI agent provider plugin is built as a test dependency");
+        Assert.NotNull(folder);
 
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        PluginManifest.TryParse(manifestJson, out var manifest, out _).Should().BeTrue();
-        manifest.Should().NotBeNull();
+        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
+        Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "cli-agent-provider", manifest, hash, PluginLoadDecision.Load);
@@ -35,33 +34,33 @@ public class CliAgentProviderPluginLoadTests
         var plugin = activator.Activate(discovered);
 
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
-        plugin.Should().NotBeNull();
-        plugin!.Metadata.Id.Should().Be("cli-agent-provider");
-        plugin.Metadata.DisplayName.Should().Be("CLI Agent Provider (Codex)");
+        Assert.NotNull(plugin);
+        Assert.Equal("cli-agent-provider", plugin!.Metadata.Id);
+        Assert.Equal("CLI Agent Provider (Codex)", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        host.SessionProviders.Should().ContainSingle();
+        Assert.Single(host.SessionProviders);
         var registration = host.SessionProviders.Single();
-        registration.ProviderId.Should().Be("cli-agent-provider.codex");
-        registration.DisplayName.Should().Be("Codex (CLI)");
-        registration.Capabilities.SupportsTools.Should().BeTrue();
+        Assert.Equal("cli-agent-provider.codex", registration.ProviderId);
+        Assert.Equal("Codex (CLI)", registration.DisplayName);
+        Assert.True(registration.Capabilities.SupportsTools);
         // The interactive Codex provider is now the app-server driver (#45 fase 3), which does support live
         // approvals — where the headless exec driver it replaced reported no permission support.
-        registration.Capabilities.SupportsPermissions.Should().BeTrue();
+        Assert.True(registration.Capabilities.SupportsPermissions);
         // AC-190: Codex confines to the working directory through a real OS sandbox (workspace-write), independent of its
         // approval mode, so it vouches confinement unconditionally and must NOT declare ConfinesViaPermissionsOnly — the
         // adapter would otherwise downgrade a bypass session that the sandbox still confines. Regression guard that the
         // permission-mode downgrade is scoped to permission-based providers only.
-        registration.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
-        registration.Capabilities.ConfinesViaPermissionsOnly.Should().BeFalse();
+        Assert.True(registration.Capabilities.ConfinesFileAccessToWorkingDirectory);
+        Assert.False(registration.Capabilities.ConfinesViaPermissionsOnly);
         // The real registration must carry the live model/list resolver (increment 2 step C), not just the
         // static options — asserted on the actual plugin object, since the dialog-side test only proves the
         // host renders a hand-rolled one. Not invoked here: doing so would spawn a real codex app-server.
-        registration.ResolveOptionsAsync.Should().NotBeNull("the Codex SDK provider fills its Model dropdown from model/list");
+        Assert.NotNull(registration.ResolveOptionsAsync);
 
         // The driver factory is usable through the narrow plugin contract without the host ever seeing this
         // plugin's concrete types. CreateConfigView is not exercised here — it builds a real Avalonia Control,
@@ -69,20 +68,20 @@ public class CliAgentProviderPluginLoadTests
         // sibling plugin load tests never invoke their own AddSettings/AddSideMenuSection view factories either.
         var driverFactory = registration.CreateDriverFactory(host.Services);
         var driver = driverFactory.Create("""{"Command":"codex","WorkingDirectory":"."}""");
-        driver.Should().NotBeNull();
+        Assert.NotNull(driver);
 
         // The plugin also offers Codex's real interactive TUI (#45 fase B2), under the same provider id as
         // the session provider above — a profile names a provider, and what that provider can do is what it
         // registered, both here.
-        host.TtyProviders.Should().ContainSingle();
+        Assert.Single(host.TtyProviders);
         var ttyRegistration = host.TtyProviders.Single();
-        ttyRegistration.ProviderId.Should().Be("cli-agent-provider.codex");
-        ttyRegistration.DisplayName.Should().Be("Codex (CLI)");
-        ttyRegistration.Options.Should().Contain(option => option.Key == "sandbox");
-        ttyRegistration.Options.Should().Contain(option => option.Key == "model");
+        Assert.Equal("cli-agent-provider.codex", ttyRegistration.ProviderId);
+        Assert.Equal("Codex (CLI)", ttyRegistration.DisplayName);
+        Assert.Contains(ttyRegistration.Options, option => option.Key == "sandbox");
+        Assert.Contains(ttyRegistration.Options, option => option.Key == "model");
         // Same live model/list upgrade on the TTY route (increment 2 step C) — the real registration carries it.
-        ttyRegistration.ResolveOptionsAsync.Should().NotBeNull("the Codex TTY provider fills its Model dropdown from model/list too");
-        ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
+        Assert.NotNull(ttyRegistration.ResolveOptionsAsync);
+        Assert.NotNull(ttyRegistration.CreateProvider(host.Services));
 
         plugin.Dispose();
     }

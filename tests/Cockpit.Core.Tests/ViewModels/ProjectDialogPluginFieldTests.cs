@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -48,8 +47,8 @@ public class ProjectDialogPluginFieldTests
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
 
-        viewModel.PluginFields.Should().BeEmpty();
-        viewModel.HasPluginFields.Should().BeFalse();
+        Assert.Empty(viewModel.PluginFields);
+        Assert.False(viewModel.HasPluginFields);
     }
 
     [Fact]
@@ -60,9 +59,9 @@ public class ProjectDialogPluginFieldTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             LinkedProject(("youtrack.project", "AC")), ProfileStore(), Catalog(), [YouTrackField()]);
 
-        var field = viewModel.PluginFields.Should().ContainSingle().Subject;
-        field.Value.Should().Be("AC");
-        field.Text.Should().Be("AC");
+        var field = Assert.Single(viewModel.PluginFields);
+        Assert.Equal("AC", field.Value);
+        Assert.Equal("AC", field.Text);
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class ProjectDialogPluginFieldTests
         await viewModel.LoadPluginFieldOptionsAsync();
 
         var field = viewModel.PluginFields.Single();
-        field.Text.Should().Be("AI-Cockpit — AC");
-        field.Value.Should().Be("AC", "showing the friendly name must not change what the plugin queries with");
+        Assert.Equal("AI-Cockpit — AC", field.Text);
+        Assert.Equal("AC", field.Value);
     }
 
     [Fact]
@@ -92,8 +91,8 @@ public class ProjectDialogPluginFieldTests
         await viewModel.LoadPluginFieldOptionsAsync();
 
         var field = viewModel.PluginFields.Single();
-        field.LoadError.Should().Be("The token may not read projects.");
-        field.IsLoadingOptions.Should().BeFalse("a bar still moving after a failure says the thing is still coming");
+        Assert.Equal("The token may not read projects.", field.LoadError);
+        Assert.False(field.IsLoadingOptions, "a bar still moving after a failure says the thing is still coming");
     }
 
     [Fact]
@@ -105,7 +104,7 @@ public class ProjectDialogPluginFieldTests
 
         viewModel.PluginFields.Single().Text = "AI-Cockpit — AC";
 
-        viewModel.PluginFields.Single().Value.Should().Be("AC");
+        Assert.Equal("AC", viewModel.PluginFields.Single().Value);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class ProjectDialogPluginFieldTests
 
         viewModel.PluginFields.Single().Text = "PRIVATE";
 
-        viewModel.PluginFields.Single().Value.Should().Be("PRIVATE");
+        Assert.Equal("PRIVATE", viewModel.PluginFields.Single().Value);
     }
 
     [Fact]
@@ -131,7 +130,7 @@ public class ProjectDialogPluginFieldTests
         await viewModel.LoadPluginFieldOptionsAsync();
         viewModel.PluginFields.Single().Text = "AI-Cockpit — AC";
 
-        viewModel.ToProject().LinkedAs("youtrack.project").Should().Be("AC");
+        Assert.Equal("AC", viewModel.ToProject().LinkedAs("youtrack.project"));
     }
 
     [Fact]
@@ -142,7 +141,7 @@ public class ProjectDialogPluginFieldTests
 
         viewModel.PluginFields.Single().Text = string.Empty;
 
-        viewModel.ToProject().PluginFields.Should().BeEmpty("clearing the box is how a link is removed");
+        Assert.Empty(viewModel.ToProject().PluginFields);
     }
 
     [Fact]
@@ -155,7 +154,7 @@ public class ProjectDialogPluginFieldTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), [YouTrackField()]);
         viewModel.Name = "Renamed";
 
-        viewModel.ToProject().LinkedAs("depot.project").Should().Be("ai-cockpit");
+        Assert.Equal("ai-cockpit", viewModel.ToProject().LinkedAs("depot.project"));
     }
 
     [Fact]
@@ -167,6 +166,6 @@ public class ProjectDialogPluginFieldTests
 
         viewModel.PluginFields.Single().Text = "  AC  ";
 
-        viewModel.ToProject().LinkedAs("youtrack.project").Should().Be("AC");
+        Assert.Equal("AC", viewModel.ToProject().LinkedAs("youtrack.project"));
     }
 }

@@ -1,0 +1,1 @@
+N:FluentAssertions;FluentAssertions is commercially licensed from v8 on and was fully removed from this codebase (AC-372) — use xunit's own Assert instead. See CONTRIBUTING.md.

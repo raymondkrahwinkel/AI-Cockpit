@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Infrastructure.Portal;
 
 namespace Cockpit.Infrastructure.Tests.Portal;
@@ -17,10 +16,10 @@ public class PortalRequestChannelTests
     [InlineData(":1.1234", "1_1234")]
     [InlineData(":1.2.3", "1_2_3")]
     public void TheRequestSender_IsTheUniqueNameWithoutItsColonAndWithDotsAsUnderscores(string localName, string expected) =>
-        PortalRequestChannel.DeriveRequestSender(localName).Should().Be(expected);
+        Assert.Equal(expected, PortalRequestChannel.DeriveRequestSender(localName));
 
     /// <summary>A name that already arrives without the colon is left alone rather than losing its first character.</summary>
     [Fact]
     public void ANameWithoutALeadingColon_KeepsAllOfItself() =>
-        PortalRequestChannel.DeriveRequestSender("1.42").Should().Be("1_42");
+        Assert.Equal("1_42", PortalRequestChannel.DeriveRequestSender("1.42"));
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -14,14 +13,14 @@ public class McpServerPresetsTests
     {
         var filesystem = McpServerPresets.All.Single(preset => preset.Label == "Filesystem");
 
-        filesystem.Template.Transport.Should().Be(McpTransport.Stdio);
-        filesystem.Template.Command.Should().Be("npx");
-        filesystem.Template.Args.Should().Contain("@modelcontextprotocol/server-filesystem");
+        Assert.Equal(McpTransport.Stdio, filesystem.Template.Transport);
+        Assert.Equal("npx", filesystem.Template.Command);
+        Assert.Contains("@modelcontextprotocol/server-filesystem", filesystem.Template.Args);
 
         // The last argument is the folder the server is scoped to — a rooted path, not "." or empty.
         var root = filesystem.Template.Args[^1];
-        root.Should().NotBeNullOrWhiteSpace();
-        Path.IsPathRooted(root).Should().BeTrue();
+        Assert.False(string.IsNullOrWhiteSpace(root));
+        Assert.True(Path.IsPathRooted(root));
     }
 
     [Fact]
@@ -29,13 +28,13 @@ public class McpServerPresetsTests
     {
         var filesystem = McpServerPresets.All.Single(preset => preset.Label == "Filesystem");
 
-        filesystem.Template.Scope.Should().Be(McpServerScope.LocalOnly);
+        Assert.Equal(McpServerScope.LocalOnly, filesystem.Template.Scope);
     }
 
     [Fact]
     public void All_PresetsAreLaunchable_EachHasATransportTarget()
     {
-        McpServerPresets.All.Should().NotBeEmpty();
-        McpServerPresets.All.Should().OnlyContain(preset => !string.IsNullOrWhiteSpace(preset.Template.Command));
+        Assert.NotEmpty(McpServerPresets.All);
+        Assert.All(McpServerPresets.All, preset => Assert.True(!string.IsNullOrWhiteSpace(preset.Template.Command)));
     }
 }

@@ -1,5 +1,4 @@
 using System.Collections;
-using FluentAssertions;
 using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -65,9 +64,9 @@ public class TtyStdinIsConsoleProbeTests
         var verdict = File.Exists(resultPath) ? await File.ReadAllTextAsync(resultPath) : "<no result file>";
         try
         {
-            verdict.Should().Contain("IN=true", "stdin must be a tty; node wrote: <<<{0}>>>", verdict);
-            verdict.Should().Contain("OUT=true", "stdout must be a tty; node wrote: <<<{0}>>>", verdict);
-            verdict.Should().Contain("ERR=true", "stderr must be a tty; node wrote: <<<{0}>>>", verdict);
+            Assert.Contains("IN=true", verdict, StringComparison.Ordinal);
+            Assert.Contains("OUT=true", verdict, StringComparison.Ordinal);
+            Assert.Contains("ERR=true", verdict, StringComparison.Ordinal);
         }
         finally
         {

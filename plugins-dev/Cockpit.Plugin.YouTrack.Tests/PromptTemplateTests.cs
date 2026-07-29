@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -18,7 +16,7 @@ public class PromptTemplateTests
             Issue,
             "https://yt.example.com/issue/AT-1");
 
-        rendered.Should().Be("AT-1 (1-1) in AT: Faster startup\nCold start takes 4s.\nhttps://yt.example.com/issue/AT-1");
+        Assert.Equal("AT-1 (1-1) in AT: Faster startup\nCold start takes 4s.\nhttps://yt.example.com/issue/AT-1", rendered);
     }
 
     [Fact]
@@ -28,7 +26,7 @@ public class PromptTemplateTests
 
         var rendered = PromptTemplate.Render("{description}", issue, "https://example.com");
 
-        rendered.Should().Be("(no description)");
+        Assert.Equal("(no description)", rendered);
     }
 
     [Fact]
@@ -36,7 +34,10 @@ public class PromptTemplateTests
     {
         var rendered = PromptTemplate.Render(PromptTemplate.Default, Issue, "https://yt.example.com/issue/AT-1");
 
-        rendered.Should().NotContain("{").And.NotContain("}");
-        rendered.Should().Contain("AT-1").And.Contain("Faster startup").And.Contain("https://yt.example.com/issue/AT-1");
+        Assert.DoesNotContain("{", rendered);
+        Assert.DoesNotContain("}", rendered);
+        Assert.Contains("AT-1", rendered);
+        Assert.Contains("Faster startup", rendered);
+        Assert.Contains("https://yt.example.com/issue/AT-1", rendered);
     }
 }

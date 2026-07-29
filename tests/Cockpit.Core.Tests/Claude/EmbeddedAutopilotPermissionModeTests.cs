@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -56,8 +55,9 @@ public class EmbeddedAutopilotPermissionModeTests
 
         // The profile's stored bypass must not survive into the launch options, or the driver's launch-option merge
         // would keep it over the explicit typed request mode. Its other defaults (model) are left untouched.
-        options.Should().NotContainKey(WellKnownPluginSessionOptions.PermissionMode);
-        options.Should().ContainKey("model").WhoseValue.Should().Be("sonnet");
+        Assert.False(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.True(options.ContainsKey("model"));
+        Assert.Equal("sonnet", options["model"]);
     }
 
     [Fact]
@@ -69,7 +69,8 @@ public class EmbeddedAutopilotPermissionModeTests
 
         var options = CockpitViewModel._EmbeddedLaunchOptions(_WorkProfileSavedInBypass(), request);
 
-        options.Should().ContainKey(WellKnownPluginSessionOptions.PermissionMode).WhoseValue.Should().Be("bypassPermissions");
+        Assert.True(options!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("bypassPermissions", options[WellKnownPluginSessionOptions.PermissionMode]);
     }
 
     [Fact]
@@ -88,9 +89,11 @@ public class EmbeddedAutopilotPermissionModeTests
 
         // The effective mode the driver started on — and that the confinement check reads — is the explicit acceptEdits,
         // not the profile's stored bypass. So the session vouches confinement and the isolate-in-worktree gate proceeds.
-        inner.LastLaunchOptions.Should().ContainKey(WellKnownPluginSessionOptions.PermissionMode)
-            .WhoseValue.Should().Be("acceptEdits");
-        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+        var lastLaunchOptions = inner.LastLaunchOptions;
+        Assert.NotNull(lastLaunchOptions);
+        Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("acceptEdits", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
+        Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
     [Fact]
@@ -105,8 +108,10 @@ public class EmbeddedAutopilotPermissionModeTests
 
         await adapter.StartAsync(profile, permissionMode: "acceptEdits", launchOptions: profile.Defaults!.OptionDefaults);
 
-        inner.LastLaunchOptions.Should().ContainKey(WellKnownPluginSessionOptions.PermissionMode)
-            .WhoseValue.Should().Be("bypassPermissions");
-        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeFalse();
+        var lastLaunchOptions = inner.LastLaunchOptions;
+        Assert.NotNull(lastLaunchOptions);
+        Assert.True(lastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("bypassPermissions", lastLaunchOptions[WellKnownPluginSessionOptions.PermissionMode]);
+        Assert.False(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 }

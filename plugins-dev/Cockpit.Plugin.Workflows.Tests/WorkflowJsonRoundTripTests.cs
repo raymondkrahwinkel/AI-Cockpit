@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -38,7 +37,8 @@ public class WorkflowJsonRoundTripTests
 
         var save = () => WorkflowJson.WriteAll([flow]);
 
-        save.Should().NotThrow<NotSupportedException>();
+        var ex = Record.Exception(save);
+        Assert.False(ex is NotSupportedException);
 
         NodeCatalog.Contribute([]);
     }
@@ -54,10 +54,10 @@ public class WorkflowJsonRoundTripTests
         var json = JsonDocument.Parse(WorkflowJson.Write(flow)).RootElement;
         var saved = json.GetProperty("Nodes")[0];
 
-        saved.GetProperty("TypeId").GetString().Should().Be("cockpit.command");
-        saved.TryGetProperty("Type", out _).Should().BeFalse("the type is looked up from the id, not stored beside it");
-        saved.TryGetProperty("Outputs", out _).Should().BeFalse("what a step's ways out are follows from its type");
-        saved.TryGetProperty("Kind", out _).Should().BeFalse("so does what kind of step it is");
+        Assert.Equal("cockpit.command", saved.GetProperty("TypeId").GetString());
+        Assert.False(saved.TryGetProperty("Type", out _), "the type is looked up from the id, not stored beside it");
+        Assert.False(saved.TryGetProperty("Outputs", out _), "what a step's ways out are follows from its type");
+        Assert.False(saved.TryGetProperty("Kind", out _), "so does what kind of step it is");
     }
 
     [Fact]
@@ -72,10 +72,10 @@ public class WorkflowJsonRoundTripTests
 
         var read = WorkflowJson.Read(WorkflowJson.Write(flow));
 
-        read.Should().NotBeNull();
-        read!.Nodes.Should().HaveCount(2);
-        read.Connections.Should().ContainSingle();
-        read.Nodes[0].Parameters["Command"].Should().Be("git switch -c {branch}");
-        read.Nodes[0].HasErrorPath.Should().BeTrue("a step told to show its error pin keeps it across a restart");
+        Assert.NotNull(read);
+        Assert.Equal(2, System.Linq.Enumerable.Count(read!.Nodes));
+        Assert.Single(read.Connections);
+        Assert.Equal("git switch -c {branch}", read.Nodes[0].Parameters["Command"]);
+        Assert.True(read.Nodes[0].HasErrorPath, "a step told to show its error pin keeps it across a restart");
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
@@ -48,10 +47,11 @@ public class ProjectDialogResourceRowTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
 
         viewModel.AddResourceRowCommand.Execute(null);
-        viewModel.ResourceRows.Should().ContainSingle().Which.Reference.Should().BeEmpty();
+        var row = Assert.Single(viewModel.ResourceRows);
+        Assert.Empty(row.Reference);
 
         viewModel.RemoveResourceRowCommand.Execute(viewModel.ResourceRows[0]);
-        viewModel.ResourceRows.Should().BeEmpty();
+        Assert.Empty(viewModel.ResourceRows);
     }
 
     /// <summary>
@@ -65,14 +65,14 @@ public class ProjectDialogResourceRowTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
 
         viewModel.AddResourceRowCommand.Execute(null);
-        viewModel.ResourceRows.Single().IsLastRow.Should().BeTrue("the only row is trivially the last one");
+        Assert.True(viewModel.ResourceRows.Single().IsLastRow, "the only row is trivially the last one");
 
         viewModel.AddResourceRowCommand.Execute(null);
-        viewModel.ResourceRows[0].IsLastRow.Should().BeFalse("a second row was just added after it");
-        viewModel.ResourceRows[1].IsLastRow.Should().BeTrue();
+        Assert.False(viewModel.ResourceRows[0].IsLastRow, "a second row was just added after it");
+        Assert.True(viewModel.ResourceRows[1].IsLastRow);
 
         viewModel.RemoveResourceRowCommand.Execute(viewModel.ResourceRows[1]);
-        viewModel.ResourceRows.Single().IsLastRow.Should().BeTrue("removing the only row after it makes this one last again");
+        Assert.True(viewModel.ResourceRows.Single().IsLastRow, "removing the only row after it makes this one last again");
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class ProjectDialogResourceRowTests
         viewModel.Name = "Cockpit";
         viewModel.AddResourceRowCommand.Execute(null);
 
-        viewModel.ToProject().Resources.Should().BeEmpty("a row the operator added and left alone names nothing");
+        Assert.Empty(viewModel.ToProject().Resources);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class ProjectDialogResourceRowTests
         viewModel.AddResourceRowCommand.Execute(null);
         viewModel.ResourceRows[0].Label = "Handbook";
 
-        viewModel.ToProject().Resources.Should().BeEmpty("a label with no reference names nothing a session could go read");
+        Assert.Empty(viewModel.ToProject().Resources);
     }
 
     // --- AC: a project with no resources behaves exactly as before (regression) --------------------------------------
@@ -106,8 +106,8 @@ public class ProjectDialogResourceRowTests
 
         var saved = viewModel.ToProject();
 
-        saved.Resources.Should().BeEmpty();
-        saved.MemoryRef.Should().BeNull();
+        Assert.Empty(saved.Resources);
+        Assert.Null(saved.MemoryRef);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Should().BeEmpty("the resource section starts exactly as empty as the old dialog's Memory box did when nothing was set");
+        Assert.Empty(viewModel.ResourceRows);
     }
 
     // --- AC: three roles round-trip unchanged, editing one row touches only that row -----------------------------------
@@ -137,7 +137,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ToProject().Resources.Should().Equal(project.Resources);
+        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
     }
 
     /// <summary>
@@ -167,10 +167,10 @@ public class ProjectDialogResourceRowTests
         // Both checked, the same as ProjectDialogMemorySourceTests.RoundTrip_ADepotReference_SurvivesLoadAndSaveUnchanged:
         // not merely "the saved string happens to match" but "the picker actually selected the Depot source".
         var memoryRow = viewModel.ResourceRows.Single(row => row.Role == ProjectResourceRole.Memory);
-        memoryRow.SelectedMemorySourceChoice?.Scheme.Should().Be("depot");
-        memoryRow.Reference.Should().Be("cockpit");
+        Assert.Equal("depot", memoryRow.SelectedMemorySourceChoice?.Scheme);
+        Assert.Equal("cockpit", memoryRow.Reference);
 
-        viewModel.ToProject().Resources.Should().Equal(project.Resources);
+        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class ProjectDialogResourceRowTests
 
         // AC-485 review (FIX 9): order matters for a list the operator arranges themselves — .Equal pins the whole
         // sequence, not merely that memory and reference each still appear somewhere in it.
-        saved.Resources.Should().Equal(memory, instructions with { Label = "House conventions" }, reference);
+        Assert.Equal(new[] { memory, instructions with { Label = "House conventions" }, reference }, saved.Resources);
     }
 
     // --- AC: a broken reference is visible in the editor itself, not only in a prompt -----------------------------------
@@ -204,7 +204,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Single().IsBroken.Should().BeTrue();
+        Assert.True(viewModel.ResourceRows.Single().IsBroken);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Single().IsBroken.Should().BeFalse();
+        Assert.False(viewModel.ResourceRows.Single().IsBroken);
     }
 
     /// <summary>
@@ -245,8 +245,8 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows[0].IsBroken.Should().BeTrue("this row reaches sessions and the probe found its path missing");
-        viewModel.ResourceRows[1].IsBroken.Should().BeFalse(
+        Assert.True(viewModel.ResourceRows[0].IsBroken, "this row reaches sessions and the probe found its path missing");
+        Assert.False(viewModel.ResourceRows[1].IsBroken,
             "this row never reaches sessions, so the probe never judged it — even though its text matches the row the probe did find missing");
     }
 
@@ -272,7 +272,7 @@ public class ProjectDialogResourceRowTests
         row.Reference = _NonExistentAbsolutePath();
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
-        row.IsBroken.Should().BeTrue("the row is marked broken once the background check answers, the same as opening a project that already had one");
+        Assert.True(row.IsBroken, "the row is marked broken once the background check answers, the same as opening a project that already had one");
     }
 
     /// <summary>
@@ -292,9 +292,9 @@ public class ProjectDialogResourceRowTests
             Resources = [new ProjectResource(_Root("bad\0name.md"), ProjectResourceRole.Reference)],
         };
 
-        var act = () => ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+        var exception = await Record.ExceptionAsync(() => ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog()));
 
-        await act.Should().NotThrowAsync("a hand-edited cockpit.json with one bad row must cost that row, not the dialog itself");
+        Assert.Null(exception);
     }
 
     // --- AC: a role switch cannot silently change what Reference means (AC-485 review, MUST-FIX 1) -----------------
@@ -306,13 +306,13 @@ public class ProjectDialogResourceRowTests
         var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
         var row = viewModel.ResourceRows.Single();
-        row.SelectedMemorySourceChoice!.Scheme.Should().Be("depot", "the row must actually have the Depot source selected before this test means anything");
+        Assert.Equal("depot", row.SelectedMemorySourceChoice!.Scheme);
 
         row.Role = ProjectResourceRole.Reference;
 
-        row.Reference.Should().Be("depot:cockpit", "the picker is about to disappear, so what it folded away must land in the box the operator can still see");
-        row.SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0], "the picker's own selection must not keep pointing at a source the box no longer names");
-        viewModel.ToProject().Resources.Single().Reference.Should().Be("depot:cockpit", "saving now must not silently write a bare value that resolves to nothing");
+        Assert.Equal("depot:cockpit", row.Reference);
+        Assert.Equal(viewModel.MemorySourceChoices[0], row.SelectedMemorySourceChoice);
+        Assert.Equal("depot:cockpit", viewModel.ToProject().Resources.Single().Reference);
     }
 
     [Fact]
@@ -326,7 +326,7 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Reference;
 
-        row.Reference.Should().Be("/home/raymond/Notes/Cockpit", "a Folder-mode row never had a scheme hidden behind it, so switching away from Memory has nothing to fold");
+        Assert.Equal("/home/raymond/Notes/Cockpit", row.Reference);
     }
 
     [Fact]
@@ -342,8 +342,8 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Memory;
 
-        row.SelectedMemorySourceChoice?.Scheme.Should().Be("depot", "switching a row onto Memory must select the source its typed reference already names, the same as loading one from disk");
-        row.Reference.Should().Be("cockpit", "the box shows what the plugin queries with, not the scheme prefix, mirroring CreateAsync's own load-time unfold");
+        Assert.Equal("depot", row.SelectedMemorySourceChoice?.Scheme);
+        Assert.Equal("cockpit", row.Reference);
     }
 
     [Fact]
@@ -359,8 +359,8 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Memory;
 
-        row.SelectedMemorySourceChoice.Should().Be(viewModel.MemorySourceChoices[0], "a plain path names no registered source, so Folder is selected — the same fallback CreateAsync applies");
-        row.Reference.Should().Be("/home/raymond/Notes/Cockpit");
+        Assert.Equal(viewModel.MemorySourceChoices[0], row.SelectedMemorySourceChoice);
+        Assert.Equal("/home/raymond/Notes/Cockpit", row.Reference);
     }
 
     // --- AC: a machine-bound reference is visible in the editor -----------------------------------------------------------
@@ -376,7 +376,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Single().IsMachineBound.Should().BeTrue();
+        Assert.True(viewModel.ResourceRows.Single().IsMachineBound);
     }
 
     [Fact]
@@ -390,7 +390,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Single().IsMachineBound.Should().BeFalse();
+        Assert.False(viewModel.ResourceRows.Single().IsMachineBound);
     }
 
     [Fact]
@@ -404,7 +404,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        viewModel.ResourceRows.Single().IsMachineBound.Should().BeFalse();
+        Assert.False(viewModel.ResourceRows.Single().IsMachineBound);
     }
 
     [Fact]
@@ -418,11 +418,11 @@ public class ProjectDialogResourceRowTests
         viewModel.ResourceRows[0].Reference = reference;
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
-        viewModel.ResourceRows[0].IsMachineBound.Should().BeTrue("no folder is set yet, so any absolute path is machine-bound");
+        Assert.True(viewModel.ResourceRows[0].IsMachineBound, "no folder is set yet, so any absolute path is machine-bound");
 
         viewModel.SourceDirectory = _Root();
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
-        viewModel.ResourceRows[0].IsMachineBound.Should().BeFalse("the folder now contains the reference");
+        Assert.False(viewModel.ResourceRows[0].IsMachineBound, "the folder now contains the reference");
     }
 }

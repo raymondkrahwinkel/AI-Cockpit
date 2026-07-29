@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -18,7 +17,7 @@ public class ResourceMeterTests
 
         var percent = CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4);
 
-        percent.Should().BeApproximately(25, 0.01);
+        Assert.True(Math.Abs(percent - 25) <= 0.01);
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class ResourceMeterTests
         var previous = new ResourceSample(TimeSpan.Zero, 0);
         var current = new ResourceSample(TimeSpan.FromSeconds(8), 0);
 
-        CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4).Should().BeApproximately(100, 0.01);
+        Assert.True(Math.Abs(CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4) - 100) <= 0.01);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class ResourceMeterTests
         var previous = new ResourceSample(TimeSpan.Zero, 0);
         var current = new ResourceSample(TimeSpan.FromSeconds(30), 0);
 
-        CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4).Should().Be(100);
+        Assert.Equal(100, CpuPercent.Between(previous, current, TimeSpan.FromSeconds(2), processorCount: 4));
     }
 
     [Fact]
@@ -45,7 +44,7 @@ public class ResourceMeterTests
     {
         var sample = new ResourceSample(TimeSpan.FromSeconds(9), 0);
 
-        CpuPercent.Between(sample, sample, TimeSpan.Zero, processorCount: 8).Should().Be(0);
+        Assert.Equal(0, CpuPercent.Between(sample, sample, TimeSpan.Zero, processorCount: 8));
     }
 
     [Fact]
@@ -64,15 +63,16 @@ public class ResourceMeterTests
         var sample = ProcessTree.Sum(rows, rootProcessId: 10);
 
         // The session, the build and the compiler — but not the unrelated process 99.
-        sample.CpuTime.Should().Be(TimeSpan.FromSeconds(14));
-        sample.WorkingSetBytes.Should().Be(1400);
+        Assert.Equal(TimeSpan.FromSeconds(14), sample.CpuTime);
+        Assert.Equal(1400, sample.WorkingSetBytes);
     }
 
     [Fact]
     public void ProcessTree_ForAProcessThatIsGone_IsNothing_BecauseAnExitedSessionIsNotAnError()
     {
-        ProcessTree.Sum([new ProcessRow(1, 0, TimeSpan.FromSeconds(1), 100)], rootProcessId: 77)
-            .Should().Be(ResourceSample.None);
+        Assert.Equal(
+            ResourceSample.None,
+            ProcessTree.Sum([new ProcessRow(1, 0, TimeSpan.FromSeconds(1), 100)], rootProcessId: 77));
     }
 
     [Fact]
@@ -85,6 +85,6 @@ public class ResourceMeterTests
             new(20, 10, TimeSpan.FromSeconds(1), 100),
         };
 
-        ProcessTree.Sum(rows, rootProcessId: 10).WorkingSetBytes.Should().Be(200);
+        Assert.Equal(200, ProcessTree.Sum(rows, rootProcessId: 10).WorkingSetBytes);
     }
 }

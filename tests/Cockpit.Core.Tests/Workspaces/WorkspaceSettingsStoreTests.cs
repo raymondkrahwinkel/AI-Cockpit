@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -29,9 +28,9 @@ public class WorkspaceSettingsStoreTests : IDisposable
     {
         var settings = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        settings.Workspaces.Should().HaveCount(2);
-        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Sessions);
-        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Projects);
+        Assert.Equal(2, System.Linq.Enumerable.Count(settings.Workspaces));
+        Assert.Single(settings.Workspaces, workspace => workspace.Type == WorkspaceType.Sessions);
+        Assert.Single(settings.Workspaces, workspace => workspace.Type == WorkspaceType.Projects);
     }
 
     [Fact]
@@ -49,12 +48,12 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(saved);
         var loaded = await store.LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(3, "the default's Sessions workspace and its fixed overview, plus the dashboard");
-        loaded.ActiveWorkspaceId.Should().Be(dashboard.Id);
+        Assert.Equal(3, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.Equal(dashboard.Id, loaded.ActiveWorkspaceId);
         var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
-        reloaded.Name.Should().Be("Monitoring");
-        reloaded.Layout.Columns.Should().Be(3);
-        reloaded.Panes.Should().ContainSingle().Which.Should().BeEquivalentTo(dashboard.Panes[0]);
+        Assert.Equal("Monitoring", reloaded.Name);
+        Assert.Equal(3, reloaded.Layout.Columns);
+        Assert.Equivalent(dashboard.Panes[0], Assert.Single(reloaded.Panes));
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(WorkspaceSettings.Default.WithWorkspace(dashboard));
         var loaded = await store.LoadAsync();
 
-        loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id).Layout.ShowGridLines.Should().BeTrue();
+        Assert.True(loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id).Layout.ShowGridLines);
     }
 
     [Fact]
@@ -79,8 +78,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces[0].Layout.ShowGridLines.Should().BeFalse("a dashboard is something you look at, not a worksheet");
-        loaded.Workspaces[0].Layout.Columns.Should().Be(4);
+        Assert.False(loaded.Workspaces[0].Layout.ShowGridLines, "a dashboard is something you look at, not a worksheet");
+        Assert.Equal(4, loaded.Workspaces[0].Layout.Columns);
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await new WorkspaceSettingsStore(_configPath).SaveAsync(WorkspaceSettings.Default);
 
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(_configPath));
-        document.RootElement.GetProperty("Layout").GetProperty("SidebarWidth").GetDouble().Should().Be(240);
+        Assert.Equal(240, document.RootElement.GetProperty("Layout").GetProperty("SidebarWidth").GetDouble());
     }
 
     [Fact]
@@ -101,8 +100,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(_configPath));
         var workspace = document.RootElement.GetProperty("Workspaces").GetProperty("Workspaces")[0];
-        workspace.TryGetProperty("Layout", out var layout).Should().BeTrue();
-        layout.ValueKind.Should().Be(JsonValueKind.Null);
+        Assert.True(workspace.TryGetProperty("Layout", out var layout));
+        Assert.Equal(JsonValueKind.Null, layout.ValueKind);
     }
 
     [Fact]
@@ -119,9 +118,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2, "the saved Sessions workspace, plus the fixed overview Normalized adds");
-        loaded.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Panes.Should().ContainSingle()
-            .Which.Kind.Should().Be(PaneKind.Terminal);
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.Equal(PaneKind.Terminal, Assert.Single(loaded.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Panes).Kind);
     }
 
     [Fact]
@@ -136,11 +134,11 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2, "the saved plugin workspace, plus the fixed overview Normalized adds");
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
         var workspace = loaded.Workspaces.Single(workspace => workspace.Id == "w1");
-        workspace.Type.Should().Be(new WorkspaceType("autopilot.run"));
-        workspace.Type.IsBuiltIn.Should().BeFalse();
-        workspace.Panes.Should().BeEmpty();
+        Assert.Equal(new WorkspaceType("autopilot.run"), workspace.Type);
+        Assert.False(workspace.Type.IsBuiltIn);
+        Assert.Empty(workspace.Panes);
     }
 
     [Fact]
@@ -154,8 +152,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2, "the recovered workspace, plus the fixed overview Normalized adds");
-        loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type.Should().Be(WorkspaceType.Sessions);
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.Equal(WorkspaceType.Sessions, loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type);
     }
 
     [Fact]
@@ -172,8 +170,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(settings);
         var loaded = await store.LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2, "the saved plugin workspace, plus the fixed overview Normalized adds on save");
-        loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type.Id.Should().Be("autopilot.run");
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.Equal("autopilot.run", loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type.Id);
     }
 
     [Fact]
@@ -183,8 +181,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2, "the default Sessions workspace plus the fixed overview");
-        loaded.Active.Should().NotBeNull();
+        Assert.Equal(2, System.Linq.Enumerable.Count(loaded.Workspaces));
+        Assert.NotNull(loaded.Active);
     }
 
     [Fact]
@@ -197,8 +195,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var layout = (await new WorkspaceSettingsStore(_configPath).LoadAsync()).Workspaces[0].Layout;
 
-        layout.Columns.Should().Be(DashboardLayout.MinColumns);
-        layout.Rows.Should().Be(DashboardLayout.MinRows);
+        Assert.Equal(DashboardLayout.MinColumns, layout.Columns);
+        Assert.Equal(DashboardLayout.MinRows, layout.Rows);
     }
 
     [Fact]
@@ -208,6 +206,6 @@ public class WorkspaceSettingsStoreTests : IDisposable
             {"Workspaces":{"ActiveWorkspaceId":"gone","Workspaces":[{"Id":"w1","Name":"A","Type":"Sessions","Panes":[]}]}}
             """);
 
-        (await new WorkspaceSettingsStore(_configPath).LoadAsync()).ActiveWorkspaceId.Should().Be("w1");
+        Assert.Equal("w1", (await new WorkspaceSettingsStore(_configPath).LoadAsync()).ActiveWorkspaceId);
     }
 }

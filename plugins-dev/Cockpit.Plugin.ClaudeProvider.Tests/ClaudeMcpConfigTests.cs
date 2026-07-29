@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -19,7 +18,7 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            _Authorization(path!, "cockpit-session").Should().Be("Bearer ${COCKPIT_MCP_KEY}");
+            Assert.Equal("Bearer ${COCKPIT_MCP_KEY}", _Authorization(path!, "cockpit-session"));
         }
         finally
         {
@@ -34,7 +33,7 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            _Authorization(path!, "youtrack").Should().Be("Bearer yt-key");
+            Assert.Equal("Bearer yt-key", _Authorization(path!, "youtrack"));
         }
         finally
         {
@@ -55,13 +54,11 @@ public class ClaudeMcpConfigTests
             {
                 // No Unix mode bits on Windows — the protection is the per-user temp profile. Assert only that the
                 // token did land in the file, so the test still exercises the write on this platform.
-                File.ReadAllText(path!).Should().Contain("yt-key");
+                Assert.Contains("yt-key", File.ReadAllText(path!));
                 return;
             }
 
-            File.GetUnixFileMode(path!).Should().Be(
-                UnixFileMode.UserRead | UnixFileMode.UserWrite,
-                "a file holding a third-party bearer token must be readable only by its owner");
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path!));
         }
         finally
         {
@@ -74,7 +71,7 @@ public class ClaudeMcpConfigTests
     {
         // The TTY route's existing behaviour (unchanged by AC-378): nothing to add means the flag is dropped
         // entirely, so the operator's own connectors add on top of a config that was never written at all.
-        ClaudeMcpConfig.Write([]).Should().BeNull();
+        Assert.Null(ClaudeMcpConfig.Write([]));
     }
 
     [Fact]
@@ -87,8 +84,8 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            path.Should().NotBeNull();
-            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+            Assert.NotNull(path);
+            Assert.Empty(JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject());
         }
         finally
         {
@@ -108,7 +105,7 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>().Should().Be("http://example/mcp");
+            Assert.Equal("http://example/mcp", JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>());
         }
         finally
         {

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -22,10 +21,10 @@ public class ProjectMemorySourceRegistryTests
     {
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("depot", "Depot project")).Should().BeTrue();
-        registry.Register(Source("depot", "Depot (second copy)")).Should().BeFalse();
+        Assert.True(registry.Register(Source("depot", "Depot project")));
+        Assert.False(registry.Register(Source("depot", "Depot (second copy)")));
 
-        registry.Sources.Should().ContainSingle().Which.Title.Should().Be("Depot project");
+        Assert.Equal("Depot project", Assert.Single(registry.Sources).Title);
     }
 
     [Fact]
@@ -35,10 +34,10 @@ public class ProjectMemorySourceRegistryTests
         // schemes differing only in case would otherwise let a second plugin silently shadow the first's meaning.
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("depot", "Depot project")).Should().BeTrue();
-        registry.Register(Source("Depot", "Depot (again)")).Should().BeFalse();
+        Assert.True(registry.Register(Source("depot", "Depot project")));
+        Assert.False(registry.Register(Source("Depot", "Depot (again)")));
 
-        registry.Sources.Should().ContainSingle();
+        Assert.Single(registry.Sources);
     }
 
     [Fact]
@@ -46,9 +45,9 @@ public class ProjectMemorySourceRegistryTests
     {
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("   ", "Nameless")).Should().BeFalse();
+        Assert.False(registry.Register(Source("   ", "Nameless")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -59,9 +58,9 @@ public class ProjectMemorySourceRegistryTests
         // falls silent for every project that picks it.
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("d", "One-letter source")).Should().BeFalse();
+        Assert.False(registry.Register(Source("d", "One-letter source")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -71,9 +70,9 @@ public class ProjectMemorySourceRegistryTests
         // that does could never be the text TryParse extracts, whatever reference stored it.
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("de:pot", "Colon in the scheme")).Should().BeFalse();
+        Assert.False(registry.Register(Source("de:pot", "Colon in the scheme")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -85,9 +84,9 @@ public class ProjectMemorySourceRegistryTests
         // session, or the reverse.
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source(" depot", "Leading space")).Should().BeFalse();
+        Assert.False(registry.Register(Source(" depot", "Leading space")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -95,9 +94,9 @@ public class ProjectMemorySourceRegistryTests
     {
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("depot", "  ")).Should().BeFalse();
+        Assert.False(registry.Register(Source("depot", "  ")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -108,9 +107,9 @@ public class ProjectMemorySourceRegistryTests
         // thing this seam exists to fix. Offer it not at all rather than half-working.
         var registry = new ProjectMemorySourceRegistry();
 
-        registry.Register(Source("depot", "Depot project", "   ")).Should().BeFalse();
+        Assert.False(registry.Register(Source("depot", "Depot project", "   ")));
 
-        registry.Sources.Should().BeEmpty();
+        Assert.Empty(registry.Sources);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class ProjectMemorySourceRegistryTests
         var services = new ServiceCollection();
         services.AddServices(typeof(ProjectMemorySourceRegistry).Assembly);
 
-        services.BuildServiceProvider().GetService<IProjectMemorySourceRegistry>().Should().BeOfType<ProjectMemorySourceRegistry>();
+        Assert.IsType<ProjectMemorySourceRegistry>(services.BuildServiceProvider().GetService<IProjectMemorySourceRegistry>());
     }
 
     [Fact]
@@ -132,6 +131,6 @@ public class ProjectMemorySourceRegistryTests
         registry.Register(Source("notes", "Notes vault"));
         registry.Register(Source("depot", "Depot project"));
 
-        registry.Sources.Select(source => source.Scheme).Should().Equal("notes", "depot");
+        Assert.Equal(new[] { "notes", "depot" }, registry.Sources.Select(source => source.Scheme));
     }
 }

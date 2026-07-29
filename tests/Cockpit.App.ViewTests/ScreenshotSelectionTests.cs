@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -34,7 +33,7 @@ public class ScreenshotSelectionTests
 
         // The window lays out 1920×1080 while the image is 2880×1620, so every distance is one and a half times
         // itself in the image. Red the moment anything here works in the window's units.
-        selection.Selection.Should().Be(new CaptureRect(150, 75, 300, 300));
+        Assert.Equal(new CaptureRect(150, 75, 300, 300), selection.Selection);
     }
 
     /// <summary>Dragging up and to the left is the same gesture as down and to the right — the anchor is where the press was, not where the rectangle starts.</summary>
@@ -47,7 +46,7 @@ public class ScreenshotSelectionTests
         selection.DragTo(200, 100);
         selection.EndDrag();
 
-        selection.Selection.Should().Be(new CaptureRect(300, 150, 300, 450));
+        Assert.Equal(new CaptureRect(300, 150, 300, 450), selection.Selection);
     }
 
     /// <summary>
@@ -62,7 +61,7 @@ public class ScreenshotSelectionTests
 
         selection.Nudge(dx: 1, dy: 0);
 
-        selection.Selection.Should().Be(new CaptureRect(101, 100, 50, 50));
+        Assert.Equal(new CaptureRect(101, 100, 50, 50), selection.Selection);
     }
 
     [Fact]
@@ -73,7 +72,7 @@ public class ScreenshotSelectionTests
 
         selection.Nudge(dx: 0, dy: 1, step: 10);
 
-        selection.Selection.Should().Be(new CaptureRect(100, 110, 50, 50));
+        Assert.Equal(new CaptureRect(100, 110, 50, 50), selection.Selection);
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class ScreenshotSelectionTests
 
         selection.Nudge(dx: 1, dy: 0, resize: true);
 
-        selection.Selection.Should().Be(new CaptureRect(100, 100, 51, 50));
+        Assert.Equal(new CaptureRect(100, 100, 51, 50), selection.Selection);
     }
 
     /// <summary>Nudging cannot walk a selection off the image, which would crop nothing at all.</summary>
@@ -96,7 +95,7 @@ public class ScreenshotSelectionTests
 
         selection.Nudge(dx: -1, dy: -1, step: 100);
 
-        selection.Selection.Should().Be(new CaptureRect(0, 0, 50, 50));
+        Assert.Equal(new CaptureRect(0, 0, 50, 50), selection.Selection);
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class ScreenshotSelectionTests
 
         selection.SelectEverything();
 
-        selection.Selection.Should().Be(new CaptureRect(0, 0, 2880, 1620));
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), selection.Selection);
     }
 
     [Fact]
@@ -119,8 +118,8 @@ public class ScreenshotSelectionTests
 
         selection.Confirm();
 
-        selection.Result!.Region.Should().Be(new CaptureRect(15, 15, 150, 150));
-        selection.IsClosed.Should().BeTrue();
+        Assert.Equal(new CaptureRect(15, 15, 150, 150), selection.Result!.Region);
+        Assert.True(selection.IsClosed);
     }
 
     [Fact]
@@ -133,8 +132,8 @@ public class ScreenshotSelectionTests
 
         selection.Cancel();
 
-        selection.Result.Should().BeNull();
-        selection.IsClosed.Should().BeTrue();
+        Assert.Null(selection.Result);
+        Assert.True(selection.IsClosed);
     }
 
     /// <summary>A press that never moved is not a selection, and confirming it would send a rectangle with no area.</summary>
@@ -147,9 +146,9 @@ public class ScreenshotSelectionTests
         selection.EndDrag();
         selection.Confirm();
 
-        selection.Selection.Should().BeNull();
-        selection.Result.Should().BeNull();
-        selection.IsClosed.Should().BeFalse();
+        Assert.Null(selection.Selection);
+        Assert.Null(selection.Result);
+        Assert.False(selection.IsClosed);
     }
 
     /// <summary>
@@ -165,8 +164,8 @@ public class ScreenshotSelectionTests
         // Above the shorter display, which starts 360 rows down: inside the image, on nobody's screen.
         var started = selection.BeginDrag(surfaceX: 2000, surfaceY: 20);
 
-        started.Should().BeFalse();
-        selection.Selection.Should().BeNull();
+        Assert.False(started);
+        Assert.Null(selection.Selection);
     }
 
     /// <summary>
@@ -180,7 +179,7 @@ public class ScreenshotSelectionTests
     {
         var selection = _Surface();
 
-        selection.BeginDrag(surfaceX: 1900, surfaceY: 1000).Should().BeTrue();
+        Assert.True(selection.BeginDrag(surfaceX: 1900, surfaceY: 1000));
     }
 
     [Fact]
@@ -188,7 +187,7 @@ public class ScreenshotSelectionTests
     {
         var selection = _Staggered();
 
-        selection.BeginDrag(surfaceX: 2000, surfaceY: 400).Should().BeTrue();
+        Assert.True(selection.BeginDrag(surfaceX: 2000, surfaceY: 400));
     }
 
     /// <summary>The same panel gets grabbed over and over; re-dragging it every time is the difference between a tool and a chore.</summary>
@@ -197,7 +196,7 @@ public class ScreenshotSelectionTests
     {
         var selection = _Surface(lastRegion: new CaptureRect(400, 300, 800, 600));
 
-        selection.Selection.Should().Be(new CaptureRect(400, 300, 800, 600));
+        Assert.Equal(new CaptureRect(400, 300, 800, 600), selection.Selection);
     }
 
     /// <summary>
@@ -209,7 +208,7 @@ public class ScreenshotSelectionTests
     {
         var selection = _Surface(lastRegion: new CaptureRect(2800, 1600, 400, 400));
 
-        selection.Selection.Should().BeNull();
+        Assert.Null(selection.Selection);
     }
 
     /// <summary>A window that has not been laid out yet must not put every pointer event on pixel zero.</summary>
@@ -218,7 +217,7 @@ public class ScreenshotSelectionTests
     {
         var selection = new ScreenshotSelectionViewModel(_Capture(Panel), 2880, 1620, Accent);
 
-        selection.ToImagePixel(100, 100).Should().Be(new CapturePoint(100, 100));
+        Assert.Equal(new CapturePoint(100, 100), selection.ToImagePixel(100, 100));
     }
 
     private static ScreenshotSelectionViewModel _Surface(CaptureRect? lastRegion = null) =>

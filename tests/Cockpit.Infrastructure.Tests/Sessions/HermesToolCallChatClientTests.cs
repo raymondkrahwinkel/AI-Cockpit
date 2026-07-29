@@ -4,7 +4,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -30,12 +29,12 @@ public class HermesToolCallChatClientTests
         // The literal shape qwen-coder emits for a no-arg tool: <function=NAME> </function> </tool_call>.
         var (text, calls) = await _RunAsync("<function=list_allowed_directories> </function> </tool_call>");
 
-        calls.Should().ContainSingle();
-        calls[0].Name.Should().Be("list_allowed_directories");
-        calls[0].Arguments.Should().BeEmpty();
+        Assert.Single(calls);
+        Assert.Equal("list_allowed_directories", calls[0].Name);
+        Assert.Empty(calls[0].Arguments!);
         // Neither the function marker nor the tool_call wrapper survives as text.
-        text.Should().NotContain("<function=");
-        text.Should().NotContain("</tool_call>");
+        Assert.DoesNotContain("<function=", text);
+        Assert.DoesNotContain("</tool_call>", text);
     }
 
     [Fact]
@@ -43,9 +42,11 @@ public class HermesToolCallChatClientTests
     {
         var (_, calls) = await _RunAsync("<function=read_file> <parameter=path> /home/x/README.md </parameter> </function> </tool_call>");
 
-        calls.Should().ContainSingle();
-        calls[0].Name.Should().Be("read_file");
-        calls[0].Arguments.Should().ContainKey("path").WhoseValue.Should().Be("/home/x/README.md");
+        Assert.Single(calls);
+        Assert.Equal("read_file", calls[0].Name);
+        var arguments = calls[0].Arguments;
+        Assert.NotNull(arguments);
+        Assert.Equal("/home/x/README.md", arguments["path"]);
     }
 
     [Fact]
@@ -54,10 +55,12 @@ public class HermesToolCallChatClientTests
         var (_, calls) = await _RunAsync(
             "<function=write_file><parameter=path>/tmp/a.txt</parameter><parameter=content>hello world</parameter></function>");
 
-        calls.Should().ContainSingle();
-        calls[0].Name.Should().Be("write_file");
-        calls[0].Arguments.Should().ContainKey("path").WhoseValue.Should().Be("/tmp/a.txt");
-        calls[0].Arguments.Should().ContainKey("content").WhoseValue.Should().Be("hello world");
+        Assert.Single(calls);
+        Assert.Equal("write_file", calls[0].Name);
+        var arguments = calls[0].Arguments;
+        Assert.NotNull(arguments);
+        Assert.Equal("/tmp/a.txt", arguments["path"]);
+        Assert.Equal("hello world", arguments["content"]);
     }
 
     [Fact]
@@ -65,8 +68,8 @@ public class HermesToolCallChatClientTests
     {
         var (text, calls) = await _RunAsync("Here is my answer, no tools needed.");
 
-        calls.Should().BeEmpty();
-        text.Should().Be("Here is my answer, no tools needed.");
+        Assert.Empty(calls);
+        Assert.Equal("Here is my answer, no tools needed.", text);
     }
 
     [Fact]
@@ -74,8 +77,8 @@ public class HermesToolCallChatClientTests
     {
         var (text, calls) = await _RunAsync("Let me look at it. <function=read_file><parameter=path>/x</parameter></function>");
 
-        text.Should().Contain("Let me look at it.");
-        calls.Should().ContainSingle().Which.Name.Should().Be("read_file");
+        Assert.Contains("Let me look at it.", text);
+        Assert.Equal("read_file", Assert.Single(calls).Name);
     }
 
     [Fact]
@@ -86,9 +89,11 @@ public class HermesToolCallChatClientTests
         var (_, calls) = await _RunAsync(
             "<functio", "n=read_file> <param", "eter=path> /home/x/READ", "ME.md </parameter> </func", "tion> </tool_call>");
 
-        calls.Should().ContainSingle();
-        calls[0].Name.Should().Be("read_file");
-        calls[0].Arguments.Should().ContainKey("path").WhoseValue.Should().Be("/home/x/README.md");
+        Assert.Single(calls);
+        Assert.Equal("read_file", calls[0].Name);
+        var arguments = calls[0].Arguments;
+        Assert.NotNull(arguments);
+        Assert.Equal("/home/x/README.md", arguments["path"]);
     }
 
     [Fact]
@@ -104,8 +109,8 @@ public class HermesToolCallChatClientTests
 
         var (_, calls) = await _CollectAsync(client);
 
-        calls.Should().ContainSingle();
-        calls[0].Should().BeSameAs(original);
+        Assert.Single(calls);
+        Assert.Same(original, calls[0]);
     }
 
     [Fact]
@@ -124,15 +129,15 @@ public class HermesToolCallChatClientTests
         var driver = _CreateDriver(chatClient, echo);
 
         await driver.StartAsync(LocalProfile);
-        driver.Capabilities.SupportsTools.Should().BeTrue();
+        Assert.True(driver.Capabilities.SupportsTools);
         await driver.SetAutoApproveToolsAsync(true);
         await driver.SendUserMessageAsync("read something");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<ToolUseRequested>().Should().ContainSingle().Which.ToolName.Should().Be("echo");
-        events.OfType<ToolResult>().Should().ContainSingle().Which.Content.Should().Contain("echoed:hi");
-        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Be("done");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        Assert.Equal("echo", Assert.Single(events.OfType<ToolUseRequested>()).ToolName);
+        Assert.Contains("echoed:hi", Assert.Single(events.OfType<ToolResult>()).Content);
+        Assert.Equal("done", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -150,16 +155,16 @@ public class HermesToolCallChatClientTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("tool call");
-        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Contains("tool call", Assert.Single(events.OfType<SessionError>()).Message);
+        Assert.True(Assert.Single(events.OfType<TurnCompleted>()).IsError);
     }
 
     [Fact]
     public void ContainsUnprocessedToolCallMarker_DetectsAnOpenFunctionOrAStrayToolCallWrapper()
     {
-        OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("call <function=read_file now").Should().BeTrue();
-        OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("done </tool_call>").Should().BeTrue();
-        OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("a perfectly ordinary answer").Should().BeFalse();
+        Assert.True(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("call <function=read_file now"));
+        Assert.True(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("done </tool_call>"));
+        Assert.False(OpenAiCompatSessionDriver._ContainsUnprocessedToolCallMarker("a perfectly ordinary answer"));
     }
 
     private static async Task<(string Text, List<FunctionCallContent> Calls)> _RunAsync(params string[] chunks)

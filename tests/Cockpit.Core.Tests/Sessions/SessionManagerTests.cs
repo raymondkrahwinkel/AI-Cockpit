@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -22,9 +21,10 @@ public class SessionManagerTests
 
         var runtime = manager.Create(profile: null);
 
-        manager.Sessions.Should().ContainSingle().Which.Should().Be(runtime);
-        manager.Find(runtime.Id).Should().Be(runtime);
-        changes.Should().Be(1);
+        var only = Assert.Single(manager.Sessions);
+        Assert.Equal(runtime, only);
+        Assert.Equal(runtime, manager.Find(runtime.Id));
+        Assert.Equal(1, changes);
     }
 
     [Fact]
@@ -35,8 +35,8 @@ public class SessionManagerTests
 
         await manager.StopAsync(runtime.Id);
 
-        manager.Sessions.Should().BeEmpty();
-        manager.Find(runtime.Id).Should().BeNull();
+        Assert.Empty(manager.Sessions);
+        Assert.Null(manager.Find(runtime.Id));
     }
 
     [Fact]
@@ -48,9 +48,7 @@ public class SessionManagerTests
         var runtime = manager.Create(profile: null);
         await manager.StopAsync(runtime.Id);
 
-        var stopAgain = async () => await manager.StopAsync(runtime.Id);
-
-        await stopAgain.Should().NotThrowAsync();
+        await manager.StopAsync(runtime.Id);
     }
 
     [Fact]
@@ -58,9 +56,7 @@ public class SessionManagerTests
     {
         var manager = new SessionManager(_Factory());
 
-        var stopUnknown = async () => await manager.StopAsync("no-such-session");
-
-        await stopUnknown.Should().NotThrowAsync();
+        await manager.StopAsync("no-such-session");
     }
 
     private static ISessionDriverFactory _Factory()

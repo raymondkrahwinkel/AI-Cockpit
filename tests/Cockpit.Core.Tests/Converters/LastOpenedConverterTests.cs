@@ -1,6 +1,5 @@
 using System.Globalization;
 using Cockpit.App.Converters;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Converters;
 
@@ -16,7 +15,7 @@ public class LastOpenedConverterTests
     [Fact]
     public void AProjectNeverOpened_SaysSo_RatherThanShowingNothing()
     {
-        Convert(null).Should().Be("Not opened yet");
+        Assert.Equal("Not opened yet", Convert(null));
     }
 
     [Theory]
@@ -29,7 +28,7 @@ public class LastOpenedConverterTests
     [InlineData(60 * 60 * 24 * 9, "Opened 9 days ago")]
     public void TheAgeIsRoundedToTheCoarsestUnitThatStillSaysSomething(int secondsAgo, string expected)
     {
-        Convert(DateTimeOffset.Now.AddSeconds(-secondsAgo)).Should().Be(expected);
+        Assert.Equal(expected, Convert(DateTimeOffset.Now.AddSeconds(-secondsAgo)));
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class LastOpenedConverterTests
         // must not read as hours old just because the offset differs.
         var sameMomentElsewhere = DateTimeOffset.Now.ToOffset(TimeSpan.FromHours(-7));
 
-        Convert(sameMomentElsewhere).Should().Be("Opened just now");
+        Assert.Equal("Opened just now", Convert(sameMomentElsewhere));
     }
 
     [Fact]
@@ -47,6 +46,6 @@ public class LastOpenedConverterTests
     {
         // A restored config or a corrected clock can leave a stamp in the future. "Opened -3 days ago" is nonsense
         // the operator would have to interpret.
-        Convert(DateTimeOffset.Now.AddHours(3)).Should().Be("Opened just now");
+        Assert.Equal("Opened just now", Convert(DateTimeOffset.Now.AddHours(3)));
     }
 }

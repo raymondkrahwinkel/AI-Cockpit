@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Cockpit.TestSupport;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Styles;
 
@@ -119,15 +118,14 @@ public partial class ThemeHexColorGuardTests
         var repositoryRoot = _LocateRepositoryRoot();
         var scannedFiles = _ScannedFiles(repositoryRoot);
 
-        scannedFiles.Should().HaveCountGreaterThan(200,
+        Assert.True(System.Linq.Enumerable.Count(scannedFiles) > 200,
             "the host projects and the twenty-odd plugins together have well over two hundred source files — finding almost none means the walk broke, not that the rule holds");
 
         var scannedPaths = scannedFiles
             .Select(file => _RepositoryPath(repositoryRoot, file))
             .ToHashSet(StringComparer.Ordinal);
 
-        AllowedFiles.Should().BeSubsetOf(scannedPaths,
-            "a whole-file exemption that no longer names a file it can find has stopped exempting anything and started hiding a gap");
+        Assert.All(AllowedFiles, item => Assert.Contains(item, scannedPaths));
 
         var found = new Dictionary<(string Path, string Hex), int>();
         foreach (var file in scannedFiles)
@@ -183,8 +181,7 @@ public partial class ThemeHexColorGuardTests
             }
         }
 
-        found.Should().ContainKey(("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"),
-            "if this known allowed alpha-echo stopped matching, this test would pass for the wrong reason");
+        Assert.Contains(("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116"), found.Keys);
 
         var unexpected = found
             .Where(entry => !AllowedLiterals.TryGetValue(entry.Key, out var allowed) || allowed.Occurrences != entry.Value)
@@ -192,10 +189,7 @@ public partial class ThemeHexColorGuardTests
             .OrderBy(text => text, StringComparer.Ordinal)
             .ToList();
 
-        unexpected.Should().BeEmpty(
-            "a colour belongs in Theme.axaml as a token, or is resolved live through ThemeBrush.Resolve with a " +
-            "fallback hex; a literal outside those two either needs a token or, if it is a deliberate alpha-echo " +
-            $"or colour-agnostic literal, an entry in {nameof(AllowedLiterals)} with the reason");
+        Assert.Empty(unexpected);
     }
 
     /// <summary>
@@ -212,7 +206,7 @@ public partial class ThemeHexColorGuardTests
         var themeAxamlPath = Path.Combine(repositoryRoot, "src", "Cockpit.App", "Styles", "Theme.axaml");
         var themeTokens = _ParseThemeColorTokens(themeAxamlPath);
 
-        themeTokens.Should().HaveCountGreaterThan(10,
+        Assert.True(System.Linq.Enumerable.Count(themeTokens) > 10,
             "Theme.axaml defines well over a dozen Color tokens — finding almost none means the parse broke, not that the rule holds");
 
         var scannedFiles = _ScannedFiles(repositoryRoot);
@@ -247,11 +241,10 @@ public partial class ThemeHexColorGuardTests
             }
         }
 
-        callSiteCount.Should().BeGreaterThan(30,
+        Assert.True(callSiteCount > 30,
             "the host's four code-drawn surfaces plus the plugins' own _Brush copies together resolve well over thirty times — finding almost none means the scan broke, not that the rule holds");
 
-        mismatches.Should().BeEmpty(
-            "a fallback is dead weight if it silently disagrees with the live token it stands in for — and a key with no token at all can only ever return its literal");
+        Assert.Empty(mismatches);
     }
 
     /// <summary>
@@ -261,10 +254,10 @@ public partial class ThemeHexColorGuardTests
     [Fact]
     public void HexColorRegex_CatchesCssShorthand()
     {
-        HexColorRegex().Matches("Background=\"#f80\"").Should().HaveCount(1);
-        HexColorRegex().Matches("Background=\"#f80c\"").Should().HaveCount(1);
-        HexColorRegex().Matches("Background=\"#3b82f6\"").Should().HaveCount(1);
-        HexColorRegex().Matches("Background=\"#263b82f6\"").Should().HaveCount(1);
+        Assert.Single(HexColorRegex().Matches("Background=\"#f80\""));
+        Assert.Single(HexColorRegex().Matches("Background=\"#f80c\""));
+        Assert.Single(HexColorRegex().Matches("Background=\"#3b82f6\""));
+        Assert.Single(HexColorRegex().Matches("Background=\"#263b82f6\""));
     }
 
     /// <summary>
@@ -274,9 +267,9 @@ public partial class ThemeHexColorGuardTests
     [Fact]
     public void NamedFrameworkColorRegex_CatchesBrushesAndColorsButNotTransparent()
     {
-        NamedFrameworkColorRegex().Matches("Foreground = Brushes.Gray").Should().HaveCount(1);
-        NamedFrameworkColorRegex().Matches("Foreground = Colors.White").Should().HaveCount(1);
-        NamedFrameworkColorRegex().Matches("Background = Brushes.Transparent").Should().BeEmpty();
+        Assert.Single(NamedFrameworkColorRegex().Matches("Foreground = Brushes.Gray"));
+        Assert.Single(NamedFrameworkColorRegex().Matches("Foreground = Colors.White"));
+        Assert.Empty(NamedFrameworkColorRegex().Matches("Background = Brushes.Transparent"));
     }
 
     /// <summary>
@@ -288,10 +281,10 @@ public partial class ThemeHexColorGuardTests
     [Fact]
     public void NamedFrameworkColorMatches_IgnoresLineComments()
     {
-        _NamedFrameworkColorMatches("/// The exec-auth warning used to be drawn in <c>Brushes.Orange</c>.")
-            .Should().BeEmpty();
-        _NamedFrameworkColorMatches("Foreground = Brushes.Gray; // was Brushes.Orange before AC-402")
-            .Should().Equal("Brushes.Gray");
+        Assert.Empty(_NamedFrameworkColorMatches("/// The exec-auth warning used to be drawn in <c>Brushes.Orange</c>."));
+        Assert.Equal(
+            new[] { "Brushes.Gray" },
+            _NamedFrameworkColorMatches("Foreground = Brushes.Gray; // was Brushes.Orange before AC-402"));
     }
 
     /// <summary>
@@ -306,7 +299,7 @@ public partial class ThemeHexColorGuardTests
         const string line =
             """var fill = level >= threshold ? ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") : new SolidColorBrush(Color.Parse("#abcdef"));""";
 
-        _NonExemptHexMatches(line).Should().Equal("#abcdef");
+        Assert.Equal(new[] { "#abcdef" }, _NonExemptHexMatches(line));
     }
 
     /// <summary>
@@ -321,7 +314,7 @@ public partial class ThemeHexColorGuardTests
         const string line =
             """DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", "#5AA576"), DiffLineKind.Hunk => new SolidColorBrush(Color.Parse("#5A9BD4")),""";
 
-        _NonExemptHexMatches(line).Should().Equal("#5A9BD4");
+        Assert.Equal(new[] { "#5A9BD4" }, _NonExemptHexMatches(line));
     }
 
     /// <summary>
@@ -332,9 +325,9 @@ public partial class ThemeHexColorGuardTests
     [Fact]
     public void ResolveCallRegex_MatchesBothHelperShapes()
     {
-        ResolveCallRegex().Matches("""ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
-        ResolveCallRegex().Matches("""_Brush("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
-        ResolveCallRegex().Matches("""Brush("CockpitAccentBrush", "#3b82f6")""").Should().HaveCount(1);
+        Assert.Single(ResolveCallRegex().Matches("""ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6")"""));
+        Assert.Single(ResolveCallRegex().Matches("""_Brush("CockpitAccentBrush", "#3b82f6")"""));
+        Assert.Single(ResolveCallRegex().Matches("""Brush("CockpitAccentBrush", "#3b82f6")"""));
     }
 
     /// <summary>

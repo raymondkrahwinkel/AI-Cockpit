@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
@@ -27,14 +26,14 @@ public class ScreenshotSupportSettlingTests
         cockpit.Sessions.Add(session);
 
         cockpit.Screenshots = _Coordinator(capture, cockpit);
-        session.ScreenshotRefusalReason.Should().NotBeNull("nothing is known yet, and claiming support would be a guess");
+        Assert.NotNull(session.ScreenshotRefusalReason);
 
         capture.IsSupported = true;
         answered.SetResult();
         await capture.SupportSettled;
         await Task.Yield();
 
-        session.ScreenshotRefusalReason.Should().BeNull("the desktop answered, and the button it belongs to is still on screen");
+        Assert.Null(session.ScreenshotRefusalReason);
     }
 
     /// <summary>The desktop really has no portal. Coming back to ask does not turn that into a yes.</summary>
@@ -52,8 +51,9 @@ public class ScreenshotSupportSettlingTests
         await capture.SupportSettled;
         await Task.Yield();
 
-        session.ScreenshotRefusalReason.Should().Contain("not available on this platform");
-        session.CanCaptureScreenshot.Should().BeFalse();
+        Assert.NotNull(session.ScreenshotRefusalReason);
+        Assert.Contains("not available on this platform", session.ScreenshotRefusalReason);
+        Assert.False(session.CanCaptureScreenshot);
     }
 
     /// <summary>A platform that knows outright — Windows, macOS — answers on the first pass and never comes back.</summary>
@@ -66,7 +66,7 @@ public class ScreenshotSupportSettlingTests
 
         cockpit.Screenshots = _Coordinator(new FakeScreenshotCapture { IsSupported = true }, cockpit);
 
-        session.ScreenshotRefusalReason.Should().BeNull();
+        Assert.Null(session.ScreenshotRefusalReason);
     }
 
     private static ScreenshotCoordinator _Coordinator(FakeScreenshotCapture capture, CockpitViewModel cockpit) =>

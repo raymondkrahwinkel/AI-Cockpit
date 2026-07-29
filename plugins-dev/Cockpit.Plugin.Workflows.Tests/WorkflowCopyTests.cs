@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -21,13 +20,13 @@ public class WorkflowCopyTests
 
         var copy = WorkflowCopy.Of(source, "Ticket → agent");
 
-        copy.Id.Should().NotBe(source.Id);
-        copy.Nodes.Select(node => node.Id).Should().NotIntersectWith(["t1", "t2"]);
+        Assert.NotEqual(source.Id, copy.Id);
+        Assert.Empty(copy.Nodes.Select(node => node.Id).Intersect(["t1", "t2"]));
 
         // The wire still runs between the same two steps — the new ones.
         var wire = copy.Connections.Single();
-        wire.FromNodeId.Should().Be(copy.Nodes[0].Id);
-        wire.ToNodeId.Should().Be(copy.Nodes[1].Id);
+        Assert.Equal(copy.Nodes[0].Id, wire.FromNodeId);
+        Assert.Equal(copy.Nodes[1].Id, wire.ToNodeId);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class WorkflowCopyTests
 
         var copied = WorkflowCopy.Of(source, "Flow").Nodes.Single();
 
-        copied.Parameters["Command"].Should().Be("git switch -c {branch}");
-        copied.IsTraced.Should().BeTrue();
+        Assert.Equal("git switch -c {branch}", copied.Parameters["Command"]);
+        Assert.True(copied.IsTraced);
     }
 
     // A flow you have not read is not one that should already be running.
@@ -50,7 +49,7 @@ public class WorkflowCopyTests
     {
         var source = new Workflow { Id = "w", Name = "Flow", IsActive = true };
 
-        WorkflowCopy.Of(source, "Flow").IsActive.Should().BeFalse();
+        Assert.False(WorkflowCopy.Of(source, "Flow").IsActive);
     }
 
     [Fact]
@@ -63,7 +62,7 @@ public class WorkflowCopyTests
 
         var copy = WorkflowCopy.Of(source, "Flow");
 
-        copy.Nodes.Select(node => (node.X, node.Y)).Should().Equal((80, 160), (360, 160));
+        Assert.Equal(new[] { (80.0, 160.0), (360.0, 160.0) }, copy.Nodes.Select(node => (node.X, node.Y)));
     }
 
     // A hand-edited or truncated file can name a step that is not there. Dropping that wire beats carrying it into a
@@ -75,6 +74,6 @@ public class WorkflowCopyTests
         source.Nodes.Add(new WorkflowNode { Id = "a", TypeId = "cockpit.manual", Name = "Start" });
         source.Connections.Add(new WorkflowConnection { FromNodeId = "a", FromOutput = 0, ToNodeId = "ghost" });
 
-        WorkflowCopy.Of(source, "Flow").Connections.Should().BeEmpty();
+        Assert.Empty(WorkflowCopy.Of(source, "Flow").Connections);
     }
 }

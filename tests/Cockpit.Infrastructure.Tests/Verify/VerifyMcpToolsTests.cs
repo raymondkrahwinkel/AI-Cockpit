@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Verify;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Verify;
@@ -46,7 +45,8 @@ public sealed class VerifyMcpToolsTests : IDisposable
         // It ran exactly the runner the registry holds — the tool has no other command to run.
         await _commandRunner.Received(1).RunAsync(runner, Arg.Any<CancellationToken>());
         // The snapshot text comes back on the tool result (not injected anywhere).
-        response.Should().Contain("Session 1").And.Contain("\"ok\":true");
+        Assert.Contains("Session 1", response);
+        Assert.Contains("\"ok\":true", response);
         // The screenshot — which a tool result cannot carry — goes through the feed as an image.
         await _gateway.Received(1).FeedResultAsync(
             Session,
@@ -65,7 +65,7 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(authenticatedPane).VerifyAsync();
 
-        response.Should().Contain("\"ok\":true");
+        Assert.Contains("\"ok\":true", response);
         // Selection and feed key on the authenticated pane — the agent has no say over which pane it targets.
         _gateway.Received().GetWorkingDirectory(authenticatedPane);
         await _gateway.Received(1).FeedResultAsync(authenticatedPane, Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
@@ -78,7 +78,7 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(null).VerifyAsync();
 
-        response.Should().Contain("\"ok\":false");
+        Assert.Contains("\"ok\":false", response);
         await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
     }
 
@@ -93,8 +93,9 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         // The stale file is cleared before the run, so with nothing fresh written the tool reports failure —
         // it never vouches for the old UI as ok:true.
-        response.Should().Contain("\"ok\":false").And.Contain("no snapshot");
-        response.Should().NotContain("STALE");
+        Assert.Contains("\"ok\":false", response);
+        Assert.Contains("no snapshot", response);
+        Assert.DoesNotContain("STALE", response);
     }
 
     [Fact]
@@ -112,8 +113,9 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(Session).VerifyAsync();
 
-        response.Should().Contain("\"ok\":false").And.Contain("no snapshot");
-        response.Should().NotContain("STALE");
+        Assert.Contains("\"ok\":false", response);
+        Assert.Contains("no snapshot", response);
+        Assert.DoesNotContain("STALE", response);
     }
 
     [Fact]
@@ -133,7 +135,8 @@ public sealed class VerifyMcpToolsTests : IDisposable
         var response = await _ToolFor(Session).VerifyAsync();
 
         // Read against the project directory, not the cockpit process's own — the snapshot is found and returned.
-        response.Should().Contain("\"ok\":true").And.Contain("#131519");
+        Assert.Contains("\"ok\":true", response);
+        Assert.Contains("#131519", response);
     }
 
     [Fact]
@@ -143,7 +146,7 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(Session).VerifyAsync();
 
-        response.Should().Contain("\"ok\":false");
+        Assert.Contains("\"ok\":false", response);
         await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
         await _gateway.DidNotReceive().FeedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
     }
@@ -156,7 +159,7 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(Session).VerifyAsync();
 
-        response.Should().Contain("\"ok\":false");
+        Assert.Contains("\"ok\":false", response);
         await _commandRunner.DidNotReceive().RunAsync(Arg.Any<VerifyRunner>(), Arg.Any<CancellationToken>());
     }
 
@@ -167,7 +170,8 @@ public sealed class VerifyMcpToolsTests : IDisposable
 
         var response = await _ToolFor(Session).VerifyAsync();
 
-        response.Should().Contain("\"ok\":false").And.Contain("no snapshot");
+        Assert.Contains("\"ok\":false", response);
+        Assert.Contains("no snapshot", response);
         await _gateway.DidNotReceive().FeedResultAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
     }
 

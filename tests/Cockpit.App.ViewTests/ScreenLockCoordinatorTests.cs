@@ -1,7 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Secrets;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -24,8 +23,8 @@ public class ScreenLockCoordinatorTests
 
         var locked = await coordinator.HandleLockAsync();
 
-        locked.Should().BeFalse("there is no password to re-ask for when encryption is off");
-        locks().Should().Be(0);
+        Assert.False(locked, "there is no password to re-ask for when encryption is off");
+        Assert.Equal(0, locks());
     }
 
     [Fact]
@@ -36,8 +35,8 @@ public class ScreenLockCoordinatorTests
 
         var locked = await coordinator.HandleLockAsync();
 
-        locked.Should().BeFalse("the operator turned the feature off");
-        locks().Should().Be(0);
+        Assert.False(locked, "the operator turned the feature off");
+        Assert.Equal(0, locks());
     }
 
     [Fact]
@@ -60,9 +59,9 @@ public class ScreenLockCoordinatorTests
 
         var locked = await coordinator.HandleLockAsync();
 
-        locked.Should().BeTrue();
-        count.Should().Be(1, "the unlock screen was shown once");
-        protection.Unlocked.Should().BeTrue("a pure UI lock leaves the key in memory — the coordinator never clears it");
+        Assert.True(locked);
+        Assert.Equal(1, count);
+        Assert.True(protection.Unlocked, "a pure UI lock leaves the key in memory — the coordinator never clears it");
     }
 
     [Fact]
@@ -92,9 +91,9 @@ public class ScreenLockCoordinatorTests
 
         actionRelease.SetResult();
 
-        (await first).Should().BeTrue();
-        second.Should().BeFalse("a lock is already in effect");
-        count.Should().Be(1, "one physical lock is one unlock screen, however many events it raised");
+        Assert.True((await first));
+        Assert.False(second, "a lock is already in effect");
+        Assert.Equal(1, count);
     }
 
     [Fact]
@@ -103,13 +102,13 @@ public class ScreenLockCoordinatorTests
         var protection = new FakeProtection { Enabled = true, Unlocked = true };
         var (coordinator, locks) = Build(protection, optionOn: true);
 
-        (await coordinator.HandleLockAsync()).Should().BeTrue();
+        Assert.True((await coordinator.HandleLockAsync()));
 
         // The operator entered the password again — model the app being unlocked once more.
         protection.Unlocked = true;
 
-        (await coordinator.HandleLockAsync()).Should().BeTrue("the guard reopens once the previous lock is done");
-        locks().Should().Be(2);
+        Assert.True(await coordinator.HandleLockAsync(), "the guard reopens once the previous lock is done");
+        Assert.Equal(2, locks());
     }
 
     [Fact]
@@ -130,7 +129,7 @@ public class ScreenLockCoordinatorTests
         await coordinator.StartAsync();
         monitor.RaiseLocked();
 
-        (await Task.WhenAny(locked.Task, Task.Delay(TimeSpan.FromSeconds(5)))).Should().Be(locked.Task, "the Locked event should reach the gate");
+        Assert.Equal(locked.Task, await Task.WhenAny(locked.Task, Task.Delay(TimeSpan.FromSeconds(5))));
     }
 
     [Fact]
@@ -160,10 +159,10 @@ public class ScreenLockCoordinatorTests
 
         monitor.RaiseUnlocked();
 
-        restores.Should().Be(1, "the unlock screen was shown on the OS lock desktop and never activated on the operator's own");
+        Assert.Equal(1, restores);
 
         actionRelease.SetResult();
-        (await locking).Should().BeTrue();
+        Assert.True((await locking));
     }
 
     [Fact]
@@ -175,8 +174,8 @@ public class ScreenLockCoordinatorTests
             RestoreFocusAction = () => Interlocked.Increment(ref restores),
         };
 
-        coordinator.HandleUnlock().Should().BeFalse("there is no unlock screen of ours to focus");
-        restores.Should().Be(0);
+        Assert.False(coordinator.HandleUnlock(), "there is no unlock screen of ours to focus");
+        Assert.Equal(0, restores);
     }
 
     private static (ScreenLockCoordinator Coordinator, Func<int> Locks) Build(FakeProtection protection, bool optionOn)

@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Shortcuts;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.TranscriptDisplay;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.TranscriptDisplay;
 
@@ -32,7 +31,7 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.ShowTimestamps.Should().BeFalse();
+        Assert.False(settings.ShowTimestamps);
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
         await store.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = true });
         var loaded = await store.LoadAsync();
 
-        loaded.ShowTimestamps.Should().BeTrue();
+        Assert.True(loaded.ShowTimestamps);
     }
 
     [Fact]
@@ -62,9 +61,9 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
         var reloadedShortcuts = await shortcutStore.LoadAsync();
         var reloadedDisplay = await displayStore.LoadAsync();
 
-        reloadedNotifications.WebhookUrl.Should().Be("https://example/webhook");
-        reloadedShortcuts.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Down");
-        reloadedDisplay.ShowTimestamps.Should().BeTrue();
+        Assert.Equal("https://example/webhook", reloadedNotifications.WebhookUrl);
+        Assert.Equal("Alt+Down", reloadedShortcuts.GestureFor(ShortcutAction.NextSession));
+        Assert.True(reloadedDisplay.ShowTimestamps);
     }
 
     public void Dispose()

@@ -2,7 +2,6 @@ using Cockpit.Core.Debugging;
 using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Debugging;
 using Cockpit.Infrastructure.Delegation;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Delegation;
 
@@ -27,7 +26,7 @@ public class DelegationSettingsStoreTests : IDisposable
     {
         var settings = await new DelegationSettingsStore(_configFilePath).LoadAsync();
 
-        settings.McpEnabled.Should().BeTrue();
+        Assert.True(settings.McpEnabled);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class DelegationSettingsStoreTests : IDisposable
 
         await store.SaveAsync(new DelegationSettings { McpEnabled = false });
 
-        (await store.LoadAsync()).McpEnabled.Should().BeFalse();
+        Assert.False((await store.LoadAsync()).McpEnabled);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class DelegationSettingsStoreTests : IDisposable
 
         await new DelegationSettingsStore(_configFilePath).SaveAsync(new DelegationSettings { McpEnabled = false });
 
-        (await new DebugSettingsStore(_configFilePath).LoadAsync()).ShowDebugControls.Should().BeTrue();
+        Assert.True((await new DebugSettingsStore(_configFilePath).LoadAsync()).ShowDebugControls);
     }
 
     public void Dispose()

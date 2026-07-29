@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -11,7 +10,7 @@ public class PushToTalkHoldGuardTests
     {
         var guard = new PushToTalkHoldGuard();
 
-        guard.TryBeginHold().Should().BeTrue();
+        Assert.True(guard.TryBeginHold());
     }
 
     [Fact]
@@ -19,9 +18,9 @@ public class PushToTalkHoldGuardTests
     {
         var guard = new PushToTalkHoldGuard();
 
-        guard.TryBeginHold().Should().BeTrue();
-        guard.TryBeginHold().Should().BeFalse();
-        guard.TryBeginHold().Should().BeFalse();
+        Assert.True(guard.TryBeginHold());
+        Assert.False(guard.TryBeginHold());
+        Assert.False(guard.TryBeginHold());
     }
 
     [Fact]
@@ -32,6 +31,6 @@ public class PushToTalkHoldGuardTests
 
         guard.Release();
 
-        guard.TryBeginHold().Should().BeTrue();
+        Assert.True(guard.TryBeginHold());
     }
 }

@@ -1,5 +1,4 @@
 using Avalonia.Media.Imaging;
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -27,12 +26,12 @@ public class ScreenshotSelectionWindowTests
 
         var window = ScreenshotSelectionWindow.Build(_Capture(), bitmap, lastRegion: null, windows: StubWindows.None);
 
-        window.Capture.Source.Should().BeSameAs(bitmap, "the surface shows the frozen capture as its background");
-        window.Surface.Should().NotBeNull("every pointer position is measured against it");
-        window.Marquee.Should().NotBeNull();
-        window.Readout.Should().NotBeNull();
-        window.Shade.Should().NotBeNull();
-        window.DataContext.Should().NotBeNull();
+        Assert.Same(bitmap, window.Capture.Source);
+        Assert.NotNull(window.Surface);
+        Assert.NotNull(window.Marquee);
+        Assert.NotNull(window.Readout);
+        Assert.NotNull(window.Shade);
+        Assert.NotNull(window.DataContext);
     });
 
     /// <summary>The image's own size comes from the bitmap, not from the window — a surface that took the window's would crop by the wrong numbers on any scaled display.</summary>
@@ -43,8 +42,7 @@ public class ScreenshotSelectionWindowTests
 
         var window = ScreenshotSelectionWindow.Build(_Capture(), bitmap, lastRegion: null, windows: StubWindows.None);
 
-        window.DataContext.Should().BeOfType<Cockpit.App.ViewModels.ScreenshotSelectionViewModel>()
-            .Which.ImageWidth.Should().Be(2880);
+        Assert.Equal(2880, Assert.IsType<Cockpit.App.ViewModels.ScreenshotSelectionViewModel>(window.DataContext).ImageWidth);
     });
 
     private static Bitmap _Bitmap(int width, int height)

@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
@@ -17,7 +16,7 @@ public class YouTrackTrackerReadToolsTests
     {
         var provider = _ProviderWith(new YouTrackInstance("Personal", "https://x.youtrack.cloud/api", "token", "AC"));
 
-        provider.ReadToolMcpServerNames.Should().ContainSingle().Which.Should().Be("YouTrack: Personal");
+        Assert.Equal("YouTrack: Personal", Assert.Single(provider.ReadToolMcpServerNames));
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class YouTrackTrackerReadToolsTests
             new YouTrackInstance("No token", "https://x.youtrack.cloud/api", string.Empty, string.Empty),
             new YouTrackInstance("Opted out", "https://y.youtrack.cloud/api", "token", string.Empty, AddMcpToSessions: false));
 
-        provider.ReadToolMcpServerNames.Should().BeEmpty();
+        Assert.Empty(provider.ReadToolMcpServerNames);
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class YouTrackTrackerReadToolsTests
     {
         var provider = new YouTrackTrackerProvider(new YouTrackSettings(Substitute.For<IPluginStorage>()));
 
-        provider.ReadToolMcpServerNames.Should().BeEmpty();
+        Assert.Empty(provider.ReadToolMcpServerNames);
     }
 
     private static YouTrackTrackerProvider _ProviderWith(params YouTrackInstance[] instances)

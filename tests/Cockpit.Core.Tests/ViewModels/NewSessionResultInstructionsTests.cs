@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -28,8 +27,8 @@ public class NewSessionResultInstructionsTests
     {
         var options = Result("You are Olaf.").SdkLaunchOptionsWithInstructions;
 
-        options.Should().NotBeNull();
-        options![WellKnownPluginSessionOptions.AppendSystemPrompt].Should().Be("You are Olaf.");
+        Assert.NotNull(options);
+        Assert.Equal("You are Olaf.", options![WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
@@ -38,8 +37,8 @@ public class NewSessionResultInstructionsTests
         var options = Result("You are Olaf.", new Dictionary<string, string> { ["model"] = "opus" })
             .SdkLaunchOptionsWithInstructions;
 
-        options!["model"].Should().Be("opus");
-        options.Should().ContainKey(WellKnownPluginSessionOptions.AppendSystemPrompt);
+        Assert.Equal("opus", options!["model"]);
+        Assert.Contains(WellKnownPluginSessionOptions.AppendSystemPrompt, options!);
     }
 
     [Fact]
@@ -47,13 +46,13 @@ public class NewSessionResultInstructionsTests
     {
         var provided = new Dictionary<string, string> { ["model"] = "opus" };
 
-        Result(systemPrompt: null, provided).SdkLaunchOptionsWithInstructions.Should().BeSameAs(provided);
+        Assert.Same(provided, Result(systemPrompt: null, provided).SdkLaunchOptionsWithInstructions);
     }
 
     [Fact]
     public void SdkLaunchOptionsWithInstructions_NoPromptAndNoOptions_StaysNull()
     {
-        Result(systemPrompt: null).SdkLaunchOptionsWithInstructions.Should().BeNull();
+        Assert.Null(Result(systemPrompt: null).SdkLaunchOptionsWithInstructions);
     }
 
     [Fact]
@@ -62,12 +61,12 @@ public class NewSessionResultInstructionsTests
         // The TTY route is a separate launch path; a profile's identity must not be an SDK-only privilege.
         var options = Result("You are Olaf.").TtyLaunchOptionsWithInstructions;
 
-        options![WellKnownPluginSessionOptions.AppendSystemPrompt].Should().Be("You are Olaf.");
+        Assert.Equal("You are Olaf.", options![WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]
     public void LaunchOptions_BlankPrompt_AddsNothing()
     {
-        Result("   ").SdkLaunchOptionsWithInstructions.Should().BeNull();
+        Assert.Null(Result("   ").SdkLaunchOptionsWithInstructions);
     }
 }

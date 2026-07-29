@@ -1,4 +1,3 @@
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -30,8 +29,8 @@ public class ProjectsViewModelTests
 
         await viewModel.LoadAsync();
 
-        viewModel.Projects.Select(project => project.Name).Should().Equal("Cockpit", "Depot");
-        viewModel.HasProjects.Should().BeTrue();
+        Assert.Equal(new[] { "Cockpit", "Depot" }, viewModel.Projects.Select(project => project.Name));
+        Assert.True(viewModel.HasProjects);
     }
 
     [Fact]
@@ -44,11 +43,11 @@ public class ProjectsViewModelTests
 
         await viewModel.LoadAsync();
 
-        viewModel.RecentProjects.Select(project => project.Name).Should().Equal("Cockpit", "Depot", "Archive");
+        Assert.Equal(new[] { "Cockpit", "Depot", "Archive" }, viewModel.RecentProjects.Select(project => project.Name));
         // The manager keeps the operator's own order — re-sorting it under them on every start is its own chaos.
-        viewModel.Projects.Select(project => project.Name).Should().Equal("Archive", "Depot", "Cockpit");
-        viewModel.MostRecentProject?.Name.Should().Be("Cockpit");
-        viewModel.OpenedProjectCount.Should().Be(2);
+        Assert.Equal(new[] { "Archive", "Depot", "Cockpit" }, viewModel.Projects.Select(project => project.Name));
+        Assert.Equal("Cockpit", viewModel.MostRecentProject?.Name);
+        Assert.Equal(2, viewModel.OpenedProjectCount);
     }
 
     [Fact]
@@ -63,9 +62,9 @@ public class ProjectsViewModelTests
 
         await viewModel.LoadAsync();
 
-        viewModel.SidebarProjects.Should().HaveCount(5);
-        viewModel.SidebarProjects.Select(project => project.Name).Should().Equal("Project 1", "Project 2", "Project 3", "Project 4", "Project 5");
-        viewModel.HasMoreThanSidebarShows.Should().BeTrue();
+        Assert.Equal(5, System.Linq.Enumerable.Count(viewModel.SidebarProjects));
+        Assert.Equal(new[] { "Project 1", "Project 2", "Project 3", "Project 4", "Project 5" }, viewModel.SidebarProjects.Select(project => project.Name));
+        Assert.True(viewModel.HasMoreThanSidebarShows);
     }
 
     [Fact]
@@ -75,8 +74,8 @@ public class ProjectsViewModelTests
 
         await viewModel.LoadAsync();
 
-        viewModel.SidebarProjects.Should().HaveCount(2);
-        viewModel.HasMoreThanSidebarShows.Should().BeFalse();
+        Assert.Equal(2, System.Linq.Enumerable.Count(viewModel.SidebarProjects));
+        Assert.False(viewModel.HasMoreThanSidebarShows);
     }
 
     [Fact]
@@ -118,7 +117,7 @@ public class ProjectsViewModelTests
         await store.Received(1).SaveAsync(
             Arg.Is<ProjectSettings>(settings => settings.Projects.Count == 1 && settings.Projects[0].Id == created.Id),
             Arg.Any<CancellationToken>());
-        viewModel.SelectedProject?.Id.Should().Be(created.Id);
+        Assert.Equal(created.Id, viewModel.SelectedProject?.Id);
     }
 
     [Fact]
@@ -186,13 +185,13 @@ public class ProjectsViewModelTests
         var (viewModel, _, _) = Build(Project.Create("Cockpit"));
         await viewModel.LoadAsync();
 
-        viewModel.EditProjectCommand.CanExecute(null).Should().BeFalse();
-        viewModel.RemoveProjectCommand.CanExecute(null).Should().BeFalse();
+        Assert.False(viewModel.EditProjectCommand.CanExecute(null));
+        Assert.False(viewModel.RemoveProjectCommand.CanExecute(null));
 
         viewModel.SelectedProject = viewModel.Projects[0];
 
-        viewModel.EditProjectCommand.CanExecute(null).Should().BeTrue();
-        viewModel.RemoveProjectCommand.CanExecute(null).Should().BeTrue();
+        Assert.True(viewModel.EditProjectCommand.CanExecute(null));
+        Assert.True(viewModel.RemoveProjectCommand.CanExecute(null));
     }
 
     /// <summary>Reloading must not silently move the operator's selection to a different project.</summary>
@@ -206,6 +205,6 @@ public class ProjectsViewModelTests
 
         await viewModel.LoadAsync();
 
-        viewModel.SelectedProject?.Name.Should().Be("Depot");
+        Assert.Equal("Depot", viewModel.SelectedProject?.Name);
     }
 }

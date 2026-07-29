@@ -32,7 +32,10 @@ it keeps a one-person project alive.
    you spend time on it.
 2. **Match the codebase.** Conventions to hold: C# / .NET 10, MVVM (CommunityToolkit), code and
    comments in English, one top-level type per file, no new third-party dependencies without prior
-   agreement in the issue, comments explain *why* rather than restating the code.
+   agreement in the issue, comments explain *why* rather than restating the code. Tests assert with
+   xunit's own `Assert`, not a third-party assertion library — FluentAssertions is banned (it turned
+   commercially licensed at v8; a `BannedApiAnalyzers` rule makes reintroducing it a build error, not
+   a review catch).
 3. **Build clean and test.** `dotnet build` with zero warnings, `dotnet test` green. New behaviour
    comes with tests; UI changes should be checked visually (`--screenshot` renders the main window
    headless).

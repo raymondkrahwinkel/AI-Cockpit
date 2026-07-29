@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -14,28 +13,24 @@ public class ProfileDisplayTests
     [Fact]
     public void PluginProfile_WithResolvedProviderName_ShowsThatName()
     {
-        ProfileDisplay.Format("default", SessionProvider.Plugin, model: null, pluginProviderName: "Claude")
-            .Should().Be("default (Claude)");
+        Assert.Equal("default (Claude)", ProfileDisplay.Format("default", SessionProvider.Plugin, model: null, pluginProviderName: "Claude"));
     }
 
     [Fact]
     public void PluginProfile_WithoutAResolvedName_FallsBackToTheGenericPluginLabel()
     {
-        ProfileDisplay.Format("default", SessionProvider.Plugin, model: null)
-            .Should().Be("default (Plugin)");
+        Assert.Equal("default (Plugin)", ProfileDisplay.Format("default", SessionProvider.Plugin, model: null));
     }
 
     [Fact]
     public void LocalProfile_AppendsProviderAndModel()
     {
-        ProfileDisplay.Format("local", SessionProvider.LmStudio, model: "qwen2.5")
-            .Should().Be("local (LM Studio - qwen2.5)");
+        Assert.Equal("local (LM Studio - qwen2.5)", ProfileDisplay.Format("local", SessionProvider.LmStudio, model: "qwen2.5"));
     }
 
     [Fact]
     public void LocalProfile_WithoutModel_ShowsProviderOnly()
     {
-        ProfileDisplay.Format("local", SessionProvider.Ollama, model: null)
-            .Should().Be("local (Ollama)");
+        Assert.Equal("local (Ollama)", ProfileDisplay.Format("local", SessionProvider.Ollama, model: null));
     }
 }

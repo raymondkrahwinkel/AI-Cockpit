@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -18,7 +17,7 @@ public class GitHubRepositoryFieldTests
     {
         // Shared with the Pull Requests plugin, and the key already-linked projects are stored under: changing it
         // silently unlinks every one of them.
-        GitHubRepositoryField.Key.Should().Be("github.repository");
+        Assert.Equal("github.repository", GitHubRepositoryField.Key);
     }
 
     [Fact]
@@ -26,9 +25,9 @@ public class GitHubRepositoryFieldTests
     {
         var registration = GitHubRepositoryField.Registration(Settings(useGitHubCli: true), new GitHubGhClient());
 
-        registration.Key.Should().Be(GitHubRepositoryField.Key);
-        registration.Title.Should().Be("GitHub repository");
-        registration.Placeholder.Should().Be("owner/repo");
+        Assert.Equal(GitHubRepositoryField.Key, registration.Key);
+        Assert.Equal("GitHub repository", registration.Title);
+        Assert.Equal("owner/repo", registration.Placeholder);
     }
 
     [Fact]
@@ -40,6 +39,6 @@ public class GitHubRepositoryFieldTests
 
         var options = await registration.LoadOptionsAsync(CancellationToken.None);
 
-        options.Should().BeEmpty();
+        Assert.Empty(options);
     }
 }

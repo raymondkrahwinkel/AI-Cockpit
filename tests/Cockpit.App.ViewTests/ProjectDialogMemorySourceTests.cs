@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -54,9 +53,9 @@ public class ProjectDialogMemorySourceTests
         var chooseButton = ChooseButton(viewModel, window);
         window.Close();
 
-        comboBox.Should().NotBeNull("the row still holds the combo box in the tree — Avalonia's IsVisible=\"False\" collapses it out of layout instead of merely painting it invisible, which is what leaves no gap behind it, not the control's absence");
-        comboBox!.IsEffectivelyVisible.Should().BeFalse("a cockpit with no memory-source plugin must not hold an empty picker open");
-        chooseButton.IsEnabled.Should().BeTrue("with no source registered, Folder is the only mode there is");
+        Assert.NotNull(comboBox);
+        Assert.False(comboBox!.IsEffectivelyVisible, "a cockpit with no memory-source plugin must not hold an empty picker open");
+        Assert.True(chooseButton.IsEnabled, "with no source registered, Folder is the only mode there is");
     });
 
     [Fact]
@@ -72,9 +71,9 @@ public class ProjectDialogMemorySourceTests
         var comboBox = MemoryComboBox(window);
         window.Close();
 
-        comboBox.Should().NotBeNull();
-        comboBox!.IsEffectivelyVisible.Should().BeTrue();
-        comboBox.ItemsSource!.Cast<object>().Should().Equal(folder, depot);
+        Assert.NotNull(comboBox);
+        Assert.True(comboBox!.IsEffectivelyVisible);
+        Assert.Equal(new object[] { folder, depot }, comboBox.ItemsSource!.Cast<object>());
     });
 
     [Fact]
@@ -92,8 +91,8 @@ public class ProjectDialogMemorySourceTests
         var chooseButton = ChooseButton(viewModel, window);
         window.Close();
 
-        viewModel.ResourceRows.Single().SelectedMemorySourceChoice.Should().Be(depot, "the combo box's own selection must reach the row, not merely display it");
-        chooseButton.IsEnabled.Should().BeFalse("a source's identifier is typed, not browsed for on disk");
+        Assert.Equal(depot, viewModel.ResourceRows.Single().SelectedMemorySourceChoice);
+        Assert.False(chooseButton.IsEnabled, "a source's identifier is typed, not browsed for on disk");
     });
 
     [Fact]
@@ -119,7 +118,7 @@ public class ProjectDialogMemorySourceTests
         window.UpdateLayout();
         window.Close();
 
-        viewModel.ResourceRows.Single().Reference.Should().Be("cockpit");
-        viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit", "the plugin's scheme is prepended on save, not typed by the operator");
+        Assert.Equal("cockpit", viewModel.ResourceRows.Single().Reference);
+        Assert.Equal("depot:cockpit", viewModel.ToProject().MemoryRef);
     });
 }

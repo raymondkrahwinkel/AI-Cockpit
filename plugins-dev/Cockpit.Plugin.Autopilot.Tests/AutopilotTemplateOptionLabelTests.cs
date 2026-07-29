@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -23,8 +22,8 @@ public class AutopilotTemplateOptionLabelTests
         var youtrack = AutopilotTemplate.ForPlugin("youtrack", new("t1", "Feature", "body"));
         var github = AutopilotTemplate.ForPlugin("github-issues", new("t2", "Feature", "body"));
 
-        AutopilotTemplateOptionLabel.For(youtrack, PluginName).Should().Be("Feature · YouTrack");
-        AutopilotTemplateOptionLabel.For(github, PluginName).Should().Be("Feature · GitHub Issues");
+        Assert.Equal("Feature · YouTrack", AutopilotTemplateOptionLabel.For(youtrack, PluginName));
+        Assert.Equal("Feature · GitHub Issues", AutopilotTemplateOptionLabel.For(github, PluginName));
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class AutopilotTemplateOptionLabelTests
     {
         var template = AutopilotTemplate.ForPlugin("some.unknown.plugin", new("t", "Bug fix", "body"));
 
-        AutopilotTemplateOptionLabel.For(template, PluginName).Should().Be("Bug fix · some.unknown.plugin");
+        Assert.Equal("Bug fix · some.unknown.plugin", AutopilotTemplateOptionLabel.For(template, PluginName));
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class AutopilotTemplateOptionLabelTests
     {
         var template = AutopilotTemplate.ForUser("u", "Bug fix", "body");
 
-        AutopilotTemplateOptionLabel.OriginLabel(template, PluginName).Should().Be("Yours");
-        AutopilotTemplateOptionLabel.For(template, PluginName).Should().Be("Bug fix · Yours");
+        Assert.Equal("Yours", AutopilotTemplateOptionLabel.OriginLabel(template, PluginName));
+        Assert.Equal("Bug fix · Yours", AutopilotTemplateOptionLabel.For(template, PluginName));
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class AutopilotTemplateOptionLabelTests
         var template = new AutopilotTemplate(
             "b", "Bug fix", "body", AutopilotTemplateOrigin.Builtin, OwnerPluginId: null, Editable: true, Deletable: false);
 
-        AutopilotTemplateOptionLabel.OriginLabel(template, PluginName).Should().Be("Built-in");
-        AutopilotTemplateOptionLabel.For(template, PluginName).Should().Be("Bug fix · Built-in");
+        Assert.Equal("Built-in", AutopilotTemplateOptionLabel.OriginLabel(template, PluginName));
+        Assert.Equal("Bug fix · Built-in", AutopilotTemplateOptionLabel.For(template, PluginName));
     }
 }

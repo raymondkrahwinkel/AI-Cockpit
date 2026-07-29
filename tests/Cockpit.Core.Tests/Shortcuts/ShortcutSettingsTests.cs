@@ -1,5 +1,4 @@
 using Cockpit.Core.Shortcuts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Shortcuts;
 
@@ -12,15 +11,15 @@ public class ShortcutSettingsTests
 {
     [Fact]
     public void Default_BindsNewSessionToCtrlN()
-        => ShortcutSettings.Default.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
+        => Assert.Equal("Ctrl+N", ShortcutSettings.Default.GestureFor(ShortcutAction.NewSession));
 
     [Fact]
     public void With_RebindsOneActionAndLeavesOthers()
     {
         var settings = ShortcutSettings.Default.With(ShortcutAction.Options, "Ctrl+Shift+O");
 
-        settings.GestureFor(ShortcutAction.Options).Should().Be("Ctrl+Shift+O");
-        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
+        Assert.Equal("Ctrl+Shift+O", settings.GestureFor(ShortcutAction.Options));
+        Assert.Equal("Ctrl+N", settings.GestureFor(ShortcutAction.NewSession));
     }
 
     [Fact]
@@ -28,7 +27,7 @@ public class ShortcutSettingsTests
     {
         var settings = ShortcutSettings.Default.With(ShortcutAction.NewSession, "   ");
 
-        settings.GestureFor(ShortcutAction.NewSession).Should().BeEmpty();
+        Assert.Empty(settings.GestureFor(ShortcutAction.NewSession));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public class ShortcutSettingsTests
     {
         var settings = new ShortcutSettings(new Dictionary<ShortcutAction, string>(), new Dictionary<string, string>());
 
-        settings.GestureFor(ShortcutAction.PluginStore).Should().Be(ShortcutCatalog.DefaultGesture(ShortcutAction.PluginStore));
+        Assert.Equal(ShortcutCatalog.DefaultGesture(ShortcutAction.PluginStore), settings.GestureFor(ShortcutAction.PluginStore));
     }
 
     [Fact]
@@ -44,14 +43,14 @@ public class ShortcutSettingsTests
     {
         var settings = ShortcutSettings.Default.WithPlugin("youtrack.open", "Ctrl+Y");
 
-        settings.GestureForPlugin("youtrack.open", "Shift+Y").Should().Be("Ctrl+Y");
-        settings.GestureForPlugin("other.id", "Shift+Z").Should().Be("Shift+Z");
+        Assert.Equal("Ctrl+Y", settings.GestureForPlugin("youtrack.open", "Shift+Y"));
+        Assert.Equal("Shift+Z", settings.GestureForPlugin("other.id", "Shift+Z"));
     }
 
     [Fact]
     public void Catalog_CoversEveryAction()
     {
         var covered = ShortcutCatalog.All.Select(descriptor => descriptor.Action);
-        covered.Should().BeEquivalentTo(Enum.GetValues<ShortcutAction>());
+        Assert.Equivalent(Enum.GetValues<ShortcutAction>(), covered);
     }
 }

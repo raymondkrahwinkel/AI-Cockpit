@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Infrastructure;
@@ -36,7 +35,7 @@ public class BackupDependencyInjectionTests
     {
         using var provider = BuildProvider();
 
-        provider.GetService<IBackupService>().Should().NotBeNull();
+        Assert.NotNull(provider.GetService<IBackupService>());
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class BackupDependencyInjectionTests
 
         // The service arrives through an optional constructor parameter, which is the shape that compiles, runs, and
         // quietly stays null — leaving two buttons that swallow a click. The buttons bind to this.
-        cockpit.CanBackUp.Should().BeTrue();
-        cockpit.BackupIncludesCredentials.Should().BeFalse("an archive you can drop anywhere must not be a key ring");
+        Assert.True(cockpit.CanBackUp);
+        Assert.False(cockpit.BackupIncludesCredentials, "an archive you can drop anywhere must not be a key ring");
     }
 }

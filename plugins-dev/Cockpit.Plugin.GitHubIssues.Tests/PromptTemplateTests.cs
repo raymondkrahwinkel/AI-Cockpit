@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 /// <summary>
@@ -20,7 +18,7 @@ public class PromptTemplateTests
             "octocat",
             "hello-world");
 
-        rendered.Should().Be("#42 in octocat/hello-world: Fix the login redirect\nCold start takes 4s.\nhttps://github.com/octocat/hello-world/issues/42");
+        Assert.Equal("#42 in octocat/hello-world: Fix the login redirect\nCold start takes 4s.\nhttps://github.com/octocat/hello-world/issues/42", rendered);
     }
 
     [Fact]
@@ -30,7 +28,7 @@ public class PromptTemplateTests
 
         var rendered = PromptTemplate.Render("{body}", issue, "octocat", "hello-world");
 
-        rendered.Should().Be("(no description)");
+        Assert.Equal("(no description)", rendered);
     }
 
     [Fact]
@@ -38,7 +36,10 @@ public class PromptTemplateTests
     {
         var rendered = PromptTemplate.Render(PromptTemplate.Default, Issue, "octocat", "hello-world");
 
-        rendered.Should().NotContain("{").And.NotContain("}");
-        rendered.Should().Contain("42").And.Contain("Fix the login redirect").And.Contain("https://github.com/octocat/hello-world/issues/42");
+        Assert.DoesNotContain("{", rendered);
+        Assert.DoesNotContain("}", rendered);
+        Assert.Contains("42", rendered);
+        Assert.Contains("Fix the login redirect", rendered);
+        Assert.Contains("https://github.com/octocat/hello-world/issues/42", rendered);
     }
 }

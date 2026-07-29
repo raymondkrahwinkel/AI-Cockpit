@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Cockpit.App.Controls;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -46,15 +45,15 @@ public class DashboardCellsPanelTests
         var window = new Window { Content = container, Width = 400, Height = 300 };
         window.Show();
 
-        items.ItemsPanelRoot.Should().BeNull("nothing realises a hidden panel — which is what made this bug");
+        Assert.Null(items.ItemsPanelRoot);
 
         // The switch to the dashboard.
         container.IsVisible = true;
         window.UpdateLayout();
 
-        var panel = items.ItemsPanelRoot.Should().BeOfType<DashboardCellsPanel>().Subject;
-        panel.ColumnDefinitions.Should().HaveCount(4);
-        panel.RowDefinitions.Should().HaveCount(3);
+        var panel = Assert.IsType<DashboardCellsPanel>(items.ItemsPanelRoot);
+        Assert.Equal(4, System.Linq.Enumerable.Count(panel.ColumnDefinitions));
+        Assert.Equal(3, System.Linq.Enumerable.Count(panel.RowDefinitions));
     });
 
     [Fact]
@@ -64,8 +63,8 @@ public class DashboardCellsPanelTests
 
         panel.Columns = 5;
 
-        panel.ColumnDefinitions.Should().HaveCount(5, "a dashboard resized in the ⚙ redraws at its new width");
-        panel.RowDefinitions.Should().HaveCount(2);
+        Assert.Equal(5, System.Linq.Enumerable.Count(panel.ColumnDefinitions));
+        Assert.Equal(2, System.Linq.Enumerable.Count(panel.RowDefinitions));
     });
 
     [Fact]
@@ -73,7 +72,7 @@ public class DashboardCellsPanelTests
     {
         var panel = new DashboardCellsPanel { Columns = 0, Rows = 0 };
 
-        panel.ColumnDefinitions.Should().BeEmpty();
-        panel.RowDefinitions.Should().BeEmpty();
+        Assert.Empty(panel.ColumnDefinitions);
+        Assert.Empty(panel.RowDefinitions);
     });
 }

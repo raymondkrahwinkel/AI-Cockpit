@@ -1,5 +1,4 @@
 using Cockpit.Core.Diagnostics;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -22,9 +21,9 @@ public class CockpitBreakdownTests
 
         var parts = CockpitBreakdown.From(rows, cockpitProcessId: 10, sessionProcessIds: []);
 
-        parts.OwnBytes.Should().Be(300_000_000);
-        parts.Children.Select(child => child.Name).Should().Equal("npm exec @model", "uv");
-        parts.Children.Sum(child => child.MemoryBytes).Should().Be(140_000_000);
+        Assert.Equal(300_000_000, parts.OwnBytes);
+        Assert.Equal(new[] { "npm exec @model", "uv" }, parts.Children.Select(child => child.Name));
+        Assert.Equal(140_000_000, parts.Children.Sum(child => child.MemoryBytes));
     }
 
     // An "npm exec" is a shell around the node process doing the work, and the memory is in the child.
@@ -38,7 +37,7 @@ public class CockpitBreakdownTests
             new(21, 20, TimeSpan.Zero, 90_000_000, "node"),
         };
 
-        CockpitBreakdown.From(rows, 10, []).Children.Single().MemoryBytes.Should().Be(95_000_000);
+        Assert.Equal(95_000_000, CockpitBreakdown.From(rows, 10, []).Children.Single().MemoryBytes);
     }
 
     // A session already has a section of its own; counted here too, the parts would add up to more than the whole.
@@ -54,7 +53,7 @@ public class CockpitBreakdownTests
 
         var parts = CockpitBreakdown.From(rows, 10, [40]);
 
-        parts.Children.Select(child => child.Name).Should().Equal("npm exec @model");
+        Assert.Equal(new[] { "npm exec @model" }, parts.Children.Select(child => child.Name));
     }
 
     // Two servers started the same way are one line: "npm exec" twice over is not something the operator can tell
@@ -71,8 +70,8 @@ public class CockpitBreakdownTests
 
         var child = CockpitBreakdown.From(rows, 10, []).Children.Single();
 
-        child.Name.Should().Be("npm exec @model ×2");
-        child.MemoryBytes.Should().Be(188_000_000);
+        Assert.Equal("npm exec @model ×2", child.Name);
+        Assert.Equal(188_000_000, child.MemoryBytes);
     }
 
     [Fact]
@@ -92,6 +91,6 @@ public class CockpitBreakdownTests
 
         // The app, its tool servers and its sessions are the whole of what the status bar reports — which is what
         // makes a number that jumped by 500 MB something the operator can explain.
-        (parts.OwnBytes + parts.Children.Sum(child => child.MemoryBytes) + session).Should().Be(total);
+        Assert.Equal(total, parts.OwnBytes + parts.Children.Sum(child => child.MemoryBytes) + session);
     }
 }

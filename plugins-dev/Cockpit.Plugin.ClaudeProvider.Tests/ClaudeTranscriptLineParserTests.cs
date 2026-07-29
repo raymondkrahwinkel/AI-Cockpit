@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
@@ -17,8 +16,8 @@ public class ClaudeTranscriptLineParserTests
         {"type":"assistant","message":{"content":[{"type":"text","text":"Hello "},{"type":"text","text":"world."}]}}
         """;
 
-        ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text).Should().BeTrue();
-        text.Should().Be("Hello world.");
+        Assert.True(ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text));
+        Assert.Equal("Hello world.", text);
     }
 
     [Fact]
@@ -28,8 +27,8 @@ public class ClaudeTranscriptLineParserTests
         {"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hmm"},{"type":"tool_use","name":"Bash"}]}}
         """;
 
-        ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text).Should().BeFalse();
-        text.Should().BeEmpty();
+        Assert.False(ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text));
+        Assert.Empty(text);
     }
 
     [Theory]
@@ -40,8 +39,8 @@ public class ClaudeTranscriptLineParserTests
     [InlineData("""{"type":"system","subtype":"init"}""")]
     public void ReturnsFalse_ForBlankNonAssistantOrUnparseableLines(string line)
     {
-        ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text).Should().BeFalse();
-        text.Should().BeEmpty();
+        Assert.False(ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var text));
+        Assert.Empty(text);
     }
 
     // --- TryExtractUsage (AC-398) --------------------------------------------------------------------------
@@ -53,9 +52,9 @@ public class ClaudeTranscriptLineParserTests
         {"type":"assistant","message":{"id":"msg_01","usage":{"input_tokens":120,"output_tokens":340,"cache_read_input_tokens":50,"cache_creation_input_tokens":7}}}
         """;
 
-        ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId).Should().BeTrue();
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(120, 340, 50, 7));
-        messageId.Should().Be("msg_01");
+        Assert.True(ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId));
+        Assert.Equal(new PluginTokenUsage(120, 340, 50, 7), usage);
+        Assert.Equal("msg_01", messageId);
     }
 
     [Fact]
@@ -65,8 +64,8 @@ public class ClaudeTranscriptLineParserTests
         // of a missing property is "none", not "unparseable".
         const string line = """{"type":"assistant","message":{"id":"msg_01","usage":{"input_tokens":10,"output_tokens":5}}}""";
 
-        ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out _).Should().BeTrue();
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(10, 5, 0, 0));
+        Assert.True(ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out _));
+        Assert.Equal(new PluginTokenUsage(10, 5, 0, 0), usage);
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class ClaudeTranscriptLineParserTests
         {"type":"assistant","message":{"id":"msg_01","usage":{"input_tokens":10.5,"output_tokens":99999999999}}}
         """;
 
-        ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out _).Should().BeTrue();
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(0, 0, 0, 0));
+        Assert.True(ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out _));
+        Assert.Equal(new PluginTokenUsage(0, 0, 0, 0), usage);
     }
 
     [Fact]
@@ -86,9 +85,9 @@ public class ClaudeTranscriptLineParserTests
     {
         const string line = """{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":5}}}""";
 
-        ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId).Should().BeTrue();
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(10, 5, 0, 0));
-        messageId.Should().BeNull();
+        Assert.True(ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId));
+        Assert.Equal(new PluginTokenUsage(10, 5, 0, 0), usage);
+        Assert.Null(messageId);
     }
 
     [Theory]
@@ -100,8 +99,8 @@ public class ClaudeTranscriptLineParserTests
     [InlineData("""{"type":"system","subtype":"init"}""")]
     public void TryExtractUsage_ReturnsFalse_ForBlankNonAssistantOrUsagelessLines(string line)
     {
-        ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId).Should().BeFalse();
-        usage.Should().BeNull();
-        messageId.Should().BeNull();
+        Assert.False(ClaudeTranscriptLineParser.TryExtractUsage(line, out var usage, out var messageId));
+        Assert.Null(usage);
+        Assert.Null(messageId);
     }
 }

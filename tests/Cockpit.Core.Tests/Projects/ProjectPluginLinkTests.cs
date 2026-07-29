@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
 
@@ -30,7 +29,7 @@ public class ProjectPluginLinkTests : IDisposable
     [Fact]
     public void LinkedAs_AKeyNothingLinked_IsNull()
     {
-        Linked(("youtrack.project", "AC")).LinkedAs("github.repository").Should().BeNull();
+        Assert.Null(Linked(("youtrack.project", "AC")).LinkedAs("github.repository"));
     }
 
     [Fact]
@@ -41,14 +40,14 @@ public class ProjectPluginLinkTests : IDisposable
         // tracker with an identifier nobody meant to give it.
         var project = Linked(("youtrack.project", "AC"));
 
-        project.LinkedAs("youtrack.project").Should().Be("AC");
-        project.LinkedAs("YouTrack.Project").Should().BeNull();
+        Assert.Equal("AC", project.LinkedAs("youtrack.project"));
+        Assert.Null(project.LinkedAs("YouTrack.Project"));
     }
 
     [Fact]
     public void LinkedAs_AKeyStoredWithABlankValue_IsNull()
     {
-        Linked(("youtrack.project", "   ")).LinkedAs("youtrack.project").Should().BeNull();
+        Assert.Null(Linked(("youtrack.project", "   ")).LinkedAs("youtrack.project"));
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class ProjectPluginLinkTests : IDisposable
 
         var links = settings.Normalized().Projects.Single().PluginFields;
 
-        links.Should().ContainSingle().Which.Should().Be(new KeyValuePair<string, string>("youtrack.project", "AC"));
+        Assert.Equal(new KeyValuePair<string, string>("youtrack.project", "AC"), Assert.Single(links));
     }
 
     [Fact]
@@ -71,7 +70,7 @@ public class ProjectPluginLinkTests : IDisposable
         // on every load would make the caller's SequenceEqual false forever and rebuild the whole list each time.
         var settings = new ProjectSettings { Projects = [Linked(("youtrack.project", "AC"))] };
 
-        settings.Normalized().Projects.Should().BeSameAs(settings.Projects);
+        Assert.Same(settings.Projects, settings.Normalized().Projects);
     }
 
     [Fact]
@@ -87,11 +86,13 @@ public class ProjectPluginLinkTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        loaded.Projects.Single().PluginFields.Should().BeEquivalentTo(new Dictionary<string, string>
-        {
-            ["youtrack.project"] = "AC",
-            ["depot.project"] = "ai-cockpit",
-        });
+        Assert.Equivalent(
+            new Dictionary<string, string>
+            {
+                ["youtrack.project"] = "AC",
+                ["depot.project"] = "ai-cockpit",
+            },
+            loaded.Projects.Single().PluginFields);
     }
 
     [Fact]
@@ -105,8 +106,8 @@ public class ProjectPluginLinkTests : IDisposable
 
         var loaded = await new ProjectStore(_configFilePath).LoadAsync();
 
-        loaded.Projects.Single().LinkedAs("youtrack.project").Should().Be("AC");
-        loaded.Projects.Single().LinkedAs("YOUTRACK.PROJECT").Should().BeNull();
+        Assert.Equal("AC", loaded.Projects.Single().LinkedAs("youtrack.project"));
+        Assert.Null(loaded.Projects.Single().LinkedAs("YOUTRACK.PROJECT"));
     }
 
     [Fact]
@@ -117,7 +118,7 @@ public class ProjectPluginLinkTests : IDisposable
 
         var json = await File.ReadAllTextAsync(_configFilePath);
 
-        json.Should().NotContain("pluginFields", "most projects link to nothing, and an empty map is noise in a file people read");
+        Assert.DoesNotContain("pluginFields", json);
     }
 
     public void Dispose()

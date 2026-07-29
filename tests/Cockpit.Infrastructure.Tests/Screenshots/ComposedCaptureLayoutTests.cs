@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
 
@@ -17,9 +16,9 @@ public class ComposedCaptureLayoutTests
     {
         var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1080);
 
-        layout.Should().ContainSingle();
-        layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
-        layout[0].DesktopBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
+        Assert.Single(layout!);
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), layout![0].ImageBounds);
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), layout[0].DesktopBounds);
     }
 
     /// <summary>
@@ -32,9 +31,9 @@ public class ComposedCaptureLayoutTests
     {
         var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, 1620);
 
-        layout.Should().ContainSingle();
-        layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
-        layout[0].Scale.Should().Be(1.5, "callers that size something in a display's own pixels have no other way to ask");
+        Assert.Single(layout!);
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), layout![0].ImageBounds);
+        Assert.Equal(1.5, layout[0].Scale);
     }
 
     /// <summary>
@@ -49,9 +48,9 @@ public class ComposedCaptureLayoutTests
             5760,
             1620);
 
-        layout.Should().HaveCount(2);
-        layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
-        layout[1].ImageBounds.Should().Be(new CaptureRect(2880, 0, 2880, 1620));
+        Assert.Equal(2, System.Linq.Enumerable.Count(layout!));
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), layout![0].ImageBounds);
+        Assert.Equal(new CaptureRect(2880, 0, 2880, 1620), layout[1].ImageBounds);
     }
 
     /// <summary>
@@ -67,9 +66,9 @@ public class ComposedCaptureLayoutTests
             3003,
             1500);
 
-        layout.Should().HaveCount(2);
-        layout![0].ImageBounds.Right.Should().Be(layout[1].ImageBounds.X);
-        (layout[0].ImageBounds.Width + layout[1].ImageBounds.Width).Should().Be(3003);
+        Assert.Equal(2, System.Linq.Enumerable.Count(layout!));
+        Assert.Equal(layout![1].ImageBounds.X, layout[0].ImageBounds.Right);
+        Assert.Equal(3003, (layout[0].ImageBounds.Width + layout[1].ImageBounds.Width));
     }
 
     /// <summary>
@@ -81,7 +80,7 @@ public class ComposedCaptureLayoutTests
     {
         var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 1920, 1200);
 
-        layout.Should().BeNull();
+        Assert.Null(layout);
     }
 
     /// <summary>
@@ -97,7 +96,7 @@ public class ComposedCaptureLayoutTests
             4800,
             1620);
 
-        layout.Should().BeNull();
+        Assert.Null(layout);
     }
 
     /// <summary>
@@ -111,7 +110,7 @@ public class ComposedCaptureLayoutTests
     {
         var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080, scale: 1.5)], 2880, imageHeight);
 
-        (layout is not null).Should().Be(accepted);
+        Assert.Equal(accepted, (layout is not null));
     }
 
     /// <summary>
@@ -123,13 +122,13 @@ public class ComposedCaptureLayoutTests
     {
         var layout = ComposedCaptureLayout.TryCompose([_Display(0, 0, 1920, 1080)], 960, 540);
 
-        layout.Should().BeNull();
+        Assert.Null(layout);
     }
 
     [Fact]
     public void NoDisplays_ComposeToNothing()
     {
-        ComposedCaptureLayout.TryCompose([], 1920, 1080).Should().BeNull();
+        Assert.Null(ComposedCaptureLayout.TryCompose([], 1920, 1080));
     }
 
     /// <summary>
@@ -145,7 +144,7 @@ public class ComposedCaptureLayoutTests
             1920,
             1080);
 
-        layout.Should().BeNull();
+        Assert.Null(layout);
     }
 
     /// <summary>
@@ -160,9 +159,9 @@ public class ComposedCaptureLayoutTests
             3840,
             1080);
 
-        layout.Should().HaveCount(2);
-        layout![0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
-        layout[1].ImageBounds.Should().Be(new CaptureRect(1920, 0, 1920, 1080));
+        Assert.Equal(2, System.Linq.Enumerable.Count(layout!));
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), layout![0].ImageBounds);
+        Assert.Equal(new CaptureRect(1920, 0, 1920, 1080), layout[1].ImageBounds);
     }
 
     private static DesktopDisplay _Display(int x, int y, int width, int height, double scale = 1.0) =>

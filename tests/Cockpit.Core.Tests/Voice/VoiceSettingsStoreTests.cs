@@ -2,7 +2,6 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -26,19 +25,19 @@ public class VoiceSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.IsEnabled.Should().BeFalse();
-        settings.ModelName.Should().Be("large-v3-turbo");
-        settings.BackendPreference.Should().Be(VoiceBackendPreference.Auto);
-        settings.CleanupEnabled.Should().BeTrue();
-        settings.PushToTalkKeyName.Should().Be("F9");
-        settings.GlobalPushToTalk.Should().BeFalse();
-        settings.AutoSubmitAfterVoice.Should().BeFalse();
-        settings.TtsVoiceSid.Should().Be(1);
-        settings.SttLanguage.Should().Be("auto");
-        settings.InputDeviceName.Should().BeEmpty();
-        settings.OutputDeviceName.Should().BeEmpty();
-        settings.OpenMicEnabled.Should().BeFalse();
-        settings.OpenMicSilenceTimeoutMs.Should().Be(800);
+        Assert.False(settings.IsEnabled);
+        Assert.Equal("large-v3-turbo", settings.ModelName);
+        Assert.Equal(VoiceBackendPreference.Auto, settings.BackendPreference);
+        Assert.True(settings.CleanupEnabled);
+        Assert.Equal("F9", settings.PushToTalkKeyName);
+        Assert.False(settings.GlobalPushToTalk);
+        Assert.False(settings.AutoSubmitAfterVoice);
+        Assert.Equal(1, settings.TtsVoiceSid);
+        Assert.Equal("auto", settings.SttLanguage);
+        Assert.Empty(settings.InputDeviceName);
+        Assert.Empty(settings.OutputDeviceName);
+        Assert.False(settings.OpenMicEnabled);
+        Assert.Equal(800, settings.OpenMicSilenceTimeoutMs);
     }
 
     [Fact]
@@ -70,25 +69,25 @@ public class VoiceSettingsStoreTests : IDisposable
         });
         var loaded = await store.LoadAsync();
 
-        loaded.IsEnabled.Should().BeTrue();
-        loaded.ModelName.Should().Be("small");
-        loaded.BackendPreference.Should().Be(VoiceBackendPreference.Cpu);
-        loaded.CleanupEnabled.Should().BeFalse();
-        loaded.AutoDetectLocalLlm.Should().BeFalse();
-        loaded.LocalLlmPreference.Should().Be(LocalLlmPreference.LmStudio);
-        loaded.VoiceLlmModel.Should().Be("llama3.2:3b");
-        loaded.VoiceLlmBaseUrl.Should().Be("http://localhost:12345");
-        loaded.PushToTalkKeyName.Should().Be("F10");
-        loaded.GlobalPushToTalk.Should().BeTrue();
-        loaded.AutoSubmitAfterVoice.Should().BeTrue();
-        loaded.TtsVoiceSid.Should().Be(3);
-        loaded.ReadAloudMode.Should().Be(ReadAloudMode.Summarized);
-        loaded.ReadAloudLanguage.Should().Be("nl");
-        loaded.SttLanguage.Should().Be("nl");
-        loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
-        loaded.OutputDeviceName.Should().Be("Built-in Speakers");
-        loaded.OpenMicEnabled.Should().BeTrue();
-        loaded.OpenMicSilenceTimeoutMs.Should().Be(1200);
+        Assert.True(loaded.IsEnabled);
+        Assert.Equal("small", loaded.ModelName);
+        Assert.Equal(VoiceBackendPreference.Cpu, loaded.BackendPreference);
+        Assert.False(loaded.CleanupEnabled);
+        Assert.False(loaded.AutoDetectLocalLlm);
+        Assert.Equal(LocalLlmPreference.LmStudio, loaded.LocalLlmPreference);
+        Assert.Equal("llama3.2:3b", loaded.VoiceLlmModel);
+        Assert.Equal("http://localhost:12345", loaded.VoiceLlmBaseUrl);
+        Assert.Equal("F10", loaded.PushToTalkKeyName);
+        Assert.True(loaded.GlobalPushToTalk);
+        Assert.True(loaded.AutoSubmitAfterVoice);
+        Assert.Equal(3, loaded.TtsVoiceSid);
+        Assert.Equal(ReadAloudMode.Summarized, loaded.ReadAloudMode);
+        Assert.Equal("nl", loaded.ReadAloudLanguage);
+        Assert.Equal("nl", loaded.SttLanguage);
+        Assert.Equal("Yeti Stereo Microphone", loaded.InputDeviceName);
+        Assert.Equal("Built-in Speakers", loaded.OutputDeviceName);
+        Assert.True(loaded.OpenMicEnabled);
+        Assert.Equal(1200, loaded.OpenMicSilenceTimeoutMs);
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public class VoiceSettingsStoreTests : IDisposable
     {
         var store = new VoiceSettingsStore(_configFilePath);
 
-        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
+        Assert.Equal(ReadAloudMode.Verbatim, (await store.LoadAsync()).ReadAloudMode);
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class VoiceSettingsStoreTests : IDisposable
         await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": true } }""");
         var store = new VoiceSettingsStore(_configFilePath);
 
-        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Naturalized);
+        Assert.Equal(ReadAloudMode.Naturalized, (await store.LoadAsync()).ReadAloudMode);
     }
 
     [Fact]
@@ -115,7 +114,7 @@ public class VoiceSettingsStoreTests : IDisposable
         await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": false } }""");
         var store = new VoiceSettingsStore(_configFilePath);
 
-        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
+        Assert.Equal(ReadAloudMode.Verbatim, (await store.LoadAsync()).ReadAloudMode);
     }
 
     [Fact]
@@ -127,8 +126,8 @@ public class VoiceSettingsStoreTests : IDisposable
         var voiceStore = new VoiceSettingsStore(_configFilePath);
         await voiceStore.SaveAsync(new VoiceSettings { IsEnabled = true });
 
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
-        (await voiceStore.LoadAsync()).IsEnabled.Should().BeTrue();
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
+        Assert.True((await voiceStore.LoadAsync()).IsEnabled);
     }
 
     public void Dispose()

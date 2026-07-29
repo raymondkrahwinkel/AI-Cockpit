@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -20,9 +19,9 @@ public class SkiaScreenshotImageEditorTests
         var cropped = new SkiaScreenshotImageEditor().Crop(png, new CaptureRect(50, 0, 50, 50));
 
         using var image = SKBitmap.Decode(cropped);
-        image.Width.Should().Be(50);
-        image.Height.Should().Be(50);
-        image.GetPixel(25, 25).Should().Be(SKColors.Lime, "the top-right quadrant was asked for");
+        Assert.Equal(50, image.Width);
+        Assert.Equal(50, image.Height);
+        Assert.Equal(SKColors.Lime, image.GetPixel(25, 25));
     }
 
     [Fact]
@@ -33,8 +32,8 @@ public class SkiaScreenshotImageEditorTests
         var cropped = new SkiaScreenshotImageEditor().Crop(png, new CaptureRect(25, 25, 50, 50));
 
         using var image = SKBitmap.Decode(cropped);
-        image.GetPixel(5, 5).Should().Be(SKColors.Red);
-        image.GetPixel(45, 45).Should().Be(SKColors.Yellow);
+        Assert.Equal(SKColors.Red, image.GetPixel(5, 5));
+        Assert.Equal(SKColors.Yellow, image.GetPixel(45, 45));
     }
 
     /// <summary>
@@ -50,8 +49,8 @@ public class SkiaScreenshotImageEditorTests
         var cropped = new SkiaScreenshotImageEditor().Crop(png, new CaptureRect(80, 80, 100, 100));
 
         using var image = SKBitmap.Decode(cropped);
-        image.Width.Should().Be(20);
-        image.Height.Should().Be(20);
+        Assert.Equal(20, image.Width);
+        Assert.Equal(20, image.Height);
     }
 
     [Fact]
@@ -61,7 +60,8 @@ public class SkiaScreenshotImageEditorTests
 
         var act = () => editor.Crop(_Quadrants(100, 100), new CaptureRect(200, 200, 50, 50));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*outside*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("outside", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -71,7 +71,8 @@ public class SkiaScreenshotImageEditorTests
 
         var act = () => editor.Crop("<html>bad gateway</html>"u8.ToArray(), new CaptureRect(0, 0, 10, 10));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*could not be decoded as an image*");
+        var ex = Assert.Throws<InvalidOperationException>(act);
+        Assert.Contains("could not be decoded as an image", ex.Message, StringComparison.Ordinal);
     }
 
     private static byte[] _Quadrants(int width, int height)

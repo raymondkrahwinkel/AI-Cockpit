@@ -2,7 +2,6 @@ using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -25,7 +24,7 @@ public class EmbeddedSessionProjectTests
 
         await cockpit._ApplyEmbeddedProjectAsync(session, new EmbeddedSessionRequest { WorkingDirectory = "/repos/cockpit" });
 
-        session.ProjectId.Should().Be("cockpit");
+        Assert.Equal("cockpit", session.ProjectId);
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class EmbeddedSessionProjectTests
 
         await cockpit._ApplyEmbeddedProjectAsync(session, new EmbeddedSessionRequest { WorkingDirectory = "/tmp/scratch" });
 
-        session.ProjectId.Should().BeNull();
+        Assert.Null(session.ProjectId);
     }
 
     [Fact]
@@ -45,7 +44,7 @@ public class EmbeddedSessionProjectTests
 
         await cockpit._ApplyEmbeddedProjectAsync(session, new EmbeddedSessionRequest());
 
-        session.ProjectId.Should().BeNull();
+        Assert.Null(session.ProjectId);
     }
 
     // A cockpit holding one project on the given folder, and a fresh session to place. Built on the UI thread, which

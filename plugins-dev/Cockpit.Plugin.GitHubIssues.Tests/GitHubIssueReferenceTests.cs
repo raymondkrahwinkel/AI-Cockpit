@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 /// <summary>
@@ -11,29 +9,27 @@ public class GitHubIssueReferenceTests
 {
     [Fact]
     public void ANumberWithARepository_IsThatIssue() =>
-        GitHubIssueReference.Parse("42", "raymondkrahwinkel/AI-Cockpit")
-            .Should().Be(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42));
+        Assert.Equal(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42), GitHubIssueReference.Parse("42", "raymondkrahwinkel/AI-Cockpit"));
 
     [Fact]
     public void AHashInFrontOfIt_IsHowPeopleWriteIt() =>
-        GitHubIssueReference.Parse("#42", "raymondkrahwinkel/AI-Cockpit").Number.Should().Be(42);
+        Assert.Equal(42, GitHubIssueReference.Parse("#42", "raymondkrahwinkel/AI-Cockpit").Number);
 
     [Fact]
     public void AQualifiedIssue_CarriesItsOwnRepository() =>
-        GitHubIssueReference.Parse("raymondkrahwinkel/AI-Cockpit#42", string.Empty)
-            .Should().Be(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42));
+        Assert.Equal(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42), GitHubIssueReference.Parse("raymondkrahwinkel/AI-Cockpit#42", string.Empty));
 
     [Fact]
     public void TheUrlYouCopiedFromTheBrowser_Works_BecauseThatIsWhatPeopleActuallyPaste() =>
-        GitHubIssueReference.Parse("https://github.com/raymondkrahwinkel/AI-Cockpit/issues/42", string.Empty)
-            .Should().Be(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42));
+        Assert.Equal(new GitHubIssueReference("raymondkrahwinkel/AI-Cockpit", 42), GitHubIssueReference.Parse("https://github.com/raymondkrahwinkel/AI-Cockpit/issues/42", string.Empty));
 
     [Fact]
     public void ABareNumberWithNoRepository_IsRefused_RatherThanGuessedAt()
     {
         var parse = () => GitHubIssueReference.Parse("42", string.Empty);
 
-        parse.Should().Throw<InvalidOperationException>().WithMessage("*which repository*");
+        var ex = Assert.Throws<InvalidOperationException>(parse);
+        Assert.Contains("which repository", ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -43,6 +39,7 @@ public class GitHubIssueReferenceTests
     {
         var parse = () => GitHubIssueReference.Parse(written, "raymondkrahwinkel/AI-Cockpit");
 
-        parse.Should().Throw<InvalidOperationException>().WithMessage("*owner/repo#number*");
+        var ex = Assert.Throws<InvalidOperationException>(parse);
+        Assert.Contains("owner/repo#number", ex.Message, StringComparison.Ordinal);
     }
 }

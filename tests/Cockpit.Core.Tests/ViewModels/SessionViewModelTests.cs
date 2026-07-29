@@ -8,7 +8,6 @@ using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -53,9 +52,9 @@ public class SessionViewModelTests
         // D7: a completed turn is when the provider's usage changes, so the header pulls the driver's status then.
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        vm.ContextUsedPercent.Should().Be(25);
-        vm.RateLimits.Should().Equal(new SessionRateWindow("5h", 60, reset), new SessionRateWindow("wk", 80, null));
-        vm.LimitsTooltip.Should().Contain("Context window: 25% used");
+        Assert.Equal(25, vm.ContextUsedPercent);
+        Assert.Equal(new[] { new SessionRateWindow("5h", 60, reset), new SessionRateWindow("wk", 80, null) }, vm.RateLimits);
+        Assert.Contains("Context window: 25% used", vm.LimitsTooltip);
 
         await vm.DisposeAsync();
     }
@@ -85,8 +84,8 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.IsPermissionModeLocked.Should().BeTrue();
-        vm.PermissionModes.Should().ContainSingle().Which.Value.Should().Be("bypassPermissions");
+        Assert.True(vm.IsPermissionModeLocked);
+        Assert.Equal("bypassPermissions", Assert.Single(vm.PermissionModes).Value);
 
         await vm.DisposeAsync();
     }
@@ -103,8 +102,8 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.IsPermissionModeLocked.Should().BeFalse();
-        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
+        Assert.False(vm.IsPermissionModeLocked);
+        Assert.Equal(new[] { "default", "acceptEdits", "plan" }, vm.PermissionModes.Select(mode => mode.Value));
 
         await vm.DisposeAsync();
     }
@@ -127,12 +126,12 @@ public class SessionViewModelTests
         var act = async () => await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        await act.Should().NotThrowAsync();
-        vm.Status.Should().Contain("Failed to start");
+        await act();
+        Assert.Contains("Failed to start", vm.Status);
         // The same "leave no phantom lock" cleanup StartConfiguredAsync already runs when the launch fails
         // in bypass mode (see the test above) only fires when _eventLoopTask stayed null — proving the
         // failure took the caught path, not an unhandled throw.
-        vm.IsPermissionModeLocked.Should().BeFalse();
+        Assert.False(vm.IsPermissionModeLocked);
 
         await vm.DisposeAsync();
     }
@@ -147,8 +146,8 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.IsPermissionModeLocked.Should().BeFalse();
-        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
+        Assert.False(vm.IsPermissionModeLocked);
+        Assert.Equal(new[] { "default", "acceptEdits", "plan" }, vm.PermissionModes.Select(mode => mode.Value));
 
         await vm.DisposeAsync();
     }
@@ -169,8 +168,8 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.ShowToolAutoApprove.Should().BeTrue();
-        vm.AutoApproveTools.Should().BeTrue();
+        Assert.True(vm.ShowToolAutoApprove);
+        Assert.True(vm.AutoApproveTools);
         await session.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -191,8 +190,8 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.ShowToolAutoApprove.Should().BeTrue();
-        vm.AutoApproveTools.Should().BeFalse();
+        Assert.True(vm.ShowToolAutoApprove);
+        Assert.False(vm.AutoApproveTools);
         await session.DidNotReceive().SetAutoApproveToolsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -214,13 +213,13 @@ public class SessionViewModelTests
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
         // D4: the provider's live controls become the header's generic panel, each opened on its current value.
-        vm.HasLiveControls.Should().BeTrue();
-        vm.LiveControls.Should().HaveCount(2);
-        vm.LiveControls[0].Key.Should().Be("model");
-        vm.LiveControls[0].Choices.Should().Equal("gpt-5-codex", "gpt-5");
-        vm.LiveControls[0].SelectedValue.Should().Be("gpt-5-codex");
-        vm.LiveControls[1].Key.Should().Be("effort");
-        vm.LiveControls[1].SelectedValue.Should().BeNull();
+        Assert.True(vm.HasLiveControls);
+        Assert.Equal(2, System.Linq.Enumerable.Count(vm.LiveControls));
+        Assert.Equal("model", vm.LiveControls[0].Key);
+        Assert.Equal(new[] { "gpt-5-codex", "gpt-5" }, vm.LiveControls[0].Choices);
+        Assert.Equal("gpt-5-codex", vm.LiveControls[0].SelectedValue);
+        Assert.Equal("effort", vm.LiveControls[1].Key);
+        Assert.Null(vm.LiveControls[1].SelectedValue);
 
         await vm.DisposeAsync();
     }
@@ -245,8 +244,8 @@ public class SessionViewModelTests
         // Fase 4 step 1: the live-control dropdown reads the provider's friendly labels, while the value the driver
         // gets back on a switch stays the raw CLI value.
         var control = vm.LiveControls[0];
-        control.ChoiceItems.Select(choice => choice.Label).Should().Equal("Ask permissions", "Plan mode");
-        control.ChoiceItems.Select(choice => choice.Value).Should().Equal("default", "plan");
+        Assert.Equal(new[] { "Ask permissions", "Plan mode" }, control.ChoiceItems.Select(choice => choice.Label));
+        Assert.Equal(new[] { "default", "plan" }, control.ChoiceItems.Select(choice => choice.Value));
 
         await vm.DisposeAsync();
     }
@@ -269,9 +268,9 @@ public class SessionViewModelTests
 
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [], Model = "claude-sonnet-4-5-20250929" });
 
-        vm.LiveControls[0].SelectedValue.Should().Be("claude-sonnet-4-5-20250929");
+        Assert.Equal("claude-sonnet-4-5-20250929", vm.LiveControls[0].SelectedValue);
         // A pinned snapshot the suggestion list never offered still needs an item to show against.
-        vm.LiveControls[0].ChoiceItems.Select(c => c.Value).Should().Contain("claude-sonnet-4-5-20250929");
+        Assert.Contains("claude-sonnet-4-5-20250929", vm.LiveControls[0].ChoiceItems.Select(c => c.Value));
         await session.DidNotReceive().SetLiveOptionAsync("model", Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -292,7 +291,7 @@ public class SessionViewModelTests
 
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [], Model = "claude-sonnet-4-5-20250929" });
 
-        vm.LiveControls[0].SelectedValue.Should().Be("opus");
+        Assert.Equal("opus", vm.LiveControls[0].SelectedValue);
 
         await vm.DisposeAsync();
     }
@@ -370,7 +369,7 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.CanPasteImages.Should().BeTrue();
+        Assert.True(vm.CanPasteImages);
 
         await vm.DisposeAsync();
     }
@@ -396,7 +395,7 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.CanPasteImages.Should().BeFalse();
+        Assert.False(vm.CanPasteImages);
 
         await vm.DisposeAsync();
     }
@@ -425,8 +424,8 @@ public class SessionViewModelTests
 
         vm.AddPastedImage([1, 2, 3]);
 
-        vm.PendingAttachments.Should().BeEmpty();
-        vm.Transcript.Should().Contain(entry => entry.Kind == TranscriptEntryKind.Error && entry.Text.Contains("does not support image input"));
+        Assert.Empty(vm.PendingAttachments);
+        Assert.Contains(vm.Transcript, entry => entry.Kind == TranscriptEntryKind.Error && entry.Text.Contains("does not support image input"));
 
         await vm.DisposeAsync();
     }
@@ -448,7 +447,7 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.ProviderBadge.Should().Be("Ollama");
+        Assert.Equal("Ollama", vm.ProviderBadge);
 
         await vm.DisposeAsync();
     }
@@ -464,7 +463,7 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
-        vm.ProviderBadge.Should().BeEmpty();
+        Assert.Empty(vm.ProviderBadge);
 
         await vm.DisposeAsync();
     }
@@ -478,11 +477,11 @@ public class SessionViewModelTests
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         // AC-213 revises AC-144: reasoning deltas stream into a dimmed, collapsible Thinking row on Developer.
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
-        vm.Transcript.Single().IsRowVisible.Should().BeTrue();
+        Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
+        Assert.True(vm.Transcript.Single().IsRowVisible);
         // The pulsing indicator is separate from the row and stays lit — thinking is still not "visible output",
         // so dousing it here would leave a gap where the session read as idle while the answer was still coming.
-        vm.IsAwaitingResponse.Should().BeTrue();
+        Assert.True(vm.IsAwaitingResponse);
     }
 
     [Theory]
@@ -497,7 +496,7 @@ public class SessionViewModelTests
 
         // The row is still added at every level, but Focus/Simple stay calm (AC-138): it renders hidden.
         var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.Thinking);
-        row.IsRowVisible.Should().BeFalse();
+        Assert.False(row.IsRowVisible);
     }
 
     [Fact]
@@ -509,7 +508,7 @@ public class SessionViewModelTests
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "dering..." });
 
         // Contiguous deltas of the same provider block append onto one row, like assistant prose.
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
+        Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
     }
 
     [Fact]
@@ -521,8 +520,9 @@ public class SessionViewModelTests
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "raw" });
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 1, Thinking = "summary" });
 
-        vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text)
-            .Should().Equal("raw", "summary");
+        Assert.Equal(
+            new[] { "raw", "summary" },
+            vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text));
     }
 
     [Fact]
@@ -533,7 +533,7 @@ public class SessionViewModelTests
         // A bare content_block_start carries empty thinking; it must not spawn an empty row.
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "" });
 
-        vm.Transcript.Should().BeEmpty();
+        Assert.Empty(vm.Transcript);
     }
 
     [Fact]
@@ -544,7 +544,7 @@ public class SessionViewModelTests
 
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "hi" });
 
-        vm.IsAwaitingResponse.Should().BeFalse();
+        Assert.False(vm.IsAwaitingResponse);
     }
 
     [Fact]
@@ -556,7 +556,7 @@ public class SessionViewModelTests
         // A connect/status event is not the assistant answering, so the model is still "thinking".
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [] });
 
-        vm.IsAwaitingResponse.Should().BeTrue();
+        Assert.True(vm.IsAwaitingResponse);
     }
 
     [Fact]
@@ -568,8 +568,8 @@ public class SessionViewModelTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "Here you go." });
 
         // AC-213: the thinking row stays and the assistant text streams into its own row beneath it, in order.
-        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.AssistantText);
-        vm.Transcript.Last().Text.Should().Be("Here you go.");
+        Assert.Equal(new[] { TranscriptEntryKind.Thinking, TranscriptEntryKind.AssistantText }, vm.Transcript.Select(t => t.Kind));
+        Assert.Equal("Here you go.", vm.Transcript.Last().Text);
     }
 
     // AC-146: sub-agent activity nests under its parent Task tool-use row instead of flattening into the
@@ -585,11 +585,11 @@ public class SessionViewModelTests
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-tool-1", Content = "file contents", IsError = false, ParentToolUseId = "task-1" });
 
         var anchor = Assert.Single(vm.Transcript);
-        anchor.Kind.Should().Be(TranscriptEntryKind.ToolUse);
-        anchor.IsSubAgentExpanded.Should().BeFalse("sub-agent activity is collapsed until the operator expands it");
-        anchor.SubAgentRows.Select(r => r.Kind).Should().Equal(TranscriptEntryKind.AssistantText, TranscriptEntryKind.ToolUse);
-        anchor.SubAgentRows[0].Text.Should().Be("Looking into it…");
-        anchor.SubAgentRows[1].ResultText.Should().Be("file contents");
+        Assert.Equal(TranscriptEntryKind.ToolUse, anchor.Kind);
+        Assert.False(anchor.IsSubAgentExpanded, "sub-agent activity is collapsed until the operator expands it");
+        Assert.Equal(new[] { TranscriptEntryKind.AssistantText, TranscriptEntryKind.ToolUse }, anchor.SubAgentRows.Select(r => r.Kind));
+        Assert.Equal("Looking into it…", anchor.SubAgentRows[0].Text);
+        Assert.Equal("file contents", anchor.SubAgentRows[1].ResultText);
     }
 
     [Fact]
@@ -603,7 +603,7 @@ public class SessionViewModelTests
 
         var anchor = Assert.Single(vm.Transcript);
         var nested = Assert.Single(anchor.SubAgentRows);
-        nested.IsPendingPermission.Should().BeTrue();
+        Assert.True(nested.IsPendingPermission);
     }
 
     // AC-146 AC5: extract-last-assistant-text.js's own choice to exclude sidechain chatter from read-aloud must
@@ -654,7 +654,7 @@ public class SessionViewModelTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "the actual reply" });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "the actual reply", IsError = false });
 
-        vm.Transcript.Should().Contain(row => row.Text == "orphaned sub-agent chatter", "nothing is silently dropped");
+        Assert.Contains(vm.Transcript, row => row.Text == "orphaned sub-agent chatter");
         queue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.All(s => !s.Contains("orphaned sub-agent chatter"))),
             Arg.Any<int>(), Arg.Any<string>());
@@ -678,9 +678,9 @@ public class SessionViewModelTests
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-tool-1", ToolName = "Bash", InputJson = "{}", ParentToolUseId = "task-1" });
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-tool-1", Content = "result text", IsError = false, ParentToolUseId = "task-1" });
 
-        vm.Transcript.Should().Contain(row => row.ResultText == "result text");
-        outputs.Should().NotContain("result text");
-        toolActivity.Should().BeEmpty();
+        Assert.Contains(vm.Transcript, row => row.ResultText == "result text");
+        Assert.DoesNotContain("result text", outputs);
+        Assert.Empty(toolActivity);
     }
 
     [Fact]
@@ -693,8 +693,9 @@ public class SessionViewModelTests
         // Thinking resuming after visible prose (same block index) must not append back onto the closed row.
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "second" });
 
-        vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text)
-            .Should().Equal("first", "second");
+        Assert.Equal(
+            new[] { "first", "second" },
+            vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text));
     }
 
     [Fact]
@@ -705,7 +706,7 @@ public class SessionViewModelTests
 
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Read", InputJson = "{}" });
 
-        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.ToolUse);
+        Assert.Equal(new[] { TranscriptEntryKind.Thinking, TranscriptEntryKind.ToolUse }, vm.Transcript.Select(t => t.Kind));
     }
 
     [Fact]
@@ -717,7 +718,7 @@ public class SessionViewModelTests
         // A failed turn is surfaced as a row; a successful one is not (T4), so use an error here.
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = "boom", IsError = true });
 
-        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.TurnCompleted);
+        Assert.Equal(new[] { TranscriptEntryKind.Thinking, TranscriptEntryKind.TurnCompleted }, vm.Transcript.Select(t => t.Kind));
     }
 
     [Theory]
@@ -732,7 +733,7 @@ public class SessionViewModelTests
     [InlineData(TranscriptEntryKind.Error, true)]
     public void IsTopTimestampRow_IsFalseForUserAndToolUse_TrueForEveryOtherKind(TranscriptEntryKind kind, bool expected)
     {
-        new TranscriptEntryViewModel(kind, "x").IsTopTimestampRow.Should().Be(expected);
+        Assert.Equal(expected, new TranscriptEntryViewModel(kind, "x").IsTopTimestampRow);
     }
 
     [Fact]
@@ -742,8 +743,8 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.TurnCompleted);
-        vm.SessionStatus.Should().Be(SessionStatus.Done);
+        Assert.DoesNotContain(vm.Transcript, t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        Assert.Equal(SessionStatus.Done, vm.SessionStatus);
     }
 
     [Fact]
@@ -753,7 +754,7 @@ public class SessionViewModelTests
 
         var act = () => vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "hi" });
 
-        act.Should().NotThrow();
+        act();
     }
 
     [Fact]
@@ -764,7 +765,7 @@ public class SessionViewModelTests
 
         vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
 
-        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
     }
 
     [Fact]
@@ -788,9 +789,9 @@ public class SessionViewModelTests
         vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = preApproved, InputJson = "{}" });
 
         var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
-        entry.IsPendingPermission.Should().BeFalse("the pre-approved tool is auto-allowed, so no prompt is raised");
-        entry.PermissionDecision.Should().Be("Allowed");
-        vm.SessionStatus.Should().NotBe(SessionStatus.NeedsAttention);
+        Assert.False(entry.IsPendingPermission, "the pre-approved tool is auto-allowed, so no prompt is raised");
+        Assert.Equal("Allowed", entry.PermissionDecision);
+        Assert.NotEqual(SessionStatus.NeedsAttention, vm.SessionStatus);
         await session.Received(1).RespondToPermissionAsync("t1", true, Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -814,8 +815,8 @@ public class SessionViewModelTests
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
         vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
 
-        vm.Transcript.Single(t => t.ToolUseId == "t1").IsPendingPermission.Should().BeTrue();
-        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+        Assert.True(vm.Transcript.Single(t => t.ToolUseId == "t1").IsPendingPermission);
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
         await session.DidNotReceive().RespondToPermissionAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -840,9 +841,9 @@ public class SessionViewModelTests
         vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
 
         var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
-        entry.IsPendingPermission.Should().BeFalse();
-        entry.PermissionDecision.Should().Be("Allowed");
-        vm.SessionStatus.Should().NotBe(SessionStatus.NeedsAttention);
+        Assert.False(entry.IsPendingPermission);
+        Assert.Equal("Allowed", entry.PermissionDecision);
+        Assert.NotEqual(SessionStatus.NeedsAttention, vm.SessionStatus);
         await session.Received(1).RespondToPermissionAsync("t1", true, Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
@@ -855,7 +856,7 @@ public class SessionViewModelTests
 
         vm.Apply(new SessionStatusChanged { SessionId = "S1", NeedsAction = "answer_question" });
 
-        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
     }
 
     [Fact]
@@ -865,7 +866,7 @@ public class SessionViewModelTests
 
         vm.Apply(new SessionStatusChanged { SessionId = "S1", StatusCategory = "review_ready" });
 
-        vm.SessionStatus.Should().Be(SessionStatus.Idle);
+        Assert.Equal(SessionStatus.Idle, vm.SessionStatus);
     }
 
     [Fact]
@@ -877,9 +878,9 @@ public class SessionViewModelTests
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_1", Content = "done", IsError = false });
 
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
-        toolUse.HasResult.Should().BeTrue();
-        toolUse.ResultText.Should().Be("done");
-        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.ToolResult);
+        Assert.True(toolUse.HasResult);
+        Assert.Equal("done", toolUse.ResultText);
+        Assert.DoesNotContain(vm.Transcript, t => t.Kind == TranscriptEntryKind.ToolResult);
     }
 
     [Fact]
@@ -889,7 +890,7 @@ public class SessionViewModelTests
 
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = "stray", IsError = false });
 
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.ToolResult);
+        Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.ToolResult);
     }
 
     [Fact]
@@ -901,8 +902,8 @@ public class SessionViewModelTests
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_2", Content = "boom", IsError = true });
 
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
-        toolUse.IsResultError.Should().BeTrue();
-        toolUse.HasResult.Should().BeTrue();
+        Assert.True(toolUse.IsResultError);
+        Assert.True(toolUse.HasResult);
     }
 
     [Fact]
@@ -915,13 +916,13 @@ public class SessionViewModelTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "Here is the summary." });
 
         var assistantRows = vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.AssistantText).ToList();
-        assistantRows.Should().HaveCount(2, "prose before and after the tool call are separate replies, not one merged block");
-        assistantRows[0].Text.Should().Be("Let me check. ");
-        assistantRows[1].Text.Should().Be("Here is the summary.");
+        Assert.Equal(2, System.Linq.Enumerable.Count(assistantRows));
+        Assert.Equal("Let me check. ", assistantRows[0].Text);
+        Assert.Equal("Here is the summary.", assistantRows[1].Text);
 
         var toolIndex = vm.Transcript.IndexOf(vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse));
         var postToolIndex = vm.Transcript.IndexOf(assistantRows[1]);
-        postToolIndex.Should().BeGreaterThan(toolIndex, "text that streamed after the tool call must render below it, in order");
+        Assert.True(postToolIndex > toolIndex, "text that streamed after the tool call must render below it, in order");
     }
 
     [Fact]
@@ -937,7 +938,8 @@ public class SessionViewModelTests
         });
 
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
-        toolUse.ToolHeader.Should().Contain("Bash").And.Contain("dotnet build");
+        Assert.Contains("Bash", toolUse.ToolHeader);
+        Assert.Contains("dotnet build", toolUse.ToolHeader);
     }
 
     [Fact]
@@ -946,8 +948,8 @@ public class SessionViewModelTests
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: X");
         entry.SetResult("""{"a":1,"b":[2,3]}""", isError: false);
 
-        entry.ResultIsCodeLike.Should().BeTrue();
-        entry.ResultDisplayText.Should().Contain("\n");
+        Assert.True(entry.ResultIsCodeLike);
+        Assert.Contains("\n", entry.ResultDisplayText);
     }
 
     [Fact]
@@ -956,8 +958,8 @@ public class SessionViewModelTests
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: X");
         entry.SetResult("done", isError: false);
 
-        entry.ResultIsCodeLike.Should().BeFalse();
-        entry.ResultDisplayText.Should().Be("done");
+        Assert.False(entry.ResultIsCodeLike);
+        Assert.Equal("done", entry.ResultDisplayText);
     }
 
     [Fact]
@@ -965,8 +967,8 @@ public class SessionViewModelTests
     {
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Some **bold** prose.");
 
-        entry.IsAssistantMarkdown.Should().BeTrue();
-        entry.IsPlainNonMarkdown.Should().BeFalse();
+        Assert.True(entry.IsAssistantMarkdown);
+        Assert.False(entry.IsPlainNonMarkdown);
     }
 
     [Fact]
@@ -974,9 +976,9 @@ public class SessionViewModelTests
     {
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "build the project");
 
-        entry.IsUserRow.Should().BeTrue();
-        entry.IsAssistantMarkdown.Should().BeFalse();
-        entry.IsPlainNonMarkdown.Should().BeFalse();
+        Assert.True(entry.IsUserRow);
+        Assert.False(entry.IsAssistantMarkdown);
+        Assert.False(entry.IsPlainNonMarkdown);
     }
 
     [Fact]
@@ -987,9 +989,9 @@ public class SessionViewModelTests
 
         await vm.SendCommand.ExecuteAsync(null);
 
-        var echo = vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.UserText).Subject;
-        echo.Text.Should().Be("hello there");
-        echo.IsUserRow.Should().BeTrue();
+        var echo = Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.UserText);
+        Assert.Equal("hello there", echo.Text);
+        Assert.True(echo.IsUserRow);
         await vm.DisposeAsync();
     }
 
@@ -998,8 +1000,8 @@ public class SessionViewModelTests
     {
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, "Send failed: boom");
 
-        entry.IsAssistantMarkdown.Should().BeFalse();
-        entry.IsPlainNonMarkdown.Should().BeTrue();
+        Assert.False(entry.IsAssistantMarkdown);
+        Assert.True(entry.IsPlainNonMarkdown);
     }
 
     [Fact]
@@ -1009,7 +1011,7 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        vm.SessionStatus.Should().Be(SessionStatus.Done);
+        Assert.Equal(SessionStatus.Done, vm.SessionStatus);
     }
 
     /// <summary>
@@ -1056,7 +1058,7 @@ public class SessionViewModelTests
 
         await vm.SendCommand.ExecuteAsync(null);
 
-        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, vm.SessionStatus);
         await vm.DisposeAsync();
     }
 
@@ -1069,9 +1071,8 @@ public class SessionViewModelTests
 
         await vm.SendCommand.ExecuteAsync(null);
 
-        vm.InputText.Should().Be("hello");
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Error)
-            .Which.Text.Should().Contain("not started");
+        Assert.Equal("hello", vm.InputText);
+        Assert.Contains("not started", Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.Error).Text);
         await session.DidNotReceive().SendUserMessageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
     }
 
@@ -1085,8 +1086,8 @@ public class SessionViewModelTests
         vm.InputText = "second";
         await vm.SendCommand.ExecuteAsync(null); // second lands in the queue while busy
 
-        vm.QueuedMessages.Select(m => m.Text).Should().Equal("second");
-        vm.InputText.Should().BeEmpty();
+        Assert.Equal(new[] { "second" }, vm.QueuedMessages.Select(m => m.Text));
+        Assert.Empty(vm.InputText);
         await session.Received(1).SendUserMessageAsync("first", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await session.DidNotReceive().SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await vm.DisposeAsync();
@@ -1103,9 +1104,9 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         await session.Received(1).SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
-        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        Assert.Equal(SessionStatus.Busy, vm.SessionStatus);
         await vm.DisposeAsync();
     }
 
@@ -1125,7 +1126,7 @@ public class SessionViewModelTests
 
         // Both queued messages leave together as a single follow-up turn (AC-145), joined by a blank line —
         // not "second" now and "third" after the next turn.
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         await session.Received(1).SendUserMessageAsync("second\n\nthird", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await session.DidNotReceive().SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await vm.DisposeAsync();
@@ -1145,7 +1146,7 @@ public class SessionViewModelTests
 
         // A single queued message is dispatched verbatim. (Joining one element is identity, so the output can't
         // by itself prove which path ran — this just asserts the plain result and that nothing is left queued.)
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         await session.Received(1).SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await vm.DisposeAsync();
     }
@@ -1171,7 +1172,7 @@ public class SessionViewModelTests
             "look at these",
             Arg.Is<IReadOnlyList<ImageAttachment>>(images => images.Count == 2 && images[0] == imageA && images[1] == imageB),
             Arg.Any<CancellationToken>());
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         await vm.DisposeAsync();
     }
 
@@ -1195,7 +1196,7 @@ public class SessionViewModelTests
             "",
             Arg.Is<IReadOnlyList<ImageAttachment>>(images => images.Count == 2),
             Arg.Any<CancellationToken>());
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         await vm.DisposeAsync();
     }
 
@@ -1212,9 +1213,9 @@ public class SessionViewModelTests
 
         var recalled = vm.RecallLastQueuedMessage();
 
-        recalled.Should().BeTrue();
-        vm.InputText.Should().Be("queued two");
-        vm.QueuedMessages.Select(m => m.Text).Should().Equal("queued one");
+        Assert.True(recalled);
+        Assert.Equal("queued two", vm.InputText);
+        Assert.Equal(new[] { "queued one" }, vm.QueuedMessages.Select(m => m.Text));
         await vm.DisposeAsync();
     }
 
@@ -1223,8 +1224,8 @@ public class SessionViewModelTests
     {
         var vm = NewVm();
 
-        vm.RecallLastQueuedMessage().Should().BeFalse();
-        vm.InputText.Should().BeEmpty();
+        Assert.False(vm.RecallLastQueuedMessage());
+        Assert.Empty(vm.InputText);
     }
 
     [Fact]
@@ -1238,7 +1239,7 @@ public class SessionViewModelTests
 
         vm.QueuedMessages.Single().RemoveCommand.Execute(null);
 
-        vm.QueuedMessages.Should().BeEmpty();
+        Assert.Empty(vm.QueuedMessages);
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
         await session.DidNotReceive().SendUserMessageAsync("cancel me", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await vm.DisposeAsync();
@@ -1249,11 +1250,11 @@ public class SessionViewModelTests
     {
         var vm = NewVm();
 
-        vm.CanSend.Should().BeFalse();
+        Assert.False(vm.CanSend);
 
         vm.InputText = "hi";
 
-        vm.CanSend.Should().BeTrue();
+        Assert.True(vm.CanSend);
     }
 
     [Fact]
@@ -1262,7 +1263,7 @@ public class SessionViewModelTests
         var entry = new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "hi", new DateTimeOffset(2026, 7, 6, 14, 7, 0, TimeSpan.Zero));
 
-        entry.TimestampText.Should().Be("14:07");
+        Assert.Equal("14:07", entry.TimestampText);
     }
 
     [Fact]
@@ -1276,11 +1277,11 @@ public class SessionViewModelTests
         await vm.SendCommand.ExecuteAsync(null);
 
         await session.Received(1).SendUserMessageAsync("exit", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
-        closeRequested.Should().BeFalse(); // not until the turn finishes
+        Assert.False(closeRequested); // not until the turn finishes
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "bye", IsError = false });
 
-        closeRequested.Should().BeTrue();
+        Assert.True(closeRequested);
         await vm.DisposeAsync();
     }
 
@@ -1296,7 +1297,7 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        closeRequested.Should().BeFalse();
+        Assert.False(closeRequested);
         await vm.DisposeAsync();
     }
 
@@ -1312,7 +1313,7 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        closeRequested.Should().BeFalse();
+        Assert.False(closeRequested);
         await vm.DisposeAsync();
     }
 
@@ -1325,7 +1326,7 @@ public class SessionViewModelTests
 
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
-        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+        Assert.Equal(SessionStatus.NeedsAttention, vm.SessionStatus);
     }
 
     [Fact]
@@ -1333,12 +1334,16 @@ public class SessionViewModelTests
     {
         var vm = NewVm();
 
-        vm.Efforts.Select(e => (e.Value, e.MaxThinkingTokens)).Should().Equal(
-            ("low", 4_000),
-            ("medium", 12_000),
-            ("high", 24_000),
-            ("xhigh", 48_000),
-            ("max", 64_000));
+        Assert.Equal(
+            new[]
+            {
+                ("low", 4_000),
+                ("medium", 12_000),
+                ("high", 24_000),
+                ("xhigh", 48_000),
+                ("max", 64_000),
+            },
+            vm.Efforts.Select(e => (e.Value, e.MaxThinkingTokens)));
     }
 
     [Fact]
@@ -1346,7 +1351,7 @@ public class SessionViewModelTests
     {
         var vm = NewVm();
 
-        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
+        Assert.Equal(new[] { "default", "acceptEdits", "plan" }, vm.PermissionModes.Select(mode => mode.Value));
     }
 
     [Fact]
@@ -1394,8 +1399,8 @@ public class SessionViewModelTests
 
         await session.Received(1).AllowPermissionAlwaysAsync(
             "toolu_1", "Bash", """{"command":"ls"}""", PermissionRuleScope.Exact, Arg.Any<CancellationToken>());
-        entry.IsPendingPermission.Should().BeFalse();
-        entry.PermissionDecision.Should().NotBeNullOrEmpty();
+        Assert.False(entry.IsPendingPermission);
+        Assert.False(string.IsNullOrEmpty(entry.PermissionDecision));
     }
 
     [Fact]
@@ -1444,12 +1449,12 @@ public class SessionViewModelTests
             await Task.Delay(10);
         }
 
-        vm.BeginVoiceHold().Should().BeTrue();
+        Assert.True(vm.BeginVoiceHold());
         await vm.EndVoiceHoldAsync(applyCleanup: true);
 
         // Auto-submit sent the appended transcript rather than leaving it in the input box for review.
         await session.Received(1).SendUserMessageAsync("open the file", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
-        vm.InputText.Should().BeEmpty();
+        Assert.Empty(vm.InputText);
 
         await vm.DisposeAsync();
     }

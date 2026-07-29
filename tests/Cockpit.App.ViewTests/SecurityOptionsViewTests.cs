@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -25,8 +24,7 @@ public class SecurityOptionsViewTests
         dialog.Show();
 
         var tabs = dialog.GetVisualDescendants().OfType<TabControl>().Single();
-        tabs.Items.OfType<TabItem>().Select(tab => tab.Header)
-            .Should().Contain("Security");
+        Assert.Contains("Security", tabs.Items.OfType<TabItem>().Select(tab => tab.Header));
 
         dialog.Close();
     });
@@ -38,10 +36,9 @@ public class SecurityOptionsViewTests
         window.Show();
 
         var password = window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "PasswordBox");
-        password.PasswordChar.Should().NotBe('\0', "a password box that shows the password is not one");
+        Assert.NotEqual('\0', password.PasswordChar);
 
-        window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text)
-            .Should().Contain(text => text != null && text.Contains("encrypted"));
+        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text), text => text != null && text.Contains("encrypted"));
 
         window.Close();
     });
@@ -56,9 +53,9 @@ public class SecurityOptionsViewTests
         viewModel.Password = "not the password";
         await viewModel.UnlockAsync();
 
-        unlocked.Should().BeFalse();
-        viewModel.Error.Should().NotBeNullOrEmpty("an operator who typed the wrong password must be told, not left staring");
-        viewModel.Password.Should().BeEmpty("the box is cleared so the next attempt starts fresh");
+        Assert.False(unlocked);
+        Assert.False(string.IsNullOrEmpty(viewModel.Error), "an operator who typed the wrong password must be told, not left staring");
+        Assert.Empty(viewModel.Password);
     });
 
     private sealed class AlwaysWrongPassword : Core.Abstractions.Secrets.ISecretProtectionService

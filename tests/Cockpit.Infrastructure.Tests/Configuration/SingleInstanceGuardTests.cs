@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
@@ -35,7 +34,7 @@ public sealed class SingleInstanceGuardTests
     {
         using var guard = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, UniqueClaimName());
 
-        guard.Should().NotBeNull();
+        Assert.NotNull(guard);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public sealed class SingleInstanceGuardTests
 
         var second = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
 
-        second.Should().BeNull("a second cockpit must find the claim taken and stand down");
+        Assert.Null(second);
     }
 
     [Fact]
@@ -57,7 +56,7 @@ public sealed class SingleInstanceGuardTests
 
         using var next = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
 
-        next.Should().NotBeNull("a closed cockpit must not keep the next one out");
+        Assert.NotNull(next);
     }
 
     [Fact]
@@ -68,7 +67,7 @@ public sealed class SingleInstanceGuardTests
 
         var second = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName, TimeSpan.FromMilliseconds(200));
 
-        second.Should().BeNull("the claim never came free, so even with a wait the second cockpit must stand down");
+        Assert.Null(second);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public sealed class SingleInstanceGuardTests
         await Task.Delay(300);
         other.Dispose();
 
-        (await handoff).Should().BeTrue("the outgoing cockpit released within the wait, so the restart must take the claim");
+        Assert.True(await handoff, "the outgoing cockpit released within the wait, so the restart must take the claim");
     }
 
     [Fact]
@@ -104,7 +103,7 @@ public sealed class SingleInstanceGuardTests
 
         using var development = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: true, claimName);
 
-        development.Should().NotBeNull("a dotnet run is meant to start beside the cockpit hosting the session that built it");
+        Assert.NotNull(development);
     }
 
     [Fact]
@@ -115,7 +114,7 @@ public sealed class SingleInstanceGuardTests
 
         using var production = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName);
 
-        production.Should().NotBeNull("a debug run left open must not be what keeps the real cockpit from starting");
+        Assert.NotNull(production);
     }
 
     /// <summary>Another cockpit, started and left open on a thread of its own, until disposed.</summary>

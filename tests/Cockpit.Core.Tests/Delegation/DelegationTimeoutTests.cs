@@ -9,7 +9,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -34,8 +33,8 @@ public class DelegationTimeoutTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Failed);
 
         var timedOut = service.GetTask(task.TaskId)!;
-        timedOut.Status.Should().Be(DelegatedTaskStatus.Failed);
-        timedOut.Error.Should().Contain("ran longer than");
+        Assert.Equal(DelegatedTaskStatus.Failed, timedOut.Status);
+        Assert.Contains("ran longer than", timedOut.Error);
 
         // Stopped for real, not just marked: the session is torn down, so the slot and the provider are freed.
         await driver.Received(1).DisposeAsync();
@@ -59,7 +58,7 @@ public class DelegationTimeoutTests
         // Well past the (millisecond) timeout for this test.
         await Task.Delay(200);
 
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Completed);
+        Assert.Equal(DelegatedTaskStatus.Completed, service.GetTask(task.TaskId)!.Status);
         await driver.DidNotReceive().DisposeAsync();
     }
 
@@ -73,7 +72,7 @@ public class DelegationTimeoutTests
         var task = await service.DelegateAsync(new DelegationRequest("local", "long job"));
         await Task.Delay(200);
 
-        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+        Assert.Equal(DelegatedTaskStatus.Running, service.GetTask(task.TaskId)!.Status);
         await driver.DidNotReceive().DisposeAsync();
     }
 

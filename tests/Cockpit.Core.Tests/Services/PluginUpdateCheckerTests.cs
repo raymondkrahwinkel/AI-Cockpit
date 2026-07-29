@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Tests.Voice;
 using Cockpit.Core.Toasts;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -101,7 +100,7 @@ public class PluginUpdateCheckerTests
 
         var act = () => checker.CheckNowAsync();
 
-        await act.Should().NotThrowAsync();
+        await act();
         toastService.DidNotReceiveWithAnyArgs().Show(default!, default, default, default);
     }
 
@@ -119,7 +118,7 @@ public class PluginUpdateCheckerTests
             cockpit: cockpit);
 
         await checker.CheckNowAsync();
-        capturedAction.Should().NotBeNull("the toast's action button must be wired to something");
+        Assert.NotNull(capturedAction);
         capturedAction!.Invoke();
 
         await dialogService.Received(1).ShowPluginStoreDialogAsync(

@@ -1,7 +1,6 @@
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -21,8 +20,8 @@ public class SessionLabelSinkTests
 
         var applied = await sink.SetStatuslineAsync(session.PaneId, "AC-312");
 
-        applied.Should().BeTrue();
-        Dispatcher.UIThread.Invoke(() => session.Statusline.Should().Be("AC-312"));
+        Assert.True(applied);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-312", session.Statusline));
     }
 
     [Fact]
@@ -32,8 +31,8 @@ public class SessionLabelSinkTests
 
         var renamed = await sink.SuggestNameAsync(session.PaneId, "AC-312");
 
-        renamed.Should().BeTrue();
-        Dispatcher.UIThread.Invoke(() => session.Title.Should().Be("AC-312"));
+        Assert.True(renamed);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal("AC-312", session.Title));
     }
 
     [Fact]
@@ -49,8 +48,8 @@ public class SessionLabelSinkTests
         var renamed = await sink.SuggestNameAsync(session.PaneId, "AC-312");
 
         // False is the whole point: the agent is told the name stood, rather than believing it renamed anything.
-        renamed.Should().BeFalse();
-        Dispatcher.UIThread.Invoke(() => session.Title.Should().Be("release work"));
+        Assert.False(renamed);
+        Dispatcher.UIThread.Invoke(() => Assert.Equal("release work", session.Title));
     }
 
     [Fact]
@@ -58,8 +57,8 @@ public class SessionLabelSinkTests
     {
         var (sink, _) = _SinkOnASession();
 
-        (await sink.SuggestNameAsync("no-such-pane", "AC-312")).Should().BeFalse();
-        (await sink.SetStatuslineAsync("no-such-pane", "AC-312")).Should().BeFalse();
+        Assert.False((await sink.SuggestNameAsync("no-such-pane", "AC-312")));
+        Assert.False((await sink.SetStatuslineAsync("no-such-pane", "AC-312")));
     }
 
     private static (SessionLabelSink Sink, SessionPanelViewModel Session) _SinkOnASession() =>

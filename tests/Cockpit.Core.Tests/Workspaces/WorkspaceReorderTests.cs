@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Workspaces;
@@ -20,7 +19,7 @@ public class WorkspaceReorderTests
 
         var moved = settings.WithMoved(a.Id, 2);
 
-        moved.Workspaces.Select(workspace => workspace.Id).Should().Equal(b.Id, c.Id, a.Id);
+        Assert.Equal(new[] { b.Id, c.Id, a.Id }, moved.Workspaces.Select(workspace => workspace.Id));
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public class WorkspaceReorderTests
 
         var moved = settings.WithMoved(c.Id, 0);
 
-        moved.Workspaces.Select(workspace => workspace.Id).Should().Equal(c.Id, a.Id, b.Id);
+        Assert.Equal(new[] { c.Id, a.Id, b.Id }, moved.Workspaces.Select(workspace => workspace.Id));
     }
 
     [Fact]
@@ -38,8 +37,8 @@ public class WorkspaceReorderTests
     {
         var settings = _Three(out var a, out var b, out var c);
 
-        settings.WithMoved(a.Id, 99).Workspaces.Select(workspace => workspace.Id).Should().Equal(b.Id, c.Id, a.Id);
-        settings.WithMoved(c.Id, -5).Workspaces.Select(workspace => workspace.Id).Should().Equal(c.Id, a.Id, b.Id);
+        Assert.Equal(new[] { b.Id, c.Id, a.Id }, settings.WithMoved(a.Id, 99).Workspaces.Select(workspace => workspace.Id));
+        Assert.Equal(new[] { c.Id, a.Id, b.Id }, settings.WithMoved(c.Id, -5).Workspaces.Select(workspace => workspace.Id));
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public class WorkspaceReorderTests
         var settings = _Three(out var a, out var b, out _);
         settings = settings.WithActive(b.Id);
 
-        settings.WithMoved(a.Id, 2).ActiveWorkspaceId.Should().Be(b.Id);
+        Assert.Equal(b.Id, settings.WithMoved(a.Id, 2).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -56,7 +55,7 @@ public class WorkspaceReorderTests
     {
         var settings = _Three(out var a, out _, out _);
 
-        settings.WithMoved(a.Id, 0).Should().BeSameAs(settings);
+        Assert.Same(settings, settings.WithMoved(a.Id, 0));
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class WorkspaceReorderTests
     {
         var settings = _Three(out _, out _, out _);
 
-        settings.WithMoved("gone", 0).Should().BeSameAs(settings);
+        Assert.Same(settings, settings.WithMoved("gone", 0));
     }
 
     [Fact]
@@ -79,8 +78,8 @@ public class WorkspaceReorderTests
 
         await viewModel.MoveWorkspaceAsync(first.Id, 1);
 
-        viewModel.Tabs.Select(tab => tab.Id).Should().Equal(viewModel.Settings.Workspaces.Select(workspace => workspace.Id));
-        viewModel.Settings.Workspaces[1].Id.Should().Be(first.Id);
+        Assert.Equal(viewModel.Settings.Workspaces.Select(workspace => workspace.Id), viewModel.Tabs.Select(tab => tab.Id));
+        Assert.Equal(first.Id, viewModel.Settings.Workspaces[1].Id);
         await store.Received(1).SaveAsync(Arg.Any<WorkspaceSettings>(), Arg.Any<CancellationToken>());
     }
 

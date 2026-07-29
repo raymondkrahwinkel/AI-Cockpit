@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
@@ -42,9 +41,9 @@ public class PtyHostFactoryDependencyInjectionTests
 
         var factory = provider.GetService<IPtyHostFactory>();
 
-        factory.Should().NotBeNull();
-        factory.Should().BeOfType(RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        Assert.NotNull(factory);
+        Assert.IsType(RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? typeof(ConPtyHostFactory)
-            : typeof(PortaPtyHostFactory));
+            : typeof(PortaPtyHostFactory), factory);
     }
 }

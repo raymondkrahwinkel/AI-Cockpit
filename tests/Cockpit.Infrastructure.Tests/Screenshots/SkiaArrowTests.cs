@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -23,9 +22,9 @@ public class SkiaArrowTests
     {
         using var image = _Burn(_Arrow(40, 100, 260, 100));
 
-        image.GetPixel(150, 100).Should().Be(new SKColor(0, 0, 255), "the shaft runs through the middle");
-        image.GetPixel(280, 100).Should().Be(SKColors.Black, "nothing is drawn past the point");
-        image.GetPixel(20, 100).Should().Be(SKColors.Black, "and nothing behind the tail");
+        Assert.Equal(new SKColor(0, 0, 255), image.GetPixel(150, 100));
+        Assert.Equal(SKColors.Black, image.GetPixel(280, 100));
+        Assert.Equal(SKColors.Black, image.GetPixel(20, 100));
     }
 
     /// <summary>
@@ -42,9 +41,9 @@ public class SkiaArrowTests
         var nearTheRightEnd = _InkDepth(pointingRight, 230);
         var sameColumnDrawnBackwards = _InkDepth(pointingLeft, 230);
 
-        sameColumnDrawnBackwards.Should().BeGreaterThan(0, "the shaft still crosses that column either way round");
-        nearTheRightEnd.Should().BeGreaterThan(
-            sameColumnDrawnBackwards * 3 / 2,
+        Assert.True(sameColumnDrawnBackwards > 0, "the shaft still crosses that column either way round");
+        Assert.True(
+            nearTheRightEnd > sameColumnDrawnBackwards * 3 / 2,
             "the head is at the end that was dragged to, so that column is head one way round and shaft the other");
     }
 
@@ -58,8 +57,8 @@ public class SkiaArrowTests
     {
         using var image = _Burn(_Arrow(40, 100, 260, 100));
 
-        image.GetPixel(150, 100).Should().Be(new SKColor(0, 0, 255), "the shaft is the ink it was given");
-        image.GetPixel(150, 93).Should().Be(SKColors.Black, "and just outside it the picture is untouched");
+        Assert.Equal(new SKColor(0, 0, 255), image.GetPixel(150, 100));
+        Assert.Equal(SKColors.Black, image.GetPixel(150, 93));
     }
 
     /// <summary>A press that never moved has no direction to point in, so nothing is drawn and the picture is the one that came in.</summary>
@@ -68,8 +67,8 @@ public class SkiaArrowTests
     {
         using var image = _Burn(_Arrow(150, 100, 150, 100));
 
-        image.GetPixel(150, 100).Should().Be(SKColors.Black);
-        _InkDepth(image, 150).Should().Be(0);
+        Assert.Equal(SKColors.Black, image.GetPixel(150, 100));
+        Assert.Equal(0, _InkDepth(image, 150));
     }
 
     /// <summary>
@@ -85,8 +84,8 @@ public class SkiaArrowTests
 
         var whereTheyCross = image.GetPixel(150, 100);
 
-        whereTheyCross.Red.Should().BeGreaterThan(200, "the second arrow is yellow and went on last");
-        whereTheyCross.Blue.Should().BeLessThan(60);
+        Assert.True(whereTheyCross.Red > 200, "the second arrow is yellow and went on last");
+        Assert.True(whereTheyCross.Blue < 60);
     }
 
     private static ArrowMark _Arrow(int fromX, int fromY, int toX, int toY) =>

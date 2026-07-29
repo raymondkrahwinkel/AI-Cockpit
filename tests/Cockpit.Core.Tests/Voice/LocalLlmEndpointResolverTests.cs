@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -31,8 +30,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "configured-model",
         });
 
-        endpoint.BaseUrl.Should().Be("http://configured:9999");
-        endpoint.Model.Should().Be("configured-model");
+        Assert.Equal("http://configured:9999", endpoint.BaseUrl);
+        Assert.Equal("configured-model", endpoint.Model);
         reader.DidNotReceive().Read();
         await catalog.DidNotReceiveWithAnyArgs().ListModelsAsync(default!, default, default);
     }
@@ -52,8 +51,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "",
         });
 
-        endpoint.BaseUrl.Should().Be("http://configured:1234");
-        endpoint.Model.Should().Be("phi-3-mini-4k-instruct");
+        Assert.Equal("http://configured:1234", endpoint.BaseUrl);
+        Assert.Equal("phi-3-mini-4k-instruct", endpoint.Model);
     }
 
     [Fact]
@@ -70,8 +69,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "qwen2.5:3b-instruct",
         });
 
-        endpoint.BaseUrl.Should().Be("http://localhost:1234");
-        endpoint.Model.Should().Be("qwen2.5:3b-instruct");
+        Assert.Equal("http://localhost:1234", endpoint.BaseUrl);
+        Assert.Equal("qwen2.5:3b-instruct", endpoint.Model);
     }
 
     [Fact]
@@ -87,8 +86,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "qwen2.5:3b-instruct", // not on this server
         });
 
-        endpoint.BaseUrl.Should().Be("http://localhost:1234");
-        endpoint.Model.Should().Be("phi-3-mini-4k-instruct");
+        Assert.Equal("http://localhost:1234", endpoint.BaseUrl);
+        Assert.Equal("phi-3-mini-4k-instruct", endpoint.Model);
     }
 
     [Fact]
@@ -107,8 +106,8 @@ public class LocalLlmEndpointResolverTests
 
         var endpoint = await resolver.ResolveAsync(new VoiceSettings { AutoDetectLocalLlm = true, VoiceLlmModel = "qwen2.5:3b-instruct" });
 
-        endpoint.BaseUrl.Should().Be("http://localhost:1234");
-        endpoint.Model.Should().Be("bartowski/mistral-nemo-instruct-2407");
+        Assert.Equal("http://localhost:1234", endpoint.BaseUrl);
+        Assert.Equal("bartowski/mistral-nemo-instruct-2407", endpoint.Model);
     }
 
     [Fact]
@@ -131,8 +130,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "not-on-server",
         });
 
-        endpoint.BaseUrl.Should().Be("http://localhost:11434");
-        endpoint.Model.Should().Be("phi-3-mini-4k-instruct");
+        Assert.Equal("http://localhost:11434", endpoint.BaseUrl);
+        Assert.Equal("phi-3-mini-4k-instruct", endpoint.Model);
     }
 
     [Fact]
@@ -149,8 +148,8 @@ public class LocalLlmEndpointResolverTests
             VoiceLlmModel = "configured-model",
         });
 
-        endpoint.BaseUrl.Should().Be("http://configured:11434");
-        endpoint.Model.Should().Be("configured-model");
+        Assert.Equal("http://configured:11434", endpoint.BaseUrl);
+        Assert.Equal("configured-model", endpoint.Model);
         await catalog.DidNotReceiveWithAnyArgs().ListModelsAsync(default!, default, default);
     }
 

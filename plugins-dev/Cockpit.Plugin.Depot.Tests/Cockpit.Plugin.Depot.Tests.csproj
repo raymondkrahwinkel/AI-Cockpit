@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <!-- Substituting ICockpitHost pulls in the Avalonia- and DI-typed members of every contribution point on the
          interface (NSubstitute's proxy has to resolve the whole surface, not only AddProjectMemorySource), which
          the plugin itself references compile-only (ExcludeAssets=runtime, host-provided). This test project runs

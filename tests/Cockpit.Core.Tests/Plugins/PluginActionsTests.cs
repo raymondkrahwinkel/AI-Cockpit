@@ -2,7 +2,6 @@ using Avalonia.Input.Platform;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
@@ -21,10 +20,10 @@ public class PluginActionsTests
         var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>());
 
         cockpit.SelectedSession = new SessionViewModel();
-        actions.HasActiveSession.Should().BeTrue();
+        Assert.True(actions.HasActiveSession);
 
         cockpit.SelectedSession = null;
-        actions.HasActiveSession.Should().BeFalse();
+        Assert.False(actions.HasActiveSession);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class PluginActionsTests
 
         await actions.InjectIntoActiveSessionAsync("issue #42: fix the thing");
 
-        session.InputText.Should().Contain("issue #42: fix the thing");
+        Assert.Contains("issue #42: fix the thing", session.InputText);
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public class PluginActionsTests
 
         var act = () => actions.InjectIntoActiveSessionAsync("x");
 
-        await act.Should().NotThrowAsync();
+        await act();
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class PluginActionsTests
 
         await actions.SetClipboardTextAsync("copied");
 
-        clipboard.ReceivedCalls().Should().NotBeEmpty();
+        Assert.NotEmpty(clipboard.ReceivedCalls());
     }
 
     [Fact]
@@ -71,7 +70,7 @@ public class PluginActionsTests
 
         var act = () => actions.SetClipboardTextAsync("x");
 
-        await act.Should().NotThrowAsync();
+        await act();
     }
 
     [Fact]
@@ -90,7 +89,8 @@ public class PluginActionsTests
 
         var act = () => actions.StartSessionAsync("Wrok", "do the thing");
 
-        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*Work, Private*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("Work, Private", ex.Message);
     }
 
     [Fact]
@@ -103,7 +103,8 @@ public class PluginActionsTests
 
         var act = () => actions.StartSessionAsync("Work");
 
-        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*No session profiles are configured*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("No session profiles are configured", ex.Message);
     }
 
     [Fact]
@@ -113,7 +114,7 @@ public class PluginActionsTests
 
         var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), Substitute.For<ISessionProfileStore>(), delegation);
 
-        (await actions.DelegateAsync("reviewer", "review the diff")).Should().Be("Done — 3 files changed");
+        Assert.Equal("Done — 3 files changed", (await actions.DelegateAsync("reviewer", "review the diff")));
     }
 
     [Fact]
@@ -127,7 +128,8 @@ public class PluginActionsTests
 
         var act = () => actions.DelegateAsync("reviewer", "review the diff");
 
-        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*the model refused*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("the model refused", ex.Message);
     }
 
     [Fact]
@@ -141,7 +143,8 @@ public class PluginActionsTests
 
         var act = () => actions.DelegateAsync("reviewer", "review the diff", timeout: TimeSpan.Zero);
 
-        (await act.Should().ThrowAsync<TimeoutException>()).WithMessage("*still running*");
+        var ex = await Assert.ThrowsAsync<TimeoutException>(act);
+        Assert.Contains("still running", ex.Message);
     }
 
     private static IDelegationService _Delegation(DelegatedTaskView task)

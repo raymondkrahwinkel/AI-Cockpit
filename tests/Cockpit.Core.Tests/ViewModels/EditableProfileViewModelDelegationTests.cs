@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -25,8 +24,9 @@ public class EditableProfileViewModelDelegationTests
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false);
 
-        editable.PermissionCeiling.Should().Be("plan");
-        editable.AllowedTools.Should().Contain("get_current_user").And.Contain("search_issues");
+        Assert.Equal("plan", editable.PermissionCeiling);
+        Assert.Contains("get_current_user", editable.AllowedTools);
+        Assert.Contains("search_issues", editable.AllowedTools);
     }
 
     [Fact]
@@ -40,8 +40,8 @@ public class EditableProfileViewModelDelegationTests
 
         var policy = editable.ToProfile().DelegationPolicy;
 
-        policy.PermissionCeiling.Should().Be("plan");
-        policy.AllowedTools.Should().BeEquivalentTo("get_current_user", "search_issues");
+        Assert.Equal("plan", policy.PermissionCeiling);
+        Assert.Equivalent(new object[] { "get_current_user", "search_issues" }, policy.AllowedTools);
     }
 
     [Fact]
@@ -53,8 +53,8 @@ public class EditableProfileViewModelDelegationTests
         editable.AllowedTools = "tool_a\ntool_b";
 
         var policy = editable.ToProfile().DelegationPolicy;
-        policy.PermissionCeiling.Should().Be("bypassPermissions");
-        policy.AllowedTools.Should().BeEquivalentTo("tool_a", "tool_b");
+        Assert.Equal("bypassPermissions", policy.PermissionCeiling);
+        Assert.Equivalent(new object[] { "tool_a", "tool_b" }, policy.AllowedTools);
     }
 
     [Fact]
@@ -65,6 +65,6 @@ public class EditableProfileViewModelDelegationTests
             AllowedTools = "   ",
         };
 
-        editable.ToProfile().DelegationPolicy.AllowedTools.Should().BeNull();
+        Assert.Null(editable.ToProfile().DelegationPolicy.AllowedTools);
     }
 }

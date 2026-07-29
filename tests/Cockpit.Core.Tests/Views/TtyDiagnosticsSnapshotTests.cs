@@ -1,6 +1,5 @@
 using Cockpit.App.Views;
 using Exclr8.Terminal.Buffer;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Views;
 
@@ -15,7 +14,7 @@ public class TtyDiagnosticsSnapshotTests
     [Fact]
     public void Capture_NullBuffer_ReturnsPlaceholder()
     {
-        TtyDiagnosticsSnapshot.Capture(null).Should().Be("buffer=?");
+        Assert.Equal("buffer=?", TtyDiagnosticsSnapshot.Capture(null));
     }
 
     [Fact]
@@ -25,12 +24,12 @@ public class TtyDiagnosticsSnapshotTests
 
         var snapshot = TtyDiagnosticsSnapshot.Capture(buffer);
 
-        snapshot.Should().Contain("cursor=(0,0)");
-        snapshot.Should().Contain("region=(0..23)");
-        snapshot.Should().Contain("scrollOffset=0");
-        snapshot.Should().Contain("grid=80x24");
-        snapshot.Should().Contain("altScreen=False");
-        snapshot.Should().Contain("selection=none");
+        Assert.Contains("cursor=(0,0)", snapshot);
+        Assert.Contains("region=(0..23)", snapshot);
+        Assert.Contains("scrollOffset=0", snapshot);
+        Assert.Contains("grid=80x24", snapshot);
+        Assert.Contains("altScreen=False", snapshot);
+        Assert.Contains("selection=none", snapshot);
     }
 
     [Fact]
@@ -44,9 +43,9 @@ public class TtyDiagnosticsSnapshotTests
         buffer.SelectWord(row: 0, col: 2);
 
         var snapshot = TtyDiagnosticsSnapshot.Capture(buffer);
-        snapshot.Should().Contain("anchor=(0,0)");
-        snapshot.Should().Contain("active=(0,4)");
-        snapshot.Should().Contain("mode=Word");
+        Assert.Contains("anchor=(0,0)", snapshot);
+        Assert.Contains("active=(0,4)", snapshot);
+        Assert.Contains("mode=Word", snapshot);
     }
 
     [Fact]
@@ -59,10 +58,10 @@ public class TtyDiagnosticsSnapshotTests
         buffer.Resize(120, 40);
 
         var snapshot = TtyDiagnosticsSnapshot.Capture(buffer);
-        snapshot.Should().Contain("grid=120x40");
-        snapshot.Should().Contain("region=(0..39)");
+        Assert.Contains("grid=120x40", snapshot);
+        Assert.Contains("region=(0..39)", snapshot);
         // Resize clears any active selection (TerminalBuffer.Resize) — the #58 trigger is a double-click
         // (selection) followed by a resize-adjacent glitch, so this is the exact state transition to watch.
-        snapshot.Should().Contain("selection=none");
+        Assert.Contains("selection=none", snapshot);
     }
 }

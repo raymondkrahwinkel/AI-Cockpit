@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -41,9 +39,9 @@ public class AutopilotRunDriverTests
             return Task.FromResult(AutopilotStepOutcome.Passed);
         });
 
-        order.Should().Equal("1", "2");
-        controller.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
-        controller.Plan!.Steps.Should().OnlyContain(step => step.Status == AutopilotStepStatus.Passed);
+        Assert.Equal(new[] { "1", "2" }, order);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, controller.Phase);
+        Assert.All(controller.Plan!.Steps, step => Assert.Equal(AutopilotStepStatus.Passed, step.Status));
     }
 
     [Fact]
@@ -55,9 +53,9 @@ public class AutopilotRunDriverTests
 
         await driver.RunAsync(_ => Task.FromResult(++runs >= 3 ? AutopilotStepOutcome.Passed : AutopilotStepOutcome.Rejected)); // fail, fail, pass
 
-        runs.Should().Be(3);
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Passed);
-        controller.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(3, runs);
+        Assert.Equal(AutopilotStepStatus.Passed, controller.Plan!.Steps[0].Status);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, controller.Phase);
     }
 
     [Fact]
@@ -73,9 +71,9 @@ public class AutopilotRunDriverTests
             return Task.FromResult(AutopilotStepOutcome.Rejected); // always fails
         });
 
-        runs.Should().Be(2); // exactly the cap — no endless loop
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
-        controller.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        Assert.Equal(2, runs); // exactly the cap — no endless loop
+        Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
+        Assert.Equal(AutopilotPlanPhase.Blocked, controller.Phase);
     }
 
     [Fact]
@@ -86,10 +84,10 @@ public class AutopilotRunDriverTests
 
         var act = () => driver.RunAsync(_ => throw new InvalidOperationException("boom"));
 
-        await act.Should().NotThrowAsync();
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
+        await act();
+        Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
         // A thrown exception never reached a verdict — the driver's own catch converts it to Faulted, not Rejected.
-        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -110,10 +108,10 @@ public class AutopilotRunDriverTests
         });
 
         var step = controller.Plan!.Steps[0];
-        step.Status.Should().Be(AutopilotStepStatus.Passed);
-        step.Attempts.Should().Be(2);
-        step.Reworks.Should().Be(0);
-        AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks).Should().Be(AutopilotCorrectionKind.RunRestart);
+        Assert.Equal(AutopilotStepStatus.Passed, step.Status);
+        Assert.Equal(2, step.Attempts);
+        Assert.Equal(0, step.Reworks);
+        Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
     }
 
     [Fact]
@@ -137,10 +135,10 @@ public class AutopilotRunDriverTests
         });
 
         var step = controller.Plan!.Steps[0];
-        step.Status.Should().Be(AutopilotStepStatus.Passed);
-        step.Attempts.Should().Be(2);
-        step.Reworks.Should().Be(0);
-        AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks).Should().Be(AutopilotCorrectionKind.RunRestart);
+        Assert.Equal(AutopilotStepStatus.Passed, step.Status);
+        Assert.Equal(2, step.Attempts);
+        Assert.Equal(0, step.Reworks);
+        Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
     }
 
     [Fact]
@@ -159,9 +157,9 @@ public class AutopilotRunDriverTests
         });
 
         var step = controller.Plan!.Steps[0];
-        step.Status.Should().Be(AutopilotStepStatus.Passed);
-        step.Attempts.Should().Be(2);
-        step.Reworks.Should().Be(1);
-        AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks).Should().Be(AutopilotCorrectionKind.ReviewFinding);
+        Assert.Equal(AutopilotStepStatus.Passed, step.Status);
+        Assert.Equal(2, step.Attempts);
+        Assert.Equal(1, step.Reworks);
+        Assert.Equal(AutopilotCorrectionKind.ReviewFinding, AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks));
     }
 }

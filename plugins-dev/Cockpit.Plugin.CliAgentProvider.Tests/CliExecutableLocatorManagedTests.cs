@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
 /// <summary>
@@ -16,14 +14,13 @@ public class CliExecutableLocatorManagedTests
     {
         var pin = Path.Combine(Path.GetTempPath(), "pinned-codex");
 
-        CliExecutableLocator.Resolve(pin, _ => ManagedPath).Should().Be(pin);
+        Assert.Equal(pin, CliExecutableLocator.Resolve(pin, _ => ManagedPath));
     }
 
     [Fact]
     public void BareName_WithManagedCopy_ResolvesToTheManagedCopy_NotPath()
     {
-        CliExecutableLocator.Resolve("codex", name => name == "codex" ? ManagedPath : null)
-            .Should().Be(ManagedPath);
+        Assert.Equal(ManagedPath, CliExecutableLocator.Resolve("codex", name => name == "codex" ? ManagedPath : null));
     }
 
     [Fact]
@@ -31,7 +28,7 @@ public class CliExecutableLocatorManagedTests
     {
         const string absent = "codex-definitely-not-installed-xyz";
 
-        CliExecutableLocator.Resolve(absent, _ => null).Should().Be(absent);
+        Assert.Equal(absent, CliExecutableLocator.Resolve(absent, _ => null));
     }
 
     [Fact]
@@ -39,6 +36,6 @@ public class CliExecutableLocatorManagedTests
     {
         const string absent = "codex-definitely-not-installed-xyz";
 
-        CliExecutableLocator.Resolve(absent).Should().Be(absent);
+        Assert.Equal(absent, CliExecutableLocator.Resolve(absent));
     }
 }

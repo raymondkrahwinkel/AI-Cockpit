@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -24,7 +23,7 @@ public class IssueSelectionTests
 
         var restored = IssueSelection.Restore([reloaded, Other, SameNumberDifferentRepo], Selected.Repository, Selected.Number);
 
-        restored.Should().Be(reloaded);
+        Assert.Equal(reloaded, restored);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class IssueSelectionTests
     {
         var restored = IssueSelection.Restore([SameNumberDifferentRepo], Selected.Repository, Selected.Number);
 
-        restored.Should().BeNull();
+        Assert.Null(restored);
     }
 
     [Fact]
@@ -40,13 +39,13 @@ public class IssueSelectionTests
     {
         var restored = IssueSelection.Restore([Other], Selected.Repository, Selected.Number);
 
-        restored.Should().BeNull();
+        Assert.Null(restored);
     }
 
     [Fact]
     public void ReturnsNull_ForAMissingRepositoryOrNumber()
     {
-        IssueSelection.Restore([Selected, Other], null, Selected.Number).Should().BeNull();
-        IssueSelection.Restore([Selected, Other], Selected.Repository, null).Should().BeNull();
+        Assert.Null(IssueSelection.Restore([Selected, Other], null, Selected.Number));
+        Assert.Null(IssueSelection.Restore([Selected, Other], Selected.Repository, null));
     }
 }

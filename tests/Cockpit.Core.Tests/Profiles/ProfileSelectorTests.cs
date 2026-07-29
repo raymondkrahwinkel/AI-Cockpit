@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Tests.Profiles;
@@ -10,9 +9,9 @@ public class ProfileSelectorTests
     {
         var outcome = ProfileSelector.Select([]);
 
-        outcome.Kind.Should().Be(ProfileSelectionKind.LoginRequired);
-        outcome.SingleProfile.Should().BeNull();
-        outcome.Candidates.Should().BeEmpty();
+        Assert.Equal(ProfileSelectionKind.LoginRequired, outcome.Kind);
+        Assert.Null(outcome.SingleProfile);
+        Assert.Empty(outcome.Candidates);
     }
 
     [Fact]
@@ -26,7 +25,7 @@ public class ProfileSelectorTests
 
         var outcome = ProfileSelector.Select(statuses);
 
-        outcome.Kind.Should().Be(ProfileSelectionKind.LoginRequired);
+        Assert.Equal(ProfileSelectionKind.LoginRequired, outcome.Kind);
     }
 
     [Fact]
@@ -41,8 +40,8 @@ public class ProfileSelectorTests
 
         var outcome = ProfileSelector.Select(statuses);
 
-        outcome.Kind.Should().Be(ProfileSelectionKind.UseSilently);
-        outcome.SingleProfile.Should().Be(loggedIn);
+        Assert.Equal(ProfileSelectionKind.UseSilently, outcome.Kind);
+        Assert.Equal(loggedIn, outcome.SingleProfile);
     }
 
     [Fact]
@@ -59,9 +58,9 @@ public class ProfileSelectorTests
 
         var outcome = ProfileSelector.Select(statuses);
 
-        outcome.Kind.Should().Be(ProfileSelectionKind.RequiresChoice);
-        outcome.SingleProfile.Should().BeNull();
-        outcome.Candidates.Should().BeEquivalentTo([personal, work]);
+        Assert.Equal(ProfileSelectionKind.RequiresChoice, outcome.Kind);
+        Assert.Null(outcome.SingleProfile);
+        Assert.Equivalent(new object[] { personal, work }, outcome.Candidates);
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class ProfileSelectorTests
 
         var outcome = ProfileSelector.Select(statuses, lastUsedLabel: "work");
 
-        outcome.Kind.Should().Be(ProfileSelectionKind.RequiresChoice);
-        outcome.Candidates.Should().ContainInOrder(work, personal);
+        Assert.Equal(ProfileSelectionKind.RequiresChoice, outcome.Kind);
+        Assert.Equal(new[] { work, personal }, outcome.Candidates);
     }
 
     [Fact]
@@ -94,6 +93,6 @@ public class ProfileSelectorTests
 
         var outcome = ProfileSelector.Select(statuses, lastUsedLabel: "nonexistent");
 
-        outcome.Candidates.Should().ContainInOrder(personal, work);
+        Assert.Equal(new[] { personal, work }, outcome.Candidates);
     }
 }

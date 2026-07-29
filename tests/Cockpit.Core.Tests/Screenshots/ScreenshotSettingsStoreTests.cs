@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Screenshots;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Screenshots;
@@ -26,8 +25,8 @@ public class ScreenshotSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GlobalHotkeyEnabled.Should().BeFalse("a desktop-wide key is taken from every other application, so it is opted into");
-        settings.HotkeyKeyName.Should().Be("F8");
+        Assert.False(settings.GlobalHotkeyEnabled, "a desktop-wide key is taken from every other application, so it is opted into");
+        Assert.Equal("F8", settings.HotkeyKeyName);
     }
 
     [Fact]
@@ -38,8 +37,8 @@ public class ScreenshotSettingsStoreTests : IDisposable
         await store.SaveAsync(new ScreenshotSettings { GlobalHotkeyEnabled = true, HotkeyKeyName = "F7" });
         var loaded = await store.LoadAsync();
 
-        loaded.GlobalHotkeyEnabled.Should().BeTrue();
-        loaded.HotkeyKeyName.Should().Be("F7");
+        Assert.True(loaded.GlobalHotkeyEnabled);
+        Assert.Equal("F7", loaded.HotkeyKeyName);
     }
 
     /// <summary>
@@ -55,8 +54,8 @@ public class ScreenshotSettingsStoreTests : IDisposable
         await new ScreenshotSettingsStore(_configFilePath).SaveAsync(new ScreenshotSettings { GlobalHotkeyEnabled = true });
 
         var voice = await new VoiceSettingsStore(_configFilePath).LoadAsync();
-        voice.IsEnabled.Should().BeTrue();
-        voice.PushToTalkKeyName.Should().Be("F10");
+        Assert.True(voice.IsEnabled);
+        Assert.Equal("F10", voice.PushToTalkKeyName);
     }
 
     /// <summary>
@@ -70,7 +69,7 @@ public class ScreenshotSettingsStoreTests : IDisposable
 
         var settings = await new ScreenshotSettingsStore(_configFilePath).LoadAsync();
 
-        settings.HotkeyKeyName.Should().Be("F8");
+        Assert.Equal("F8", settings.HotkeyKeyName);
     }
 
     public void Dispose()

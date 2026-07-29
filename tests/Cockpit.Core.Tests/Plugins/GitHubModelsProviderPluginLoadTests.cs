@@ -5,7 +5,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -23,11 +22,11 @@ public class GitHubModelsProviderPluginLoadTests
     public void ActivatesAndRegistersTheSessionProvider_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
-        folder.Should().NotBeNull("the GitHub Models provider plugin is built as a test dependency");
+        Assert.NotNull(folder);
 
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        PluginManifest.TryParse(manifestJson, out var manifest, out _).Should().BeTrue();
-        manifest.Should().NotBeNull();
+        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
+        Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "github-models-provider", manifest, hash, PluginLoadDecision.Load);
@@ -36,17 +35,17 @@ public class GitHubModelsProviderPluginLoadTests
         var plugin = activator.Activate(discovered);
 
         // A non-null cast to the host's ICockpitPlugin is itself the type-identity proof.
-        plugin.Should().NotBeNull();
-        plugin!.Metadata.Id.Should().Be("github-models-provider");
-        plugin.Metadata.DisplayName.Should().Be("GitHub Models");
+        Assert.NotNull(plugin);
+        Assert.Equal("github-models-provider", plugin!.Metadata.Id);
+        Assert.Equal("GitHub Models", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        host.SessionProviders.Should().ContainSingle();
-        host.SessionProviders.Should().Contain(registration => registration.ProviderId == "github-models-provider.github-models" && registration.DisplayName == "GitHub Models");
+        Assert.Single(host.SessionProviders);
+        Assert.Contains(host.SessionProviders, registration => registration.ProviderId == "github-models-provider.github-models" && registration.DisplayName == "GitHub Models");
 
         // The registration's driver factory is usable through the narrow plugin contract without the host
         // ever seeing this plugin's concrete types. CreateConfigView is not exercised here — it builds a real
@@ -57,7 +56,7 @@ public class GitHubModelsProviderPluginLoadTests
         {
             var driverFactory = registration.CreateDriverFactory(host.Services);
             var driver = driverFactory.Create("""{"ApiKey":"test-key","Model":"openai/gpt-4.1","BaseUrl":"https://models.github.ai/inference"}""");
-            driver.Should().NotBeNull();
+            Assert.NotNull(driver);
         }
 
         plugin.Dispose();

@@ -4,7 +4,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -49,7 +48,7 @@ public class TranscriptStickToBottomTests
 
         scroll.ScrollToEnd();
         _Settle(window);
-        jumpButton.IsVisible.Should().BeFalse("the fixture must start parked at the newest row");
+        Assert.False(jumpButton.IsVisible, "the fixture must start parked at the newest row");
 
         return (window, session, scroll, jumpButton);
     }
@@ -77,17 +76,19 @@ public class TranscriptStickToBottomTests
             toggle(session, true);
             _Settle(window);
 
-            scroll.Viewport.Height.Should().NotBe(restingViewport, $"{label} must actually resize the viewport for this test to prove anything");
-            jumpButton.IsVisible.Should().BeFalse($"{label} appearing (cycle {cycle}) is not a user scroll, so following must not stop");
-            TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height)
-                .Should().BeTrue($"{label} must not leave the transcript short of the bottom it was parked at (cycle {cycle})");
+            Assert.NotEqual(restingViewport, scroll.Viewport.Height);
+            Assert.False(jumpButton.IsVisible, $"{label} appearing (cycle {cycle}) is not a user scroll, so following must not stop");
+            Assert.True(
+                TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height),
+                $"{label} must not leave the transcript short of the bottom it was parked at (cycle {cycle})");
 
             toggle(session, false);
             _Settle(window);
 
-            jumpButton.IsVisible.Should().BeFalse($"{label} disappearing again must not stop the follow either (cycle {cycle})");
-            TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height)
-                .Should().BeTrue($"{label} disappearing must leave the transcript at the bottom too (cycle {cycle})");
+            Assert.False(jumpButton.IsVisible, $"{label} disappearing again must not stop the follow either (cycle {cycle})");
+            Assert.True(
+                TranscriptScrollAnchor.IsAtBottom(scroll.Offset.Y, scroll.Extent.Height, scroll.Viewport.Height),
+                $"{label} disappearing must leave the transcript at the bottom too (cycle {cycle})");
         }
 
         window.Close();
@@ -122,11 +123,11 @@ public class TranscriptStickToBottomTests
         // with it — that would be a second, unrelated way for the offset to move.
         scroll.Offset = new Vector(scroll.Offset.X, Math.Max(0, scroll.Offset.Y - 150));
         _Settle(window);
-        jumpButton.IsVisible.Should().BeTrue("the operator scrolled away from the tail");
+        Assert.True(jumpButton.IsVisible, "the operator scrolled away from the tail");
 
         scroll.ScrollToEnd();
         _Settle(window);
-        jumpButton.IsVisible.Should().BeFalse("scrolling back to the bottom must resume following");
+        Assert.False(jumpButton.IsVisible, "scrolling back to the bottom must resume following");
 
         window.Close();
     });

@@ -4,7 +4,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -29,10 +28,10 @@ public class PluginActionsSessionNameTests
 
         Dispatcher.UIThread.Invoke(() =>
         {
-            session.Title.Should().Be("release work");
-            session.Statusline.Should().Be("running the suite");
-            session.SuggestName("AC-310").Should().BeFalse();
-            session.Title.Should().Be("release work");
+            Assert.Equal("release work", session.Title);
+            Assert.Equal("running the suite", session.Statusline);
+            Assert.False(session.SuggestName("AC-310"));
+            Assert.Equal("release work", session.Title);
         });
     }
 
@@ -46,8 +45,8 @@ public class PluginActionsSessionNameTests
 
         Dispatcher.UIThread.Invoke(() =>
         {
-            session.SuggestName("AC-310").Should().BeTrue();
-            session.Title.Should().Be("AC-310");
+            Assert.True(session.SuggestName("AC-310"));
+            Assert.Equal("AC-310", session.Title);
         });
     }
 

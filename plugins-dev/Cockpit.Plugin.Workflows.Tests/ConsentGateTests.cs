@@ -2,7 +2,6 @@ using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
@@ -47,10 +46,10 @@ public class ConsentGateTests
 
         await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.McpAgent);
 
-        asked.Should().ContainSingle();
-        asked[0].Action.Should().Be("do the dangerous thing: Run a command", "the literal action is shown, not a summary");
-        asked[0].Risk.Should().Be(ConsentRisk.Dangerous);
-        dangerous.Ran.Should().BeTrue();
+        Assert.Single(asked);
+        Assert.Equal("do the dangerous thing: Run a command", asked[0].Action);
+        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
+        Assert.True(dangerous.Ran);
     }
 
     [Fact]
@@ -62,9 +61,9 @@ public class ConsentGateTests
 
         var run = await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.McpAgent);
 
-        dangerous.Ran.Should().BeFalse("a denied step never runs");
-        run.Steps.Should().NotContain(step => step.NodeId == "a", "the branch stops where consent was refused");
-        run.Steps.Single(step => step.NodeId == "d").Status.Should().Be(RunStatus.Skipped);
+        Assert.False(dangerous.Ran, "a denied step never runs");
+        Assert.DoesNotContain(run.Steps, step => step.NodeId == "a");
+        Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == "d").Status);
     }
 
     [Fact]
@@ -76,8 +75,8 @@ public class ConsentGateTests
 
         await _Engine(host, dangerous).RunAsync(flow, trigger.Id, RunOrigin.Operator);
 
-        asked.Should().BeEmpty("the operator starting the run is the consent");
-        dangerous.Ran.Should().BeTrue();
+        Assert.Empty(asked);
+        Assert.True(dangerous.Ran);
     }
 
     [Fact]
@@ -87,15 +86,15 @@ public class ConsentGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
 
         await _Engine(host, new ConsentingRunner("danger", ConsentRisk.Dangerous)).RunAsync(flow, trigger.Id, RunOrigin.Trigger);
-        asked.Should().ContainSingle("a trigger fire asks by default");
+        Assert.Single(asked);
 
         flow.RunUnattended = true;
         asked.Clear();
         var unattended = new ConsentingRunner("danger", ConsentRisk.Dangerous);
 
         await _Engine(host, unattended).RunAsync(flow, trigger.Id, RunOrigin.Trigger);
-        asked.Should().BeEmpty("the operator marked the flow run-unattended");
-        unattended.Ran.Should().BeTrue();
+        Assert.Empty(asked);
+        Assert.True(unattended.Ran);
     }
 }
 

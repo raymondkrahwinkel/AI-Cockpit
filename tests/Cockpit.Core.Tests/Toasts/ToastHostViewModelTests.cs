@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Toasts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Toasts;
 
@@ -21,9 +20,10 @@ public class ToastHostViewModelTests
 
         var toast = host.Add("Hello", ToastSeverity.Information, null, null);
 
-        host.Toasts.Should().ContainSingle().Which.Should().BeSameAs(toast);
-        toast.Message.Should().Be("Hello");
-        toast.Severity.Should().Be(ToastSeverity.Information);
+        var single = Assert.Single(host.Toasts);
+        Assert.Same(toast, single);
+        Assert.Equal("Hello", toast.Message);
+        Assert.Equal(ToastSeverity.Information, toast.Severity);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class ToastHostViewModelTests
         host.Add("First", ToastSeverity.Success, null, null);
         host.Add("Second", ToastSeverity.Warning, null, null);
 
-        host.Toasts.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(host.Toasts));
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public class ToastHostViewModelTests
 
         toast.CloseCommand.Execute(null);
 
-        host.Toasts.Should().BeEmpty();
+        Assert.Empty(host.Toasts);
     }
 
     [Fact]
@@ -55,10 +55,10 @@ public class ToastHostViewModelTests
         host.Add("Hello", ToastSeverity.Information, null, null);
 
         // Simulates the auto-dismiss timeout elapsing, without waiting on real wall-clock time.
-        scheduledDismissCallbacks.Should().ContainSingle();
+        Assert.Single(scheduledDismissCallbacks);
         scheduledDismissCallbacks[0].Invoke();
 
-        host.Toasts.Should().BeEmpty();
+        Assert.Empty(host.Toasts);
     }
 
     [Fact]
@@ -69,8 +69,8 @@ public class ToastHostViewModelTests
         host.Add("Something broke", ToastSeverity.Error, null, null);
         host.Add("All good", ToastSeverity.Success, null, null);
 
-        recordedDelays.Should().HaveCount(2);
-        recordedDelays[0].Should().BeGreaterThan(recordedDelays[1]);
+        Assert.Equal(2, System.Linq.Enumerable.Count(recordedDelays));
+        Assert.True(recordedDelays[0] > recordedDelays[1]);
     }
 
     [Fact]
@@ -82,8 +82,8 @@ public class ToastHostViewModelTests
 
         toast.InvokeActionCommand.Execute(null);
 
-        invoked.Should().BeTrue();
-        host.Toasts.Should().BeEmpty();
+        Assert.True(invoked);
+        Assert.Empty(host.Toasts);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class ToastHostViewModelTests
 
         var toast = host.Add("Hello", ToastSeverity.Information, null, null);
 
-        toast.HasAction.Should().BeFalse();
+        Assert.False(toast.HasAction);
     }
 
     // Records every scheduled delay (call order) and, separately, an invokable callback per toast that

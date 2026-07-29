@@ -5,7 +5,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -23,11 +22,11 @@ public class ClaudeProviderPluginLoadTests
     public void ActivatesAndRegistersBothClaudeRoutes_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
-        folder.Should().NotBeNull("the Claude provider plugin is built as a test dependency");
+        Assert.NotNull(folder);
 
         var manifestJson = File.ReadAllText(Path.Combine(folder!, "plugin.json"));
-        PluginManifest.TryParse(manifestJson, out var manifest, out _).Should().BeTrue();
-        manifest.Should().NotBeNull();
+        Assert.True(PluginManifest.TryParse(manifestJson, out var manifest, out _));
+        Assert.NotNull(manifest);
 
         var hash = PluginHash.Compute(File.ReadAllBytes(Path.Combine(folder, manifest!.EntryAssembly)));
         var discovered = new DiscoveredPlugin(folder, "claude-provider", manifest, hash, PluginLoadDecision.Load);
@@ -35,9 +34,9 @@ public class ClaudeProviderPluginLoadTests
         var activator = new PluginActivator(NullLogger<PluginActivator>.Instance);
         var plugin = activator.Activate(discovered);
 
-        plugin.Should().NotBeNull();
-        plugin!.Metadata.Id.Should().Be("claude-provider");
-        plugin.Metadata.DisplayName.Should().Be("Claude (bundled)");
+        Assert.NotNull(plugin);
+        Assert.Equal("claude-provider", plugin!.Metadata.Id);
+        Assert.Equal("Claude (bundled)", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
@@ -45,34 +44,34 @@ public class ClaudeProviderPluginLoadTests
         plugin.Initialize(host);
 
         // Both routes register under the id the resolver routes a Claude profile to.
-        host.TtyProviders.Should().ContainSingle();
+        Assert.Single(host.TtyProviders);
         var ttyRegistration = host.TtyProviders.Single();
-        ttyRegistration.ProviderId.Should().Be("claude");
-        ttyRegistration.DisplayName.Should().Be("Claude");
-        ttyRegistration.Options.Should().Contain(option => option.Key == "permission-mode");
-        ttyRegistration.Options.Should().Contain(option => option.Key == "model");
-        ttyRegistration.Options.Should().Contain(option => option.Key == "effort");
-        ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
+        Assert.Equal("claude", ttyRegistration.ProviderId);
+        Assert.Equal("Claude", ttyRegistration.DisplayName);
+        Assert.Contains(ttyRegistration.Options, option => option.Key == "permission-mode");
+        Assert.Contains(ttyRegistration.Options, option => option.Key == "model");
+        Assert.Contains(ttyRegistration.Options, option => option.Key == "effort");
+        Assert.NotNull(ttyRegistration.CreateProvider(host.Services));
 
         // The SDK/session-driver route (weg A): control-protocol permissions, so it reports SupportsPermissions and
         // mints a driver factory through the real activator.
-        host.SessionProviders.Should().ContainSingle();
+        Assert.Single(host.SessionProviders);
         var sessionRegistration = host.SessionProviders.Single();
-        sessionRegistration.ProviderId.Should().Be("claude");
-        sessionRegistration.DisplayName.Should().Be("Claude");
-        sessionRegistration.Capabilities.SupportsPermissions.Should().BeTrue();
+        Assert.Equal("claude", sessionRegistration.ProviderId);
+        Assert.Equal("Claude", sessionRegistration.DisplayName);
+        Assert.True(sessionRegistration.Capabilities.SupportsPermissions);
         // Vision rides the registration capabilities, which is the object the host honours: SessionDriverFactory
         // builds the driver adapter from registration.Capabilities, not the driver instance's own. Regression guard
         // for the pasted image being gated off ("provider does not support image input") when this was left false.
-        sessionRegistration.Capabilities.SupportsVision.Should().BeTrue();
+        Assert.True(sessionRegistration.Capabilities.SupportsVision);
         // AC-190: Claude confines to the worktree (AC-174) but only while its permission system is engaged, so it must
         // declare BOTH — the confinement vouch and that it is permission-based — for the adapter to downgrade a bypass
         // session to unconfined and the fail-closed isolation gate to refuse it.
-        sessionRegistration.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
-        sessionRegistration.Capabilities.ConfinesViaPermissionsOnly.Should().BeTrue();
-        sessionRegistration.Options.Should().Contain(option => option.Key == "permission-mode");
-        sessionRegistration.Options.Should().Contain(option => option.Key == "model");
-        sessionRegistration.CreateDriverFactory(host.Services).Should().NotBeNull();
+        Assert.True(sessionRegistration.Capabilities.ConfinesFileAccessToWorkingDirectory);
+        Assert.True(sessionRegistration.Capabilities.ConfinesViaPermissionsOnly);
+        Assert.Contains(sessionRegistration.Options, option => option.Key == "permission-mode");
+        Assert.Contains(sessionRegistration.Options, option => option.Key == "model");
+        Assert.NotNull(sessionRegistration.CreateDriverFactory(host.Services));
         // CreateConfigView is not exercised here — it builds a real Avalonia Control (see CliAgentProviderPluginLoadTests).
 
         plugin.Dispose();

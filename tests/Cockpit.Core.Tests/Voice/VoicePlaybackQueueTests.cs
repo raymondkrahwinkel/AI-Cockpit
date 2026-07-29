@@ -1,6 +1,5 @@
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -24,9 +23,9 @@ public class VoicePlaybackQueueTests
 
         await _WaitUntilAsync(() => audioPlayback.CallCount >= 2);
 
-        audioPlayback.MaxConcurrentCalls.Should().Be(1);
-        textToSpeech.Calls.Select(call => call.Text).Should().Equal("First sentence.", "Second sentence.");
-        textToSpeech.Calls.Should().OnlyContain(call => call.SpeakerId == 1 && call.Language == "en");
+        Assert.Equal(1, audioPlayback.MaxConcurrentCalls);
+        Assert.Equal(new[] { "First sentence.", "Second sentence." }, textToSpeech.Calls.Select(call => call.Text));
+        Assert.All(textToSpeech.Calls, call => Assert.True(call.SpeakerId == 1 && call.Language == "en"));
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class VoicePlaybackQueueTests
         queue.Enqueue([], speakerId: 1, language: "en");
         await Task.Delay(30);
 
-        textToSpeech.Calls.Should().BeEmpty();
+        Assert.Empty(textToSpeech.Calls);
     }
 
     [Fact]
@@ -67,7 +66,7 @@ public class VoicePlaybackQueueTests
         // Proves StopAll actually cancels the token passed into the in-flight PlayAsync call — not
         // just that draining the queue happens to leave CallCount looking right (that would pass even
         // if StopAll forgot to cancel anything, since the drain alone hides an un-cancelled hang).
-        capturedToken.Should().NotBeNull();
+        Assert.NotNull(capturedToken);
         await _WaitUntilAsync(() => capturedToken!.Value.IsCancellationRequested);
     }
 
@@ -93,8 +92,9 @@ public class VoicePlaybackQueueTests
         queue.StopAll();
         await Task.Delay(100);
 
-        audioPlayback.CallCount.Should().Be(1);
-        textToSpeech.Calls.Should().ContainSingle().Which.Text.Should().Be("First sentence.");
+        Assert.Equal(1, audioPlayback.CallCount);
+        var call = Assert.Single(textToSpeech.Calls);
+        Assert.Equal("First sentence.", call.Text);
     }
 
     [Fact]
@@ -109,7 +109,8 @@ public class VoicePlaybackQueueTests
 
         await _WaitUntilAsync(() => audioPlayback.CallCount >= 1);
 
-        textToSpeech.Calls.Should().ContainSingle().Which.Text.Should().Be("After a stop.");
+        var call = Assert.Single(textToSpeech.Calls);
+        Assert.Equal("After a stop.", call.Text);
     }
 
     [Fact]
@@ -128,10 +129,10 @@ public class VoicePlaybackQueueTests
         await _WaitUntilAsync(() => textToSpeech.Calls.Count >= 2);
 
         // One multilingual voice: the same speaker synthesizes both segments, each in its own language.
-        textToSpeech.Calls.Select(call => call.Language).Should().Equal("en", "nl");
-        textToSpeech.Calls.Should().OnlyContain(call => call.SpeakerId == 2);
+        Assert.Equal(new[] { "en", "nl" }, textToSpeech.Calls.Select(call => call.Language));
+        Assert.All(textToSpeech.Calls, call => Assert.Equal(2, call.SpeakerId));
         // No voice switch means no bridging silence — every played buffer is a spoken sentence.
-        audioPlayback.PlayedBuffers.Should().OnlyContain(buffer => buffer.Any(sample => sample != 0));
+        Assert.All(audioPlayback.PlayedBuffers, buffer => Assert.Contains(buffer, sample => sample != 0));
     }
 
     [Fact]
@@ -160,7 +161,7 @@ public class VoicePlaybackQueueTests
         });
         lock (states)
         {
-            states.Should().Equal(true, false);
+            Assert.Equal(new[] { true, false }, states);
         }
     }
 
@@ -171,6 +172,6 @@ public class VoicePlaybackQueueTests
             await Task.Delay(10);
         }
 
-        condition().Should().BeTrue("the condition should become true within the poll window");
+        Assert.True(condition(), "the condition should become true within the poll window");
     }
 }

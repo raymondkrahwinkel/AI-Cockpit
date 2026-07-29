@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -24,7 +23,7 @@ public class SessionReorderTests
 
         cockpit.MoveSessionToVisibleIndex(a, 2);
 
-        cockpit.VisibleSessions.Should().Equal(b, c, a);
+        Assert.Equal(new[] { b, c, a }, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class SessionReorderTests
 
         cockpit.MoveSessionToVisibleIndex(a, 2);
 
-        cockpit.VisibleSessions.Should().Equal(b, c, a);
-        cockpit.Sessions.Should().Equal(a, b, c);
+        Assert.Equal(new[] { b, c, a }, cockpit.VisibleSessions);
+        Assert.Equal(new[] { a, b, c }, cockpit.Sessions);
     }
 
     [Fact]
@@ -59,8 +58,8 @@ public class SessionReorderTests
 
         cockpit.MoveSessionToVisibleIndex(onFirst1, 1);
 
-        cockpit.VisibleSessions.Should().Equal(onFirst2, onFirst1);
-        cockpit.Sessions.Should().Contain(onSecond, "the other desk's session is none of this reorder's business");
+        Assert.Equal(new[] { onFirst2, onFirst1 }, cockpit.VisibleSessions);
+        Assert.Contains(onSecond, cockpit.Sessions);
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class SessionReorderTests
 
         cockpit.MoveSessionUpCommand.Execute(onFirst2);
 
-        cockpit.VisibleSessions.Should().Equal(onFirst2, onFirst1);
+        Assert.Equal(new[] { onFirst2, onFirst1 }, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public class SessionReorderTests
 
         cockpit.MoveSessionDownCommand.Execute(onFirst1);
 
-        cockpit.VisibleSessions.Should().Equal(onFirst2, onFirst1);
+        Assert.Equal(new[] { onFirst2, onFirst1 }, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -107,7 +106,7 @@ public class SessionReorderTests
 
         cockpit.MoveSessionUpCommand.Execute(a);
 
-        cockpit.VisibleSessions.Should().Equal(a, b);
+        Assert.Equal(new[] { a, b }, cockpit.VisibleSessions);
     }
 
     [Fact]
@@ -121,7 +120,7 @@ public class SessionReorderTests
         cockpit.MoveSessionToVisibleIndex(a, 5);
         cockpit.MoveSessionToVisibleIndex(a, -1);
 
-        cockpit.VisibleSessions.Should().Equal(a, b);
+        Assert.Equal(new[] { a, b }, cockpit.VisibleSessions);
     }
 
     private static CockpitViewModel _Create(out WorkspacesViewModel workspaces)

@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Secrets;
@@ -46,12 +45,12 @@ public class SecretProtectionTests : IDisposable
     public async Task Enabling_LeavesNoReadableTokenInTheFile()
     {
         await Store().SaveAsync([Server(Token)]);
-        RawConfig().Should().Contain(Token, "this is what the file looks like today");
+        Assert.Contains(Token, RawConfig());
 
         await Service().EnableAsync(Password);
 
-        RawConfig().Should().NotContain(Token, "the whole point is that the token is not sitting there to be read");
-        RawConfig().Should().Contain(SecretProtector.Prefix);
+        Assert.DoesNotContain(Token, RawConfig());
+        Assert.Contains(SecretProtector.Prefix, RawConfig());
     }
 
     [Fact]
@@ -63,12 +62,12 @@ public class SecretProtectionTests : IDisposable
         // A fresh process: the key is gone, the file is ciphertext.
         var restarted = new SecretKeyHolder();
         var afterRestart = new SecretProtectionService(_configPath, restarted);
-        (await afterRestart.GetStatusAsync()).Should().Be(new SecretProtectionStatus(Enabled: true, Unlocked: false));
+        Assert.Equal(new SecretProtectionStatus(Enabled: true, Unlocked: false), await afterRestart.GetStatusAsync());
 
-        (await afterRestart.UnlockAsync(Password)).Should().BeTrue();
+        Assert.True(await afterRestart.UnlockAsync(Password));
 
         var servers = await new McpServerStore(_configPath, restarted).LoadAsync();
-        servers.Single().ApiKey.Should().Be(Token);
+        Assert.Equal(Token, servers.Single().ApiKey);
     }
 
     [Fact]
@@ -79,8 +78,8 @@ public class SecretProtectionTests : IDisposable
 
         var restarted = new SecretKeyHolder();
 
-        (await new SecretProtectionService(_configPath, restarted).UnlockAsync("not the password")).Should().BeFalse();
-        restarted.Protector.Should().BeNull("a refused password must not leave the app half-unlocked");
+        Assert.False(await new SecretProtectionService(_configPath, restarted).UnlockAsync("not the password"));
+        Assert.Null(restarted.Protector);
     }
 
     [Fact]
@@ -92,9 +91,9 @@ public class SecretProtectionTests : IDisposable
         await service.EnableAsync(Password);
         await service.DisableAsync();
 
-        RawConfig().Should().Contain(Token, "nothing may be lost by changing your mind");
-        RawConfig().Should().NotContain(SecretProtector.Prefix);
-        (await Store().LoadAsync()).Single().ApiKey.Should().Be(Token);
+        Assert.Contains(Token, RawConfig());
+        Assert.DoesNotContain(SecretProtector.Prefix, RawConfig());
+        Assert.Equal(Token, (await Store().LoadAsync()).Single().ApiKey);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class SecretProtectionTests : IDisposable
 
         await Service().EnableAsync(Password);
 
-        RawConfig().Should().NotContain(Token);
+        Assert.DoesNotContain(Token, RawConfig());
     }
 
     [Fact]
@@ -132,7 +131,7 @@ public class SecretProtectionTests : IDisposable
         // lifted out of one field and decrypted in another.
         var act = () => protector.Unprotect("McpServers[1].ApiKey", encrypted);
 
-        act.Should().Throw<SecretProtectionException>();
+        Assert.Throws<SecretProtectionException>(act);
         await Task.CompletedTask;
     }
 
@@ -146,9 +145,9 @@ public class SecretProtectionTests : IDisposable
         var reports = new List<SecretMigrationProgress>();
         await Service().EnableAsync(Password, new SynchronousProgress(reports.Add));
 
-        reports.Should().NotBeEmpty();
-        reports.Should().OnlyContain(report => report.Total == 2, "a bar that does not know its total cannot show progress");
-        reports.Select(report => report.Completed).Should().Equal(0, 1, 2);
+        Assert.NotEmpty(reports);
+        Assert.All(reports, report => Assert.True(report.Total == 2));
+        Assert.Equal(new[] { 0, 1, 2 }, reports.Select(report => report.Completed));
     }
 
     private sealed class SynchronousProgress(Action<SecretMigrationProgress> report) : IProgress<SecretMigrationProgress>
@@ -166,9 +165,9 @@ public class SecretProtectionTests : IDisposable
         await new SecretProtectionService(_configPath, restarted).ResetForgottenPasswordAsync();
 
         var servers = await new McpServerStore(_configPath, restarted).LoadAsync();
-        servers.Single().Name.Should().Be("YouTrack", "the server itself survives — only its credential is gone");
-        servers.Single().ApiKey.Should().BeEmpty();
-        RawConfig().Should().NotContain("Security", "encryption is off again, so the app starts without asking for a password");
+        Assert.Equal("YouTrack", servers.Single().Name);
+        Assert.Empty(servers.Single().ApiKey!);
+        Assert.DoesNotContain("Security", RawConfig());
     }
 
     [Fact]
@@ -195,17 +194,17 @@ public class SecretProtectionTests : IDisposable
 
         await new SecretProtectionService(_configPath, declared).EnableAsync(Password);
 
-        RawConfig().Should().NotContain(Token);
+        Assert.DoesNotContain(Token, RawConfig());
 
         // And a fresh start, which knows the declared name from the config, reads it back rather than handing the
         // plugin ciphertext.
         var restarted = new SecretKeyHolder();
         restarted.Declare(["pat"]);
-        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password));
 
         var protector = restarted.Protector!;
         var stored = JsonNode.Parse(RawConfig())!["Plugins"]!["some-plugin"]!["Data"]!["pat"]!.GetValue<string>();
-        protector.Unprotect("Plugins.some-plugin.Data.pat", stored).Should().Be(Token);
+        Assert.Equal(Token, protector.Unprotect("Plugins.some-plugin.Data.pat", stored));
     }
 
     [Fact]
@@ -216,8 +215,8 @@ public class SecretProtectionTests : IDisposable
 
         var twice = protector.Protect("McpServers[0].ApiKey", once);
 
-        twice.Should().Be(once, "a second pass over a value that is already ciphertext must leave it alone — that is what makes a half-converted file repairable rather than ruined");
-        protector.Unprotect("McpServers[0].ApiKey", twice).Should().Be(Token, "and it still decrypts to the original, not to ciphertext");
+        Assert.Equal(once, twice);
+        Assert.Equal(Token, protector.Unprotect("McpServers[0].ApiKey", twice));
     }
 
     [Fact]
@@ -235,19 +234,19 @@ public class SecretProtectionTests : IDisposable
         await File.WriteAllTextAsync(_configPath, document.ToJsonString());
 
         var restarted = new SecretKeyHolder();
-        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password));
 
         // Reading tolerates the mix: the encrypted one is decrypted, the plain one is passed through as it stands.
         var store = new McpServerStore(_configPath, restarted);
         var servers = await store.LoadAsync();
-        servers[0].ApiKey.Should().Be(Token);
-        servers[1].ApiKey.Should().Be("a-second-key");
+        Assert.Equal(Token, servers[0].ApiKey);
+        Assert.Equal("a-second-key", servers[1].ApiKey);
 
         // And the next write closes the gap: everything that is not yet ciphertext becomes ciphertext.
         await store.SaveAsync(servers);
 
-        RawConfig().Should().NotContain(Token, "the value that was left in the clear is encrypted on the next save");
-        RawConfig().Should().NotContain("a-second-key");
+        Assert.DoesNotContain(Token, RawConfig());
+        Assert.DoesNotContain("a-second-key", RawConfig());
     }
 
     [Fact]
@@ -262,7 +261,7 @@ public class SecretProtectionTests : IDisposable
 
         var protector = new SecretProtector(SecretKey.Derive(Password, salt, iterations: 1000));
 
-        protector.Unprotect("McpServers[0].ApiKey", encrypted).Should().Be(Token);
+        Assert.Equal(Token, protector.Unprotect("McpServers[0].ApiKey", encrypted));
     }
 
     [Fact]
@@ -272,14 +271,14 @@ public class SecretProtectionTests : IDisposable
         await Service().EnableAsync(Password);
 
         var backup = _configPath + ".bak";
-        File.Exists(backup).Should().BeTrue("a migration that rewrites every credential leaves a way back");
+        Assert.True(File.Exists(backup), "a migration that rewrites every credential leaves a way back");
 
         // The atomic swap keeps the pre-migration file as .bak — which is the operator's credentials still in the
         // clear, next door to the one that was just encrypted. Scrubbing it to ciphertext is the whole point:
         // otherwise the at-rest plaintext this feature removes would simply move one filename over.
         var backupText = File.ReadAllText(backup);
-        backupText.Should().NotContain(Token, "the backup must not be a plaintext copy of the credentials");
-        backupText.Should().Contain(SecretProtector.Prefix);
+        Assert.DoesNotContain(Token, backupText);
+        Assert.Contains(SecretProtector.Prefix, backupText);
     }
 
     [Fact]
@@ -287,8 +286,7 @@ public class SecretProtectionTests : IDisposable
     {
         await Store().SaveAsync([Server(Token)]);
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeTrue("encryption is off and there is a token in the file to protect");
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "encryption is off and there is a token in the file to protect");
     }
 
     [Fact]
@@ -296,8 +294,7 @@ public class SecretProtectionTests : IDisposable
     {
         await File.WriteAllTextAsync(_configPath, new JsonObject { ["Profiles"] = new JsonArray() }.ToJsonString());
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeFalse("a config with no credential in it has nothing to warn about");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a config with no credential in it has nothing to warn about");
     }
 
     [Fact]
@@ -306,8 +303,7 @@ public class SecretProtectionTests : IDisposable
         await Store().SaveAsync([Server(Token)]);
         await Service().EnableAsync(Password);
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeFalse("the credentials are encrypted, so there is nothing left to warn about");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "the credentials are encrypted, so there is nothing left to warn about");
     }
 
     [Fact]
@@ -317,11 +313,11 @@ public class SecretProtectionTests : IDisposable
 
         await Service().DismissUnprotectedWarningAsync();
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("the operator said not this set");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "the operator said not this set");
 
         // A fresh process reads the dismissal back rather than nagging again — it is persisted, not per-session.
         var restarted = new SecretProtectionService(_configPath, new SecretKeyHolder());
-        (await restarted.GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("the dismissal outlives the run that made it");
+        Assert.False((await restarted.GetStatusAsync()).ShouldWarnUnprotected, "the dismissal outlives the run that made it");
     }
 
     [Fact]
@@ -334,8 +330,7 @@ public class SecretProtectionTests : IDisposable
         // what is in them, so this must not un-dismiss.
         await Store().SaveAsync([Server("a-rotated-token")]);
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeFalse("a rotated value on an existing field is not a new credential");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a rotated value on an existing field is not a new credential");
     }
 
     [Fact]
@@ -347,8 +342,7 @@ public class SecretProtectionTests : IDisposable
         // A second server is a new credential field — a new path — so the set changes and the banner returns.
         await Store().SaveAsync([Server(Token), Server("a-second-token")]);
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeTrue("a brand-new credential is exactly when the operator should be reminded again");
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a brand-new credential is exactly when the operator should be reminded again");
     }
 
     [Fact]
@@ -362,8 +356,7 @@ public class SecretProtectionTests : IDisposable
         // the banner should return immediately (Raymond, 2026-07-19).
         await service.DisableAsync();
 
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected
-            .Should().BeTrue("a deliberate Disable exposes the credentials again, so the warning returns");
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a deliberate Disable exposes the credentials again, so the warning returns");
     }
 
     [Fact]
@@ -376,8 +369,8 @@ public class SecretProtectionTests : IDisposable
         // dismissal we just wrote records only the field paths, so it must not carry the credential's value.
         var dismissedPaths = JsonNode.Parse(RawConfig())!["SecurityNotice"]!["DismissedPaths"]!.AsArray()
             .Select(node => node!.GetValue<string>()).ToList();
-        dismissedPaths.Should().ContainSingle().Which.Should().Be("McpServers[0].ApiKey", "the field location is what is stored");
-        dismissedPaths.Should().NotContain(path => path.Contains(Token), "a field path is not the credential value");
+        Assert.Equal("McpServers[0].ApiKey", Assert.Single(dismissedPaths));
+        Assert.DoesNotContain(dismissedPaths, path => path.Contains(Token));
     }
 
     [Fact]
@@ -394,8 +387,8 @@ public class SecretProtectionTests : IDisposable
         await service.ChangePasswordAsync(Password, newPassword).WaitAsync(TimeSpan.FromSeconds(20));
 
         var reopened = new SecretKeyHolder();
-        (await new SecretProtectionService(_configPath, reopened).UnlockAsync(newPassword)).Should().BeTrue();
-        (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey.Should().Be(Token);
+        Assert.True(await new SecretProtectionService(_configPath, reopened).UnlockAsync(newPassword));
+        Assert.Equal(Token, (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey);
     }
 
     [Fact]
@@ -410,8 +403,8 @@ public class SecretProtectionTests : IDisposable
 
         await Service().EnableAsync(Password);
 
-        (!File.Exists(damaged) || !File.ReadAllText(damaged).Contains(Token))
-            .Should().BeTrue("a plaintext .damaged-* copy is re-encrypted or removed, never left with a readable token");
+        Assert.True(!File.Exists(damaged) || !File.ReadAllText(damaged).Contains(Token),
+            "a plaintext .damaged-* copy is re-encrypted or removed, never left with a readable token");
     }
 
     [Fact]
@@ -429,7 +422,7 @@ public class SecretProtectionTests : IDisposable
             {
                 if (observing)
                 {
-                    File.ReadAllText(_configPath).Should().NotContain(Token, "the primary file must never be readable during a rotation");
+                    Assert.DoesNotContain(Token, File.ReadAllText(_configPath));
                 }
             }));
 
@@ -440,8 +433,8 @@ public class SecretProtectionTests : IDisposable
         observing = false;
 
         var reopened = new SecretKeyHolder();
-        (await new SecretProtectionService(_configPath, reopened).UnlockAsync("a-new-good-passphrase")).Should().BeTrue();
-        (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey.Should().Be(Token);
+        Assert.True(await new SecretProtectionService(_configPath, reopened).UnlockAsync("a-new-good-passphrase"));
+        Assert.Equal(Token, (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey);
     }
 
     [Fact]
@@ -456,9 +449,9 @@ public class SecretProtectionTests : IDisposable
 
         await Assert.ThrowsAsync<SecretProtectionException>(() => service.EnableAsync(Password));
 
-        RawConfig().Should().Be(before, "a migration that cannot verify itself must not touch the file");
-        RawConfig().Should().NotContain("Security", "no Security section is published when the migration aborts");
-        _keyHolder.Protector.Should().BeNull("a failed enable leaves the app locked");
+        Assert.Equal(before, RawConfig());
+        Assert.DoesNotContain("Security", RawConfig());
+        Assert.Null(_keyHolder.Protector);
     }
 
     [Fact]
@@ -469,8 +462,8 @@ public class SecretProtectionTests : IDisposable
         var service = new SecretProtectionService(_configPath, _keyHolder, _ => new BrokenRoundTripProtector());
         await Assert.ThrowsAnyAsync<SecretProtectionException>(() => service.EnableAsync(Password));
 
-        RawConfig().Should().Contain(Token, "the credential is still there, in the clear, exactly as before (review #6)");
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeTrue("nothing was encrypted, so the banner is due again");
+        Assert.Contains(Token, RawConfig());
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "nothing was encrypted, so the banner is due again");
     }
 
     [Fact]
@@ -485,14 +478,14 @@ public class SecretProtectionTests : IDisposable
         var save = Store().SaveAsync([Server(Token), Server("a-second-token")]);
         await Task.WhenAll(enable, save);
 
-        RawConfig().Should().NotContain(Token);
-        RawConfig().Should().NotContain("a-second-token");
-        RawConfig().Should().Contain("Security");
-        RawConfig().Should().Contain(SecretProtector.Prefix);
+        Assert.DoesNotContain(Token, RawConfig());
+        Assert.DoesNotContain("a-second-token", RawConfig());
+        Assert.Contains("Security", RawConfig());
+        Assert.Contains(SecretProtector.Prefix, RawConfig());
 
         var reopened = new SecretKeyHolder();
-        (await new SecretProtectionService(_configPath, reopened).UnlockAsync(Password)).Should().BeTrue();
-        (await new McpServerStore(_configPath, reopened).LoadAsync()).Should().HaveCount(2, "both servers survive; no section was lost");
+        Assert.True(await new SecretProtectionService(_configPath, reopened).UnlockAsync(Password));
+        Assert.Equal(2, System.Linq.Enumerable.Count(await new McpServerStore(_configPath, reopened).LoadAsync()));
     }
 
     [Fact]
@@ -508,11 +501,11 @@ public class SecretProtectionTests : IDisposable
             new JsonObject { ["McpServers"] = new JsonArray(new JsonObject { ["ApiKey"] = Token }) }.ToJsonString());
 
         var restarted = new SecretKeyHolder();
-        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password));
 
         var backup = File.ReadAllText(_configPath + ".bak");
-        backup.Should().NotContain(Token, "the plaintext backup is re-encrypted on unlock");
-        backup.Should().Contain(SecretProtector.Prefix);
+        Assert.DoesNotContain(Token, backup);
+        Assert.Contains(SecretProtector.Prefix, backup);
     }
 
     [Fact]
@@ -525,16 +518,16 @@ public class SecretProtectionTests : IDisposable
 
         // (a) a credential written in the clear → the banner is nudged (review #5).
         await store.SaveAsync([Server(Token)]);
-        fires.Should().Be(1, "a credential was written with encryption off");
+        Assert.Equal(1, fires);
 
         // (b) a save with no credential in it → no nudge.
         await store.SaveAsync([ServerWithoutKey()]);
-        fires.Should().Be(1, "a secret-free save has nothing to warn about");
+        Assert.Equal(1, fires);
 
         // (c) a save while unlocked (protector present, ciphertext on disk) → no nudge.
         holder.Unlock(new SecretProtector(SecretKey.Derive(Password, SecretKey.NewSalt(), iterations: 1000)));
         await store.SaveAsync([Server("another-token")]);
-        fires.Should().Be(1, "an encrypted save is not an at-rest exposure");
+        Assert.Equal(1, fires);
     }
 
     [Fact]
@@ -543,15 +536,15 @@ public class SecretProtectionTests : IDisposable
         // Two named credential fields, so a removal and an addition are each an unambiguous change to the path set.
         await WriteRawSecretsAsync(("token", Token), ("secret", "a-second-credential"));
         await Service().DismissUnprotectedWarningAsync();
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("just dismissed");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "just dismissed");
 
         // Remove one of the two dismissed fields: the remaining set is still a subset of what was dismissed.
         await WriteRawSecretsAsync(("token", Token));
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("a removal is not a new credential (review #7)");
+        Assert.False((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a removal is not a new credential (review #7)");
 
         // Add a genuinely new field path → the banner returns.
         await WriteRawSecretsAsync(("token", Token), ("password", "a-third-credential"));
-        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeTrue("a new credential path re-nags");
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "a new credential path re-nags");
     }
 
     [Fact]
@@ -569,7 +562,7 @@ public class SecretProtectionTests : IDisposable
 
         CredentialFileHousekeeping.RemoveEncryptedConfigPlaintextSidecars(_configPath);
 
-        File.Exists(backup).Should().BeFalse("an encrypted config makes a plaintext backup pure exposure, so it is removed");
+        Assert.False(File.Exists(backup), "an encrypted config makes a plaintext backup pure exposure, so it is removed");
     }
 
     private async Task WriteRawSecretsAsync(params (string Key, string Value)[] fields)

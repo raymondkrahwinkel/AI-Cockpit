@@ -4,7 +4,6 @@ using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using FluentAssertions;
 using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
@@ -47,7 +46,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"selected after filter: {selectedNumber?.ToString() ?? "<null>"}");
         harness.Close();
 
-        selectedNumber.Should().Be(First.Number, "a keystroke in the filter is not a request to lose your place");
+        Assert.Equal(First.Number, selectedNumber);
     });
 
     [Fact]
@@ -68,8 +67,8 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"reported={reported ?? "<none>"} afterRebuild={afterRebuild ?? "<none>"}");
         harness.Close();
 
-        reported.Should().Contain("#41", "the action has to report something for this to mean anything");
-        afterRebuild.Should().Be(reported, "the result belongs to the issue, not to the selection event that redrew it");
+        Assert.Contains("#41", reported);
+        Assert.Equal(reported, afterRebuild);
     });
 
     [Fact]
@@ -87,7 +86,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"afterMove={afterMove ?? "<none>"}");
         harness.Close();
 
-        afterMove.Should().BeNullOrEmpty("what happened to #41 says nothing about #42");
+        Assert.True(string.IsNullOrEmpty(afterMove), "what happened to #41 says nothing about #42");
     });
 
     [Fact]
@@ -104,8 +103,8 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"enabled={isEnabled} tip={ToolTip.GetTip(inject)} showOnDisabled={showsWhileDisabled}");
         harness.Close();
 
-        isEnabled.Should().BeFalse();
-        showsWhileDisabled.Should().BeTrue("Avalonia shows no tooltip on a disabled control, so the explanation never reaches the operator without this");
+        Assert.False(isEnabled);
+        Assert.True(showsWhileDisabled, "Avalonia shows no tooltip on a disabled control, so the explanation never reaches the operator without this");
     });
 
     [Fact]
@@ -124,7 +123,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"enabled after onStarted={isEnabled}");
         harness.Close();
 
-        isEnabled.Should().BeTrue("the session the operator just started is the session Add to prompt injects into");
+        Assert.True(isEnabled, "the session the operator just started is the session Add to prompt injects into");
     });
 
     [Fact]
@@ -144,9 +143,8 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"picked={pickedNumber?.ToString() ?? "<none>"} directory={directory ?? "<null>"}");
         harness.Close();
 
-        pickedNumber.Should().Be(First.Number);
-        directory.Should().Be("/home/operator/repo",
-            "a flow that cuts a branch when an issue is picked needs the path, and an empty one sends it nowhere");
+        Assert.Equal(First.Number, pickedNumber);
+        Assert.Equal("/home/operator/repo", directory);
     });
 
     [Fact]
@@ -164,8 +162,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"session name={sessionName ?? "<null>"}");
         harness.Close();
 
-        sessionName.Should().Be("hello-world#42",
-            "a name you scan past in a list has to carry the repository, because the working directory that would tell you is not in it");
+        Assert.Equal("hello-world#42", sessionName);
     });
 
     [Fact]
@@ -183,7 +180,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"session name={sessionName ?? "<null>"}");
         harness.Close();
 
-        sessionName.Should().Be("#41", "an unknown repository is not a reason to hand the operator a broken name");
+        Assert.Equal("#41", sessionName);
     });
 
     [Fact]
@@ -207,8 +204,8 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"link={fieldKey ?? "<null>"}={value ?? "<null>"}");
         harness.Close();
 
-        fieldKey.Should().Be("github.repository", "that is the key the project editor stores the link under");
-        value.Should().Be("octocat/other-repo", "the issue being started decides — not the first row, and not the repository filter");
+        Assert.Equal("github.repository", fieldKey);
+        Assert.Equal("octocat/other-repo", value);
     });
 
     [Fact]
@@ -226,7 +223,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"link={link?.Value ?? "<null>"}");
         harness.Close();
 
-        link.Should().BeNull();
+        Assert.Null(link);
     });
 
     [Fact]
@@ -244,8 +241,8 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"dialogs opened={opened} button still armed={stillArmed}");
         harness.Close();
 
-        opened.Should().Be(1);
-        stillArmed.Should().BeFalse("a second press while the first dialog is up would start a second session");
+        Assert.Equal(1, opened);
+        Assert.False(stillArmed, "a second press while the first dialog is up would start a second session");
     });
 
     [Fact]
@@ -261,7 +258,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"enabled after close={isEnabled}");
         harness.Close();
 
-        isEnabled.Should().BeTrue("guarding against a second dialog must not cost the operator the button for good");
+        Assert.True(isEnabled, "guarding against a second dialog must not cost the operator the button for good");
     });
 
     [Fact]
@@ -280,8 +277,7 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"reported={reported ?? "<none>"}");
         harness.Close();
 
-        reported.Should().Contain("file:///etc/passwd",
-            "an operator who clicks a link and sees nothing happen has no way to tell that from a slow browser");
+        Assert.Contains("file:///etc/passwd", reported, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -304,9 +300,9 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"description height={descriptionHeight:0.#} viewport={previewViewport:0.#} extent={previewExtent:0.#}");
         harness.Close();
 
-        descriptionHeight.Should().BeGreaterThan(200, "the body is the panel's main content, not what is left over");
-        previewViewport.Should().BeGreaterThan(0, "the preview has to scroll inside its own box rather than grow past it");
-        (previewExtent - previewViewport).Should().BeGreaterThan(0, "a preview taller than its box without a scroller is a clipped preview");
+        Assert.True(descriptionHeight > 200, "the body is the panel's main content, not what is left over");
+        Assert.True(previewViewport > 0, "the preview has to scroll inside its own box rather than grow past it");
+        Assert.True(previewExtent - previewViewport > 0, "a preview taller than its box without a scroller is a clipped preview");
     });
 
     [Fact]
@@ -327,9 +323,9 @@ public class GitHubIssuesDialogControlTests
         _out.WriteLine($"description={description} preview starts={preview?[..Math.Min(40, preview.Length)]}");
         harness.Close();
 
-        description.Should().Contain(Second.Body, "the operator selected #42, so this is #42's panel");
-        description.Should().NotContain(First.Body);
-        preview.Should().Contain(Second.Number.ToString(), "the button beside this preview injects it into an agent");
+        Assert.Contains(Second.Body!, description, StringComparison.Ordinal);
+        Assert.DoesNotContain(First.Body!, description);
+        Assert.Contains(Second.Number.ToString(), preview, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -346,14 +342,14 @@ public class GitHubIssuesDialogControlTests
         harness.Host.MarkdownFailure = new InvalidOperationException("rendering failed for some other reason");
         var selectSecond = () => harness.Select(Second);
 
-        selectSecond.Should().Throw<InvalidOperationException>("an unknown failure is not this dialog's to swallow");
+        Assert.Throws<InvalidOperationException>(selectSecond);
         var showsAnIssue = harness.DetailIsVisible();
         var preview = harness.PromptPreviewText();
         _out.WriteLine($"detail visible={showsAnIssue} preview={preview ?? "<null>"}");
         harness.Close();
 
-        showsAnIssue.Should().BeFalse("a panel that could not be built for #42 must not keep standing as #41");
-        preview.Should().BeNullOrEmpty("whatever is in the preview is what Add to prompt injects");
+        Assert.False(showsAnIssue, "a panel that could not be built for #42 must not keep standing as #41");
+        Assert.True(string.IsNullOrEmpty(preview), "whatever is in the preview is what Add to prompt injects");
     });
 
     /// <summary>
@@ -439,7 +435,7 @@ public class GitHubIssuesDialogControlTests
         public void Click(string label)
         {
             var button = Button(label);
-            button.IsEnabled.Should().BeTrue($"\"{label}\" has to be clickable for this test to mean anything");
+            Assert.True(button.IsEnabled, $"\"{label}\" has to be clickable for this test to mean anything");
             Press(button);
         }
 

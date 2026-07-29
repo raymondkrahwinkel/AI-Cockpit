@@ -1,6 +1,5 @@
 using System.Globalization;
 using Cockpit.App.Converters;
-using FluentAssertions;
 using Material.Icons;
 
 namespace Cockpit.Core.Tests.Converters;
@@ -17,22 +16,22 @@ public class ReadAloudIconConverterTests
         var on = _ConvertIcon(true);
         var off = _ConvertIcon(false);
 
-        on.Should().NotBe(off);
-        on.Should().Be(MaterialIconKind.VolumeHigh);
-        off.Should().Be(MaterialIconKind.VolumeOff);
+        Assert.NotEqual(off, on);
+        Assert.Equal(MaterialIconKind.VolumeHigh, on);
+        Assert.Equal(MaterialIconKind.VolumeOff, off);
     }
 
     [Fact]
     public void Tip_SaysWhatTheStateIsAndWhatAClickDoes()
     {
-        _ConvertTip(true).Should().Contain("Click to stop");
-        _ConvertTip(false).Should().Contain("Click to start");
+        Assert.Contains("Click to stop", _ConvertTip(true));
+        Assert.Contains("Click to start", _ConvertTip(false));
     }
 
     [Fact]
     public void Icon_WithNoBoundValueYet_FallsBackToTheOffFace()
     {
-        _ConvertIcon(null).Should().Be(_ConvertIcon(false));
+        Assert.Equal(_ConvertIcon(false), _ConvertIcon(null));
     }
 
     private static MaterialIconKind _ConvertIcon(bool? value) =>

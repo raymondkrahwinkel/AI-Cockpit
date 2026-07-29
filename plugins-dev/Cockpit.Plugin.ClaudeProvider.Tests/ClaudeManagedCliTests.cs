@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.ManagedCli;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -29,7 +28,7 @@ public class ClaudeManagedCliTests
     [InlineData("win32", "x64", false, "win32-x64")]
     public void PlatformKey_MapsOsArchAndMusl(string os, string arch, bool musl, string expected)
     {
-        ClaudeManagedCli.PlatformKey(new ManagedCliPlatform(os, arch, musl)).Should().Be(expected);
+        Assert.Equal(expected, ClaudeManagedCli.PlatformKey(new ManagedCliPlatform(os, arch, musl)));
     }
 
     [Fact]
@@ -37,11 +36,11 @@ public class ClaudeManagedCliTests
     {
         var plan = ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "x64", false), Manifest);
 
-        plan.Url.Should().Be("https://downloads.claude.ai/claude-code-releases/2.1.212/linux-x64/claude");
-        plan.ExpectedSha256.Should().Be("aaaa1111");
-        plan.ExecutableFileName.Should().Be("claude");
-        plan.ArchiveFormat.Should().Be(ManagedCliArchiveFormat.RawBinary);
-        plan.NeedsExecutableBit.Should().BeTrue();
+        Assert.Equal("https://downloads.claude.ai/claude-code-releases/2.1.212/linux-x64/claude", plan.Url);
+        Assert.Equal("aaaa1111", plan.ExpectedSha256);
+        Assert.Equal("claude", plan.ExecutableFileName);
+        Assert.Equal(ManagedCliArchiveFormat.RawBinary, plan.ArchiveFormat);
+        Assert.True(plan.NeedsExecutableBit);
     }
 
     [Fact]
@@ -49,8 +48,8 @@ public class ClaudeManagedCliTests
     {
         var plan = ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "x64", true), Manifest);
 
-        plan.Url.Should().EndWith("/linux-x64-musl/claude");
-        plan.ExpectedSha256.Should().Be("bbbb2222");
+        Assert.EndsWith("/linux-x64-musl/claude", plan.Url);
+        Assert.Equal("bbbb2222", plan.ExpectedSha256);
     }
 
     [Fact]
@@ -58,16 +57,17 @@ public class ClaudeManagedCliTests
     {
         var plan = ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("win32", "x64", false), Manifest);
 
-        plan.Url.Should().EndWith("/win32-x64/claude.exe");
-        plan.ExecutableFileName.Should().Be("claude.exe");
-        plan.NeedsExecutableBit.Should().BeFalse();
+        Assert.EndsWith("/win32-x64/claude.exe", plan.Url);
+        Assert.Equal("claude.exe", plan.ExecutableFileName);
+        Assert.False(plan.NeedsExecutableBit);
     }
 
     [Fact]
     public void BuildPlan_UnknownPlatform_Throws()
     {
-        var act = () => ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "arm64", false), Manifest);
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ClaudeManagedCli.BuildPlan("2.1.212", new ManagedCliPlatform("linux", "arm64", false), Manifest));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*linux-arm64*");
+        Assert.Contains("linux-arm64", ex.Message);
     }
 }

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -31,7 +30,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         var firstLine = await _ConsumeOneLineAsync(
             transcriptPath, appendAfterStarting: [_AssistantLine("New text, written after the tail started.") + "\n"]);
 
-        firstLine.Should().Be("New text, written after the tail started.");
+        Assert.Equal("New text, written after the tail started.", firstLine);
     }
 
     [Fact]
@@ -47,7 +46,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
             _AssistantLine("The only line worth reading.") + "\n",
         ]);
 
-        firstLine.Should().Be("The only line worth reading.");
+        Assert.Equal("The only line worth reading.", firstLine);
     }
 
     [Fact]
@@ -63,7 +62,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
             thenDelay: TimeSpan.FromMilliseconds(400),
             appendAfterDelay: [fullLine[splitPoint..] + "\n"]);
 
-        firstLine.Should().Be("Split across two separate writes.");
+        Assert.Equal("Split across two separate writes.", firstLine);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, _AssistantLine("Appeared after the launch.") + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        received.Should().ContainSingle().Which.Should().Be("Appeared after the launch.");
+        Assert.Equal("Appeared after the launch.", Assert.Single(received));
     }
 
     [Fact]
@@ -125,9 +124,9 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, _AssistantLine("hi") + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        received.Should().HaveCount(2);
-        received[0].Should().Contain("\"type\":\"user\"");
-        received[1].Should().Contain("\"type\":\"assistant\"");
+        Assert.Equal(2, System.Linq.Enumerable.Count(received));
+        Assert.Contains("\"type\":\"user\"", received[0]);
+        Assert.Contains("\"type\":\"assistant\"", received[1]);
     }
 
     [Fact]
@@ -164,7 +163,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(subDir, "agent-abc.jsonl"), "{}\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        sawBackground.Should().BeTrue("a sub-agent writing while the main transcript is quiet is background work");
+        Assert.True(sawBackground, "a sub-agent writing while the main transcript is quiet is background work");
     }
 
     [Fact]
@@ -213,7 +212,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.WriteAllTextAsync(agentMeta, """{"agentType":"general-purpose","stoppedByUser":true}""");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        afterStop.Should().Be(PluginSessionActivity.TurnComplete, "a user-stopped agent must free the dot despite a fresh transcript file");
+        Assert.Equal(PluginSessionActivity.TurnComplete, afterStop);
     }
 
     [Fact]
@@ -244,7 +243,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
             """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}""" + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
+        Assert.Equal(new PluginTokenUsage(10, 20, 0, 0), usage);
     }
 
     [Fact]
@@ -288,8 +287,9 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, repeatedLine + "\n" + repeatedLine + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        usageReadings.Should().ContainSingle().Which.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
-        turnCompletions.Should().Be(1);
+        var singleReading = Assert.Single(usageReadings);
+        Assert.Equal(new PluginTokenUsage(10, 20, 0, 0), singleReading);
+        Assert.Equal(1, turnCompletions);
     }
 
     [Fact]
@@ -315,7 +315,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        received!.Usage.Should().BeNull();
+        Assert.Null(received!.Usage);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)
@@ -365,7 +365,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         }
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        return received.Should().ContainSingle().Subject;
+        return Assert.Single(received);
     }
 
     private string _CreateEmptyTranscriptFile()

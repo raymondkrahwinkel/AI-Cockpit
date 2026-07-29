@@ -1,6 +1,5 @@
 using System.Reflection;
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -15,12 +14,12 @@ public class AboutInfoTests
     {
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
 
-        info.AppName.Should().Be("Wispslate Cockpit");
-        info.GitHubUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit");
-        info.IssuesUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit/issues");
-        info.PluginStoreUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins");
-        info.Description.Should().NotBeNullOrWhiteSpace();
-        info.LicenseText.Should().Contain("Commons Clause");
+        Assert.Equal("Wispslate Cockpit", info.AppName);
+        Assert.Equal("https://github.com/raymondkrahwinkel/AI-Cockpit", info.GitHubUrl);
+        Assert.Equal("https://github.com/raymondkrahwinkel/AI-Cockpit/issues", info.IssuesUrl);
+        Assert.Equal("https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins", info.PluginStoreUrl);
+        Assert.False(string.IsNullOrWhiteSpace(info.Description));
+        Assert.Contains("Commons Clause", info.LicenseText);
     }
 
     [Fact]
@@ -30,8 +29,9 @@ public class AboutInfoTests
 
         // The core ships only the local OpenAI-compatible providers now; Claude is a plugin (Fase 4), so it is not
         // hard-coded as a built-in here — it comes from the plugin registry like every other agent.
-        info.Providers.Should().Contain("Ollama").And.Contain("LM Studio");
-        info.Providers.Should().NotContain("Claude");
+        Assert.Contains("Ollama", info.Providers);
+        Assert.Contains("LM Studio", info.Providers);
+        Assert.DoesNotContain("Claude", info.Providers);
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class AboutInfoTests
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
 
         // Naming Claude, Codex or Gemini on an install that has none of them would be advertising, not information.
-        info.Providers.Should().Be("Ollama · LM Studio");
+        Assert.Equal("Ollama · LM Studio", info.Providers);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class AboutInfoTests
     {
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), ["Claude", "Codex (CLI)"]);
 
-        info.Providers.Should().Be("Ollama · LM Studio · Claude · Codex (CLI)");
+        Assert.Equal("Ollama · LM Studio · Claude · Codex (CLI)", info.Providers);
     }
 
     [Fact]
@@ -58,9 +58,9 @@ public class AboutInfoTests
 
         // The plugin contract major the host provides — the gate PluginLoadPolicy enforces — and the runtime, the
         // identifiers a bug report needs. Matches AbstractionsContract.Version so it moves with the actual gate.
-        info.BuildText.Should().Contain($"Plugin API {Cockpit.Plugins.Abstractions.AbstractionsContract.Version}");
-        info.BuildText.Should().Contain("SDK ");
-        info.BuildText.Should().Contain(".NET");
+        Assert.Contains($"Plugin API {Cockpit.Plugins.Abstractions.AbstractionsContract.Version}", info.BuildText);
+        Assert.Contains("SDK ", info.BuildText);
+        Assert.Contains(".NET", info.BuildText);
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class AboutInfoTests
         var info = AboutInfo.FromAssembly(assembly);
 
         // The SDK appends "+<full git sha>", which overflows the dialog's version line.
-        info.VersionText.Should().Be(expected);
-        info.VersionText.Should().NotContain("+");
+        Assert.Equal(expected, info.VersionText);
+        Assert.DoesNotContain("+", info.VersionText);
     }
 }

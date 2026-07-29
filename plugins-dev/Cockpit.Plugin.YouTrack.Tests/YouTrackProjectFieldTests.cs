@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -28,7 +26,7 @@ public class YouTrackProjectFieldTests
             Returns(),
             CancellationToken.None);
 
-        options.Should().BeEmpty("nothing is configured, which is not the same as something going wrong");
+        Assert.Empty(options);
     }
 
     [Fact]
@@ -39,9 +37,9 @@ public class YouTrackProjectFieldTests
             Returns(("Personal", "AC", "AI-Cockpit")),
             CancellationToken.None);
 
-        var option = options.Should().ContainSingle().Subject;
-        option.Display.Should().Be("AI-Cockpit — AC");
-        option.Value.Should().Be("AC");
+        var option = Assert.Single(options);
+        Assert.Equal("AI-Cockpit — AC", option.Display);
+        Assert.Equal("AC", option.Value);
     }
 
     [Fact]
@@ -52,7 +50,7 @@ public class YouTrackProjectFieldTests
             Returns(("Personal", "AC", string.Empty)),
             CancellationToken.None);
 
-        options.Single().Display.Should().Be("AC");
+        Assert.Equal("AC", options.Single().Display);
     }
 
     [Fact]
@@ -65,7 +63,7 @@ public class YouTrackProjectFieldTests
             Returns(("Personal", "AC", "AI-Cockpit")),
             CancellationToken.None);
 
-        options.Single().Display.Should().NotContain("Personal");
+        Assert.DoesNotContain("Personal", options.Single().Display);
     }
 
     [Fact]
@@ -76,7 +74,7 @@ public class YouTrackProjectFieldTests
             Returns(("Personal", "AC", "AI-Cockpit"), ("Work", "PAY", "Payroll")),
             CancellationToken.None);
 
-        options.Select(option => option.Display).Should().Equal("Personal: AI-Cockpit — AC", "Work: Payroll — PAY");
+        Assert.Equal(new[] { "Personal: AI-Cockpit — AC", "Work: Payroll — PAY" }, options.Select(option => option.Display));
     }
 
     [Fact]
@@ -89,7 +87,7 @@ public class YouTrackProjectFieldTests
             Returns(("Personal", "AC", "AI-Cockpit"), ("Work", "AC", "Accounts")),
             CancellationToken.None);
 
-        options.Should().ContainSingle().Which.Value.Should().Be("AC");
+        Assert.Equal("AC", Assert.Single(options).Value);
     }
 
     [Fact]
@@ -99,14 +97,14 @@ public class YouTrackProjectFieldTests
         // empty one. Passed on as "no projects", that reads as "you have none" — which it almost never means.
         var load = () => YouTrackProjectField.BuildOptionsAsync([Instance("Personal")], Returns(), CancellationToken.None);
 
-        await load.Should().ThrowAsync<InvalidOperationException>()
-            .Where(exception => exception.Message.Contains("token", StringComparison.OrdinalIgnoreCase));
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(load);
+        Assert.Contains("token", thrown.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void Key_IsTheOneAlreadyLinkedProjectsAreStoredUnder()
     {
         // Changing it silently unlinks every project that used it, and nothing else in the suite would notice.
-        YouTrackProjectField.Key.Should().Be("youtrack.project");
+        Assert.Equal("youtrack.project", YouTrackProjectField.Key);
     }
 }

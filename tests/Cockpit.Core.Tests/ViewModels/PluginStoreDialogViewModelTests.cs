@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -51,9 +50,10 @@ public class PluginStoreDialogViewModelTests
         manager.Plugins.Add(LocalPlugin("widgets", "Reference widgets"));
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.InstalledGroups.Select(group => group.Header)
-            .Should().Equal("Issue trackers", "Productivity", "Widgets", "Other");
-        vm.ShowInstalledGroupHeaders.Should().BeTrue();
+        Assert.Equal(
+            new[] { "Issue trackers", "Productivity", "Widgets", "Other" },
+            vm.InstalledGroups.Select(group => group.Header));
+        Assert.True(vm.ShowInstalledGroupHeaders);
     }
 
     /// <summary>A plugin.json carries no category — it is a store-index field — so with no catalogue there is nothing to group by, and the flat list is the honest answer.</summary>
@@ -65,8 +65,8 @@ public class PluginStoreDialogViewModelTests
         manager.Plugins.Add(LocalPlugin("clock", "Clock"));
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.InstalledGroups.Should().ContainSingle().Which.Plugins.Should().HaveCount(2);
-        vm.ShowInstalledGroupHeaders.Should().BeFalse("one heading says nothing the list does not");
+        Assert.Equal(2, System.Linq.Enumerable.Count(Assert.Single(vm.InstalledGroups).Plugins));
+        Assert.False(vm.ShowInstalledGroupHeaders, "one heading says nothing the list does not");
     }
 
     /// <summary>
@@ -86,9 +86,9 @@ public class PluginStoreDialogViewModelTests
 
         await vm.MoveInstalledPluginUpCommand.ExecuteAsync(transcripts);
 
-        vm.InstalledGroups.Single(group => group.Header == "Productivity")
-            .Plugins.Select(plugin => plugin.FolderId)
-            .Should().Equal(["transcripts", "git"], "it moves past the previous Productivity plugin, not past the clock sitting between them in the menu");
+        Assert.Equal(
+            new[] { "transcripts", "git" },
+            vm.InstalledGroups.Single(group => group.Header == "Productivity").Plugins.Select(plugin => plugin.FolderId));
     }
 
     [Fact]
@@ -102,8 +102,9 @@ public class PluginStoreDialogViewModelTests
 
         await vm.MoveInstalledPluginUpCommand.ExecuteAsync(git);
 
-        manager.Plugins.Select(plugin => plugin.FolderId)
-            .Should().Equal(["clock", "git"], "it is the only Productivity plugin — there is nothing above it under its own heading");
+        Assert.Equal(
+            new[] { "clock", "git" },
+            manager.Plugins.Select(plugin => plugin.FolderId));
     }
 
     /// <summary>
@@ -150,10 +151,10 @@ public class PluginStoreDialogViewModelTests
 
         manager.AvailablePlugins.Add(_Row("a", "Alpha", installedVersion: "1.0.0", latestVersion: "2.0.0"));
 
-        raised.Should().Contain(nameof(PluginManagerViewModel.HasAvailableUpdates))
-            .And.Contain(nameof(PluginManagerViewModel.AvailableUpdateCount));
-        manager.HasAvailableUpdates.Should().BeTrue();
-        manager.AvailableUpdateCount.Should().Be(1);
+        Assert.Contains(nameof(PluginManagerViewModel.HasAvailableUpdates), raised);
+        Assert.Contains(nameof(PluginManagerViewModel.AvailableUpdateCount), raised);
+        Assert.True(manager.HasAvailableUpdates);
+        Assert.Equal(1, manager.AvailableUpdateCount);
     }
 
     [Fact]
@@ -165,8 +166,8 @@ public class PluginStoreDialogViewModelTests
 
         manager.AvailablePlugins.Clear();
 
-        raised.Should().Contain(nameof(PluginManagerViewModel.HasAvailableUpdates));
-        manager.HasAvailableUpdates.Should().BeFalse();
+        Assert.Contains(nameof(PluginManagerViewModel.HasAvailableUpdates), raised);
+        Assert.False(manager.HasAvailableUpdates);
     }
 
     [Fact]
@@ -178,9 +179,10 @@ public class PluginStoreDialogViewModelTests
             _Row("c", "Gamma", category: null));
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.SidebarItems.Select(item => item.Label).Should().Equal(
-            "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Workflow templates (0)", "Installed (0)", "Available updates (0)");
-        vm.SelectedSidebarItem.Should().Be(PluginStoreSidebarItem.Discover);
+        Assert.Equal(
+            new[] { "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Workflow templates (0)", "Installed (0)", "Available updates (0)" },
+            vm.SidebarItems.Select(item => item.Label));
+        Assert.Equal(PluginStoreSidebarItem.Discover, vm.SelectedSidebarItem);
     }
 
     [Fact]
@@ -192,9 +194,9 @@ public class PluginStoreDialogViewModelTests
 
         var vm = new PluginStoreDialogViewModel(manager, PluginStoreFilter.UpdatesAvailable);
 
-        vm.SelectedSidebarItem.Should().NotBeNull();
-        vm.SelectedSidebarItem!.Filter.Should().Be(PluginStoreFilter.UpdatesAvailable);
-        vm.FilteredPlugins.Should().ContainSingle().Which.Name.Should().Be("Beta");
+        Assert.NotNull(vm.SelectedSidebarItem);
+        Assert.Equal(PluginStoreFilter.UpdatesAvailable, vm.SelectedSidebarItem!.Filter);
+        Assert.Equal("Beta", Assert.Single(vm.FilteredPlugins).Name);
     }
 
     [Fact]
@@ -204,7 +206,7 @@ public class PluginStoreDialogViewModelTests
 
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.SelectedSidebarItem.Should().Be(PluginStoreSidebarItem.Discover);
+        Assert.Equal(PluginStoreSidebarItem.Discover, vm.SelectedSidebarItem);
     }
 
     [Fact]
@@ -217,7 +219,7 @@ public class PluginStoreDialogViewModelTests
 
         vm.SelectedSidebarItem = vm.SidebarItems.Single(item => item.Label == "AI providers");
 
-        vm.FilteredPlugins.Should().ContainSingle().Which.Name.Should().Be("Beta");
+        Assert.Equal("Beta", Assert.Single(vm.FilteredPlugins).Name);
     }
 
     [Fact]
@@ -231,13 +233,13 @@ public class PluginStoreDialogViewModelTests
 
         var installed = vm.SidebarItems.Single(item => item.Label.StartsWith("Installed"));
         var updates = vm.SidebarItems.Single(item => item.Label.StartsWith("Available updates"));
-        installed.Label.Should().Be("Installed (2)");
-        installed.IsEnabled.Should().BeTrue();
-        updates.Label.Should().Be("Available updates (1)");
-        updates.IsEnabled.Should().BeTrue();
+        Assert.Equal("Installed (2)", installed.Label);
+        Assert.True(installed.IsEnabled);
+        Assert.Equal("Available updates (1)", updates.Label);
+        Assert.True(updates.IsEnabled);
 
         vm.SelectedSidebarItem = updates;
-        vm.FilteredPlugins.Should().ContainSingle().Which.Name.Should().Be("Beta");
+        Assert.Equal("Beta", Assert.Single(vm.FilteredPlugins).Name);
     }
 
     [Fact]
@@ -251,7 +253,7 @@ public class PluginStoreDialogViewModelTests
 
         vm.SearchText = "cockpit";
 
-        vm.FilteredPlugins.Should().ContainSingle().Which.Name.Should().Be("Alpha");
+        Assert.Equal("Alpha", Assert.Single(vm.FilteredPlugins).Name);
     }
 
     [Fact]
@@ -260,15 +262,15 @@ public class PluginStoreDialogViewModelTests
         var manager = _ManagerWith(_Row("a", "Alpha", featured: true));
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.ShowDiscoverRails.Should().BeTrue();
+        Assert.True(vm.ShowDiscoverRails);
 
         vm.SearchText = "alpha";
-        vm.ShowDiscoverRails.Should().BeFalse();
-        vm.FeaturedPlugins.Should().BeEmpty();
+        Assert.False(vm.ShowDiscoverRails);
+        Assert.Empty(vm.FeaturedPlugins);
 
         vm.SearchText = string.Empty;
         vm.SelectedSidebarItem = vm.SidebarItems.Single(item => item.Label == "All plugins");
-        vm.ShowDiscoverRails.Should().BeFalse();
+        Assert.False(vm.ShowDiscoverRails);
     }
 
     [Fact]
@@ -280,8 +282,8 @@ public class PluginStoreDialogViewModelTests
             _Row("c", "Gamma", featured: false));
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.FeaturedPlugins.Should().ContainSingle().Which.Name.Should().Be("Alpha");
-        vm.RecentlyAddedPlugins.Select(row => row.Name).Should().Equal("Beta", "Alpha");
+        Assert.Equal("Alpha", Assert.Single(vm.FeaturedPlugins).Name);
+        Assert.Equal(new[] { "Beta", "Alpha" }, vm.RecentlyAddedPlugins.Select(row => row.Name));
     }
 
     [Fact]
@@ -296,7 +298,7 @@ public class PluginStoreDialogViewModelTests
 
         vm.SelectedSidebarItem = vm.SidebarItems.Single(item => item.Label == "Issue trackers");
 
-        vm.SelectedPlugin.Should().BeNull();
+        Assert.Null(vm.SelectedPlugin);
     }
 
     [Fact]
@@ -305,11 +307,11 @@ public class PluginStoreDialogViewModelTests
         var manager = new PluginManagerViewModel();
         var vm = new PluginStoreDialogViewModel(manager);
 
-        vm.HasNoStores.Should().BeTrue();
+        Assert.True(vm.HasNoStores);
 
         manager.Stores.Add(PluginStoreConfig.Remote("github.com/example/plugins"));
 
-        vm.HasNoStores.Should().BeFalse();
+        Assert.False(vm.HasNoStores);
     }
 
     [Fact]
@@ -321,9 +323,9 @@ public class PluginStoreDialogViewModelTests
         vm.Dispose();
         manager.AvailablePlugins.Add(_Row("b", "Beta", category: "AI providers"));
 
-        vm.SidebarItems.Select(item => item.Label).Should().NotContain("AI providers");
+        Assert.DoesNotContain("AI providers", vm.SidebarItems.Select(item => item.Label));
         var act = () => vm.Dispose();
-        act.Should().NotThrow();
+        act();
     }
 
     [Theory]
@@ -332,14 +334,13 @@ public class PluginStoreDialogViewModelTests
     [InlineData(PluginStoreFilterKind.All, "Nothing here yet.")]
     public void BuildEmptyStateMessage_PerFilterKind_WithoutSearchText(PluginStoreFilterKind kind, string expected)
     {
-        PluginStoreDialogViewModel.BuildEmptyStateMessage(new PluginStoreFilter(kind), searchText: null).Should().Be(expected);
+        Assert.Equal(expected, PluginStoreDialogViewModel.BuildEmptyStateMessage(new PluginStoreFilter(kind), searchText: null));
     }
 
     [Fact]
     public void BuildEmptyStateMessage_WithSearchText_TakesPriorityOverTheFilter()
     {
-        PluginStoreDialogViewModel.BuildEmptyStateMessage(PluginStoreFilter.Installed, "foo")
-            .Should().Be("No plugins match 'foo'.");
+        Assert.Equal("No plugins match 'foo'.", PluginStoreDialogViewModel.BuildEmptyStateMessage(PluginStoreFilter.Installed, "foo"));
     }
 
     [Fact]
@@ -347,8 +348,7 @@ public class PluginStoreDialogViewModelTests
     {
         var rows = new[] { _Row("a", "Alpha", category: "Issue Trackers") };
 
-        PluginStoreDialogViewModel.Filter(rows, PluginStoreFilter.ForCategory("issue trackers"), null, PluginStoreSortMode.NameAscending)
-            .Should().ContainSingle();
+        Assert.Single(PluginStoreDialogViewModel.Filter(rows, PluginStoreFilter.ForCategory("issue trackers"), null, PluginStoreSortMode.NameAscending));
     }
 
     [Fact]
@@ -363,7 +363,7 @@ public class PluginStoreDialogViewModelTests
 
         var sorted = PluginStoreDialogViewModel.Sort(rows, PluginStoreSortMode.RecentlyUpdated);
 
-        sorted.Select(row => row.Name).Should().Equal("Beta", "Zeta", "Alpha");
+        Assert.Equal(new[] { "Beta", "Zeta", "Alpha" }, sorted.Select(row => row.Name));
     }
 
     [Fact]
@@ -378,7 +378,7 @@ public class PluginStoreDialogViewModelTests
 
         var sorted = PluginStoreDialogViewModel.Sort(rows, PluginStoreSortMode.Author);
 
-        sorted.Select(row => row.Name).Should().Equal("Alpha", "Beta", "Zeta");
+        Assert.Equal(new[] { "Alpha", "Beta", "Zeta" }, sorted.Select(row => row.Name));
     }
 
     [Fact]
@@ -391,6 +391,6 @@ public class PluginStoreDialogViewModelTests
             _Row("c", "Gamma", category: "Alpha cat"),
         };
 
-        PluginStoreDialogViewModel.DistinctCategories(rows).Should().Equal("Alpha cat", "Other", "Zeta cat");
+        Assert.Equal(new[] { "Alpha cat", "Other", "Zeta cat" }, PluginStoreDialogViewModel.DistinctCategories(rows));
     }
 }

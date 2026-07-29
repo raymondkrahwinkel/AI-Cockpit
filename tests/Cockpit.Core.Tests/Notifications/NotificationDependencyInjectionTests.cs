@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Infrastructure;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
@@ -35,11 +34,11 @@ public class NotificationDependencyInjectionTests
     {
         await using var provider = BuildProvider();
 
-        provider.GetService<IAttentionNotifier>().Should().NotBeNull();
-        provider.GetService<IPresenceDetector>().Should().NotBeNull();
-        provider.GetService<IToastNotifier>().Should().NotBeNull();
-        provider.GetService<IWebhookNotifier>().Should().NotBeNull();
-        provider.GetService<INotificationSettingsStore>().Should().NotBeNull();
+        Assert.NotNull(provider.GetService<IAttentionNotifier>());
+        Assert.NotNull(provider.GetService<IPresenceDetector>());
+        Assert.NotNull(provider.GetService<IToastNotifier>());
+        Assert.NotNull(provider.GetService<IWebhookNotifier>());
+        Assert.NotNull(provider.GetService<INotificationSettingsStore>());
     }
 
     [Fact]
@@ -57,7 +56,7 @@ public class NotificationDependencyInjectionTests
                 ? "LinuxToastNotifier"
                 : "NoOpToastNotifier";
 
-        notifier.GetType().Name.Should().Be(expected);
+        Assert.Equal(expected, notifier.GetType().Name);
     }
 
     [Fact]
@@ -67,6 +66,6 @@ public class NotificationDependencyInjectionTests
         // must be torn down with DisposeAsync.
         await using var provider = BuildProvider();
 
-        provider.GetService<CockpitViewModel>().Should().NotBeNull();
+        Assert.NotNull(provider.GetService<CockpitViewModel>());
     }
 }

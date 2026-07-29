@@ -2,7 +2,6 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Terminal;
 using Cockpit.Infrastructure.Layout;
 using Cockpit.Infrastructure.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Terminal;
 
@@ -29,9 +28,9 @@ public class TerminalSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.FontFamily.Should().Be("Cascadia Mono, Consolas, monospace");
-        settings.FontSize.Should().Be(13);
-        settings.Shell.Should().BeEmpty("a blank shell means the OS default (#AC-25)");
+        Assert.Equal("Cascadia Mono, Consolas, monospace", settings.FontFamily);
+        Assert.Equal(13, settings.FontSize);
+        Assert.Empty(settings.Shell);
     }
 
     [Fact]
@@ -42,9 +41,9 @@ public class TerminalSettingsStoreTests : IDisposable
         await store.SaveAsync(new TerminalSettings { FontFamily = "JetBrains Mono", FontSize = 16, Shell = "pwsh" });
         var loaded = await store.LoadAsync();
 
-        loaded.FontFamily.Should().Be("JetBrains Mono");
-        loaded.FontSize.Should().Be(16);
-        loaded.Shell.Should().Be("pwsh");
+        Assert.Equal("JetBrains Mono", loaded.FontFamily);
+        Assert.Equal(16, loaded.FontSize);
+        Assert.Equal("pwsh", loaded.Shell);
     }
 
     [Fact]
@@ -56,8 +55,8 @@ public class TerminalSettingsStoreTests : IDisposable
         var terminalStore = new TerminalSettingsStore(_configFilePath);
         await terminalStore.SaveAsync(new TerminalSettings { FontFamily = "Fira Code", FontSize = 20 });
 
-        (await layoutStore.LoadAsync()).SingleSessionLayout.Should().BeTrue();
-        (await terminalStore.LoadAsync()).FontFamily.Should().Be("Fira Code");
+        Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
+        Assert.Equal("Fira Code", (await terminalStore.LoadAsync()).FontFamily);
     }
 
     public void Dispose()

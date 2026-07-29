@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -40,8 +39,8 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Region.Should().Be(new CaptureRect(100, 100, 400, 300));
-        selection.Result.Marks.Should().Equal(new RedactionMark(new CaptureRect(50, 80, 60, 40)));
+        Assert.Equal(new CaptureRect(100, 100, 400, 300), selection.Result!.Region);
+        Assert.Equal(new[] { new RedactionMark(new CaptureRect(50, 80, 60, 40)) }, selection.Result.Marks);
     }
 
     /// <summary>A box outside the region hides nothing in the picture that is sent, so it does not travel with it.</summary>
@@ -54,7 +53,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().BeEmpty();
+        Assert.Empty(selection.Result!.Marks);
     }
 
     /// <summary>A box hanging over the edge of the region is kept for the part that is inside it.</summary>
@@ -67,7 +66,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().Equal(new RedactionMark(new CaptureRect(350, 50, 50, 100)));
+        Assert.Equal(new[] { new RedactionMark(new CaptureRect(350, 50, 50, 100)) }, selection.Result!.Marks);
     }
 
     /// <summary>
@@ -86,7 +85,7 @@ public class ScreenshotRedactionTests
 
         selection.Confirm();
 
-        selection.Result!.Marks.Should().Equal(new RedactionMark(new CaptureRect(50, 80, 60, 40)));
+        Assert.Equal(new[] { new RedactionMark(new CaptureRect(50, 80, 60, 40)) }, selection.Result!.Marks);
     }
 
     [Fact]
@@ -99,7 +98,7 @@ public class ScreenshotRedactionTests
 
         selection.Undo();
 
-        selection.Marks.Should().Equal(new RedactionMark(new CaptureRect(10, 10, 40, 40)));
+        Assert.Equal(new[] { new RedactionMark(new CaptureRect(10, 10, 40, 40)) }, selection.Marks);
     }
 
     /// <summary>
@@ -114,8 +113,8 @@ public class ScreenshotRedactionTests
 
         selection.Redact(true);
 
-        selection.Redacting.Should().BeFalse();
-        selection.Hint.Should().Contain("Mark out a region first");
+        Assert.False(selection.Redacting);
+        Assert.Contains("Mark out a region first", selection.Hint);
     }
 
     /// <summary>A mode you cannot see is a mode that is not there — the surface says which of the two drags it is doing.</summary>
@@ -125,11 +124,11 @@ public class ScreenshotRedactionTests
         var selection = _Surface();
         _MarkOut(selection, 100, 100, 500, 400);
 
-        selection.Hint.Should().Contain("Drag a region");
+        Assert.Contains("Drag a region", selection.Hint);
 
         selection.Redact(true);
 
-        selection.Hint.Should().Contain("should not be sent");
+        Assert.Contains("should not be sent", selection.Hint);
     }
 
     /// <summary>Dragging in redaction mode adds a box rather than moving the region the operator already settled on.</summary>
@@ -140,8 +139,8 @@ public class ScreenshotRedactionTests
         _MarkOut(selection, 100, 100, 500, 400);
         _DrawBox(selection, 150, 150, 50, 50);
 
-        selection.Selection.Should().Be(new CaptureRect(100, 100, 400, 300));
-        selection.Marks.Should().ContainSingle().Which.Should().BeOfType<RedactionMark>();
+        Assert.Equal(new CaptureRect(100, 100, 400, 300), selection.Selection);
+        Assert.IsType<RedactionMark>(Assert.Single(selection.Marks));
     }
 
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)

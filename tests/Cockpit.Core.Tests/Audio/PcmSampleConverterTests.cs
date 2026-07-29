@@ -1,5 +1,4 @@
 using Cockpit.Core.Audio;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Audio;
 
@@ -14,7 +13,7 @@ public class PcmSampleConverterTests
     {
         var bytes = PcmSampleConverter.ToInt16Bytes([0f, 0f]);
 
-        bytes.Should().Equal(0, 0, 0, 0);
+        Assert.Equal(new byte[] { 0, 0, 0, 0 }, bytes);
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class PcmSampleConverterTests
         var bytes = PcmSampleConverter.ToInt16Bytes([1f]);
 
         // short.MaxValue (32767) little-endian: low byte 0xFF, high byte 0x7F.
-        bytes.Should().Equal(0xFF, 0x7F);
+        Assert.Equal(new byte[] { 0xFF, 0x7F }, bytes);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class PcmSampleConverterTests
         var bytes = PcmSampleConverter.ToInt16Bytes([-1f]);
 
         // (short)(-1f * 32767) == -32767 == 0x8001 little-endian: low byte 0x01, high byte 0x80.
-        bytes.Should().Equal(0x01, 0x80);
+        Assert.Equal(new byte[] { 0x01, 0x80 }, bytes);
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class PcmSampleConverterTests
     {
         var bytes = PcmSampleConverter.ToInt16Bytes([2f, -2f]);
 
-        bytes.Should().Equal(0xFF, 0x7F, 0x01, 0x80);
+        Assert.Equal(new byte[] { 0xFF, 0x7F, 0x01, 0x80 }, bytes);
     }
 
     [Fact]
@@ -48,9 +47,9 @@ public class PcmSampleConverterTests
     {
         var bytes = PcmSampleConverter.ToInt16Bytes([0f, 1f, -1f]);
 
-        bytes.Should().HaveCount(6);
-        bytes[0..2].Should().Equal(0, 0);
-        bytes[2..4].Should().Equal(0xFF, 0x7F);
-        bytes[4..6].Should().Equal(0x01, 0x80);
+        Assert.Equal(6, System.Linq.Enumerable.Count(bytes));
+        Assert.Equal(new byte[] { 0, 0 }, bytes[0..2]);
+        Assert.Equal(new byte[] { 0xFF, 0x7F }, bytes[2..4]);
+        Assert.Equal(new byte[] { 0x01, 0x80 }, bytes[4..6]);
     }
 }

@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Infrastructure;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Diagnostics;
 
@@ -30,21 +29,21 @@ public class ProcessTableReaderRegistrationTests
                 ? "PsProcessTableReader"
                 : "ProcProcessTableReader";
 
-        reader.GetType().Name.Should().Be(expected);
+        Assert.Equal(expected, reader.GetType().Name);
 
         // And it actually reads: a table with this very test process in it, which is the cheapest possible proof
         // that the platform path works at all rather than throwing.
         var rows = reader.Read();
-        rows.Should().NotBeEmpty();
-        rows.Should().Contain(row => row.ProcessId == Environment.ProcessId);
+        Assert.NotEmpty(rows);
+        Assert.Contains(rows, row => row.ProcessId == Environment.ProcessId);
     }
 
     [Fact]
     public void OnlyOneReader_IsRegistered_SoTheScanCannotQuietlyBindTheWrongPlatformsOne()
     {
-        _AsTheAppRegistersThem()
-            .Count(service => service.ServiceType == typeof(IProcessTableReader))
-            .Should().Be(1);
+        Assert.Equal(
+            1,
+            _AsTheAppRegistersThem().Count(service => service.ServiceType == typeof(IProcessTableReader)));
     }
 
     // The app registers the platform reader explicitly AND runs the Scrutor marker scan over this very assembly.

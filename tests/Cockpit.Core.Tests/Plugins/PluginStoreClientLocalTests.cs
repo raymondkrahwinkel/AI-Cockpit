@@ -1,7 +1,6 @@
 using System.Text;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -24,8 +23,8 @@ public class PluginStoreClientLocalTests : IDisposable
 
         var result = await _client.FetchIndexAsync(PluginStoreConfig.Local(_tempDir));
 
-        result.IsSuccess.Should().BeTrue();
-        result.Index!.Name.Should().Be("My store");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("My store", result.Index!.Name);
     }
 
     [Fact]
@@ -37,9 +36,9 @@ public class PluginStoreClientLocalTests : IDisposable
 
         var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", sha);
 
-        result.IsSuccess.Should().BeTrue();
-        File.ReadAllBytes(result.ZipPath!).Should().Equal(bytes);
-        result.Warning.Should().BeNull("a verified checksum carries no advisory");
+        Assert.True(result.IsSuccess);
+        Assert.Equal(bytes, File.ReadAllBytes(result.ZipPath!));
+        Assert.Null(result.Warning);
         _TryDelete(result.ZipPath);
     }
 
@@ -53,9 +52,9 @@ public class PluginStoreClientLocalTests : IDisposable
 
         var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", expectedSha256: null);
 
-        result.IsSuccess.Should().BeTrue();
-        result.ZipPath.Should().NotBeNull();
-        result.Warning.Should().Contain("checksum");
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.ZipPath);
+        Assert.Contains("checksum", result.Warning);
         _TryDelete(result.ZipPath);
     }
 
@@ -66,8 +65,8 @@ public class PluginStoreClientLocalTests : IDisposable
 
         var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", "0000deadbeef");
 
-        result.IsSuccess.Should().BeFalse();
-        result.ZipPath.Should().BeNull();
+        Assert.False(result.IsSuccess);
+        Assert.Null(result.ZipPath);
     }
 
     [Fact]
@@ -76,8 +75,8 @@ public class PluginStoreClientLocalTests : IDisposable
         // A malicious index.json must not be able to read a file outside its own folder.
         var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "../../etc/passwd", null);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("outside");
+        Assert.False(result.IsSuccess);
+        Assert.Contains("outside", result.Error);
     }
 
     [Fact]
@@ -88,10 +87,10 @@ public class PluginStoreClientLocalTests : IDisposable
 
         var result = await _client.DownloadTemplateAsync(PluginStoreConfig.Local(_tempDir), "flow.json", null);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Json.Should().Be(json);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(json, result.Json);
         // No checksum was supplied, so the template download carries the same unverified advisory (AC-46).
-        result.Warning.Should().Contain("checksum");
+        Assert.Contains("checksum", result.Warning);
     }
 
     private static void _TryDelete(string? path)

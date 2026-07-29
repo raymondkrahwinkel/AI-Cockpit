@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -18,8 +18,8 @@ public class MergedPullRequestsTests
     {
         var result = MergedPullRequests.Reconcile([_Pr(1), _Pr(2)], new HashSet<string>(), primed: false);
 
-        result.Merged.Should().BeEmpty("everything already merged is not news");
-        result.Seen.Should().HaveCount(2, "but it is all remembered, or it would be news next time instead");
+        Assert.Empty(result.Merged);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.Seen));
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public class MergedPullRequestsTests
 
         var result = MergedPullRequests.Reconcile([_Pr(1), _Pr(2)], seen, primed: true);
 
-        result.Merged.Should().ContainSingle().Which.Number.Should().Be(2);
+        Assert.Equal(2, Assert.Single(result.Merged).Number);
     }
 
     [Fact]
@@ -37,26 +37,26 @@ public class MergedPullRequestsTests
     {
         var seen = new HashSet<string>(StringComparer.Ordinal) { MergedPullRequests.KeyOf(_Pr(1)) };
 
-        MergedPullRequests.Reconcile([_Pr(1)], seen, primed: true).Merged.Should().BeEmpty();
+        Assert.Empty(MergedPullRequests.Reconcile([_Pr(1)], seen, primed: true).Merged);
     }
 
     [Fact]
     public void APullRequestThatFallsOutOfTheSearchWindow_IsNotForgotten() =>
         // gh returns the last thirty. A merge that scrolls off the end must not become "new" again the day someone
         // reverts and re-merges something else — what has been seen stays seen.
-        MergedPullRequests
+        Assert.Contains("raymondkrahwinkel/AI-Cockpit#1", MergedPullRequests
             .Reconcile([_Pr(9)], new HashSet<string>(StringComparer.Ordinal) { "raymondkrahwinkel/AI-Cockpit#1" }, primed: true)
-            .Seen.Should().Contain("raymondkrahwinkel/AI-Cockpit#1");
+            .Seen);
 
     [Fact]
     public void TheSameNumberInAnotherRepository_IsAnotherPullRequest() =>
-        MergedPullRequests.KeyOf(_Pr(1)).Should().NotBe(MergedPullRequests.KeyOf(_Pr(1, "acme/webshop")));
+        Assert.NotEqual(MergedPullRequests.KeyOf(_Pr(1, "acme/webshop")), MergedPullRequests.KeyOf(_Pr(1)));
 
     [Fact]
     public void TheQueryAsksForYourOwnMergedPullRequests() =>
         // A flow that fired on every merge in every repository the operator can see would be a flow about other
         // people's afternoons.
-        GitHubPrGhClient.MergedArguments.Should().ContainInOrder("--author", "@me", "--merged");
+        Assert.True(SequenceAssert.ContainsInOrder(GitHubPrGhClient.MergedArguments, "--author", "@me", "--merged"));
 
     private static GitHubPullRequest _Pr(int number, string repository = "raymondkrahwinkel/AI-Cockpit") =>
         new(number, $"Pull request {number}", $"https://github.com/{repository}/pull/{number}", null, repository, "raymondkrahwinkel");

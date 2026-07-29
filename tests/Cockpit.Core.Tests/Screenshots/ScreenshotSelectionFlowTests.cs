@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
@@ -40,8 +39,8 @@ public class ScreenshotSelectionFlowTests
 
         await coordinator.CaptureIntoAsync(session);
 
-        editor.Cropped.Should().Be(region);
-        session.InjectedScreenshots.Should().ContainSingle();
+        Assert.Equal(region, editor.Cropped);
+        Assert.Single(session.InjectedScreenshots);
     }
 
     /// <summary>The same panel gets grabbed over and over, so the region outlives the capture it came from.</summary>
@@ -53,7 +52,7 @@ public class ScreenshotSelectionFlowTests
 
         await coordinator.CaptureIntoAsync(session);
 
-        settings.Settings.LastRegion.Should().Be(region);
+        Assert.Equal(region, settings.Settings.LastRegion);
     }
 
     [Fact]
@@ -70,7 +69,7 @@ public class ScreenshotSelectionFlowTests
 
         await coordinator.CaptureIntoAsync(session);
 
-        offered.Should().Be(remembered);
+        Assert.Equal(remembered, offered);
     }
 
     /// <summary>
@@ -89,9 +88,9 @@ public class ScreenshotSelectionFlowTests
 
         await coordinator.CaptureIntoAsync(session);
 
-        editor.Cropped.Should().Be(new CaptureRect(100, 100, 400, 300));
-        editor.Burnt.Should().Equal(box);
-        session.InjectedScreenshots.Should().ContainSingle();
+        Assert.Equal(new CaptureRect(100, 100, 400, 300), editor.Cropped);
+        Assert.Equal(new[] { box }, editor.Burnt);
+        Assert.Single(session.InjectedScreenshots);
     }
 
     /// <summary>
@@ -107,9 +106,9 @@ public class ScreenshotSelectionFlowTests
 
         await coordinator.CaptureIntoAsync(session);
 
-        session.InjectedScreenshots.Should().BeEmpty();
-        editor.Cropped.Should().BeNull();
-        settings.Settings.LastRegion.Should().Be(remembered);
+        Assert.Empty(session.InjectedScreenshots);
+        Assert.Null(editor.Cropped);
+        Assert.Equal(remembered, settings.Settings.LastRegion);
     }
 
     private static (ScreenshotCoordinator Coordinator, RecordingSession Session, FakeScreenshotImageEditor Editor, FakeScreenshotSettingsStore Settings) _Flow(

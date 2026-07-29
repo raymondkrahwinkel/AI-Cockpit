@@ -1,6 +1,5 @@
 using k8s;
 using Cockpit.Plugin.Kubernetes.Cluster;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
@@ -22,16 +21,16 @@ public class PortForwardManagerTests
 
         var tunnel = manager.Start(Substitute.For<IKubernetes>(), "prod", "default", "nginx", 80, requestedLocalPort: 0, TimeSpan.FromMinutes(1));
 
-        tunnel.LocalPort.Should().BeGreaterThan(0, "port 0 means the OS picked a free one");
+        Assert.True(tunnel.LocalPort > 0, "port 0 means the OS picked a free one");
         var activities = manager.Snapshot();
-        activities.Should().ContainSingle();
-        activities[0].Details.Should().Contain(detail => detail.Label == "cluster" && detail.Value == "prod");
-        activities[0].Details.Should().Contain(detail => detail.Label == "namespace" && detail.Value == "default");
-        changed.Should().BeGreaterThan(0, "opening a tunnel changes the set");
+        Assert.Single(activities);
+        Assert.Contains(activities[0].Details, detail => detail.Label == "cluster" && detail.Value == "prod");
+        Assert.Contains(activities[0].Details, detail => detail.Label == "namespace" && detail.Value == "default");
+        Assert.True(changed > 0, "opening a tunnel changes the set");
 
         await manager.StopAsync(tunnel.Id);
 
-        manager.Snapshot().Should().BeEmpty();
+        Assert.Empty(manager.Snapshot());
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class PortForwardManagerTests
         var activity = manager.Snapshot().Single();
         await activity.StopAsync();
 
-        manager.Snapshot().Should().BeEmpty("the status-bar Kill calls the same StopAsync");
+        Assert.Empty(manager.Snapshot());
     }
 
     [Fact]
@@ -54,9 +53,9 @@ public class PortForwardManagerTests
         manager.Start(client, "prod", "default", "a", 80, requestedLocalPort: 0, TimeSpan.FromMinutes(1));
         manager.Start(client, "prod", "default", "b", 81, requestedLocalPort: 0, TimeSpan.FromMinutes(1));
 
-        manager.Snapshot().Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(manager.Snapshot()));
         await manager.StopAllAsync();
 
-        manager.Snapshot().Should().BeEmpty();
+        Assert.Empty(manager.Snapshot());
     }
 }

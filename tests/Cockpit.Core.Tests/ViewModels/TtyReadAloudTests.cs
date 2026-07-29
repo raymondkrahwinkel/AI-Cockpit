@@ -3,7 +3,6 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -33,7 +32,7 @@ public class TtyReadAloudTests
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
         reader.DidNotReceiveWithAnyArgs().ReadAssistantTextAsync(default!, default!, default);
-        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(voicePlaybackQueue.ReceivedCalls());
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public class TtyReadAloudTests
 
         vm.ReadResponsesAloud = false;
 
-        capturedToken.Should().NotBeNull();
+        Assert.NotNull(capturedToken);
         await _WaitUntilAsync(() => capturedToken!.Value.IsCancellationRequested);
     }
 
@@ -186,6 +185,6 @@ public class TtyReadAloudTests
             await Task.Delay(10);
         }
 
-        condition().Should().BeTrue("the condition should become true within the poll window");
+        Assert.True(condition(), "the condition should become true within the poll window");
     }
 }

@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <!-- Full ref (unlike the plugin's compile-only one): the tests run the plugin's workflow steps directly,
          so MaterialIconKind (IWorkflowStep.IconKind) needs a runtime copy present, which the host would
          otherwise supply. -->

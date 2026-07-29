@@ -1,7 +1,6 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -30,7 +29,7 @@ public class DevPluginReloadWatcherTests
 
         var start = () => watcher.Start();
 
-        start.Should().NotThrow();
+        start();
         watcher.Dispose();
     }
 
@@ -69,7 +68,7 @@ public class DevPluginReloadWatcherTests
         onAction();
         await Task.Yield(); // let the fire-and-forget reload continuation run
 
-        installCalls.Should().Be(1);
+        Assert.Equal(1, installCalls);
         restart.Received(1).Restart();
     }
 
@@ -95,7 +94,7 @@ public class DevPluginReloadWatcherTests
         var show = toast.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(IToastService.Show));
         var onAction = (Action?)show.GetArguments()[3];
 
-        onAction.Should().NotBeNull();
+        Assert.NotNull(onAction);
         return onAction!;
     }
 

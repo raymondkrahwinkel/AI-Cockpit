@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -18,8 +16,8 @@ public class AutopilotTemplateKickoffTests
     {
         var kickoff = AutopilotTemplateKickoff.Build(template: null, _Source);
 
-        kickoff.Message.Should().Be(AutopilotCeoBrief.SourceKickoff(_Source));
-        kickoff.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal(AutopilotCeoBrief.SourceKickoff(_Source), kickoff.Message);
+        Assert.Empty(kickoff.MissingPlaceholders);
     }
 
     [Fact]
@@ -27,8 +25,8 @@ public class AutopilotTemplateKickoffTests
     {
         var kickoff = AutopilotTemplateKickoff.Build(template: null, source: null);
 
-        kickoff.Message.Should().BeNull();
-        kickoff.MissingPlaceholders.Should().BeEmpty();
+        Assert.Null(kickoff.Message);
+        Assert.Empty(kickoff.MissingPlaceholders);
     }
 
     [Fact]
@@ -41,8 +39,8 @@ public class AutopilotTemplateKickoffTests
 
         var kickoff = AutopilotTemplateKickoff.Build(template, _Source);
 
-        kickoff.Message.Should().Be("Fix AC-138: \"Reading levels\" on youtrack. Add reading levels to the chat view.");
-        kickoff.MissingPlaceholders.Should().BeEmpty();
+        Assert.Equal("Fix AC-138: \"Reading levels\" on youtrack. Add reading levels to the chat view.", kickoff.Message);
+        Assert.Empty(kickoff.MissingPlaceholders);
     }
 
     [Fact]
@@ -55,9 +53,9 @@ public class AutopilotTemplateKickoffTests
 
         var kickoff = AutopilotTemplateKickoff.Build(template, _Source);
 
-        kickoff.Message.Should().Be("Fix AC-138 at https://youtrack.example/issue/AC-138 on branch .");
-        kickoff.MissingPlaceholders.Should().BeEquivalentTo("input.branch");
-        kickoff.MissingPlaceholders.Should().NotContain("issue.url");
+        Assert.Equal("Fix AC-138 at https://youtrack.example/issue/AC-138 on branch .", kickoff.Message);
+        Assert.Equal(new[] { "input.branch" }, kickoff.MissingPlaceholders);
+        Assert.DoesNotContain("issue.url", kickoff.MissingPlaceholders);
     }
 
     [Fact]
@@ -65,8 +63,8 @@ public class AutopilotTemplateKickoffTests
     {
         var data = AutopilotTemplateKickoff.SourceData(_Source);
 
-        data.Should().NotBeNull();
-        data!.Should().ContainKey("url").WhoseValue.Should().Be("https://youtrack.example/issue/AC-138");
+        Assert.NotNull(data);
+        Assert.Equal("https://youtrack.example/issue/AC-138", data["url"]);
     }
 
     [Fact]
@@ -78,7 +76,7 @@ public class AutopilotTemplateKickoffTests
 
         var kickoff = AutopilotTemplateKickoff.Build(template, source: null);
 
-        kickoff.Message.Should().BeNull();
-        kickoff.MissingPlaceholders.Should().ContainSingle().Which.Should().Be("issue.title");
+        Assert.Null(kickoff.Message);
+        Assert.Equal("issue.title", Assert.Single(kickoff.MissingPlaceholders));
     }
 }

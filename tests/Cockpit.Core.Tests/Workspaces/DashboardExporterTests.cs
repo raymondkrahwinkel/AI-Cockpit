@@ -1,6 +1,5 @@
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -18,11 +17,11 @@ public class DashboardExporterTests
 
         var export = DashboardExporter.ToExport(dashboard, _ => new Dictionary<string, string> { ["metrics"] = "\"cpu\"" }, SecretFields.ByName);
 
-        export.Name.Should().Be("Monitoring");
-        export.Layout.Columns.Should().Be(8);
-        export.Panes.Select(pane => pane.WidgetId).Should().Equal("clock.time", "monitor.usage");
-        export.Panes[1].Cell.Should().Be(new GridCell(2, 0));
-        export.Panes[0].Config["metrics"].Should().Be("\"cpu\"");
+        Assert.Equal("Monitoring", export.Name);
+        Assert.Equal(8, export.Layout.Columns);
+        Assert.Equal(new[] { "clock.time", "monitor.usage" }, export.Panes.Select(pane => pane.WidgetId));
+        Assert.Equal(new GridCell(2, 0), export.Panes[1].Cell);
+        Assert.Equal("\"cpu\"", export.Panes[0].Config["metrics"]);
     }
 
     [Fact]
@@ -39,9 +38,12 @@ public class DashboardExporterTests
 
         var export = DashboardExporter.ToExport(dashboard, _ => config, SecretFields.ByName);
 
-        export.Panes[0].Config.Should().ContainKeys("city", "refreshSeconds");
-        export.Panes[0].Config.Should().NotContainKey("apiKey").And.NotContainKey("token");
-        export.Panes[0].Config.Values.Should().NotContain(value => value.Contains("live-"));
+        var exportedConfig = export.Panes[0].Config;
+        Assert.Contains("city", exportedConfig);
+        Assert.Contains("refreshSeconds", exportedConfig);
+        Assert.DoesNotContain("apiKey", exportedConfig);
+        Assert.DoesNotContain("token", exportedConfig);
+        Assert.DoesNotContain(exportedConfig.Values, value => value.Contains("live-"));
     }
 
     [Fact]
@@ -54,7 +56,8 @@ public class DashboardExporterTests
 
         var export = DashboardExporter.ToExport(dashboard, _ => config, new SecretFields(["pat"]));
 
-        export.Panes[0].Config.Should().ContainKey("repo").And.NotContainKey("pat");
+        Assert.Contains("repo", export.Panes[0].Config);
+        Assert.DoesNotContain("pat", export.Panes[0].Config);
     }
 
     [Fact]
@@ -63,8 +66,7 @@ public class DashboardExporterTests
         var sessions = Workspace.Create("Work", WorkspaceType.Sessions)
             .WithPane(new WorkspacePane("s1", PaneKind.AiSession));
 
-        DashboardExporter.ToExport(sessions, _ => new Dictionary<string, string>(), SecretFields.ByName)
-            .Panes.Should().BeEmpty();
+        Assert.Empty(DashboardExporter.ToExport(sessions, _ => new Dictionary<string, string>(), SecretFields.ByName).Panes);
     }
 
     [Fact]
@@ -79,9 +81,9 @@ public class DashboardExporterTests
 
         var import = DashboardExporter.FromExport(export, isInstalled: id => id == "clock.time");
 
-        import.Workspace.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("clock.time");
-        import.MissingWidgetIds.Should().Equal("weather.now");
-        import.IsComplete.Should().BeFalse();
+        Assert.Equal("clock.time", Assert.Single(import.Workspace.Panes).WidgetId);
+        Assert.Equal(new[] { "weather.now" }, import.MissingWidgetIds);
+        Assert.False(import.IsComplete);
     }
 
     [Fact]
@@ -93,7 +95,7 @@ public class DashboardExporterTests
             _ => new Dictionary<string, string>(),
             SecretFields.ByName);
 
-        DashboardExporter.FromExport(export, isInstalled: _ => false).MissingWidgetIds.Should().Equal("weather.now");
+        Assert.Equal(new[] { "weather.now" }, DashboardExporter.FromExport(export, isInstalled: _ => false).MissingWidgetIds);
     }
 
     [Fact]
@@ -104,8 +106,8 @@ public class DashboardExporterTests
 
         var import = DashboardExporter.FromExport(export, isInstalled: _ => true);
 
-        import.IsComplete.Should().BeTrue();
-        import.MissingWidgetIds.Should().BeEmpty();
+        Assert.True(import.IsComplete);
+        Assert.Empty(import.MissingWidgetIds);
     }
 
     [Fact]
@@ -116,12 +118,12 @@ public class DashboardExporterTests
 
         var (workspace, _, _) = DashboardExporter.FromExport(export, _Anything);
 
-        workspace.Type.Should().Be(WorkspaceType.Dashboard);
-        workspace.Name.Should().Be("Monitoring");
-        workspace.Panes.Should().ContainSingle();
-        workspace.Panes[0].WidgetId.Should().Be("clock.time");
-        workspace.Panes[0].Cell.Should().Be(new GridCell(1, 2));
-        workspace.Panes[0].Id.Should().NotBe("p1", "an imported dashboard is a new dashboard — sharing the instance id would have two of them writing one widget's config");
+        Assert.Equal(WorkspaceType.Dashboard, workspace.Type);
+        Assert.Equal("Monitoring", workspace.Name);
+        Assert.Single(workspace.Panes);
+        Assert.Equal("clock.time", workspace.Panes[0].WidgetId);
+        Assert.Equal(new GridCell(1, 2), workspace.Panes[0].Cell);
+        Assert.NotEqual("p1", workspace.Panes[0].Id);
     }
 
     [Fact]
@@ -132,8 +134,8 @@ public class DashboardExporterTests
 
         var (workspace, config, _) = DashboardExporter.FromExport(export, _Anything);
 
-        config.Should().ContainKey(workspace.Panes[0].Id);
-        config[workspace.Panes[0].Id]["metrics"].Should().Be("\"cpu\"");
+        Assert.Contains(workspace.Panes[0].Id, config);
+        Assert.Equal("\"cpu\"", config[workspace.Panes[0].Id]["metrics"]);
     }
 
     [Fact]
@@ -145,8 +147,8 @@ public class DashboardExporterTests
         var (first, _, _) = DashboardExporter.FromExport(export, _Anything);
         var (second, _, _) = DashboardExporter.FromExport(export, _Anything);
 
-        second.Id.Should().NotBe(first.Id);
-        second.Panes[0].Id.Should().NotBe(first.Panes[0].Id);
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.NotEqual(first.Panes[0].Id, second.Panes[0].Id);
     }
 
     [Fact]
@@ -155,7 +157,7 @@ public class DashboardExporterTests
         var export = DashboardExporter.ToExport(
             _Dashboard(("p1", "clock.time", 0, 0)), _ => new Dictionary<string, string>(), SecretFields.ByName);
 
-        DashboardExporter.FromExport(export, _Anything, name: "Monitoring 2").Workspace.Name.Should().Be("Monitoring 2");
+        Assert.Equal("Monitoring 2", DashboardExporter.FromExport(export, _Anything, name: "Monitoring 2").Workspace.Name);
     }
 
     [Fact]
@@ -163,7 +165,7 @@ public class DashboardExporterTests
     {
         var export = new DashboardExport(1, "D", new DashboardLayout { Columns = 0, Rows = 0 }, []);
 
-        DashboardExporter.FromExport(export, _Anything).Workspace.Layout.Columns.Should().Be(DashboardLayout.MinColumns);
+        Assert.Equal(DashboardLayout.MinColumns, DashboardExporter.FromExport(export, _Anything).Workspace.Layout.Columns);
     }
 
     [Theory]
@@ -173,7 +175,7 @@ public class DashboardExporterTests
     {
         // A dashboard that silently arrives missing whatever the reader did not understand is worse than one
         // that does not arrive.
-        DashboardExporter.CanRead(new DashboardExport(version, "D", DashboardLayout.Default, [])).Should().Be(expected);
+        Assert.Equal(expected, DashboardExporter.CanRead(new DashboardExport(version, "D", DashboardLayout.Default, [])));
     }
 
     /// <summary>Every widget is installed — for the tests that are about something other than what is missing.</summary>

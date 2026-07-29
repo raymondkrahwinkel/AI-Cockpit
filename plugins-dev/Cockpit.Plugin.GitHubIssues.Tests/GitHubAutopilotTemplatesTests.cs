@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -15,7 +14,7 @@ public class GitHubAutopilotTemplatesTests
     public void CodeTemplates_DeliverAPullRequest(string id)
     {
         var template = GitHubAutopilotTemplates.All.Single(t => t.Id == id);
-        template.DeliversPullRequest.Should().BeTrue();
+        Assert.True(template.DeliversPullRequest);
     }
 
     [Theory]
@@ -24,9 +23,9 @@ public class GitHubAutopilotTemplatesTests
     public void CodeTemplates_TellTheAgentToCommitPushAndOpenAPr(string id)
     {
         var body = GitHubAutopilotTemplates.All.Single(t => t.Id == id).Body.ToLowerInvariant();
-        body.Should().Contain("commit");
-        body.Should().Contain("push");
-        body.Should().Contain("pull request");
+        Assert.Contains("commit", body);
+        Assert.Contains("push", body);
+        Assert.Contains("pull request", body);
     }
 
     [Theory]
@@ -35,7 +34,7 @@ public class GitHubAutopilotTemplatesTests
     public void CodeTemplates_ForbidCoAuthorAndAiMentionsInCommits(string id)
     {
         var body = GitHubAutopilotTemplates.All.Single(t => t.Id == id).Body;
-        body.Should().Contain("Co-Authored-By");
-        body.ToLowerInvariant().Should().Contain("no mention of an ai");
+        Assert.Contains("Co-Authored-By", body);
+        Assert.Contains("no mention of an ai", body.ToLowerInvariant());
     }
 }

@@ -1,5 +1,4 @@
 using Cockpit.Core.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -17,19 +16,19 @@ public class TranscriptCleanupGuardTests
     [InlineData("no thanks")]
     public void ShouldSkipCleanup_BelowMinWordCount_ReturnsTrue(string rawText)
     {
-        TranscriptCleanupGuard.ShouldSkipCleanup(rawText, Options).Should().BeTrue();
+        Assert.True(TranscriptCleanupGuard.ShouldSkipCleanup(rawText, Options));
     }
 
     [Fact]
     public void ShouldSkipCleanup_AtOrAboveMinWordCount_ReturnsFalse()
     {
-        TranscriptCleanupGuard.ShouldSkipCleanup("please open the settings dialog", Options).Should().BeFalse();
+        Assert.False(TranscriptCleanupGuard.ShouldSkipCleanup("please open the settings dialog", Options));
     }
 
     [Fact]
     public void IsSuspicious_EmptyCleanedText_ReturnsTrue()
     {
-        TranscriptCleanupGuard.IsSuspicious("open the pod bay doors", string.Empty, Options).Should().BeTrue();
+        Assert.True(TranscriptCleanupGuard.IsSuspicious("open the pod bay doors", string.Empty, Options));
     }
 
     [Fact]
@@ -38,7 +37,7 @@ public class TranscriptCleanupGuardTests
         var raw = "open the pod bay doors please";
         var cleaned = "Open the pod bay doors, please.";
 
-        TranscriptCleanupGuard.IsSuspicious(raw, cleaned, Options).Should().BeFalse();
+        Assert.False(TranscriptCleanupGuard.IsSuspicious(raw, cleaned, Options));
     }
 
     [Fact]
@@ -47,6 +46,6 @@ public class TranscriptCleanupGuardTests
         var raw = "open the doors";
         var cleaned = new string('x', (int)(raw.Length * Options.MaxLengthRatio) + Options.MaxLengthPadding + 1);
 
-        TranscriptCleanupGuard.IsSuspicious(raw, cleaned, Options).Should().BeTrue();
+        Assert.True(TranscriptCleanupGuard.IsSuspicious(raw, cleaned, Options));
     }
 }

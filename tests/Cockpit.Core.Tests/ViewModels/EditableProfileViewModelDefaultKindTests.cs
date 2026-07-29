@@ -1,7 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -26,7 +25,7 @@ public class EditableProfileViewModelDefaultKindTests
     {
         var editable = new EditableProfileViewModel(ClaudeProfile(), isLoggedIn: true);
 
-        editable.HasTtyProvider.Should().BeTrue();
+        Assert.True(editable.HasTtyProvider);
     }
 
     // AC-139: a provider with no TTY route (a local HTTP model) never offers a real Default-kind choice — the
@@ -36,7 +35,7 @@ public class EditableProfileViewModelDefaultKindTests
     {
         var editable = new EditableProfileViewModel(LocalProfile(), isLoggedIn: true);
 
-        editable.HasTtyProvider.Should().BeFalse();
+        Assert.False(editable.HasTtyProvider);
     }
 
     [Fact]
@@ -45,8 +44,8 @@ public class EditableProfileViewModelDefaultKindTests
         var sdk = new EditableProfileViewModel(ClaudeProfile(ProfileSessionKind.Sdk), isLoggedIn: true);
         var tty = new EditableProfileViewModel(ClaudeProfile(ProfileSessionKind.Tty), isLoggedIn: true);
 
-        sdk.SelectedDefaultKind.Should().Be(SessionKind.Sdk);
-        tty.SelectedDefaultKind.Should().Be(SessionKind.Tty);
+        Assert.Equal(SessionKind.Sdk, sdk.SelectedDefaultKind);
+        Assert.Equal(SessionKind.Tty, tty.SelectedDefaultKind);
     }
 
     // AC-6: a profile saved before this setting existed has no DefaultKind at all — the editor must still show it
@@ -56,7 +55,7 @@ public class EditableProfileViewModelDefaultKindTests
     {
         var editable = new EditableProfileViewModel(ClaudeProfile(), isLoggedIn: true);
 
-        editable.SelectedDefaultKind.Should().Be(SessionKind.Tty);
+        Assert.Equal(SessionKind.Tty, editable.SelectedDefaultKind);
     }
 
     [Fact]
@@ -65,10 +64,10 @@ public class EditableProfileViewModelDefaultKindTests
         var editable = new EditableProfileViewModel(ClaudeProfile(), isLoggedIn: true);
 
         editable.SelectDefaultKindSdkCommand.Execute(null);
-        editable.ToProfile().DefaultKind.Should().Be(ProfileSessionKind.Sdk);
+        Assert.Equal(ProfileSessionKind.Sdk, editable.ToProfile().DefaultKind);
 
         editable.SelectDefaultKindTtyCommand.Execute(null);
-        editable.ToProfile().DefaultKind.Should().Be(ProfileSessionKind.Tty);
+        Assert.Equal(ProfileSessionKind.Tty, editable.ToProfile().DefaultKind);
     }
 
     // AC-139: the setting is meaningless for an SDK-only provider — persisting it anyway would be a choice that can
@@ -78,7 +77,7 @@ public class EditableProfileViewModelDefaultKindTests
     {
         var editable = new EditableProfileViewModel(LocalProfile(), isLoggedIn: true);
 
-        editable.ToProfile().DefaultKind.Should().BeNull();
+        Assert.Null(editable.ToProfile().DefaultKind);
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public class EditableProfileViewModelDefaultKindTests
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: providers, ttyProviderResolver: resolver);
 
-        editable.HasTtyProvider.Should().BeTrue();
+        Assert.True(editable.HasTtyProvider);
     }
 
     [Fact]
@@ -109,6 +108,6 @@ public class EditableProfileViewModelDefaultKindTests
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: providers, ttyProviderResolver: resolver);
 
-        editable.HasTtyProvider.Should().BeFalse();
+        Assert.False(editable.HasTtyProvider);
     }
 }

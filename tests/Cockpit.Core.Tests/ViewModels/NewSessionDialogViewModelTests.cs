@@ -11,7 +11,6 @@ using Cockpit.Core.WorkingPaths;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -32,8 +31,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.Profiles.Should().Equal(work, personal);
-        vm.SelectedProfile.Should().Be(work);
+        Assert.Equal(new[] { work, personal }, vm.Profiles);
+        Assert.Equal(work, vm.SelectedProfile);
     }
 
     [Fact]
@@ -71,9 +70,9 @@ public class NewSessionDialogViewModelTests
 
         // Fase 4: the dialog pre-selects the provider's own options from the profile's saved OptionDefaults, not the
         // retired typed permission/model/effort fields (which are decoupled from the dialog now).
-        vm.SdkLaunchOptions.Single(option => option.Key == "permission-mode").Value.Should().Be("bypassPermissions");
-        vm.SdkLaunchOptions.Single(option => option.Key == "model").Value.Should().Be("opus");
-        vm.SdkLaunchOptions.Single(option => option.Key == "effort").Value.Should().Be("high");
+        Assert.Equal("bypassPermissions", vm.SdkLaunchOptions.Single(option => option.Key == "permission-mode").Value);
+        Assert.Equal("opus", vm.SdkLaunchOptions.Single(option => option.Key == "model").Value);
+        Assert.Equal("high", vm.SdkLaunchOptions.Single(option => option.Key == "effort").Value);
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public class NewSessionDialogViewModelTests
         var vm = NewVm(out _, profile);
         await vm.LoadAsync();
 
-        vm.SelectedPermissionMode.Should().Be(SessionOptionCatalog.DefaultPermissionMode);
-        vm.SelectedClaudeModel.Should().Be(SessionOptionCatalog.DefaultModel.Value);
-        vm.SelectedEffort.Should().Be(SessionOptionCatalog.DefaultEffort);
+        Assert.Equal(SessionOptionCatalog.DefaultPermissionMode, vm.SelectedPermissionMode);
+        Assert.Equal(SessionOptionCatalog.DefaultModel.Value, vm.SelectedClaudeModel);
+        Assert.Equal(SessionOptionCatalog.DefaultEffort, vm.SelectedEffort);
     }
 
     [Fact]
@@ -98,9 +97,9 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
         vm.SelectSdkCommand.Execute(null);
 
-        vm.IsSelectedProfileLoggedIn.Should().BeFalse();
-        vm.CanStart.Should().BeFalse();
-        vm.ConfirmCommand.CanExecute(null).Should().BeFalse();
+        Assert.False(vm.IsSelectedProfileLoggedIn);
+        Assert.False(vm.CanStart);
+        Assert.False(vm.ConfirmCommand.CanExecute(null));
     }
 
     [Fact]
@@ -117,11 +116,11 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
         vm.SelectSdkCommand.Execute(null);
 
-        vm.IsClaudeProfile.Should().BeTrue();
-        vm.IsLocalProfile.Should().BeFalse();
-        vm.ShowResumeOptions.Should().BeTrue();
-        vm.IsSelectedProfileLoggedIn.Should().BeFalse();
-        vm.CanStart.Should().BeFalse();
+        Assert.True(vm.IsClaudeProfile);
+        Assert.False(vm.IsLocalProfile);
+        Assert.True(vm.ShowResumeOptions);
+        Assert.False(vm.IsSelectedProfileLoggedIn);
+        Assert.False(vm.CanStart);
     }
 
     [Fact]
@@ -133,10 +132,10 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync(); // the default kind is TTY
 
-        vm.IsTty.Should().BeTrue();
-        vm.IsSelectedProfileLoggedIn.Should().BeFalse();
-        vm.CanStart.Should().BeTrue();
-        vm.ConfirmCommand.CanExecute(null).Should().BeTrue();
+        Assert.True(vm.IsTty);
+        Assert.False(vm.IsSelectedProfileLoggedIn);
+        Assert.True(vm.CanStart);
+        Assert.True(vm.ConfirmCommand.CanExecute(null));
     }
 
     [Fact]
@@ -148,10 +147,10 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
 
         vm.SelectSdkCommand.Execute(null);
-        vm.ShowLoginHint.Should().BeTrue();
+        Assert.True(vm.ShowLoginHint);
 
         vm.SelectTtyCommand.Execute(null);
-        vm.ShowLoginHint.Should().BeFalse();
+        Assert.False(vm.ShowLoginHint);
     }
 
     [Fact]
@@ -164,10 +163,10 @@ public class NewSessionDialogViewModelTests
         loginChecker.IsLoggedIn(local).Returns(false); // a local provider has no login
         await vm.LoadAsync();
 
-        vm.IsLocalProfile.Should().BeTrue();
-        vm.CanStart.Should().BeTrue();
-        vm.ShowSessionOptions.Should().BeFalse();
-        vm.SelectedProviderLabel.Should().Be("Ollama");
+        Assert.True(vm.IsLocalProfile);
+        Assert.True(vm.CanStart);
+        Assert.False(vm.ShowSessionOptions);
+        Assert.Equal("Ollama", vm.SelectedProviderLabel);
     }
 
     [Fact]
@@ -181,7 +180,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
     }
 
     [Fact]
@@ -199,10 +198,10 @@ public class NewSessionDialogViewModelTests
 
         vm.ConfirmCommand.Execute(null);
 
-        closed.Should().BeTrue();
-        result.Should().NotBeNull();
-        result!.Profile.Should().Be(profile);
-        result.Model.Value.Should().Be("haiku");
+        Assert.True(closed);
+        Assert.NotNull(result);
+        Assert.Equal(profile, result!.Profile);
+        Assert.Equal("haiku", result.Model.Value);
     }
 
     [Fact]
@@ -219,7 +218,7 @@ public class NewSessionDialogViewModelTests
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result!.Model.Value.Should().Be("claude-opus");
+        Assert.Equal("claude-opus", result!.Model.Value);
     }
 
     [Fact]
@@ -233,8 +232,8 @@ public class NewSessionDialogViewModelTests
 
         vm.CancelCommand.Execute(null);
 
-        closed.Should().BeTrue();
-        result.Should().BeNull();
+        Assert.True(closed);
+        Assert.Null(result);
     }
 
     [Fact]
@@ -242,9 +241,9 @@ public class NewSessionDialogViewModelTests
     {
         var vm = NewVm(out _);
 
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
-        vm.IsTty.Should().BeTrue();
-        vm.IsSdk.Should().BeFalse();
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
+        Assert.True(vm.IsTty);
+        Assert.False(vm.IsSdk);
     }
 
     [Fact]
@@ -254,15 +253,15 @@ public class NewSessionDialogViewModelTests
 
         vm.SelectTtyCommand.Execute(null);
 
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
-        vm.IsSdk.Should().BeFalse();
-        vm.IsTty.Should().BeTrue();
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
+        Assert.False(vm.IsSdk);
+        Assert.True(vm.IsTty);
 
         vm.SelectSdkCommand.Execute(null);
 
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
-        vm.IsSdk.Should().BeTrue();
-        vm.IsTty.Should().BeFalse();
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
+        Assert.True(vm.IsSdk);
+        Assert.False(vm.IsTty);
     }
 
     [Fact]
@@ -279,8 +278,8 @@ public class NewSessionDialogViewModelTests
 
         vm.ConfirmCommand.Execute(null);
 
-        result.Should().NotBeNull();
-        result!.Kind.Should().Be(SessionKind.Tty);
+        Assert.NotNull(result);
+        Assert.Equal(SessionKind.Tty, result!.Kind);
     }
 
     [Fact]
@@ -288,7 +287,7 @@ public class NewSessionDialogViewModelTests
     {
         var vm = NewVm(out _);
 
-        vm.PermissionModes.Select(mode => mode.Value).Should().Contain("bypassPermissions");
+        Assert.Contains("bypassPermissions", vm.PermissionModes.Select(mode => mode.Value));
     }
 
     [Fact]
@@ -301,9 +300,9 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.HasMcpServers.Should().BeTrue();
-        vm.McpServers.Select(server => server.Name).Should().Equal("server-a", "server-b");
-        vm.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+        Assert.True(vm.HasMcpServers);
+        Assert.Equal(new[] { "server-a", "server-b" }, vm.McpServers.Select(server => server.Name));
+        Assert.All(vm.McpServers, server => Assert.True(server.IsEnabledForSession));
     }
 
     [Fact]
@@ -316,7 +315,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.McpServers.Select(server => server.Name).Should().Equal("on");
+        Assert.Equal(new[] { "on" }, vm.McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -331,7 +330,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.McpServers.Select(server => server.Name).Should().Equal("server-a");
+        Assert.Equal(new[] { "server-a" }, vm.McpServers.Select(server => server.Name));
     }
 
     [Fact]
@@ -342,8 +341,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.HasMcpServers.Should().BeFalse();
-        vm.McpServers.Should().BeEmpty();
+        Assert.False(vm.HasMcpServers);
+        Assert.Empty(vm.McpServers);
     }
 
     [Fact]
@@ -362,8 +361,8 @@ public class NewSessionDialogViewModelTests
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result.Should().NotBeNull();
-        result!.EnabledMcpServerNames.Should().BeEquivalentTo(["server-a"]);
+        Assert.NotNull(result);
+        Assert.Equivalent(new object[] { "server-a" }, result!.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -378,8 +377,8 @@ public class NewSessionDialogViewModelTests
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result.Should().NotBeNull();
-        result!.EnabledMcpServerNames.Should().BeNull();
+        Assert.NotNull(result);
+        Assert.Null(result!.EnabledMcpServerNames);
     }
 
     [Fact]
@@ -394,8 +393,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.HasTtyProvider.Should().BeFalse();
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        Assert.False(vm.HasTtyProvider);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
     }
 
     // AC-139: a profile can set its own default Kind, so the New-session dialog pre-selects the route it is
@@ -409,7 +408,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
     }
 
     [Fact]
@@ -420,7 +419,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
     }
 
     [Fact]
@@ -429,11 +428,11 @@ public class NewSessionDialogViewModelTests
         var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")) { DefaultKind = ProfileSessionKind.Sdk };
         var vm = NewVm(out _, profile);
         await vm.LoadAsync();
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
 
         vm.SelectTtyCommand.Execute(null);
 
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
     }
 
     // AC-139 pitfall 1: a profile that says "TTY" but has no TTY route to run at all must not land on TTY — the
@@ -450,8 +449,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.HasTtyProvider.Should().BeFalse();
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        Assert.False(vm.HasTtyProvider);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
     }
 
     // AC-139/AC-6: an existing profile saved before this setting existed carries no DefaultKind at all — it must
@@ -460,12 +459,12 @@ public class NewSessionDialogViewModelTests
     public async Task AProfileWithNoSavedDefaultKind_StillPreSelectsTty_SoAnOlderProfileBehavesExactlyAsBefore()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
-        profile.DefaultKind.Should().BeNull();
+        Assert.Null(profile.DefaultKind);
         var vm = NewVm(out _, profile);
 
         await vm.LoadAsync();
 
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
     }
 
     [Fact]
@@ -485,11 +484,11 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
         vm.SelectTtyCommand.Execute(null);
 
-        vm.HasTtyProvider.Should().BeTrue();
-        vm.SelectedKind.Should().Be(SessionKind.Tty);
-        vm.ShowPluginTtyOptions.Should().BeTrue();
-        vm.PluginTtyOptions.Should().ContainSingle(option => option.Key == "sandbox" && option.Label == "Sandbox");
-        vm.ShowSessionOptions.Should().BeFalse("mode/model/effort are Claude's own vocabulary, not this plugin's");
+        Assert.True(vm.HasTtyProvider);
+        Assert.Equal(SessionKind.Tty, vm.SelectedKind);
+        Assert.True(vm.ShowPluginTtyOptions);
+        Assert.Single(vm.PluginTtyOptions, option => option.Key == "sandbox" && option.Label == "Sandbox");
+        Assert.False(vm.ShowSessionOptions, "mode/model/effort are Claude's own vocabulary, not this plugin's");
     }
 
     [Fact]
@@ -517,10 +516,10 @@ public class NewSessionDialogViewModelTests
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result.Should().NotBeNull();
-        result!.PluginTtyOptions.Should().NotBeNull();
-        result.PluginTtyOptions!.Should().ContainSingle();
-        result.PluginTtyOptions["sandbox"].Should().Be("workspace-write");
+        Assert.NotNull(result);
+        Assert.NotNull(result!.PluginTtyOptions);
+        Assert.Single(result.PluginTtyOptions!);
+        Assert.Equal("workspace-write", result.PluginTtyOptions["sandbox"]);
     }
 
     [Fact]
@@ -535,9 +534,9 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
 
         // A plugin profile with no TTY provider forces SDK kind, where its declared options render.
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
-        vm.ShowSdkLaunchOptions.Should().BeTrue();
-        vm.SdkLaunchOptions.Should().ContainSingle(option => option.Key == "sandbox" && option.Label == "Sandbox");
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
+        Assert.True(vm.ShowSdkLaunchOptions);
+        Assert.Single(vm.SdkLaunchOptions, option => option.Key == "sandbox" && option.Label == "Sandbox");
     }
 
     [Fact]
@@ -558,10 +557,10 @@ public class NewSessionDialogViewModelTests
         vm.CloseRequested += r => result = r;
         vm.ConfirmCommand.Execute(null);
 
-        result.Should().NotBeNull();
-        result!.SdkLaunchOptions.Should().NotBeNull();
-        result.SdkLaunchOptions!.Should().ContainSingle();
-        result.SdkLaunchOptions["sandbox"].Should().Be("workspace-write");
+        Assert.NotNull(result);
+        Assert.NotNull(result!.SdkLaunchOptions);
+        Assert.Single(result.SdkLaunchOptions!);
+        Assert.Equal("workspace-write", result.SdkLaunchOptions["sandbox"]);
     }
 
     [Fact]
@@ -586,8 +585,8 @@ public class NewSessionDialogViewModelTests
 
         // The free-text Model becomes a dropdown of the provider's live models, defaulted to its chosen default.
         var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
-        model.Choices.Should().Equal("gpt-5.6-terra", "gpt-5.6-luna");
-        model.Value.Should().Be("gpt-5.6-terra");
+        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-5.6-luna" }, model.Choices);
+        Assert.Equal("gpt-5.6-terra", model.Value);
     }
 
     [Fact]
@@ -606,8 +605,8 @@ public class NewSessionDialogViewModelTests
 
         // A failing model/list must never blow away the declared option — Model stays a free-text field.
         var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
-        model.Choices.Should().BeEmpty();
-        model.IsFreeText.Should().BeTrue();
+        Assert.Empty(model.Choices);
+        Assert.True(model.IsFreeText);
     }
 
     [Fact]
@@ -633,13 +632,13 @@ public class NewSessionDialogViewModelTests
         vm.SelectedProfile = profileB;
         await vm.LaunchOptionsRefresh;
 
-        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
+        Assert.Equal(new[] { "b-model" }, vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices);
 
         // A's resolve now completes, late. The stale-guard must drop it rather than overwrite B's options.
         gateA.SetResult([new PluginSessionLaunchOption("model", "Model", ["a-model"], "a-model")]);
         await refreshA;
 
-        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
+        Assert.Equal(new[] { "b-model" }, vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices);
     }
 
     [Fact]
@@ -651,9 +650,9 @@ public class NewSessionDialogViewModelTests
 
         // Fase 4 step 1: a value with a provider label reads friendly; an unlabelled value (a pinned snapshot) falls
         // back to showing itself, and the picked value is always the raw CLI value regardless of its label.
-        row.ChoiceItems.Select(choice => choice.Label).Should().Equal("Opus", "Sonnet", "custom-snapshot");
-        row.ChoiceItems.Single(choice => choice.Value == "sonnet").Label.Should().Be("Sonnet");
-        row.Value.Should().Be("sonnet");
+        Assert.Equal(new[] { "Opus", "Sonnet", "custom-snapshot" }, row.ChoiceItems.Select(choice => choice.Label));
+        Assert.Equal("Sonnet", row.ChoiceItems.Single(choice => choice.Value == "sonnet").Label);
+        Assert.Equal("sonnet", row.Value);
     }
 
     [Fact]
@@ -687,8 +686,8 @@ public class NewSessionDialogViewModelTests
 
         // The TTY route gets the same live model/list upgrade as the SDK route.
         var model = vm.PluginTtyOptions.Single(option => option.Key == "model");
-        model.Choices.Should().Equal("gpt-5.6-terra", "gpt-5.6-luna");
-        model.Value.Should().Be("gpt-5.6-terra");
+        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-5.6-luna" }, model.Choices);
+        Assert.Equal("gpt-5.6-terra", model.Value);
     }
 
     [Fact]
@@ -726,8 +725,8 @@ public class NewSessionDialogViewModelTests
         vm.SelectedProfile = sdkOnlyProfile;   // forces Tty -> Sdk, which must not double-fire the refresh
         await vm.LaunchOptionsRefresh;
 
-        invocations[0].Should().Be(1);
-        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("m");
+        Assert.Equal(1, invocations[0]);
+        Assert.Equal(new[] { "m" }, vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices);
     }
 
     // AC-139/AC-5: seeding Kind from a profile's saved SDK default (on a profile that does have a TTY route, so
@@ -762,8 +761,8 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
         await vm.LaunchOptionsRefresh;
 
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
-        invocations[0].Should().Be(1);
+        Assert.Equal(SessionKind.Sdk, vm.SelectedKind);
+        Assert.Equal(1, invocations[0]);
     }
 
     [Fact]
@@ -785,9 +784,9 @@ public class NewSessionDialogViewModelTests
 
         await vm.PickConversationCommand.ExecuteAsync(null);
 
-        vm.ResumeSessionId.Should().Be("sess-42");
-        vm.ResumeMode.Should().Be(SessionResumeMode.BySessionId);
-        vm.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+        Assert.Equal("sess-42", vm.ResumeSessionId);
+        Assert.Equal(SessionResumeMode.BySessionId, vm.ResumeMode);
+        Assert.Equal("/home/me/RiderProjects/App", vm.WorkingDirectory);
     }
 
     [Fact]
@@ -809,8 +808,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.PickConversationCommand.ExecuteAsync(null);
 
-        vm.ResumeSessionId.Should().Be("sess-42");
-        vm.WorkingDirectory.Should().Be("/somewhere/else");
+        Assert.Equal("sess-42", vm.ResumeSessionId);
+        Assert.Equal("/somewhere/else", vm.WorkingDirectory);
     }
 
     // --- AC-130: per-profile default working directory + MCP pre-selection ---
@@ -826,7 +825,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.WorkingDirectory.Should().Be("/home/r/RiderProjects/App");
+        Assert.Equal("/home/r/RiderProjects/App", vm.WorkingDirectory);
     }
 
     [Fact]
@@ -836,11 +835,11 @@ public class NewSessionDialogViewModelTests
         var withoutFolder = new SessionProfile("plain", new ClaudeConfig("/home/r/.claude"));
         var vm = NewVm(out _, withFolder, withoutFolder);
         await vm.LoadAsync();
-        vm.WorkingDirectory.Should().Be("/home/r/App");
+        Assert.Equal("/home/r/App", vm.WorkingDirectory);
 
         vm.SelectedProfile = withoutFolder;
 
-        vm.WorkingDirectory.Should().BeEmpty();
+        Assert.Empty(vm.WorkingDirectory);
     }
 
     [Fact]
@@ -850,11 +849,11 @@ public class NewSessionDialogViewModelTests
         var b = new SessionProfile("b", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/B" };
         var vm = NewVm(out _, a, b);
         await vm.LoadAsync();
-        vm.WorkingDirectory.Should().Be("/home/r/A");
+        Assert.Equal("/home/r/A", vm.WorkingDirectory);
 
         vm.SelectedProfile = b;
 
-        vm.WorkingDirectory.Should().Be("/home/r/B");
+        Assert.Equal("/home/r/B", vm.WorkingDirectory);
     }
 
     [Fact]
@@ -870,7 +869,7 @@ public class NewSessionDialogViewModelTests
 
         vm.SelectedProfile = b;
 
-        vm.WorkingDirectory.Should().Be("/home/r/chosen-by-hand");
+        Assert.Equal("/home/r/chosen-by-hand", vm.WorkingDirectory);
     }
 
     [Fact]
@@ -885,7 +884,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync(); // the Manage-profiles round-trip reload
 
-        vm.WorkingDirectory.Should().Be("/home/r/chosen-by-hand");
+        Assert.Equal("/home/r/chosen-by-hand", vm.WorkingDirectory);
     }
 
     [Fact]
@@ -904,7 +903,7 @@ public class NewSessionDialogViewModelTests
         vm.SelectedProfile = second;
         vm.SelectedProfile = first;
 
-        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeFalse();
+        Assert.False(vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession);
     }
 
     [Fact]
@@ -920,8 +919,8 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.McpServers.Single(server => server.Name == "server-a").IsEnabledForSession.Should().BeFalse();
-        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeTrue();
+        Assert.False(vm.McpServers.Single(server => server.Name == "server-a").IsEnabledForSession);
+        Assert.True(vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession);
     }
 
     [Fact]
@@ -935,11 +934,11 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
 
         // The restricted profile is first: only its named server is ticked.
-        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeFalse();
+        Assert.False(vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession);
 
         // Switching to the unrestricted profile re-ticks everything (null = no restriction).
         vm.SelectedProfile = unrestricted;
-        vm.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+        Assert.All(vm.McpServers, server => Assert.True(server.IsEnabledForSession));
     }
 
     // --- AC-131: managing the remembered-folders quick-pick ---
@@ -955,8 +954,9 @@ public class NewSessionDialogViewModelTests
         var sepIndex = _IndexOf(vm, o => o.IsSeparator);
         var recentIndex = _IndexOf(vm, o => o.Path == @"C:\recent");
 
-        sepIndex.Should().BeGreaterThan(favIndex).And.BeLessThan(recentIndex);
-        vm.RememberedPaths.Single(o => o.IsSeparator).IsSelectable.Should().BeFalse();
+        Assert.True(sepIndex > favIndex);
+        Assert.True(sepIndex < recentIndex);
+        Assert.False(vm.RememberedPaths.Single(o => o.IsSeparator).IsSelectable);
     }
 
     [Fact]
@@ -966,7 +966,7 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
 
-        vm.RememberedPaths.Should().NotContain(o => o.IsSeparator);
+        Assert.DoesNotContain(vm.RememberedPaths, o => o.IsSeparator);
     }
 
     [Fact]
@@ -980,7 +980,7 @@ public class NewSessionDialogViewModelTests
         await vm.RemoveRememberedPathCommand.ExecuteAsync(target);
 
         await store.Received(1).RemoveAsync(@"C:\a", Arg.Any<CancellationToken>());
-        vm.RememberedPaths.Should().NotContain(o => o.Path == @"C:\a");
+        Assert.DoesNotContain(vm.RememberedPaths, o => o.Path == @"C:\a");
     }
 
     [Fact]
@@ -1057,14 +1057,14 @@ public class NewSessionDialogViewModelTests
         var vm = NewVm(out _, new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")));
         await vm.LoadAsync();
 
-        vm.HasInitialPrompt.Should().BeFalse();
+        Assert.False(vm.HasInitialPrompt);
 
         vm.InitialPrompt = "## Crash on login\r\nSteps to reproduce...";
 
         // The dialog is the gate a prefill passes through, so the field that can hold text written outside the
         // cockpit has to be on it — otherwise the operator confirms a prompt they were never shown.
-        vm.HasInitialPrompt.Should().BeTrue();
-        vm.InitialPrompt.Should().Be("## Crash on login\r\nSteps to reproduce...");
+        Assert.True(vm.HasInitialPrompt);
+        Assert.Equal("## Crash on login\r\nSteps to reproduce...", vm.InitialPrompt);
     }
 
     [Fact]
@@ -1075,7 +1075,7 @@ public class NewSessionDialogViewModelTests
 
         vm.InitialPrompt = "   ";
 
-        vm.HasInitialPrompt.Should().BeFalse();
+        Assert.False(vm.HasInitialPrompt);
     }
 
     private static NewSessionDialogViewModel NewVm(out IProfileLoginChecker loginChecker, params SessionProfile[] profiles)

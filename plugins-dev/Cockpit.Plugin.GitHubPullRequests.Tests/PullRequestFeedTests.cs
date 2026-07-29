@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -22,9 +21,9 @@ public class PullRequestFeedTests
 
         var result = await new PullRequestFeed().LoadAsync(settings, forceRefresh: true, CancellationToken.None);
 
-        result.RepositoryMissing.Should().BeTrue();
-        result.PullRequests.Should().BeEmpty();
-        result.ReviewRequested.Should().BeEmpty();
+        Assert.True(result.RepositoryMissing);
+        Assert.Empty(result.PullRequests);
+        Assert.Empty(result.ReviewRequested);
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class PullRequestFeedTests
 
         var result = await new PullRequestFeed().LoadAsync(settings, forceRefresh: true, CancellationToken.None);
 
-        result.RepositoryMissing.Should().BeTrue();
+        Assert.True(result.RepositoryMissing);
     }
 
     private sealed class InMemoryStorage : IPluginStorage

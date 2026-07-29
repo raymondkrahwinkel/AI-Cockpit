@@ -1,5 +1,4 @@
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -18,8 +17,8 @@ public class DashboardDropTests
 
         var arranged = DashboardGridMath.Drop(panes, "a", (1, 1), _Grid);
 
-        _CellOf(arranged, "a").Should().Be(new GridCell(1, 1));
-        _CellOf(arranged, "b").Should().Be(new GridCell(1, 0), "the pane that was not dragged does not move");
+        Assert.Equal(new GridCell(1, 1), _CellOf(arranged, "a"));
+        Assert.Equal(new GridCell(1, 0), _CellOf(arranged, "b"));
     }
 
     [Fact]
@@ -29,8 +28,8 @@ public class DashboardDropTests
 
         var arranged = DashboardGridMath.Drop(panes, "a", (1, 0), _Grid);
 
-        _CellOf(arranged, "a").Should().Be(new GridCell(1, 0));
-        _CellOf(arranged, "b").Should().Be(new GridCell(0, 0));
+        Assert.Equal(new GridCell(1, 0), _CellOf(arranged, "a"));
+        Assert.Equal(new GridCell(0, 0), _CellOf(arranged, "b"));
     }
 
     [Fact]
@@ -38,7 +37,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 1, 0));
 
-        DashboardGridMath.Drop(panes, "a", (0, 0), _Grid).Should().BeSameAs(panes);
+        Assert.Same(panes, DashboardGridMath.Drop(panes, "a", (0, 0), _Grid));
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Drop(panes, "gone", (1, 1), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Drop(panes, "gone", (1, 1), _Grid));
     }
 
     [Fact]
@@ -54,8 +53,8 @@ public class DashboardDropTests
     {
         List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 2, 1))];
 
-        DashboardGridMath.Drop(panes, "a", (0, 1), _Grid).Should().ContainSingle()
-            .Which.Cell.Should().Be(new GridCell(0, 1, 2, 1));
+        var pane = Assert.Single(DashboardGridMath.Drop(panes, "a", (0, 1), _Grid)!);
+        Assert.Equal(new GridCell(0, 1, 2, 1), pane.Cell);
     }
 
     [Fact]
@@ -65,7 +64,7 @@ public class DashboardDropTests
 
         var arranged = DashboardGridMath.Drop(panes, "c", (1, 0), _Grid);
 
-        _NoneOverlap(arranged).Should().BeTrue();
+        Assert.True(_NoneOverlap(arranged));
     }
 
     /// <summary>
@@ -81,7 +80,7 @@ public class DashboardDropTests
 
         // Landing at column 2 covers both b and c. A swap has one answer, and giving it to b left c stacked
         // under a — persisted, and drawn one on top of the other ever after.
-        DashboardGridMath.Drop(panes, "a", (2, 0), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Drop(panes, "a", (2, 0), _Grid));
     }
 
     [Fact]
@@ -91,8 +90,8 @@ public class DashboardDropTests
 
         // CellAt clamps the pointer to the last column, so a two-wide pane dropped against the right edge asks
         // for columns 3 and 4 of a four-column grid. Resize refuses exactly this; Drop used to write it down.
-        DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 1, 0), _Grid).Should().BeNull();
-        DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 2, 0), _Grid).Should().NotBeNull("flush with the edge still fits");
+        Assert.Null(DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 1, 0), _Grid));
+        Assert.NotNull(DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 2, 0), _Grid));
     }
 
     [Fact]
@@ -100,7 +99,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Drop(panes, "a", (0, _Grid.Rows + 2), _Grid).Should().NotBeNull("rows are a starting height, not a cap");
+        Assert.NotNull(DashboardGridMath.Drop(panes, "a", (0, _Grid.Rows + 2), _Grid));
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public class DashboardDropTests
         // refused as a whole — moving a and leaving b where it was is not a swap, it is a stack.
         List<(string, GridCell)> panes = [("a", new GridCell(3, 0)), ("b", new GridCell(0, 0, 2, 1))];
 
-        DashboardGridMath.Drop(panes, "a", (0, 0), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Drop(panes, "a", (0, 0), _Grid));
     }
 
     [Fact]
@@ -120,7 +119,7 @@ public class DashboardDropTests
         // only one that has to fit.
         List<(string, GridCell)> panes = [("a", new GridCell(0, 0)), ("b", new GridCell(2, 0, 2, 1)), ("c", new GridCell(1, 0))];
 
-        DashboardGridMath.Drop(panes, "a", (2, 0), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Drop(panes, "a", (2, 0), _Grid));
     }
 
     [Fact]
@@ -138,8 +137,8 @@ public class DashboardDropTests
                 {
                     if (DashboardGridMath.Drop(panes, id, (column, row), _Grid) is { } arranged)
                     {
-                        _NoneOverlap(arranged).Should().BeTrue($"dropping {id} on ({column},{row}) was accepted");
-                        arranged.Should().OnlyContain(pane => pane.Cell.ColumnEnd <= _Grid.Columns, "and stays on the grid");
+                        Assert.True(_NoneOverlap(arranged), $"dropping {id} on ({column},{row}) was accepted");
+                        Assert.All(arranged, pane => Assert.True(pane.Cell.ColumnEnd <= _Grid.Columns, "and stays on the grid"));
                     }
                 }
             }
@@ -160,7 +159,7 @@ public class DashboardDropTests
     [InlineData(190, 190, 1, 1)]
     public void CellAt_MapsAPositionToItsCell(double x, double y, int column, int row)
     {
-        DashboardGridMath.CellAt(x, y, 200, 200, columns: 2, rows: 2).Should().Be((column, row));
+        Assert.Equal((column, row), DashboardGridMath.CellAt(x, y, 200, 200, columns: 2, rows: 2));
     }
 
     [Theory]
@@ -170,20 +169,20 @@ public class DashboardDropTests
     [InlineData(10, 201)]
     public void CellAt_OutsideTheGrid_IsNoCell_SoADragOffTheEdgeDropsNothing(double x, double y)
     {
-        DashboardGridMath.CellAt(x, y, 200, 200, columns: 2, rows: 2).Should().BeNull();
+        Assert.Null(DashboardGridMath.CellAt(x, y, 200, 200, columns: 2, rows: 2));
     }
 
     [Fact]
     public void CellAt_ADegenerateGrid_IsNoCell_RatherThanDividingByZero()
     {
-        DashboardGridMath.CellAt(10, 10, 200, 200, columns: 0, rows: 2).Should().BeNull();
-        DashboardGridMath.CellAt(10, 10, 0, 200, columns: 2, rows: 2).Should().BeNull();
+        Assert.Null(DashboardGridMath.CellAt(10, 10, 200, 200, columns: 0, rows: 2));
+        Assert.Null(DashboardGridMath.CellAt(10, 10, 0, 200, columns: 2, rows: 2));
     }
 
     [Fact]
     public void CellAt_TheFarEdge_ClampsInsideTheGrid()
     {
-        DashboardGridMath.CellAt(199.9, 199.9, 200, 200, columns: 2, rows: 2).Should().Be((1, 1));
+        Assert.Equal((1, 1), DashboardGridMath.CellAt(199.9, 199.9, 200, 200, columns: 2, rows: 2));
     }
 
     [Fact]
@@ -191,7 +190,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Resize(panes, "a", (2, 1), _Grid).Should().Be(new GridCell(0, 0, 3, 2));
+        Assert.Equal(new GridCell(0, 0, 3, 2), DashboardGridMath.Resize(panes, "a", (2, 1), _Grid));
     }
 
     [Fact]
@@ -199,7 +198,7 @@ public class DashboardDropTests
     {
         List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 4, 3))];
 
-        DashboardGridMath.Resize(panes, "a", (0, 0), _Grid).Should().Be(new GridCell(0, 0, 1, 1));
+        Assert.Equal(new GridCell(0, 0, 1, 1), DashboardGridMath.Resize(panes, "a", (0, 0), _Grid));
     }
 
     [Fact]
@@ -207,8 +206,8 @@ public class DashboardDropTests
     {
         List<(string, GridCell)> panes = [("a", new GridCell(2, 2, 2, 2))];
 
-        DashboardGridMath.Resize(panes, "a", (1, 2), _Grid).Should().BeNull();
-        DashboardGridMath.Resize(panes, "a", (2, 1), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Resize(panes, "a", (1, 2), _Grid));
+        Assert.Null(DashboardGridMath.Resize(panes, "a", (2, 1), _Grid));
     }
 
     [Fact]
@@ -216,7 +215,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Resize(panes, "a", (_Grid.Columns, 0), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Resize(panes, "a", (_Grid.Columns, 0), _Grid));
     }
 
     [Fact]
@@ -224,8 +223,8 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 2, 0));
 
-        DashboardGridMath.Resize(panes, "a", (1, 0), _Grid).Should().Be(new GridCell(0, 0, 2, 1), "up to the neighbour is fine");
-        DashboardGridMath.Resize(panes, "a", (2, 0), _Grid).Should().BeNull("onto it is not");
+        Assert.Equal(new GridCell(0, 0, 2, 1), DashboardGridMath.Resize(panes, "a", (1, 0), _Grid));
+        Assert.Null(DashboardGridMath.Resize(panes, "a", (2, 0), _Grid));
     }
 
     [Fact]
@@ -233,14 +232,15 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Resize(panes, "a", (0, _Grid.Rows), _Grid)
-            .Should().Be(new GridCell(0, 0, 1, _Grid.Rows + 1), "rows are a starting height, not a cap");
+        Assert.Equal(
+            new GridCell(0, 0, 1, _Grid.Rows + 1),
+            DashboardGridMath.Resize(panes, "a", (0, _Grid.Rows), _Grid));
     }
 
     [Fact]
     public void Resize_AnUnknownPane_IsRefused()
     {
-        DashboardGridMath.Resize(_Panes(("a", 0, 0)), "gone", (1, 1), _Grid).Should().BeNull();
+        Assert.Null(DashboardGridMath.Resize(_Panes(("a", 0, 0)), "gone", (1, 1), _Grid));
     }
 
     private static readonly DashboardLayout _Grid = new() { Columns = 4, Rows = 4 };

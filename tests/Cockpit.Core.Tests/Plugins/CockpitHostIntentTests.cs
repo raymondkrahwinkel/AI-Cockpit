@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -41,8 +40,8 @@ public class CockpitHostIntentTests
         var result = await HostFor("youtrack", services)
             .SendIntent("autopilot", "start", new Dictionary<string, string> { ["issue"] = "AC-95" });
 
-        result.Should().NotBeNull();
-        result!["session"].Should().Be("pane-AC-95");
+        Assert.NotNull(result);
+        Assert.Equal("pane-AC-95", result!["session"]);
     }
 
     [Fact]
@@ -59,11 +58,11 @@ public class CockpitHostIntentTests
         await HostFor("youtrack", services)
             .SendIntent("autopilot", "start", new Dictionary<string, string> { ["issue"] = "AC-95" });
 
-        received.Should().NotBeNull();
-        received!.CallerPluginId.Should().Be("youtrack");
-        received.TargetPluginId.Should().Be("autopilot");
-        received.Action.Should().Be("start");
-        received.Data["issue"].Should().Be("AC-95");
+        Assert.NotNull(received);
+        Assert.Equal("youtrack", received!.CallerPluginId);
+        Assert.Equal("autopilot", received.TargetPluginId);
+        Assert.Equal("start", received.Action);
+        Assert.Equal("AC-95", received.Data["issue"]);
     }
 
     [Fact]
@@ -74,7 +73,7 @@ public class CockpitHostIntentTests
         var result = await HostFor("youtrack", services)
             .SendIntent("autopilot", "start", new Dictionary<string, string>());
 
-        result.Should().BeNull();
+        Assert.Null(result);
     }
 
     [Fact]
@@ -85,8 +84,8 @@ public class CockpitHostIntentTests
             Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()));
 
         var caller = HostFor("youtrack", services);
-        caller.CanSendIntent("autopilot", "start").Should().BeTrue();
-        caller.CanSendIntent("autopilot", "stop").Should().BeFalse();
-        caller.CanSendIntent("ghost", "start").Should().BeFalse();
+        Assert.True(caller.CanSendIntent("autopilot", "start"));
+        Assert.False(caller.CanSendIntent("autopilot", "stop"));
+        Assert.False(caller.CanSendIntent("ghost", "start"));
     }
 }

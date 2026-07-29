@@ -1,6 +1,5 @@
 using Avalonia.Input;
 using Cockpit.App.Controls;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -17,9 +16,9 @@ public class ShortcutCaptureControlTests
     {
         var stored = ShortcutCaptureControl.FormatCapturedKey(Key.F9, KeyModifiers.None, ShortcutCaptureMode.SingleKey);
 
-        stored.Should().Be("F9");
-        Enum.TryParse<Key>(stored, ignoreCase: true, out var parsed).Should().BeTrue();
-        parsed.Should().Be(Key.F9);
+        Assert.Equal("F9", stored);
+        Assert.True(Enum.TryParse<Key>(stored, ignoreCase: true, out var parsed));
+        Assert.Equal(Key.F9, parsed);
     }
 
     [Fact]
@@ -28,7 +27,7 @@ public class ShortcutCaptureControlTests
         // Even if a modifier is down when the key is pressed, the push-to-talk binding is a single held key.
         var stored = ShortcutCaptureControl.FormatCapturedKey(Key.F9, KeyModifiers.Control, ShortcutCaptureMode.SingleKey);
 
-        stored.Should().Be("F9");
+        Assert.Equal("F9", stored);
     }
 
     [Fact]
@@ -36,6 +35,6 @@ public class ShortcutCaptureControlTests
     {
         var stored = ShortcutCaptureControl.FormatCapturedKey(Key.P, KeyModifiers.Control | KeyModifiers.Shift, ShortcutCaptureMode.Chord);
 
-        stored.Should().Be("Ctrl+Shift+P");
+        Assert.Equal("Ctrl+Shift+P", stored);
     }
 }

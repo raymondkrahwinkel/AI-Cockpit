@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -30,8 +29,8 @@ public class SkiaRedactionTests
             for (var x = 32; x < 96; x++)
             {
                 var pixel = image.GetPixel(x, y);
-                pixel.Should().NotBe(SKColors.Black, $"({x},{y}) still carries an original pixel");
-                pixel.Should().NotBe(SKColors.White, $"({x},{y}) still carries an original pixel");
+                Assert.NotEqual(SKColors.Black, pixel);
+                Assert.NotEqual(SKColors.White, pixel);
             }
         }
     }
@@ -46,8 +45,8 @@ public class SkiaRedactionTests
 
         using var original = SKBitmap.Decode(png);
         using var image = SKBitmap.Decode(redacted);
-        image.GetPixel(10, 10).Should().Be(original.GetPixel(10, 10));
-        image.GetPixel(120, 120).Should().Be(original.GetPixel(120, 120));
+        Assert.Equal(original.GetPixel(10, 10), image.GetPixel(10, 10));
+        Assert.Equal(original.GetPixel(120, 120), image.GetPixel(120, 120));
     }
 
     /// <summary>Several boxes, several secrets. Each is obscured on its own rather than only the first.</summary>
@@ -61,8 +60,10 @@ public class SkiaRedactionTests
             [new RedactionMark(new CaptureRect(0, 0, 32, 32)), new RedactionMark(new CaptureRect(96, 96, 32, 32))]);
 
         using var image = SKBitmap.Decode(redacted);
-        image.GetPixel(5, 5).Should().NotBe(SKColors.Black).And.NotBe(SKColors.White);
-        image.GetPixel(120, 120).Should().NotBe(SKColors.Black).And.NotBe(SKColors.White);
+        Assert.NotEqual(SKColors.Black, image.GetPixel(5, 5));
+        Assert.NotEqual(SKColors.White, image.GetPixel(5, 5));
+        Assert.NotEqual(SKColors.Black, image.GetPixel(120, 120));
+        Assert.NotEqual(SKColors.White, image.GetPixel(120, 120));
     }
 
     /// <summary>
@@ -78,8 +79,8 @@ public class SkiaRedactionTests
         var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(0, 0, 64, 64))]);
 
         using var image = SKBitmap.Decode(redacted);
-        image.GetPixel(0, 0).Should().Be(image.GetPixel(1, 0));
-        image.GetPixel(0, 0).Should().Be(image.GetPixel(0, 1));
+        Assert.Equal(image.GetPixel(1, 0), image.GetPixel(0, 0));
+        Assert.Equal(image.GetPixel(0, 1), image.GetPixel(0, 0));
     }
 
     /// <summary>Nothing asked for, nothing changed — and no re-encode, which would cost a copy for no reason.</summary>
@@ -88,7 +89,7 @@ public class SkiaRedactionTests
     {
         var png = _Checkerboard(32, 32);
 
-        new SkiaScreenshotImageEditor().Burn(png, []).Should().BeSameAs(png);
+        Assert.Same(png, new SkiaScreenshotImageEditor().Burn(png, []));
     }
 
     /// <summary>A box running off the edge is clamped rather than throwing: the surface can be dragged past the image, and losing the whole redaction over it is the dangerous way to fail.</summary>
@@ -100,7 +101,8 @@ public class SkiaRedactionTests
         var redacted = new SkiaScreenshotImageEditor().Burn(png, [new RedactionMark(new CaptureRect(32, 32, 100, 100))]);
 
         using var image = SKBitmap.Decode(redacted);
-        image.GetPixel(50, 50).Should().NotBe(SKColors.Black).And.NotBe(SKColors.White);
+        Assert.NotEqual(SKColors.Black, image.GetPixel(50, 50));
+        Assert.NotEqual(SKColors.White, image.GetPixel(50, 50));
     }
 
     private static byte[] _Checkerboard(int width, int height)

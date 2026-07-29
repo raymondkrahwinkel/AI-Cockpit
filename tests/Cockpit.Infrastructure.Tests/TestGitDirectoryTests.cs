@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Cockpit.TestSupport;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests;
 
@@ -29,7 +28,7 @@ public sealed class TestGitDirectoryTests
 
         TestGitDirectory.Remove(root);
 
-        Directory.Exists(root).Should().BeFalse("the tree is gone, not merely attempted");
+        Assert.False(Directory.Exists(root), "the tree is gone, not merely attempted");
     }
 
     /// <summary>A fixture whose temp root was never created still calls this, so it has to be a no-op rather than a throw.</summary>
@@ -40,7 +39,7 @@ public sealed class TestGitDirectoryTests
 
         var act = () => TestGitDirectory.Remove(never);
 
-        act.Should().NotThrow();
+        act();
     }
 
     private static void _Git(string workingDirectory, params string[] arguments)

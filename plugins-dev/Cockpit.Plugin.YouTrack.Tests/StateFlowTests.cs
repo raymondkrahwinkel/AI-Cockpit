@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -22,8 +20,8 @@ public class StateFlowTests
     {
         var state = _Ordinary("In Progress");
 
-        StateFlow.Forward(state).Should().Be("Review (GIT)");
-        StateFlow.Back(state).Should().Be("Backlog");
+        Assert.Equal("Review (GIT)", StateFlow.Forward(state));
+        Assert.Equal("Backlog", StateFlow.Back(state));
     }
 
     [Fact]
@@ -31,8 +29,8 @@ public class StateFlowTests
     {
         var state = _Ordinary("Backlog");
 
-        StateFlow.Forward(state).Should().Be("In Progress");
-        StateFlow.Back(state).Should().BeNull();
+        Assert.Equal("In Progress", StateFlow.Forward(state));
+        Assert.Null(StateFlow.Back(state));
     }
 
     [Fact]
@@ -40,8 +38,8 @@ public class StateFlowTests
     {
         var state = _Ordinary("Released");
 
-        StateFlow.Forward(state).Should().BeNull();
-        StateFlow.Back(state).Should().Be("Staging");
+        Assert.Null(StateFlow.Forward(state));
+        Assert.Equal("Staging", StateFlow.Back(state));
     }
 
     [Fact]
@@ -50,7 +48,7 @@ public class StateFlowTests
         // A menu that hid the jumps would be lying about what the operator can do. They are one level down, not gone.
         var state = _Ordinary("In Progress");
 
-        StateFlow.Elsewhere(state).Should().BeEquivalentTo(["Development", "Staging", "Released"]);
+        Assert.Equivalent(new object[] { "Development", "Staging", "Released" }, StateFlow.Elsewhere(state));
     }
 
     [Fact]
@@ -66,9 +64,9 @@ public class StateFlowTests
             [],
             [new YouTrackStateEvent("e1", "Fixed"), new YouTrackStateEvent("e2", "Reopen")]);
 
-        StateFlow.Forward(state).Should().BeNull();
-        StateFlow.Back(state).Should().BeNull();
-        StateFlow.Elsewhere(state).Should().BeEquivalentTo(["Fixed", "Reopen"], "its events are the moves it allows");
+        Assert.Null(StateFlow.Forward(state));
+        Assert.Null(StateFlow.Back(state));
+        Assert.Equivalent(new object[] { "Fixed", "Reopen" }, StateFlow.Elsewhere(state));
     }
 
     [Fact]
@@ -76,8 +74,8 @@ public class StateFlowTests
     {
         var state = _Ordinary("Somewhere else entirely");
 
-        StateFlow.Forward(state).Should().BeNull();
-        StateFlow.Back(state).Should().BeNull();
+        Assert.Null(StateFlow.Forward(state));
+        Assert.Null(StateFlow.Back(state));
     }
 
     private static YouTrackStateField _Ordinary(string current) =>

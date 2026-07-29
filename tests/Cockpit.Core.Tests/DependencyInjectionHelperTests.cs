@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Tests.TestDoubles;
 
@@ -17,9 +16,9 @@ public class DependencyInjectionHelperTests
         var byInterface = provider.GetService<IGreeter>();
         var bySelf = provider.GetService<SingletonGreeter>();
 
-        byInterface.Should().NotBeNull();
-        byInterface.Should().BeOfType<SingletonGreeter>();
-        bySelf.Should().NotBeNull();
+        Assert.NotNull(byInterface);
+        Assert.IsType<SingletonGreeter>(byInterface);
+        Assert.NotNull(bySelf);
     }
 
     [Fact]
@@ -36,6 +35,6 @@ public class DependencyInjectionHelperTests
         var instanceA = scopeA.ServiceProvider.GetRequiredService<IGreeter>();
         var instanceB = scopeB.ServiceProvider.GetRequiredService<IGreeter>();
 
-        instanceA.Should().BeSameAs(instanceB);
+        Assert.Same(instanceA, instanceB);
     }
 }

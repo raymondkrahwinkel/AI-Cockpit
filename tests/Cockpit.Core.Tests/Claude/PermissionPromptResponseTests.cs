@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -19,9 +18,9 @@ public class PermissionPromptResponseTests
         var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(), proposed);
 
         using var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("behavior").GetString().Should().Be("allow");
-        doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString().Should().Be("a.txt");
-        doc.RootElement.GetProperty("updatedInput").GetProperty("content").GetString().Should().Be("hi");
+        Assert.Equal("allow", doc.RootElement.GetProperty("behavior").GetString());
+        Assert.Equal("a.txt", doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString());
+        Assert.Equal("hi", doc.RootElement.GetProperty("updatedInput").GetProperty("content").GetString());
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class PermissionPromptResponseTests
         var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(rewritten), proposed);
 
         using var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString().Should().Be("safe.txt");
+        Assert.Equal("safe.txt", doc.RootElement.GetProperty("updatedInput").GetProperty("file_path").GetString());
     }
 
     [Fact]
@@ -42,9 +41,9 @@ public class PermissionPromptResponseTests
         var json = PermissionPromptResponse.Serialize(PermissionDecision.Deny("nope"), proposedInputJson: "{}");
 
         using var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("behavior").GetString().Should().Be("deny");
-        doc.RootElement.GetProperty("message").GetString().Should().Be("nope");
-        doc.RootElement.TryGetProperty("updatedInput", out _).Should().BeFalse();
+        Assert.Equal("deny", doc.RootElement.GetProperty("behavior").GetString());
+        Assert.Equal("nope", doc.RootElement.GetProperty("message").GetString());
+        Assert.False(doc.RootElement.TryGetProperty("updatedInput", out _));
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class PermissionPromptResponseTests
         var json = PermissionPromptResponse.Serialize(PermissionDecision.Allow(), proposedInputJson: "not json");
 
         using var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("behavior").GetString().Should().Be("allow");
-        doc.RootElement.GetProperty("updatedInput").ValueKind.Should().Be(JsonValueKind.Object);
-        doc.RootElement.GetProperty("updatedInput").EnumerateObject().Should().BeEmpty();
+        Assert.Equal("allow", doc.RootElement.GetProperty("behavior").GetString());
+        Assert.Equal(JsonValueKind.Object, doc.RootElement.GetProperty("updatedInput").ValueKind);
+        Assert.Empty(doc.RootElement.GetProperty("updatedInput").EnumerateObject());
     }
 }

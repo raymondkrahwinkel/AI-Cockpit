@@ -1,5 +1,4 @@
 using Cockpit.Core.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Workspaces;
 
@@ -15,11 +14,11 @@ public class WorkspaceSettingsTests
     {
         var settings = WorkspaceSettings.Default;
 
-        settings.Workspaces.Should().HaveCount(2);
-        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Sessions);
-        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Projects);
-        settings.Active.Should().NotBeNull();
-        settings.Active!.Type.Should().Be(WorkspaceType.Sessions, "the cockpit still opens on the grid, not the overview");
+        Assert.Equal(2, System.Linq.Enumerable.Count(settings.Workspaces));
+        Assert.Single(settings.Workspaces, workspace => workspace.Type == WorkspaceType.Sessions);
+        Assert.Single(settings.Workspaces, workspace => workspace.Type == WorkspaceType.Projects);
+        Assert.NotNull(settings.Active);
+        Assert.Equal(WorkspaceType.Sessions, settings.Active!.Type);
     }
 
     [Fact]
@@ -28,13 +27,13 @@ public class WorkspaceSettingsTests
         var first = Workspace.Create("A", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [first], ActiveWorkspaceId = "gone" };
 
-        settings.Active.Should().Be(first);
+        Assert.Equal(first, settings.Active);
     }
 
     [Fact]
     public void Normalized_NoWorkspaces_YieldsTheDefaultRatherThanAnEmptyCockpit()
     {
-        new WorkspaceSettings().Normalized().Workspaces.Should().HaveCount(2, "the default is a Sessions workspace plus the fixed overview");
+        Assert.Equal(2, System.Linq.Enumerable.Count(new WorkspaceSettings().Normalized().Workspaces));
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class WorkspaceSettingsTests
         var first = Workspace.Create("A", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [first], ActiveWorkspaceId = "gone" };
 
-        settings.Normalized().ActiveWorkspaceId.Should().Be(first.Id);
+        Assert.Equal(first.Id, settings.Normalized().ActiveWorkspaceId);
     }
 
     [Fact]
@@ -54,8 +53,8 @@ public class WorkspaceSettingsTests
 
         var layout = settings.Normalized().Workspaces[0].Layout;
 
-        layout.Columns.Should().Be(DashboardLayout.MinColumns);
-        layout.Rows.Should().Be(DashboardLayout.MaxRows);
+        Assert.Equal(DashboardLayout.MinColumns, layout.Columns);
+        Assert.Equal(DashboardLayout.MaxRows, layout.Rows);
     }
 
     [Fact]
@@ -65,8 +64,8 @@ public class WorkspaceSettingsTests
 
         var settings = WorkspaceSettings.Default.WithWorkspace(added);
 
-        settings.Workspaces.Should().HaveCount(3, "the default's Sessions workspace and its fixed overview, plus the one just added");
-        settings.ActiveWorkspaceId.Should().Be(added.Id);
+        Assert.Equal(3, System.Linq.Enumerable.Count(settings.Workspaces));
+        Assert.Equal(added.Id, settings.ActiveWorkspaceId);
     }
 
     [Fact]
@@ -74,7 +73,7 @@ public class WorkspaceSettingsTests
     {
         var settings = WorkspaceSettings.Default.WithWorkspace(Workspace.Create("Projects", WorkspaceType.Projects));
 
-        settings.Should().BeSameAs(WorkspaceSettings.Default);
+        Assert.Same(WorkspaceSettings.Default, settings);
     }
 
     [Fact]
@@ -83,7 +82,7 @@ public class WorkspaceSettingsTests
         var (a, b, c) = (Workspace.Create("A", WorkspaceType.Sessions), Workspace.Create("B", WorkspaceType.Sessions), Workspace.Create("C", WorkspaceType.Sessions));
         var settings = new WorkspaceSettings { Workspaces = [a, b, c], ActiveWorkspaceId = b.Id };
 
-        settings.WithoutWorkspace(b.Id).ActiveWorkspaceId.Should().Be(c.Id);
+        Assert.Equal(c.Id, settings.WithoutWorkspace(b.Id).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -92,7 +91,7 @@ public class WorkspaceSettingsTests
         var (a, b) = (Workspace.Create("A", WorkspaceType.Sessions), Workspace.Create("B", WorkspaceType.Sessions));
         var settings = new WorkspaceSettings { Workspaces = [a, b], ActiveWorkspaceId = b.Id };
 
-        settings.WithoutWorkspace(b.Id).ActiveWorkspaceId.Should().Be(a.Id);
+        Assert.Equal(a.Id, settings.WithoutWorkspace(b.Id).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -101,7 +100,7 @@ public class WorkspaceSettingsTests
         var only = Workspace.Create("A", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [only], ActiveWorkspaceId = only.Id };
 
-        settings.WithoutWorkspace(only.Id).Should().BeSameAs(settings);
+        Assert.Same(settings, settings.WithoutWorkspace(only.Id));
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public class WorkspaceSettingsTests
         var settings = WorkspaceSettings.Default;
         var overview = settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects);
 
-        settings.WithoutWorkspace(overview.Id).Should().BeSameAs(settings);
+        Assert.Same(settings, settings.WithoutWorkspace(overview.Id));
     }
 
     [Fact]
@@ -121,7 +120,7 @@ public class WorkspaceSettingsTests
         var (a, b) = (Workspace.Create("A", WorkspaceType.Sessions), Workspace.Create("B", WorkspaceType.Sessions));
         var settings = new WorkspaceSettings { Workspaces = [a, b], ActiveWorkspaceId = a.Id };
 
-        settings.WithoutWorkspace(b.Id).ActiveWorkspaceId.Should().Be(a.Id);
+        Assert.Equal(a.Id, settings.WithoutWorkspace(b.Id).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -130,7 +129,7 @@ public class WorkspaceSettingsTests
         var (a, b) = (Workspace.Create("A", WorkspaceType.Sessions), Workspace.Create("B", WorkspaceType.Sessions));
         var settings = new WorkspaceSettings { Workspaces = [a, b], ActiveWorkspaceId = b.Id };
 
-        settings.WithSteppedActive(1).ActiveWorkspaceId.Should().Be(a.Id);
+        Assert.Equal(a.Id, settings.WithSteppedActive(1).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -139,7 +138,7 @@ public class WorkspaceSettingsTests
         var (a, b) = (Workspace.Create("A", WorkspaceType.Sessions), Workspace.Create("B", WorkspaceType.Sessions));
         var settings = new WorkspaceSettings { Workspaces = [a, b], ActiveWorkspaceId = a.Id };
 
-        settings.WithSteppedActive(-1).ActiveWorkspaceId.Should().Be(b.Id);
+        Assert.Equal(b.Id, settings.WithSteppedActive(-1).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -148,7 +147,7 @@ public class WorkspaceSettingsTests
         var only = Workspace.Create("A", WorkspaceType.Sessions);
         var settings = new WorkspaceSettings { Workspaces = [only], ActiveWorkspaceId = only.Id };
 
-        settings.WithSteppedActive(1).ActiveWorkspaceId.Should().Be(settings.ActiveWorkspaceId);
+        Assert.Equal(settings.ActiveWorkspaceId, settings.WithSteppedActive(1).ActiveWorkspaceId);
     }
 
     [Fact]
@@ -156,7 +155,7 @@ public class WorkspaceSettingsTests
     {
         var settings = WorkspaceSettings.Default;
 
-        settings.WithActive("gone").ActiveWorkspaceId.Should().Be(settings.ActiveWorkspaceId);
+        Assert.Equal(settings.ActiveWorkspaceId, settings.WithActive("gone").ActiveWorkspaceId);
     }
 
     [Fact]
@@ -171,7 +170,7 @@ public class WorkspaceSettingsTests
 
         var normalized = settings.Normalized();
 
-        normalized.Workspaces.Count(workspace => workspace.Type == WorkspaceType.Projects).Should().Be(1);
-        normalized.Active!.Type.Should().Be(WorkspaceType.Projects);
+        Assert.Equal(1, normalized.Workspaces.Count(workspace => workspace.Type == WorkspaceType.Projects));
+        Assert.Equal(WorkspaceType.Projects, normalized.Active!.Type);
     }
 }

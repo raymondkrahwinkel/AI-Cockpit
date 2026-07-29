@@ -8,7 +8,6 @@ using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -30,16 +29,16 @@ public class DelegationCallerScopingTests
             callerPaneId: "owner-pane");
 
         // The owner reaches its own task.
-        service.GetTask(task.TaskId, "owner-pane").Should().NotBeNull();
-        service.ListTasks(callerPaneId: "owner-pane").Should().ContainSingle(view => view.TaskId == task.TaskId);
+        Assert.NotNull(service.GetTask(task.TaskId, "owner-pane"));
+        Assert.Contains(service.ListTasks(callerPaneId: "owner-pane"), view => view.TaskId == task.TaskId);
 
         // An attacker naming the id gets nothing — not the task, not its existence, and cannot stop it.
-        service.GetTask(task.TaskId, "attacker-pane").Should().BeNull();
-        service.ListTasks(callerPaneId: "attacker-pane").Should().BeEmpty();
-        (await service.StopAsync(task.TaskId, "attacker-pane")).Should().BeNull();
+        Assert.Null(service.GetTask(task.TaskId, "attacker-pane"));
+        Assert.Empty(service.ListTasks(callerPaneId: "attacker-pane"));
+        Assert.Null(await service.StopAsync(task.TaskId, "attacker-pane"));
 
         // The operator/UI (a null caller) is unscoped and still sees it.
-        service.GetTask(task.TaskId).Should().NotBeNull();
+        Assert.NotNull(service.GetTask(task.TaskId));
     }
 
     [Fact]
@@ -99,12 +98,12 @@ public class DelegationCallerScopingTests
         // Into its own session's directory: allowed.
         var mine = await service.DelegateAsync(
             new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/mine"), callerPaneId: "caller-pane");
-        mine.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, mine.Status);
 
         // Into another open session's directory: refused — the old union allowed this, AC-128 scopes to the caller.
         var intoAnothers = async () => await service.DelegateAsync(
             new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/other"), callerPaneId: "caller-pane");
-        await intoAnothers.Should().ThrowAsync<DelegationRejectedException>();
+        await Assert.ThrowsAsync<DelegationRejectedException>(intoAnothers);
     }
 
     [Fact]
@@ -128,13 +127,13 @@ public class DelegationCallerScopingTests
         // A UI pane delegates T1 into /repo (resolved via the workspace provider).
         var t1 = await service.DelegateAsync(
             new DelegationRequest("qwen", "level 1", WorkingDirectory: "/repo"), callerPaneId: "parent-pane");
-        t1.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, t1.Status);
 
         // T1 is a headless delegated session (caller = its own task id, not a UI pane). It delegates further into the
         // same /repo it works in; the gate must fall back to the task's own working directory rather than refuse.
         var t2 = await service.DelegateAsync(
             new DelegationRequest("qwen", "level 2", WorkingDirectory: "/repo"), callerPaneId: t1.TaskId);
-        t2.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+        Assert.NotEqual(DelegatedTaskStatus.Failed, t2.Status);
     }
 
     private static SessionProfile _Target(string label) =>

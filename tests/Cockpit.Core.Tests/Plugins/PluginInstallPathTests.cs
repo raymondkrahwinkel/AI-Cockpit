@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -11,15 +10,15 @@ public class PluginInstallPathTests
     [Fact]
     public void TryResolveSafeEntryPath_RootLevelEntry_ResolvesUnderRoot()
     {
-        PluginInstallPath.TryResolveSafeEntryPath(Root, "plugin.json", out var resolved).Should().BeTrue();
-        resolved.Should().StartWith(Path.GetFullPath(Root));
+        Assert.True(PluginInstallPath.TryResolveSafeEntryPath(Root, "plugin.json", out var resolved));
+        Assert.StartsWith(Path.GetFullPath(Root), resolved);
     }
 
     [Fact]
     public void TryResolveSafeEntryPath_NestedEntry_ResolvesUnderRoot()
     {
-        PluginInstallPath.TryResolveSafeEntryPath(Root, "lib/dependency.dll", out var resolved).Should().BeTrue();
-        resolved.Should().StartWith(Path.GetFullPath(Root));
+        Assert.True(PluginInstallPath.TryResolveSafeEntryPath(Root, "lib/dependency.dll", out var resolved));
+        Assert.StartsWith(Path.GetFullPath(Root), resolved);
     }
 
     [Theory]
@@ -28,12 +27,12 @@ public class PluginInstallPathTests
     [InlineData("lib/../../escape.dll")]
     public void TryResolveSafeEntryPath_Traversal_Rejected(string entry)
     {
-        PluginInstallPath.TryResolveSafeEntryPath(Root, entry, out _).Should().BeFalse();
+        Assert.False(PluginInstallPath.TryResolveSafeEntryPath(Root, entry, out _));
     }
 
     [Fact]
     public void TryResolveSafeEntryPath_Empty_Rejected()
     {
-        PluginInstallPath.TryResolveSafeEntryPath(Root, "", out _).Should().BeFalse();
+        Assert.False(PluginInstallPath.TryResolveSafeEntryPath(Root, "", out _));
     }
 }

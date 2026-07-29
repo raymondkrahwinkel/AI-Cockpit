@@ -4,7 +4,6 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Infrastructure.Auditing;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Delegation;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Auditing;
@@ -51,9 +50,8 @@ public sealed class SharedAuditTrailsDoNotRotateTests : IDisposable
         foreach (var methodName in new[] { "RecordAsync", "ReadRecentAsync" })
         {
             var method = trailType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
-            method.Should().NotBeNull();
-            method!.DeclaringType.Should().Be(sharedBaseType,
-                $"{trailType.Name}.{methodName} must come from the shared, non-rotating base, not a rotation-adding override of its own");
+            Assert.NotNull(method);
+            Assert.Equal(sharedBaseType, method!.DeclaringType);
         }
     }
 
@@ -68,10 +66,9 @@ public sealed class SharedAuditTrailsDoNotRotateTests : IDisposable
             await log.RecordAsync(_ConsentEntry(i));
         }
 
-        File.Exists(_DotOneOf(path)).Should().BeFalse("the consent trail must stay append-only, unbounded, forever");
-        new FileInfo(path).Length.Should().BeGreaterThan(0);
-        (await log.ReadRecentAsync(limit: int.MaxValue)).Should().HaveCount(_WriteCount,
-            "every line the consent trail was given must still be there — nothing here may ever drop a record");
+        Assert.False(File.Exists(_DotOneOf(path)), "the consent trail must stay append-only, unbounded, forever");
+        Assert.True(new FileInfo(path).Length > 0);
+        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await log.ReadRecentAsync(limit: int.MaxValue)));
     }
 
     [Fact]
@@ -85,10 +82,9 @@ public sealed class SharedAuditTrailsDoNotRotateTests : IDisposable
             await log.RecordAsync(_DelegationEntry(i));
         }
 
-        File.Exists(_DotOneOf(path)).Should().BeFalse("the delegation trail must stay append-only, unbounded, forever");
-        new FileInfo(path).Length.Should().BeGreaterThan(0);
-        (await log.ReadRecentAsync(limit: int.MaxValue)).Should().HaveCount(_WriteCount,
-            "every line the delegation trail was given must still be there — nothing here may ever drop a record");
+        Assert.False(File.Exists(_DotOneOf(path)), "the delegation trail must stay append-only, unbounded, forever");
+        Assert.True(new FileInfo(path).Length > 0);
+        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await log.ReadRecentAsync(limit: int.MaxValue)));
     }
 
     // Both trails trim their one free-text field to 300 chars before writing (ActionText / Prompt), so this many

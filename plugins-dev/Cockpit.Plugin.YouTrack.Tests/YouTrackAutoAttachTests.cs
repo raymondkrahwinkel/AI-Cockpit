@@ -1,6 +1,5 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -18,7 +17,7 @@ public class YouTrackAutoAttachTests
     [InlineData("", false)]
     public void IsIssueCreateOrUpdate_MatchesOnlyYouTrackCreateOrUpdate(string toolName, bool expected)
     {
-        YouTrackToolActivity.IsIssueCreateOrUpdate(toolName).Should().Be(expected);
+        Assert.Equal(expected, YouTrackToolActivity.IsIssueCreateOrUpdate(toolName));
     }
 
     [Fact]
@@ -26,9 +25,9 @@ public class YouTrackAutoAttachTests
     {
         var target = YouTrackToolResultParser.TryParse("""{"issueId":"AC-9","url":"https://yt.example.com/youtrack/issue/AC-9"}""");
 
-        target.Should().NotBeNull();
-        target!.IssueId.Should().Be("AC-9");
-        target.Host.Should().Be("yt.example.com");
+        Assert.NotNull(target);
+        Assert.Equal("AC-9", target!.IssueId);
+        Assert.Equal("yt.example.com", target.Host);
     }
 
     [Fact]
@@ -36,9 +35,9 @@ public class YouTrackAutoAttachTests
     {
         var target = YouTrackToolResultParser.TryParse("""{"issueId":"AC-9","updatedFields":["Stage"]}""");
 
-        target.Should().NotBeNull();
-        target!.IssueId.Should().Be("AC-9");
-        target.Host.Should().BeNull();
+        Assert.NotNull(target);
+        Assert.Equal("AC-9", target!.IssueId);
+        Assert.Null(target.Host);
     }
 
     [Theory]
@@ -46,7 +45,7 @@ public class YouTrackAutoAttachTests
     [InlineData("""{"id":"3-22"}""", "3-22")]
     public void TryParse_FallsBackAcrossIdFieldNames(string json, string expectedId)
     {
-        YouTrackToolResultParser.TryParse(json)!.IssueId.Should().Be(expectedId);
+        Assert.Equal(expectedId, YouTrackToolResultParser.TryParse(json)!.IssueId);
     }
 
     [Theory]
@@ -55,7 +54,7 @@ public class YouTrackAutoAttachTests
     [InlineData("")]
     public void TryParse_ReturnsNullWhenThereIsNoIssue(string content)
     {
-        YouTrackToolResultParser.TryParse(content).Should().BeNull();
+        Assert.Null(YouTrackToolResultParser.TryParse(content));
     }
 
     [Fact]
@@ -65,9 +64,9 @@ public class YouTrackAutoAttachTests
         // a YouTrack issue URL, which gives both the id and the host.
         var target = YouTrackToolResultParser.TryParse("Created the issue: https://yt.example.com/youtrack/issue/AC-42 — done.");
 
-        target.Should().NotBeNull();
-        target!.IssueId.Should().Be("AC-42");
-        target.Host.Should().Be("yt.example.com");
+        Assert.NotNull(target);
+        Assert.Equal("AC-42", target!.IssueId);
+        Assert.Equal("yt.example.com", target.Host);
     }
 
     [Fact]
@@ -75,9 +74,9 @@ public class YouTrackAutoAttachTests
     {
         var target = YouTrackToolResultParser.TryParse("""["https://yt.example.com/issue/AC-7"]""");
 
-        target.Should().NotBeNull();
-        target!.IssueId.Should().Be("AC-7");
-        target.Host.Should().Be("yt.example.com");
+        Assert.NotNull(target);
+        Assert.Equal("AC-7", target!.IssueId);
+        Assert.Equal("yt.example.com", target.Host);
     }
 
     [Fact]
@@ -89,7 +88,7 @@ public class YouTrackAutoAttachTests
             new("B", "https://b.example.com/api", "t", ""),
         };
 
-        YouTrackInstanceResolver.Resolve(instances, "b.example.com")!.Label.Should().Be("B");
+        Assert.Equal("B", YouTrackInstanceResolver.Resolve(instances, "b.example.com")!.Label);
     }
 
     [Fact]
@@ -98,7 +97,7 @@ public class YouTrackAutoAttachTests
         var instances = new List<YouTrackInstance> { new("A", "https://a.example.com/api", "t", "") };
 
         // The issue names a different YouTrack than the one configured — attaching to A would be the wrong place.
-        YouTrackInstanceResolver.Resolve(instances, "other.example.com").Should().BeNull();
+        Assert.Null(YouTrackInstanceResolver.Resolve(instances, "other.example.com"));
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class YouTrackAutoAttachTests
     {
         var instances = new List<YouTrackInstance> { new("A", "https://a.example.com/api", "t", "") };
 
-        YouTrackInstanceResolver.Resolve(instances, host: null)!.Label.Should().Be("A");
+        Assert.Equal("A", YouTrackInstanceResolver.Resolve(instances, host: null)!.Label);
     }
 
     [Fact]
@@ -118,7 +117,7 @@ public class YouTrackAutoAttachTests
             new("B", "https://b.example.com/api", "t", ""),
         };
 
-        YouTrackInstanceResolver.Resolve(instances, host: null).Should().BeNull();
+        Assert.Null(YouTrackInstanceResolver.Resolve(instances, host: null));
     }
 
     [Fact]
@@ -131,13 +130,13 @@ public class YouTrackAutoAttachTests
         };
 
         // One real instance among blanks resolves as the sole configured one.
-        YouTrackInstanceResolver.Resolve(instances, host: null)!.Label.Should().Be("Real");
+        Assert.Equal("Real", YouTrackInstanceResolver.Resolve(instances, host: null)!.Label);
     }
 
     [Fact]
     public void AutoAttachImages_DefaultsOn()
     {
-        new YouTrackSettings(new InMemoryPluginStorage()).AutoAttachImages.Should().BeTrue();
+        Assert.True(new YouTrackSettings(new InMemoryPluginStorage()).AutoAttachImages);
     }
 
     [Fact]
@@ -145,7 +144,7 @@ public class YouTrackAutoAttachTests
     {
         var settings = new YouTrackSettings(new InMemoryPluginStorage()) { AutoAttachImages = false };
 
-        settings.AutoAttachImages.Should().BeFalse();
+        Assert.False(settings.AutoAttachImages);
     }
 
     // ── The attacher end-to-end, with the upload observed rather than performed ──
@@ -159,10 +158,10 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__create_issue", """{"issueId":"AC-9","url":"https://yt.example.com/x"}"""));
 
-        uploads.Should().ContainSingle();
-        uploads[0].Instance.Label.Should().Be("Personal");
-        uploads[0].IssueId.Should().Be("AC-9");
-        uploads[0].Images.Should().BeSameAs(images);
+        Assert.Single(uploads);
+        Assert.Equal("Personal", uploads[0].Instance.Label);
+        Assert.Equal("AC-9", uploads[0].IssueId);
+        Assert.Same(images, uploads[0].Images);
     }
 
     [Fact]
@@ -173,8 +172,8 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__update_issue", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().ContainSingle();
-        uploads[0].IssueId.Should().Be("AC-9");
+        Assert.Single(uploads);
+        Assert.Equal("AC-9", uploads[0].IssueId);
     }
 
     [Fact]
@@ -187,7 +186,7 @@ public class YouTrackAutoAttachTests
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__create_issue", """{"issueId":"AC-9"}"""));
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__update_issue", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().ContainSingle();
+        Assert.Single(uploads);
     }
 
     [Fact]
@@ -202,7 +201,7 @@ public class YouTrackAutoAttachTests
         host.Observer.ImagesByPane["pane-1"] = _Images();
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__update_issue", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(uploads));
     }
 
     [Fact]
@@ -213,7 +212,7 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__create_issue", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().BeEmpty();
+        Assert.Empty(uploads);
     }
 
     [Fact]
@@ -223,7 +222,7 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__create_issue", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().BeEmpty();
+        Assert.Empty(uploads);
     }
 
     [Fact]
@@ -234,7 +233,7 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "mcp__youtrack__create_issue", """{"issueId":"AC-9"}""", isError: true));
 
-        uploads.Should().BeEmpty();
+        Assert.Empty(uploads);
     }
 
     [Fact]
@@ -245,7 +244,7 @@ public class YouTrackAutoAttachTests
 
         await attacher.HandleAsync(_Activity("pane-1", "Bash", """{"issueId":"AC-9"}"""));
 
-        uploads.Should().BeEmpty();
+        Assert.Empty(uploads);
     }
 
     private static SessionToolActivity _Activity(string paneId, string toolName, string result, bool isError = false) =>

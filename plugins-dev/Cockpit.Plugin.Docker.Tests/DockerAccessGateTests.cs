@@ -1,7 +1,6 @@
 using Cockpit.Plugin.Docker.Security;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Docker.Tests;
@@ -25,12 +24,12 @@ public sealed class DockerAccessGateTests
 
         var result = await gate.AuthorizeConnectionAsync("list containers", Session);
 
-        result.IsAllowed.Should().BeTrue();
-        asked.Should().ContainSingle();
-        asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
-        asked[0].AllowRemember.Should().BeTrue();
-        asked[0].Scope.Should().Be("docker.connect:local");
-        asked[0].Source.PaneId.Should().Be(Session);
+        Assert.True(result.IsAllowed);
+        Assert.Single(asked);
+        Assert.Equal(ConsentRisk.LowRisk, asked[0].Risk);
+        Assert.True(asked[0].AllowRemember);
+        Assert.Equal("docker.connect:local", asked[0].Scope);
+        Assert.Equal(Session, asked[0].Source.PaneId);
     }
 
     [Fact]
@@ -40,12 +39,12 @@ public sealed class DockerAccessGateTests
 
         var result = await gate.AuthorizeMutationAsync("remove container \"web\"", Session);
 
-        result.IsAllowed.Should().BeTrue();
-        asked.Should().HaveCount(2);
-        asked[0].Risk.Should().Be(ConsentRisk.LowRisk, "connection is authorized first");
-        asked[1].Risk.Should().Be(ConsentRisk.Dangerous);
-        asked[1].AllowRemember.Should().BeFalse();
-        asked[1].Scope.Should().Be("docker.mutate:local");
+        Assert.True(result.IsAllowed);
+        Assert.Equal(2, System.Linq.Enumerable.Count(asked));
+        Assert.Equal(ConsentRisk.LowRisk, asked[0].Risk);
+        Assert.Equal(ConsentRisk.Dangerous, asked[1].Risk);
+        Assert.False(asked[1].AllowRemember);
+        Assert.Equal("docker.mutate:local", asked[1].Scope);
     }
 
     [Fact]
@@ -55,9 +54,9 @@ public sealed class DockerAccessGateTests
 
         var result = await gate.AuthorizeDangerAsync(DangerCapability.Exec, enabled: false, "exec in \"web\"", Session);
 
-        result.IsAllowed.Should().BeFalse();
-        result.DeniedReason.Should().Contain("settings");
-        asked.Should().BeEmpty("a capability that is off is a policy block — no prompt");
+        Assert.False(result.IsAllowed);
+        Assert.Contains("settings", result.DeniedReason);
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -67,11 +66,11 @@ public sealed class DockerAccessGateTests
 
         var result = await gate.AuthorizeDangerAsync(DangerCapability.Exec, enabled: true, "exec in \"web\": /bin/sh -c ls", Session);
 
-        result.IsAllowed.Should().BeTrue();
-        asked.Should().HaveCount(2);
-        asked[1].Risk.Should().Be(ConsentRisk.Dangerous);
-        asked[1].AllowRemember.Should().BeFalse();
-        asked[1].Scope.Should().Be("docker.exec:local");
+        Assert.True(result.IsAllowed);
+        Assert.Equal(2, System.Linq.Enumerable.Count(asked));
+        Assert.Equal(ConsentRisk.Dangerous, asked[1].Risk);
+        Assert.False(asked[1].AllowRemember);
+        Assert.Equal("docker.exec:local", asked[1].Scope);
     }
 
     [Fact]
@@ -83,8 +82,8 @@ public sealed class DockerAccessGateTests
 
         // Newlines are escaped VISIBLY (as the two literal chars \n) so the operator sees the command is multi-line —
         // an agent cannot disguise a second line as commented-out — while the consent body stays one physical line.
-        asked[1].Action.Should().Be("remove\\ncontainer\\n\"web\"");
-        asked[1].Action.Should().NotContain("\n");
+        Assert.Equal("remove\\ncontainer\\n\"web\"", asked[1].Action);
+        Assert.DoesNotContain("\n", asked[1].Action);
     }
 
     [Fact]
@@ -97,7 +96,10 @@ public sealed class DockerAccessGateTests
         // A raw ANSI escape (a non-whitespace control char) must not survive into the consent body.
         await gate.AuthorizeMutationAsync($"stop {escape}[2Jcontainer", Session);
 
-        asked[1].Action.Should().NotContain(escape);
+        // Ordinal is required here: the default culture-aware string.Contains treats a control
+        // character as a zero-weight collation element, so it "matches" trivially at every
+        // position — FluentAssertions' string assertions are ordinal by default, xunit's are not.
+        Assert.DoesNotContain(escape, asked[1].Action, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -107,7 +109,7 @@ public sealed class DockerAccessGateTests
 
         var result = await gate.AuthorizeConnectionAsync("list containers", Session);
 
-        result.IsAllowed.Should().BeFalse();
-        result.DeniedReason.Should().Contain("did not approve");
+        Assert.False(result.IsAllowed);
+        Assert.Contains("did not approve", result.DeniedReason);
     }
 }

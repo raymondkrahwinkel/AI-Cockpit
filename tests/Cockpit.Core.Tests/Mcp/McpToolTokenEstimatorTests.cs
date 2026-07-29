@@ -1,6 +1,5 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -20,11 +19,11 @@ public class McpToolTokenEstimatorTests
     [InlineData(9)]
     public void EstimateTokens_CountsCharactersAtTheRatio_RoundingUp(int _)
     {
-        McpToolTokenMath.EstimateTokens([]).Should().Be(0);
-        McpToolTokenMath.EstimateTokens([""]).Should().Be(0);
-        McpToolTokenMath.EstimateTokens(["abcd"]).Should().Be(1);          // 4 / 4
-        McpToolTokenMath.EstimateTokens(["abcde"]).Should().Be(2);         // 5 / 4 → ceil
-        McpToolTokenMath.EstimateTokens(["abcd", "abcd"]).Should().Be(2);  // 8 / 4
+        Assert.Equal(0, McpToolTokenMath.EstimateTokens([]));
+        Assert.Equal(0, McpToolTokenMath.EstimateTokens([""]));
+        Assert.Equal(1, McpToolTokenMath.EstimateTokens(["abcd"]));          // 4 / 4
+        Assert.Equal(2, McpToolTokenMath.EstimateTokens(["abcde"]));         // 5 / 4 → ceil
+        Assert.Equal(2, McpToolTokenMath.EstimateTokens(["abcd", "abcd"])); // 8 / 4
     }
 
     [Fact]
@@ -35,10 +34,10 @@ public class McpToolTokenEstimatorTests
 
         var estimate = await estimator.EstimateAsync("youtrack");
 
-        estimate.Available.Should().BeTrue();
-        estimate.ServerName.Should().Be("youtrack");
-        estimate.ToolCount.Should().Be(2);
-        estimate.EstimatedTokens.Should().BeGreaterThan(0);
+        Assert.True(estimate.Available);
+        Assert.Equal("youtrack", estimate.ServerName);
+        Assert.Equal(2, estimate.ToolCount);
+        Assert.True(estimate.EstimatedTokens > 0);
     }
 
     [Fact]
@@ -82,9 +81,9 @@ public class McpToolTokenEstimatorTests
 
         var estimate = await estimator.EstimateAsync("needs-auth");
 
-        estimate.Available.Should().BeFalse();
-        estimate.ToolCount.Should().Be(0);
-        estimate.EstimatedTokens.Should().Be(0);
+        Assert.False(estimate.Available);
+        Assert.Equal(0, estimate.ToolCount);
+        Assert.Equal(0, estimate.EstimatedTokens);
     }
 
     [Fact]
@@ -97,7 +96,7 @@ public class McpToolTokenEstimatorTests
 
         var estimate = await estimator.EstimateAsync("broken");
 
-        estimate.Available.Should().BeFalse();
+        Assert.False(estimate.Available);
     }
 
     private static IMcpToolProvider _ProviderReturning(string serverName, params AIFunction[] tools)

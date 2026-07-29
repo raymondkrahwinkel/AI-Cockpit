@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Infrastructure.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Terminal;
 
@@ -22,8 +21,8 @@ public class TerminalAccessRegistryTests
         registry.CaptureOutput("pane-1", "hello from after the coupling\n");
 
         var read = registry.ReadCoupled("session-a", "pane-1")!.Text;
-        read.Should().Be("hello from after the coupling\n");
-        read.Should().NotContain("SECRET");
+        Assert.Equal("hello from after the coupling\n", read);
+        Assert.DoesNotContain("SECRET", read);
     }
 
     [Fact]
@@ -33,10 +32,10 @@ public class TerminalAccessRegistryTests
         registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
 
-        registry.IsCoupledByAnother("session-b", "pane-1").Should().BeTrue();
-        registry.CouplingOf("session-b", "pane-1").Should().BeNull();
+        Assert.True(registry.IsCoupledByAnother("session-b", "pane-1"));
+        Assert.Null(registry.CouplingOf("session-b", "pane-1"));
         var act = () => registry.Couple("session-b", "pane-1", TerminalCouplingMode.Drive);
-        act.Should().Throw<InvalidOperationException>();
+        Assert.Throws<InvalidOperationException>(act);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class TerminalAccessRegistryTests
 
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive); // re-couple must not reset the buffer
 
-        registry.ReadCoupled("session-a", "pane-1")!.Text.Should().Be("line one\n");
+        Assert.Equal("line one\n", registry.ReadCoupled("session-a", "pane-1")!.Text);
     }
 
     [Fact]
@@ -61,8 +60,8 @@ public class TerminalAccessRegistryTests
 
         registry.PaneClosed("pane-1");
 
-        registry.IsCoupled("pane-1").Should().BeFalse();
-        registry.ReadCoupled("session-a", "pane-1").Should().BeNull();
+        Assert.False(registry.IsCoupled("pane-1"));
+        Assert.Null(registry.ReadCoupled("session-a", "pane-1"));
     }
 
     [Fact]
@@ -76,8 +75,8 @@ public class TerminalAccessRegistryTests
 
         registry.SessionEnded("session-a");
 
-        registry.IsCoupled("pane-1").Should().BeFalse();
-        registry.IsCoupled("pane-2").Should().BeFalse();
+        Assert.False(registry.IsCoupled("pane-1"));
+        Assert.False(registry.IsCoupled("pane-2"));
     }
 
     [Fact]
@@ -86,9 +85,9 @@ public class TerminalAccessRegistryTests
         var registry = new TerminalAccessRegistry();
         registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
 
-        registry.Resolve("pane-1")!.Name.Should().Be("zsh-5");
-        registry.Resolve("zsh-5")!.PaneId.Should().Be("pane-1");
-        registry.Resolve("nope").Should().BeNull();
+        Assert.Equal("zsh-5", registry.Resolve("pane-1")!.Name);
+        Assert.Equal("pane-1", registry.Resolve("zsh-5")!.PaneId);
+        Assert.Null(registry.Resolve("nope"));
     }
 
     [Fact]
@@ -98,7 +97,7 @@ public class TerminalAccessRegistryTests
         registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.PaneOpened("pane-2", "work-6", plainShell: false); // another agent's session
 
-        registry.ListPanes("session-a").Select(pane => pane.Name).Should().Equal("zsh-5");
+        Assert.Equal(new[] { "zsh-5" }, registry.ListPanes("session-a").Select(pane => pane.Name));
     }
 
     [Fact]
@@ -109,8 +108,8 @@ public class TerminalAccessRegistryTests
         var registry = new TerminalAccessRegistry();
         registry.PaneOpened("pane-2", "work-6", plainShell: false);
 
-        registry.Resolve("pane-2").Should().BeNull();
-        registry.Resolve("work-6").Should().BeNull();
+        Assert.Null(registry.Resolve("pane-2"));
+        Assert.Null(registry.Resolve("work-6"));
     }
 
     [Fact]
@@ -122,12 +121,12 @@ public class TerminalAccessRegistryTests
         registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Watch);
 
-        registry.SendInput("session-a", "pane-1", "rm -rf /\r"u8.ToArray()).Should().BeFalse();
-        written.Should().BeEmpty();
+        Assert.False(registry.SendInput("session-a", "pane-1", "rm -rf /\r"u8.ToArray()));
+        Assert.Empty(written);
 
         // Reading is what it was granted, and it still works.
         registry.CaptureOutput("pane-1", "build finished\n");
-        registry.ReadCoupled("session-a", "pane-1")!.Text.Should().Be("build finished\n");
+        Assert.Equal("build finished\n", registry.ReadCoupled("session-a", "pane-1")!.Text);
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public class TerminalAccessRegistryTests
         var mark = registry.ShellStateOf("session-a", "pane-1")!.CapturedSoFar;
         registry.CaptureOutput("pane-1", "the output I asked for\n");
 
-        registry.ReadCoupled("session-a", "pane-1", mark)!.Text.Should().Be("the output I asked for\n");
+        Assert.Equal("the output I asked for\n", registry.ReadCoupled("session-a", "pane-1", mark)!.Text);
     }
 
     [Fact]
@@ -161,10 +160,10 @@ public class TerminalAccessRegistryTests
 
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
 
-        registry.CouplingOf("session-a", "pane-1").Should().Be(TerminalCouplingMode.Drive);
-        registry.ReadCoupled("session-a", "pane-1")!.Text.Should().Be("read while watching\n", "widening must not cost the agent what it was already reading");
-        registry.SendInput("session-a", "pane-1", "ls\r"u8.ToArray()).Should().BeTrue();
-        changes.Select(change => change.Coupling).Should().Equal(TerminalCouplingMode.Watch, TerminalCouplingMode.Drive);
+        Assert.Equal(TerminalCouplingMode.Drive, registry.CouplingOf("session-a", "pane-1"));
+        Assert.Equal("read while watching\n", registry.ReadCoupled("session-a", "pane-1")!.Text);
+        Assert.True(registry.SendInput("session-a", "pane-1", "ls\r"u8.ToArray()));
+        Assert.Equal(new TerminalCouplingMode?[] { TerminalCouplingMode.Watch, TerminalCouplingMode.Drive }, changes.Select(change => change.Coupling));
     }
 
     [Fact]
@@ -179,8 +178,8 @@ public class TerminalAccessRegistryTests
 
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Watch);
 
-        registry.CouplingOf("session-a", "pane-1").Should().Be(TerminalCouplingMode.Drive);
-        changes.Should().BeEmpty("nothing changed, so the pane has nothing to redraw");
+        Assert.Equal(TerminalCouplingMode.Drive, registry.CouplingOf("session-a", "pane-1"));
+        Assert.Empty(changes);
     }
 
     [Fact]
@@ -194,8 +193,8 @@ public class TerminalAccessRegistryTests
 
         registry.Disconnect("pane-1");
 
-        written.Should().BeEmpty("a watching agent never typed, so there is nothing of its doing to interrupt");
-        registry.IsCoupled("pane-1").Should().BeFalse();
+        Assert.Empty(written);
+        Assert.False(registry.IsCoupled("pane-1"));
     }
 
     [Fact]
@@ -207,13 +206,13 @@ public class TerminalAccessRegistryTests
         registry.PaneOpened("pane-2", "work-6", plainShell: false);
 
         var agentPane = () => registry.Couple("session-a", "pane-2", TerminalCouplingMode.Drive);
-        agentPane.Should().Throw<InvalidOperationException>();
+        Assert.Throws<InvalidOperationException>(agentPane);
 
         var unknownPane = () => registry.Couple("session-a", "never-registered", TerminalCouplingMode.Drive);
-        unknownPane.Should().Throw<InvalidOperationException>();
+        Assert.Throws<InvalidOperationException>(unknownPane);
 
-        registry.ReadCoupled("session-a", "pane-2").Should().BeNull();
-        registry.SendInput("session-a", "pane-2", new byte[] { 1 }).Should().BeFalse();
+        Assert.Null(registry.ReadCoupled("session-a", "pane-2"));
+        Assert.False(registry.SendInput("session-a", "pane-2", new byte[] { 1 }));
     }
 
     [Fact]
@@ -224,7 +223,7 @@ public class TerminalAccessRegistryTests
         registry.PaneOpened("pane-2", "work-6", plainShell: false);
         registry.PaneOpened("pane-3", "work-6", plainShell: true);
 
-        registry.Resolve("work-6")!.PaneId.Should().Be("pane-3");
+        Assert.Equal("pane-3", registry.Resolve("work-6")!.PaneId);
     }
 
     [Fact]
@@ -236,15 +235,15 @@ public class TerminalAccessRegistryTests
         registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
 
         // Not coupled yet: a send must not reach the pty.
-        registry.SendInput("session-a", "pane-1", new byte[] { 1 }).Should().BeFalse();
-        written.Should().BeEmpty();
+        Assert.False(registry.SendInput("session-a", "pane-1", new byte[] { 1 }));
+        Assert.Empty(written);
 
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
-        registry.SendInput("session-a", "pane-1", "ls\r"u8.ToArray()).Should().BeTrue();
-        registry.SendInput("session-b", "pane-1", new byte[] { 9 }).Should().BeFalse("only the coupled session can type");
+        Assert.True(registry.SendInput("session-a", "pane-1", "ls\r"u8.ToArray()));
+        Assert.False(registry.SendInput("session-b", "pane-1", new byte[] { 9 }), "only the coupled session can type");
 
-        written.Should().ContainSingle();
-        System.Text.Encoding.UTF8.GetString(written[0]).Should().Be("ls\r");
+        Assert.Single(written);
+        Assert.Equal("ls\r", System.Text.Encoding.UTF8.GetString(written[0]));
     }
 
     [Fact]
@@ -260,12 +259,12 @@ public class TerminalAccessRegistryTests
 
         registry.Disconnect("pane-1");
 
-        written.Should().ContainSingle("a Ctrl-C interrupts a running command");
-        written[0].Should().Equal(new byte[] { 0x03 });
-        registry.IsCoupled("pane-1").Should().BeFalse();
-        changes.Should().HaveCount(2);
-        changes[0].Coupling.Should().Be(TerminalCouplingMode.Drive);
-        changes[1].Coupling.Should().BeNull();
+        Assert.Single(written);
+        Assert.Equal(new byte[] { 0x03 }, written[0]);
+        Assert.False(registry.IsCoupled("pane-1"));
+        Assert.Equal(2, System.Linq.Enumerable.Count(changes));
+        Assert.Equal(TerminalCouplingMode.Drive, changes[0].Coupling);
+        Assert.Null(changes[1].Coupling);
     }
 
     [Fact]
@@ -279,7 +278,7 @@ public class TerminalAccessRegistryTests
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
         registry.PaneClosed("pane-1");
 
-        changes.Select(change => change.Coupling).Should().Equal(TerminalCouplingMode.Drive, null);
-        changes[0].AgentSession.Should().Be("session-a");
+        Assert.Equal(new TerminalCouplingMode?[] { TerminalCouplingMode.Drive, null }, changes.Select(change => change.Coupling));
+        Assert.Equal("session-a", changes[0].AgentSession);
     }
 }

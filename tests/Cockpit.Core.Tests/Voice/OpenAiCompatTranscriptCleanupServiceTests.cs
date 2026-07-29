@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -30,7 +29,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.CleanupAsync("open the settings dialog for me");
 
-        result.Should().Be("open the settings dialog for me");
+        Assert.Equal("open the settings dialog for me", result);
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.CleanupAsync("open the settings dialog for me");
 
-        result.Should().Be("open the settings dialog for me");
+        Assert.Equal("open the settings dialog for me", result);
     }
 
     [Fact]
@@ -54,7 +53,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.CleanupAsync(raw);
 
-        result.Should().Be(raw);
+        Assert.Equal(raw, result);
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.CleanupAsync("open the settings dialog for me");
 
-        result.Should().Be("Open the settings dialog for me.");
+        Assert.Equal("Open the settings dialog for me.", result);
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.CleanupAsync("no");
 
-        result.Should().Be("no");
+        Assert.Equal("no", result);
         factory.DidNotReceiveWithAnyArgs().CreateForEndpoint(default!, default!, default);
     }
 
@@ -99,8 +98,9 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         await service.NaturalizeForSpeechAsync("Here is a reply the operator asked to be read aloud naturally.");
 
-        captured.Should().NotBeNull();
-        captured!.MaxOutputTokens.Should().NotBeNull().And.BeGreaterThan(0);
+        Assert.NotNull(captured);
+        Assert.NotNull(captured!.MaxOutputTokens);
+        Assert.True(captured.MaxOutputTokens > 0);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.NaturalizeForSpeechAsync("the original reply");
 
-        result.Should().Be("the original reply");
+        Assert.Equal("the original reply", result);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var act = () => service.NaturalizeForSpeechAsync("the original reply", cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
     }
 
     [Fact]
@@ -147,12 +147,12 @@ public class OpenAiCompatTranscriptCleanupServiceTests
         await Task.Delay(50);
 
         // The single-flight gate holds the second call before it reaches the server; without it both would be in flight.
-        inFlight.Should().Be(1);
+        Assert.Equal(1, inFlight);
 
         release.SetResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Spoken.")));
         await Task.WhenAll(first, second);
 
-        inFlight.Should().Be(2);
+        Assert.Equal(2, inFlight);
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.AcknowledgeForSpeechAsync("fix the failing build");
 
-        result.Should().Be("Let me take a look.");
+        Assert.Equal("Let me take a look.", result);
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class OpenAiCompatTranscriptCleanupServiceTests
 
         var result = await service.AcknowledgeForSpeechAsync("fix the failing build");
 
-        result.Should().BeEmpty();
+        Assert.Empty(result);
     }
 
     private static IChatClient _Chat(string content)

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Projects;
 
 namespace Cockpit.Core.Tests.Projects;
@@ -25,7 +24,7 @@ public class ProjectResourcePathPortabilityTests
 
         // AC-485 review (FIX 5): "docs/handbook.md", not Path.Combine("docs", "handbook.md") — the stored value must
         // read the same on every platform, the same way git itself always stores "/" in a tree entry.
-        ProjectResourcePathPortability.ToStoredReference(_Root, picked).Should().Be("docs/handbook.md");
+        Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.ToStoredReference(_Root, picked));
     }
 
     /// <summary>AC-485 review (FIX 5): a nested relative path must carry no platform-specific separator either — not just a single-segment one.</summary>
@@ -34,20 +33,20 @@ public class ProjectResourcePathPortabilityTests
     {
         var picked = _Under("docs", "handbook", "team", "onboarding.md");
 
-        ProjectResourcePathPortability.ToStoredReference(_Root, picked).Should().Be("docs/handbook/team/onboarding.md");
+        Assert.Equal("docs/handbook/team/onboarding.md", ProjectResourcePathPortability.ToStoredReference(_Root, picked));
     }
 
     [Fact]
     public void ToStoredReference_ThePickedFolderItself_BecomesTheCurrentDirectoryMarker() =>
-        ProjectResourcePathPortability.ToStoredReference(_Root, _Root).Should().Be(".");
+        Assert.Equal(".", ProjectResourcePathPortability.ToStoredReference(_Root, _Root));
 
     [Fact]
     public void ToStoredReference_APathOutsideSourceDirectory_StaysAbsolute() =>
-        ProjectResourcePathPortability.ToStoredReference(_Root, _Outside).Should().Be(_Outside);
+        Assert.Equal(_Outside, ProjectResourcePathPortability.ToStoredReference(_Root, _Outside));
 
     [Fact]
     public void ToStoredReference_NoSourceDirectory_StaysAbsolute() =>
-        ProjectResourcePathPortability.ToStoredReference(null, _Outside).Should().Be(_Outside);
+        Assert.Equal(_Outside, ProjectResourcePathPortability.ToStoredReference(null, _Outside));
 
     /// <summary>A trailing separator on the folder must not defeat the "is it under here" check.</summary>
     [Fact]
@@ -55,14 +54,14 @@ public class ProjectResourcePathPortabilityTests
     {
         var picked = _Under("docs", "handbook.md");
 
-        ProjectResourcePathPortability.ToStoredReference(_Root + Path.DirectorySeparatorChar, picked)
-            .Should().Be("docs/handbook.md");
+        Assert.Equal("docs/handbook.md",
+            ProjectResourcePathPortability.ToStoredReference(_Root + Path.DirectorySeparatorChar, picked));
     }
 
     /// <summary>A scheme reference is a plugin's identifier, not a path — never rewritten, whatever it looks like.</summary>
     [Fact]
     public void ToStoredReference_ASchemeReference_IsNeverTouched() =>
-        ProjectResourcePathPortability.ToStoredReference(_Root, "depot:cockpit").Should().Be("depot:cockpit");
+        Assert.Equal("depot:cockpit", ProjectResourcePathPortability.ToStoredReference(_Root, "depot:cockpit"));
 
     /// <summary>
     /// AC-485 review (FIX 7): <c>Path.GetFullPath</c> throws <see cref="ArgumentException"/> for a path containing a
@@ -75,35 +74,35 @@ public class ProjectResourcePathPortabilityTests
     {
         var malformed = _Under("docs", "bad\0name.md");
 
-        var act = () => ProjectResourcePathPortability.ToStoredReference(_Root, malformed);
+        var exception = Record.Exception(() => ProjectResourcePathPortability.ToStoredReference(_Root, malformed));
 
-        act.Should().NotThrow();
-        ProjectResourcePathPortability.ToStoredReference(_Root, malformed).Should().Be(malformed);
+        Assert.Null(exception);
+        Assert.Equal(malformed, ProjectResourcePathPortability.ToStoredReference(_Root, malformed));
     }
 
     [Fact]
     public void IsMachineBound_APathInsideSourceDirectory_IsFalse() =>
-        ProjectResourcePathPortability.IsMachineBound(_Root, _Under("docs", "handbook.md")).Should().BeFalse();
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, _Under("docs", "handbook.md")));
 
     [Fact]
     public void IsMachineBound_APathOutsideSourceDirectory_IsTrue() =>
-        ProjectResourcePathPortability.IsMachineBound(_Root, _Outside).Should().BeTrue();
+        Assert.True(ProjectResourcePathPortability.IsMachineBound(_Root, _Outside));
 
     [Fact]
     public void IsMachineBound_ARelativeReference_IsFalse() =>
-        ProjectResourcePathPortability.IsMachineBound(_Root, Path.Combine("docs", "handbook.md")).Should().BeFalse();
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, Path.Combine("docs", "handbook.md")));
 
     [Fact]
     public void IsMachineBound_ASchemeReference_IsFalse() =>
-        ProjectResourcePathPortability.IsMachineBound(_Root, "depot:cockpit").Should().BeFalse();
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, "depot:cockpit"));
 
     [Fact]
     public void IsMachineBound_NoSourceDirectory_TreatsAnyAbsolutePathAsMachineBound() =>
-        ProjectResourcePathPortability.IsMachineBound(null, _Outside).Should().BeTrue();
+        Assert.True(ProjectResourcePathPortability.IsMachineBound(null, _Outside));
 
     [Fact]
     public void IsMachineBound_ABlankReference_IsFalse() =>
-        ProjectResourcePathPortability.IsMachineBound(_Root, "").Should().BeFalse();
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, ""));
 
     /// <summary>AC-485 review (FIX 7): the same NUL-character case <see cref="ToStoredReference_APickedPathWithAnIllegalCharacter_IsStoredAsPickedRatherThanThrowing"/> pins for the sibling method — must fail open (not machine-bound) rather than throw.</summary>
     [Fact]
@@ -111,10 +110,10 @@ public class ProjectResourcePathPortabilityTests
     {
         var malformed = _Under("docs", "bad\0name.md");
 
-        var act = () => ProjectResourcePathPortability.IsMachineBound(_Root, malformed);
+        var exception = Record.Exception(() => ProjectResourcePathPortability.IsMachineBound(_Root, malformed));
 
-        act.Should().NotThrow();
-        ProjectResourcePathPortability.IsMachineBound(_Root, malformed).Should().BeFalse();
+        Assert.Null(exception);
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, malformed));
     }
 
     /// <summary>
@@ -130,6 +129,6 @@ public class ProjectResourcePathPortabilityTests
             ? "/home/raymond/Elsewhere/notes"
             : @"C:\Users\raymond\Elsewhere\notes";
 
-        ProjectResourcePathPortability.IsMachineBound(_Root, otherPlatformPath).Should().BeFalse();
+        Assert.False(ProjectResourcePathPortability.IsMachineBound(_Root, otherPlatformPath));
     }
 }

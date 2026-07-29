@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -29,9 +28,9 @@ public class SkiaHighlightTests
         var washedPage = _Brightness(burnt.GetPixel(10, 50));
         var washedInk = _Brightness(burnt.GetPixel(100, 50));
 
-        washedPage.Should().BeLessThan(240, "the page took the colour, so the band can be seen at all");
-        (washedPage - washedInk).Should().BeGreaterThan(
-            150, "and the ink stayed far below it — multiplying scales both ends rather than pulling them together");
+        Assert.True(washedPage < 240, "the page took the colour, so the band can be seen at all");
+        Assert.True(
+            washedPage - washedInk > 150, "and the ink stayed far below it — multiplying scales both ends rather than pulling them together");
     }
 
     /// <summary>
@@ -48,9 +47,8 @@ public class SkiaHighlightTests
         var washedBackground = _Brightness(burnt.GetPixel(10, 50));
         var washedInk = _Brightness(burnt.GetPixel(100, 50));
 
-        washedBackground.Should().BeGreaterThan(20, "the background lifted, so the band can be seen");
-        (washedInk - washedBackground).Should().BeGreaterThan(
-            100, "and the ink stayed well above it");
+        Assert.True(washedBackground > 20, "the background lifted, so the band can be seen");
+        Assert.True(washedInk - washedBackground > 100, "and the ink stayed well above it");
     }
 
     /// <summary>
@@ -65,10 +63,10 @@ public class SkiaHighlightTests
         using var darkened = _Burn(terminal, new HighlightMark(new CaptureRect(0, 40, 200, 40), Accent, HighlightBlend.Darken));
         using var lifted = _Burn(terminal, new HighlightMark(new CaptureRect(0, 40, 200, 40), Accent, HighlightBlend.Lighten));
 
-        _Brightness(darkened.GetPixel(10, 50)).Should().BeLessThan(
-            10, "multiplying into a black background leaves it black — no band at all");
-        _Brightness(lifted.GetPixel(10, 50)).Should().BeGreaterThan(
-            _Brightness(darkened.GetPixel(10, 50)) + 20, "which is the whole reason the other way exists");
+        Assert.True(
+            _Brightness(darkened.GetPixel(10, 50)) < 10, "multiplying into a black background leaves it black — no band at all");
+        Assert.True(
+            _Brightness(lifted.GetPixel(10, 50)) > _Brightness(darkened.GetPixel(10, 50)) + 20, "which is the whole reason the other way exists");
     }
 
     /// <summary>Two passes deepen, the way two passes of a marker pen do. Asked because it is a real choice and the alternative — a flat band however often it is drawn — would need bookkeeping the mark layer does not have.</summary>
@@ -81,7 +79,7 @@ public class SkiaHighlightTests
         using var once = _Burn(page, band);
         using var twice = _Burn(page, band, band);
 
-        _Brightness(twice.GetPixel(10, 50)).Should().BeLessThan(_Brightness(once.GetPixel(10, 50)));
+        Assert.True(_Brightness(twice.GetPixel(10, 50)) < _Brightness(once.GetPixel(10, 50)));
     }
 
     /// <summary>What is outside the band is untouched — a wash is emphasis on one thing, and a picture where everything is emphasised says nothing.</summary>
@@ -92,8 +90,8 @@ public class SkiaHighlightTests
 
         using var burnt = _Burn(page, new HighlightMark(new CaptureRect(0, 40, 200, 40), Accent, HighlightBlend.Darken));
 
-        burnt.GetPixel(10, 10).Should().Be(SKColors.White);
-        burnt.GetPixel(100, 10).Should().Be(SKColors.Black);
+        Assert.Equal(SKColors.White, burnt.GetPixel(10, 10));
+        Assert.Equal(SKColors.Black, burnt.GetPixel(100, 10));
     }
 
     private static SKBitmap _Burn(byte[] png, params Mark[] marks) =>

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
@@ -37,7 +36,7 @@ public sealed class StartupPathRepairTests
     {
         var path = Join("/usr/local/bin", "/home/user/.local/bin", "/usr/bin");
 
-        StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin").Should().BeTrue();
+        Assert.True(StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin"));
     }
 
     [Fact]
@@ -45,27 +44,27 @@ public sealed class StartupPathRepairTests
     {
         var path = Join("/usr/local/bin", "/usr/bin");
 
-        StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin").Should().BeFalse();
+        Assert.False(StartupPathRepair.ContainsEntry(path, "/home/user/.local/bin"));
     }
 
     [Fact]
     public void ContainsEntry_ToleratesATrailingSlashOnEitherSide()
     {
-        StartupPathRepair.ContainsEntry("/home/user/.local/bin/", "/home/user/.local/bin").Should().BeTrue();
-        StartupPathRepair.ContainsEntry("/home/user/.local/bin", "/home/user/.local/bin/").Should().BeTrue();
+        Assert.True(StartupPathRepair.ContainsEntry("/home/user/.local/bin/", "/home/user/.local/bin"));
+        Assert.True(StartupPathRepair.ContainsEntry("/home/user/.local/bin", "/home/user/.local/bin/"));
     }
 
     [Fact]
     public void ContainsEntry_DoesNotMatchAPrefixEntry()
     {
         // "/usr/local" on PATH must not count as "/usr/local/bin" being on it — entries match whole, not by prefix.
-        StartupPathRepair.ContainsEntry("/usr/local", "/usr/local/bin").Should().BeFalse();
+        Assert.False(StartupPathRepair.ContainsEntry("/usr/local", "/usr/local/bin"));
     }
 
     [Fact]
     public void ContainsEntry_OnAnEmptyPath_IsFalse()
     {
-        StartupPathRepair.ContainsEntry(string.Empty, "/home/user/.local/bin").Should().BeFalse();
+        Assert.False(StartupPathRepair.ContainsEntry(string.Empty, "/home/user/.local/bin"));
     }
 
     [Fact]
@@ -78,8 +77,8 @@ public sealed class StartupPathRepairTests
 
         var merged = StartupPathRepair.MergePaths(loginShell, current);
 
-        merged.Should().Be(Join(
-            "/home/user/.local/bin", "/usr/local/bin", "/usr/bin", "/tmp/.mount_cockpit", "/home/user/.dotnet/tools"));
+        Assert.Equal(Join(
+            "/home/user/.local/bin", "/usr/local/bin", "/usr/bin", "/tmp/.mount_cockpit", "/home/user/.dotnet/tools"), merged);
     }
 
     [Fact]
@@ -88,7 +87,7 @@ public sealed class StartupPathRepairTests
         var loginShell = "/usr/bin/";
         var current = "/usr/bin";
 
-        StartupPathRepair.MergePaths(loginShell, current).Should().Be("/usr/bin/");
+        Assert.Equal("/usr/bin/", StartupPathRepair.MergePaths(loginShell, current));
     }
 
     [Fact]
@@ -98,7 +97,7 @@ public sealed class StartupPathRepairTests
 
         var repaired = StartupPathRepair.PrependMissingEntries(path, ["/home/user/.local/bin", "/home/user/.bun/bin"]);
 
-        repaired.Should().Be(Join("/home/user/.bun/bin", "/home/user/.local/bin", "/usr/bin"));
+        Assert.Equal(Join("/home/user/.bun/bin", "/home/user/.local/bin", "/usr/bin"), repaired);
     }
 
     [Fact]
@@ -106,13 +105,13 @@ public sealed class StartupPathRepairTests
     {
         var path = Join("/home/user/.local/bin", "/usr/bin");
 
-        StartupPathRepair.PrependMissingEntries(path, ["/home/user/.local/bin"]).Should().Be(path);
+        Assert.Equal(path, StartupPathRepair.PrependMissingEntries(path, ["/home/user/.local/bin"]));
     }
 
     [Fact]
     public void PrependMissingEntries_OnAnEmptyPath_YieldsJustTheDirectories()
     {
-        StartupPathRepair.PrependMissingEntries(string.Empty, ["/home/user/bin"]).Should().Be("/home/user/bin");
+        Assert.Equal("/home/user/bin", StartupPathRepair.PrependMissingEntries(string.Empty, ["/home/user/bin"]));
     }
 
     [Fact]
@@ -120,7 +119,7 @@ public sealed class StartupPathRepairTests
     {
         var output = $"Welcome to Fedora!\nsome motd line\n{StartupPathRepair.Marker}/usr/local/bin:/usr/bin\n";
 
-        StartupPathRepair.ExtractMarkedPath(output).Should().Be("/usr/local/bin:/usr/bin");
+        Assert.Equal("/usr/local/bin:/usr/bin", StartupPathRepair.ExtractMarkedPath(output));
     }
 
     [Fact]
@@ -129,19 +128,19 @@ public sealed class StartupPathRepairTests
         // An init with `set -x` (or an echoing plugin) prints the unexpanded probe before the real answer.
         var output = $"+ echo {StartupPathRepair.Marker}$PATH\n{StartupPathRepair.Marker}/usr/bin\n";
 
-        StartupPathRepair.ExtractMarkedPath(output).Should().Be("/usr/bin");
+        Assert.Equal("/usr/bin", StartupPathRepair.ExtractMarkedPath(output));
     }
 
     [Fact]
     public void ExtractMarkedPath_WithoutAMarkerLine_IsNull()
     {
-        StartupPathRepair.ExtractMarkedPath("login: something went wrong\n").Should().BeNull();
+        Assert.Null(StartupPathRepair.ExtractMarkedPath("login: something went wrong\n"));
     }
 
     [Fact]
     public void ExtractMarkedPath_WithAnEmptyValue_IsNull()
     {
-        StartupPathRepair.ExtractMarkedPath($"{StartupPathRepair.Marker}\n").Should().BeNull();
+        Assert.Null(StartupPathRepair.ExtractMarkedPath($"{StartupPathRepair.Marker}\n"));
     }
 
     [Fact]
@@ -157,7 +156,7 @@ public sealed class StartupPathRepairTests
         {
             var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), NullLogger.Instance);
 
-            path.Should().Be("/fake/login/bin:/usr/bin");
+            Assert.Equal("/fake/login/bin:/usr/bin", path);
         }
         finally
         {
@@ -181,8 +180,8 @@ public sealed class StartupPathRepairTests
             var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromMilliseconds(500), NullLogger.Instance);
             elapsed.Stop();
 
-            path.Should().BeNull();
-            elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+            Assert.Null(path);
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -209,11 +208,11 @@ public sealed class StartupPathRepairTests
             var path = StartupPathRepair.ReadLoginShellPath(shell, timeout, NullLogger.Instance);
             elapsed.Stop();
 
-            path.Should().BeNull();
+            Assert.Null(path);
 
             // Halfway between the one-deadline (~1s) and stacked (~1.8s) outcomes — with the 3s production
             // deadline the same stacking would mean 6s of blocked startup.
-            elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(1400));
+            Assert.True(elapsed.Elapsed < TimeSpan.FromMilliseconds(1400));
         }
         finally
         {
@@ -238,6 +237,6 @@ public sealed class StartupPathRepairTests
             expected = expected.Concat(["/opt/homebrew/bin", "/usr/local/bin"]);
         }
 
-        StartupPathRepair.UserBinDirectories(home).Should().Equal(expected);
+        Assert.Equal(expected, StartupPathRepair.UserBinDirectories(home));
     }
 }

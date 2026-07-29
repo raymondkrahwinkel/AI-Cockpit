@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -20,12 +18,12 @@ public class YouTrackFieldParserTests
             ]
             """);
 
-        fields.State.Should().NotBeNull();
-        fields.State!.Name.Should().Be("State");
-        fields.State.Type.Should().Be("StateIssueCustomField");
-        fields.State.CurrentValue.Should().Be("Open");
-        fields.State.Values.Should().Equal("Open", "In Progress", "Done");
-        fields.State.IsStateMachine.Should().BeFalse();
+        Assert.NotNull(fields.State);
+        Assert.Equal("State", fields.State!.Name);
+        Assert.Equal("StateIssueCustomField", fields.State.Type);
+        Assert.Equal("Open", fields.State.CurrentValue);
+        Assert.Equal(new[] { "Open", "In Progress", "Done" }, fields.State.Values);
+        Assert.False(fields.State.IsStateMachine);
     }
 
     [Fact]
@@ -33,7 +31,7 @@ public class YouTrackFieldParserTests
     {
         var field = new YouTrackStateField("1", "State", "StateIssueCustomField", "In Progress", ["Open", "In Progress", "Done"], []);
 
-        field.AvailableTargets.Should().Equal("Open", "Done");
+        Assert.Equal(new[] { "Open", "Done" }, field.AvailableTargets);
     }
 
     [Fact]
@@ -46,8 +44,8 @@ public class YouTrackFieldParserTests
             ]
             """);
 
-        fields.State!.Name.Should().Be("Stage");
-        fields.State.CurrentValue.Should().Be("Backlog");
+        Assert.Equal("Stage", fields.State!.Name);
+        Assert.Equal("Backlog", fields.State.CurrentValue);
     }
 
     [Fact]
@@ -61,7 +59,7 @@ public class YouTrackFieldParserTests
             ]
             """);
 
-        fields.State!.Name.Should().Be("State");
+        Assert.Equal("State", fields.State!.Name);
     }
 
     [Fact]
@@ -69,8 +67,8 @@ public class YouTrackFieldParserTests
     {
         var fields = YouTrackFieldParser.Parse("""[{"id":"5","name":"Priority","$type":"SingleEnumIssueCustomField","value":{"name":"Normal"}}]""");
 
-        fields.State.Should().BeNull();
-        fields.AssigneeFieldName.Should().BeNull();
+        Assert.Null(fields.State);
+        Assert.Null(fields.AssigneeFieldName);
     }
 
     [Fact]
@@ -84,7 +82,7 @@ public class YouTrackFieldParserTests
             ]
             """);
 
-        fields.AssigneeFieldName.Should().Be("Assignee");
+        Assert.Equal("Assignee", fields.AssigneeFieldName);
     }
 
     [Fact]
@@ -95,7 +93,7 @@ public class YouTrackFieldParserTests
             {"$type":"StateMachineIssueCustomField","possibleEvents":[{"id":"e1","presentation":"start progress"},{"id":"e2","presentation":"reject"}]}
             """);
 
-        events.Select(possibleEvent => possibleEvent.Presentation).Should().Equal("start progress", "reject");
+        Assert.Equal(new[] { "start progress", "reject" }, events.Select(possibleEvent => possibleEvent.Presentation));
     }
 
     [Fact]
@@ -109,8 +107,8 @@ public class YouTrackFieldParserTests
             ["Submitted", "In Progress", "Done"],
             [new YouTrackStateEvent("e1", "start progress")]);
 
-        field.IsStateMachine.Should().BeTrue();
-        field.AvailableTargets.Should().Equal("start progress");
+        Assert.True(field.IsStateMachine);
+        Assert.Equal(new[] { "start progress" }, field.AvailableTargets);
     }
 
     [Fact]
@@ -125,6 +123,6 @@ public class YouTrackFieldParserTests
             """,
             "State");
 
-        values.Should().Equal("Open", "Review", "Done");
+        Assert.Equal(new[] { "Open", "Review", "Done" }, values);
     }
 }

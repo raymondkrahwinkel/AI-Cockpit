@@ -1,5 +1,4 @@
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -15,7 +14,7 @@ public class UsageThresholdSettingsTests
     {
         var settings = new UsageThresholdSettings();
 
-        settings.Resolve("claude", "personal", "weekly", declared: 90).Should().Be(90);
+        Assert.Equal(90, settings.Resolve("claude", "personal", "weekly", declared: 90));
     }
 
     [Fact]
@@ -24,7 +23,7 @@ public class UsageThresholdSettingsTests
         var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "weekly", 75);
 
-        settings.Resolve("claude", "personal", "weekly", declared: 90).Should().Be(75);
+        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90));
     }
 
     [Fact]
@@ -35,8 +34,8 @@ public class UsageThresholdSettingsTests
         settings.Set(settings.ByProvider, "claude", "weekly", 75);
         settings.Set(settings.ByProfile, "work", "weekly", 60);
 
-        settings.Resolve("claude", "work", "weekly", declared: 90).Should().Be(60);
-        settings.Resolve("claude", "personal", "weekly", declared: 90).Should().Be(75, "another profile still follows the provider");
+        Assert.Equal(60, settings.Resolve("claude", "work", "weekly", declared: 90));
+        Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90));
     }
 
     [Fact]
@@ -48,8 +47,8 @@ public class UsageThresholdSettingsTests
 
         settings.Set(settings.ByProvider, "claude", "weekly", null);
 
-        settings.Resolve("claude", null, "weekly", declared: 90).Should().Be(90);
-        settings.ByProvider.Should().NotContainKey("claude", "an empty group is removed rather than left as clutter");
+        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90));
+        Assert.DoesNotContain("claude", settings.ByProvider);
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class UsageThresholdSettingsTests
 
         settings.Set(settings.ByProvider, "claude", "context", 140);
 
-        settings.Resolve("claude", null, "context", declared: 50).Should().Be(100);
+        Assert.Equal(100, settings.Resolve("claude", null, "context", declared: 50));
     }
 
     [Fact]
@@ -68,7 +67,7 @@ public class UsageThresholdSettingsTests
         var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "context", 40);
 
-        settings.Resolve("claude", null, "context", declared: 50).Should().Be(40);
-        settings.Resolve("claude", null, "weekly", declared: 90).Should().Be(90);
+        Assert.Equal(40, settings.Resolve("claude", null, "context", declared: 50));
+        Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90));
     }
 }

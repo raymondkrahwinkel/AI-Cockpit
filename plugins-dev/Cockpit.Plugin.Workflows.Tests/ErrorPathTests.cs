@@ -1,7 +1,6 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
@@ -31,9 +30,9 @@ public class ErrorPathTests
 
         // The handler ran, and it was handed the failure as data — {error} in a Slack message says more than "a step
         // failed" ever will.
-        run.Steps.Should().Contain(step => step.NodeId == handler.Id);
-        recorder.Inputs[^1][0].Json["error"]!.ToString().Should().Contain("no message");
-        recorder.Inputs[^1][0].Json["step"]!.ToString().Should().Be(failing.Name);
+        Assert.Contains(run.Steps, step => step.NodeId == handler.Id);
+        Assert.Contains("no message", recorder.Inputs[^1][0].Json["error"]!.ToString());
+        Assert.Equal(failing.Name, recorder.Inputs[^1][0].Json["step"]!.ToString());
     }
 
     [Fact]
@@ -47,9 +46,9 @@ public class ErrorPathTests
 
         var run = await _Engine(new RecordingRunner("cockpit.notify"), failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Succeeded);
-        run.Steps.Single(step => step.NodeId == failing.Id).Status.Should().Be(RunStatus.Failed, "what failed is still in the run");
-        run.Steps.Single(step => step.NodeId == failing.Id).Note.Should().Contain("handled by the error path");
+        Assert.Equal(RunStatus.Succeeded, run.Status);
+        Assert.Equal(RunStatus.Failed, run.Steps.Single(step => step.NodeId == failing.Id).Status);
+        Assert.Contains("handled by the error path", run.Steps.Single(step => step.NodeId == failing.Id).Note);
     }
 
     [Fact]
@@ -63,9 +62,9 @@ public class ErrorPathTests
 
         var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Should().Contain(step => step.NodeId == after.Id);
-        run.Status.Should().Be(RunStatus.Succeeded);
-        run.Steps.Single(step => step.NodeId == failing.Id).Note.Should().Contain("carry on");
+        Assert.Contains(run.Steps, step => step.NodeId == after.Id);
+        Assert.Equal(RunStatus.Succeeded, run.Status);
+        Assert.Contains("carry on", run.Steps.Single(step => step.NodeId == failing.Id).Note);
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class ErrorPathTests
 
         await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        recorder.Inputs[^1][0].Json["error"].Should().NotBeNull("the failure went down the wire, not past it");
+        Assert.NotNull(recorder.Inputs[^1][0].Json["error"]);
     }
 
     [Fact]
@@ -92,8 +91,8 @@ public class ErrorPathTests
 
         var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Failed);
-        run.Steps.Should().NotContain(step => step.NodeId == after.Id, "a flow that walked past a step that did not work would be worse than one that stopped");
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.DoesNotContain(run.Steps, step => step.NodeId == after.Id);
     }
 
     [Fact]
@@ -106,7 +105,7 @@ public class ErrorPathTests
 
         var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Should().NotContain(step => step.NodeId == handler.Id);
+        Assert.DoesNotContain(run.Steps, step => step.NodeId == handler.Id);
     }
 
     private static WorkflowEngine _Engine(RecordingRunner recorder, string failingTypeId) =>

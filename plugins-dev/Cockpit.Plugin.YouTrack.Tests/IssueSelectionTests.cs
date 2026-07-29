@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -23,7 +22,7 @@ public class IssueSelectionTests
 
         var restored = IssueSelection.Restore([moved, Other], Backlog.IdReadable);
 
-        restored.Should().Be(moved);
+        Assert.Equal(moved, restored);
     }
 
     [Fact]
@@ -33,13 +32,13 @@ public class IssueSelectionTests
         // to invent something.
         var restored = IssueSelection.Restore([Other], Backlog.IdReadable);
 
-        restored.Should().BeNull();
+        Assert.Null(restored);
     }
 
     [Fact]
     public void ReturnsNull_ForABlankOrMissingId()
     {
-        IssueSelection.Restore([Backlog, Other], null).Should().BeNull();
-        IssueSelection.Restore([Backlog, Other], string.Empty).Should().BeNull();
+        Assert.Null(IssueSelection.Restore([Backlog, Other], null));
+        Assert.Null(IssueSelection.Restore([Backlog, Other], string.Empty));
     }
 }

@@ -8,7 +8,6 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Delegation;
@@ -41,8 +40,8 @@ public class DelegationFailureReasonTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 1);
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Failed);
-        finished.Error.Should().Be(UsageLimit, "the turn that followed carried no reason of its own to replace it with");
+        Assert.Equal(DelegatedTaskStatus.Failed, finished.Status);
+        Assert.Equal(UsageLimit, finished.Error);
     }
 
     [Fact]
@@ -56,7 +55,7 @@ public class DelegationFailureReasonTests
         var task = await service.DelegateAsync(new DelegationRequest("local", "review this"));
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 1);
 
-        service.GetTask(task.TaskId)!.Error.Should().Be("The model ran out of context.");
+        Assert.Equal("The model ran out of context.", service.GetTask(task.TaskId)!.Error);
     }
 
     [Fact]
@@ -72,8 +71,8 @@ public class DelegationFailureReasonTests
         await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 1);
 
         var finished = service.GetTask(task.TaskId)!;
-        finished.Status.Should().Be(DelegatedTaskStatus.Completed);
-        finished.Error.Should().BeNull();
+        Assert.Equal(DelegatedTaskStatus.Completed, finished.Status);
+        Assert.Null(finished.Error);
 
         // Deliberately not asserted: that Result is "Reviewed it.". It is null here, and that is a separate defect
         // this change does not touch. The SessionError branch finishes with keepSessionAlive left at false, which

@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubModelsProvider.Tests;
 
@@ -18,10 +17,10 @@ public class OpenAiCompatConfigTests
 
         var text = config.ToString();
 
-        text.Should().NotContain("github_pat_super-secret-token");
-        text.Should().Contain("***");
-        text.Should().Contain("openai/gpt-4.1");
-        text.Should().Contain("https://models.github.ai/inference");
+        Assert.DoesNotContain("github_pat_super-secret-token", text);
+        Assert.Contains("***", text);
+        Assert.Contains("openai/gpt-4.1", text);
+        Assert.Contains("https://models.github.ai/inference", text);
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public class OpenAiCompatConfigTests
 
         var text = config.ToString();
 
-        text.Should().Contain("ApiKey = null");
-        text.Should().NotContain("***");
+        Assert.Contains("ApiKey = null", text);
+        Assert.DoesNotContain("***", text);
     }
 }

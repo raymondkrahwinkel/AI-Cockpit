@@ -1,5 +1,4 @@
 using System.Collections;
-using FluentAssertions;
 using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -57,7 +56,7 @@ public class ConPtyProcessExitTests
             // Left as reachedEof == false: the read never completed, which is exactly the regression.
         }
 
-        reachedEof.Should().BeTrue(
+        Assert.True(reachedEof,
             "closing the pseudo console on the child's exit must EOF the output reader so the TTY panel closes");
     }
 

@@ -1,5 +1,4 @@
 using Cockpit.Core.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -25,17 +24,17 @@ public class PluginManifestTests
     {
         var parsed = PluginManifest.TryParse(Valid, out var manifest, out var error);
 
-        parsed.Should().BeTrue();
-        error.Should().BeNull();
-        manifest.Should().NotBeNull();
-        manifest!.Id.Should().Be("github-issues");
-        manifest.Name.Should().Be("GitHub Issues");
-        manifest.Version.Should().Be("1.0.0");
-        manifest.EntryAssembly.Should().Be("Cockpit.Plugin.GitHubIssues.dll");
-        manifest.AbstractionsVersion.Should().Be(1);
-        manifest.EntryType.Should().Be("Cockpit.Plugin.GitHubIssues.Plugin");
-        manifest.Description.Should().Be("Show open issues");
-        manifest.Author.Should().Be("Raymond");
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.NotNull(manifest);
+        Assert.Equal("github-issues", manifest!.Id);
+        Assert.Equal("GitHub Issues", manifest.Name);
+        Assert.Equal("1.0.0", manifest.Version);
+        Assert.Equal("Cockpit.Plugin.GitHubIssues.dll", manifest.EntryAssembly);
+        Assert.Equal(1, manifest.AbstractionsVersion);
+        Assert.Equal("Cockpit.Plugin.GitHubIssues.Plugin", manifest.EntryType);
+        Assert.Equal("Show open issues", manifest.Description);
+        Assert.Equal("Raymond", manifest.Author);
     }
 
     [Fact]
@@ -43,11 +42,11 @@ public class PluginManifestTests
     {
         var json = """{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll","abstractionsVersion":1}""";
 
-        PluginManifest.TryParse(json, out var manifest, out _).Should().BeTrue();
-        manifest!.EntryType.Should().BeNull();
-        manifest.MinHostVersion.Should().BeNull();
-        manifest.Description.Should().BeNull();
-        manifest.Author.Should().BeNull();
+        Assert.True(PluginManifest.TryParse(json, out var manifest, out _));
+        Assert.Null(manifest!.EntryType);
+        Assert.Null(manifest.MinHostVersion);
+        Assert.Null(manifest.Description);
+        Assert.Null(manifest.Author);
     }
 
     [Fact]
@@ -55,9 +54,9 @@ public class PluginManifestTests
     {
         var json = """{"id":"x","name":"X","version":"1.0.0","abstractionsVersion":1}""";
 
-        PluginManifest.TryParse(json, out var manifest, out var error).Should().BeFalse();
-        manifest.Should().BeNull();
-        error.Should().NotBeNull();
+        Assert.False(PluginManifest.TryParse(json, out var manifest, out var error));
+        Assert.Null(manifest);
+        Assert.NotNull(error);
     }
 
     [Fact]
@@ -65,15 +64,15 @@ public class PluginManifestTests
     {
         var json = """{"id":"x","name":"X","version":"1.0.0","entryAssembly":"X.dll"}""";
 
-        PluginManifest.TryParse(json, out _, out var error).Should().BeFalse();
-        error.Should().Contain("abstractionsVersion");
+        Assert.False(PluginManifest.TryParse(json, out _, out var error));
+        Assert.Contains("abstractionsVersion", error);
     }
 
     [Fact]
     public void TryParse_InvalidJson_FailsWithoutThrowing()
     {
-        PluginManifest.TryParse("{ not json", out var manifest, out var error).Should().BeFalse();
-        manifest.Should().BeNull();
-        error.Should().StartWith("Invalid JSON");
+        Assert.False(PluginManifest.TryParse("{ not json", out var manifest, out var error));
+        Assert.Null(manifest);
+        Assert.StartsWith("Invalid JSON", error);
     }
 }

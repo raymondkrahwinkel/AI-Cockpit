@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -20,7 +19,7 @@ public class SwitchTests
             new StepContext(_Switch("{state}", "In Progress, Review, Done"), _Items(("state", "Review")), _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be("Review");
+        Assert.Equal("Review", outcome.Output);
     }
 
     // "review" and " Review " are the same status: a flow that fell through over a capital letter is one nobody can
@@ -32,7 +31,7 @@ public class SwitchTests
             new StepContext(_Switch("{state}", " in progress , Review "), _Items(("state", "In Progress")), _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be("in progress");
+        Assert.Equal("in progress", outcome.Output);
     }
 
     [Fact]
@@ -42,7 +41,7 @@ public class SwitchTests
             new StepContext(_Switch("{state}", "Review, Done"), _Items(("state", "Backlog")), _Nothing),
             CancellationToken.None);
 
-        outcome.Output.Should().Be(SwitchCases.Otherwise);
+        Assert.Equal(SwitchCases.Otherwise, outcome.Output);
     }
 
     // Not recognising a value is a case you did not name; being handed no value at all is a step configured against
@@ -54,7 +53,8 @@ public class SwitchTests
             new StepContext(_Switch("{state}", "Review"), _Items(("ticket", "WEB-14")), _Nothing),
             CancellationToken.None);
 
-        await run.Should().ThrowAsync<InvalidOperationException>().WithMessage("*state*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("state", ex.Message);
     }
 
     [Fact]
@@ -64,7 +64,8 @@ public class SwitchTests
             new StepContext(_Switch("{state}", string.Empty), _Items(("state", "Review")), _Nothing),
             CancellationToken.None);
 
-        await run.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no cases*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains("no cases", ex.Message);
     }
 
     [Fact]
@@ -72,7 +73,7 @@ public class SwitchTests
     {
         var node = _Switch("{state}", "In Progress, Review, Done");
 
-        node.Outputs.Should().Equal("In Progress", "Review", "Done", SwitchCases.Otherwise);
+        Assert.Equal(new[] { "In Progress", "Review", "Done", SwitchCases.Otherwise }, node.Outputs);
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public class SwitchTests
         // be taken.
         var node = _Switch("{state}", "Review, review, Done");
 
-        node.Outputs.Should().Equal("Review", "Done", SwitchCases.Otherwise);
+        Assert.Equal(new[] { "Review", "Done", SwitchCases.Otherwise }, node.Outputs);
     }
 
     [Fact]
@@ -94,15 +95,15 @@ public class SwitchTests
         node.Parameters[SwitchCases.CasesParameter] = "In Progress, Review, Done";
         var dropped = workflow.RewireOutputs(node.Id, before);
 
-        dropped.Should().BeEmpty();
-        _Target(workflow, node, "Review").Should().Be(targets["Review"]);
-        _Target(workflow, node, "Done").Should().Be(targets["Done"]);
-        _Target(workflow, node, SwitchCases.Otherwise).Should().Be(targets[SwitchCases.Otherwise]);
+        Assert.Empty(dropped);
+        Assert.Equal(targets["Review"], _Target(workflow, node, "Review"));
+        Assert.Equal(targets["Done"], _Target(workflow, node, "Done"));
+        Assert.Equal(targets[SwitchCases.Otherwise], _Target(workflow, node, SwitchCases.Otherwise));
 
         // The error pin sits one past the ordinary ones, so a new case moves it — and the wire from it has to move too.
-        workflow.Connections
+        Assert.Equal(targets["error"], workflow.Connections
             .Single(connection => connection.FromNodeId == node.Id && connection.FromOutput == node.ErrorOutput)
-            .ToNodeId.Should().Be(targets["error"]);
+            .ToNodeId);
     }
 
     [Fact]
@@ -114,10 +115,10 @@ public class SwitchTests
         node.Parameters[SwitchCases.CasesParameter] = "Done";
         var dropped = workflow.RewireOutputs(node.Id, before);
 
-        dropped.Should().Equal("Review");
-        workflow.Connections.Should().NotContain(connection => connection.ToNodeId == targets["Review"]);
-        _Target(workflow, node, "Done").Should().Be(targets["Done"]);
-        _Target(workflow, node, SwitchCases.Otherwise).Should().Be(targets[SwitchCases.Otherwise]);
+        Assert.Equal(new[] { "Review" }, dropped);
+        Assert.DoesNotContain(workflow.Connections, connection => connection.ToNodeId == targets["Review"]);
+        Assert.Equal(targets["Done"], _Target(workflow, node, "Done"));
+        Assert.Equal(targets[SwitchCases.Otherwise], _Target(workflow, node, SwitchCases.Otherwise));
     }
 
     // A switch with its cases wired up, one wire per pin plus one from the error pin, each to a step of its own.

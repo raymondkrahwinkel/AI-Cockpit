@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -32,7 +31,7 @@ public class ReadAloudPipelineTests
 
         await ReadAloudPipeline.SpeakAsync(queue, cleanupService: null, "   ", ReadAloudMode.Verbatim, speakerId: 1, language: "en");
 
-        queue.ReceivedCalls().Should().BeEmpty();
+        Assert.Empty(queue.ReceivedCalls());
     }
 
     [Fact]

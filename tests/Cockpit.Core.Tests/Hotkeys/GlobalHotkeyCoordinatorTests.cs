@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -29,9 +28,9 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        service.LastBindings.Should().BeEmpty();
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse();
-        coordinator.IsArmed(GlobalHotkeys.Screenshot).Should().BeFalse();
+        Assert.Empty(service.LastBindings);
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.Screenshot));
     }
 
     /// <summary>
@@ -48,8 +47,8 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("nothing was registered");
-        _Describe(coordinator, GlobalHotkeys.PushToTalk).Should().Be("could not be armed");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "nothing was registered");
+        Assert.Equal("could not be armed", _Describe(coordinator, GlobalHotkeys.PushToTalk));
     }
 
     /// <summary>
@@ -65,7 +64,7 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        _Describe(coordinator, GlobalHotkeys.Screenshot).Should().BeEmpty("the screenshot key was never switched on");
+        Assert.Empty(_Describe(coordinator, GlobalHotkeys.Screenshot));
     }
 
     private static string _Describe(GlobalHotkeyCoordinator coordinator, string hotkeyId) =>
@@ -80,7 +79,7 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        service.LastBindings.Should().BeEmpty();
+        Assert.Empty(service.LastBindings);
     }
 
     [Fact]
@@ -94,11 +93,11 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        service.LastBindings.Should().SatisfyRespectively(
-            binding => binding.Should().BeEquivalentTo(new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F9")),
-            binding => binding.Should().BeEquivalentTo(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8")));
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue();
-        coordinator.IsArmed(GlobalHotkeys.Screenshot).Should().BeTrue();
+        Assert.Collection(service.LastBindings,
+            binding => Assert.Equivalent(new GlobalHotkeyBinding(GlobalHotkeys.PushToTalk, "Push to talk (hold)", "F9"), binding),
+            binding => Assert.Equivalent(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"), binding));
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.Screenshot));
     }
 
     /// <summary>
@@ -115,8 +114,8 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        service.StartCallCount.Should().Be(1);
-        service.LastBindings.Should().HaveCount(2);
+        Assert.Equal(1, service.StartCallCount);
+        Assert.Equal(2, System.Linq.Enumerable.Count(service.LastBindings));
     }
 
     /// <summary>
@@ -133,7 +132,7 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
         await coordinator.ApplyAsync();
 
-        service.StartCallCount.Should().Be(2);
+        Assert.Equal(2, service.StartCallCount);
     }
 
     /// <summary>Re-arming must not double a hold: a second subscription on the same service means every press fires twice.</summary>
@@ -146,7 +145,7 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
         await coordinator.ApplyAsync();
 
-        service.PressedSubscriberCount.Should().Be(1);
+        Assert.Equal(1, service.PressedSubscriberCount);
     }
 
     /// <summary>
@@ -174,8 +173,8 @@ public class GlobalHotkeyCoordinatorTests
 
         var act = async () => await coordinator.ApplyAsync();
 
-        await act.Should().NotThrowAsync();
-        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
+        await act();
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
     }
 
     /// <summary>
@@ -201,11 +200,11 @@ public class GlobalHotkeyCoordinatorTests
             new CapturingLogger<GlobalHotkeyCoordinator>());
 
         await coordinator.ApplyAsync();
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue("the first arm succeeded");
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the first arm succeeded");
 
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("the re-arm failed, so nothing is registered any more");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the re-arm failed, so nothing is registered any more");
     }
 
     [Fact]
@@ -217,8 +216,8 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error);
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse();
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
     }
 
     /// <summary>
@@ -238,7 +237,7 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
 
         // What the sentence says is GlobalHotkeyConflictCheckTests'; that it reaches the operator is this one's.
-        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Warning);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     /// <summary>Every press carries the id of the key that fired, so a feature can tell its own from another's.</summary>
@@ -253,7 +252,7 @@ public class GlobalHotkeyCoordinatorTests
 
         service.RaisePressed(GlobalHotkeys.Screenshot);
 
-        pressed.Should().Equal(GlobalHotkeys.Screenshot);
+        Assert.Equal(new[] { GlobalHotkeys.Screenshot }, pressed);
     }
 
     /// <summary>
@@ -276,8 +275,8 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("another cockpit instance already holds the key");
-        service.LastBindings.Should().BeEmpty("the conflicted binding must never reach the OS service");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "another cockpit instance already holds the key");
+        Assert.Empty(service.LastBindings);
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("another cockpit instance")), ToastSeverity.Warning);
     }
 
@@ -290,8 +289,8 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue();
-        service.LastBindings.Should().ContainSingle(binding => binding.Id == GlobalHotkeys.PushToTalk);
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+        Assert.Single(service.LastBindings, binding => binding.Id == GlobalHotkeys.PushToTalk);
     }
 
     /// <summary>
@@ -312,11 +311,11 @@ public class GlobalHotkeyCoordinatorTests
             retryInterval: TimeSpan.FromMilliseconds(20));
 
         await coordinator.ApplyAsync();
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("the first attempt found the key held");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the first attempt found the key held");
 
         await _WaitUntilAsync(() => coordinator.IsArmed(GlobalHotkeys.PushToTalk));
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue("the retry timer claimed it once it came free");
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the retry timer claimed it once it came free");
     }
 
     /// <summary>A retry that is still conflicted must not nag the operator again with the same news.</summary>

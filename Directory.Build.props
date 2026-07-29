@@ -113,4 +113,12 @@
     <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS1734;CS0419</NoWarn>
   </PropertyGroup>
 
+  <!-- Blocks FluentAssertions from ever coming back (AC-372): a build error beats trusting a review to notice
+       the package reference again. BannedSymbols.txt bans the whole namespace, not just AssertionExtensions,
+       so a differently-named entry point (e.g. a future major version's API) is caught too. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.txt')" />
+  </ItemGroup>
+
 </Project>

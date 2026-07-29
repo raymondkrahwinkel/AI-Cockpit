@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Hotkeys;
 
@@ -20,7 +19,7 @@ public class GlobalHotkeyConflictCheckTests
             new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
         ]);
 
-        clash.Should().BeNull();
+        Assert.Null(clash);
     }
 
     [Fact]
@@ -32,8 +31,10 @@ public class GlobalHotkeyConflictCheckTests
             new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
         ]);
 
-        clash.Should().NotBeNull();
-        clash.Should().Contain("Push to talk (hold)").And.Contain("Take a screenshot").And.Contain("F8");
+        Assert.NotNull(clash);
+        Assert.Contains("Push to talk (hold)", clash);
+        Assert.Contains("Take a screenshot", clash);
+        Assert.Contains("F8", clash);
     }
 
     /// <summary>
@@ -49,7 +50,7 @@ public class GlobalHotkeyConflictCheckTests
             new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8"),
         ]);
 
-        clash.Should().NotBeNull();
+        Assert.NotNull(clash);
     }
 
     /// <summary>A single armed key cannot clash with itself, and one switched-off feature leaves exactly that.</summary>
@@ -59,6 +60,6 @@ public class GlobalHotkeyConflictCheckTests
         var clash = GlobalHotkeyConflictCheck.Describe(
             [new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", "F8")]);
 
-        clash.Should().BeNull();
+        Assert.Null(clash);
     }
 }

@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Screenshots;
 
@@ -30,8 +29,8 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 200, surfaceY: 150);
 
-        selection.HoveredWindow!.Title.Should().Be("Editor");
-        selection.Selection.Should().Be(new CaptureRect(150, 75, 1200, 900));
+        Assert.Equal("Editor", selection.HoveredWindow!.Title);
+        Assert.Equal(new CaptureRect(150, 75, 1200, 900), selection.Selection);
     }
 
     /// <summary>Overlapping windows: the list is front to back, so the one on top is the one that gets picked.</summary>
@@ -45,7 +44,7 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 200, surfaceY: 200);
 
-        selection.HoveredWindow!.Title.Should().Be("Front");
+        Assert.Equal("Front", selection.HoveredWindow!.Title);
     }
 
     [Fact]
@@ -56,8 +55,8 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 1000, surfaceY: 900);
 
-        selection.HoveredWindow.Should().BeNull();
-        selection.Selection.Should().BeNull();
+        Assert.Null(selection.HoveredWindow);
+        Assert.Null(selection.Selection);
     }
 
     /// <summary>Until the mode is on, moving the pointer is a drag or nothing — the same pointer cannot mean both at once.</summary>
@@ -68,8 +67,8 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 200, surfaceY: 150);
 
-        selection.HoveredWindow.Should().BeNull();
-        selection.Selection.Should().BeNull();
+        Assert.Null(selection.HoveredWindow);
+        Assert.Null(selection.Selection);
     }
 
     /// <summary>
@@ -85,12 +84,12 @@ public class ScreenshotWindowPickingTests
             SurfaceHeight = 1080,
         };
 
-        selection.CanPickWindow.Should().BeFalse();
+        Assert.False(selection.CanPickWindow);
 
         selection.PickWindows(true);
 
-        selection.PickingWindow.Should().BeFalse("asking for a mode that does not exist must not turn it on");
-        selection.Hint.Should().Contain("not something this desktop will allow");
+        Assert.False(selection.PickingWindow, "asking for a mode that does not exist must not turn it on");
+        Assert.Contains("not something this desktop will allow", selection.Hint);
     }
 
     /// <summary>
@@ -101,7 +100,7 @@ public class ScreenshotWindowPickingTests
     [Fact]
     public void OnADesktopThatCanPickWindows_TheModeIsAvailable()
     {
-        _Surface(_Window("Editor", 0, 0, 100, 100)).CanPickWindow.Should().BeTrue();
+        Assert.True(_Surface(_Window("Editor", 0, 0, 100, 100)).CanPickWindow);
     }
 
     /// <summary>A window off the edge of every display — minimised, or on a screen this capture does not cover — has no pixels here to crop.</summary>
@@ -113,7 +112,7 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 100, surfaceY: 100);
 
-        selection.HoveredWindow.Should().BeNull();
+        Assert.Null(selection.HoveredWindow);
     }
 
     /// <summary>
@@ -129,8 +128,8 @@ public class ScreenshotWindowPickingTests
 
         selection.HoverAt(surfaceX: 1800, surfaceY: 200);
 
-        selection.HoveredWindow!.Title.Should().Be("Half out");
-        selection.Selection.Should().Be(new CaptureRect(2550, 150, 330, 600), "the desktop is 1920 wide, so 220 of the window's 600 points were captured");
+        Assert.Equal("Half out", selection.HoveredWindow!.Title);
+        Assert.Equal(new CaptureRect(2550, 150, 330, 600), selection.Selection);
     }
 
     /// <summary>Switching to everything leaves window mode behind, or the next pointer move would silently replace the selection.</summary>
@@ -143,9 +142,9 @@ public class ScreenshotWindowPickingTests
         selection.PickWindows(false);
         selection.SelectEverything();
 
-        selection.PickingWindow.Should().BeFalse();
-        selection.HoveredWindow.Should().BeNull();
-        selection.Selection.Should().Be(new CaptureRect(0, 0, 2880, 1620));
+        Assert.False(selection.PickingWindow);
+        Assert.Null(selection.HoveredWindow);
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), selection.Selection);
     }
 
     private static ScreenshotSelectionViewModel _Surface(params DesktopWindow[] windows) =>

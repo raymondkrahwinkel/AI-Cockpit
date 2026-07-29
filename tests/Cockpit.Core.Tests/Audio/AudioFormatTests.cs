@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Audio;
 
 namespace Cockpit.Core.Tests.Audio;
@@ -10,9 +9,9 @@ public class AudioFormatTests
     {
         var format = new AudioFormat();
 
-        format.SampleRate.Should().Be(16000);
-        format.Channels.Should().Be(1);
-        format.BitsPerSample.Should().Be(16);
+        Assert.Equal(16000, format.SampleRate);
+        Assert.Equal(1, format.Channels);
+        Assert.Equal(16, format.BitsPerSample);
     }
 
     [Fact]
@@ -20,8 +19,8 @@ public class AudioFormatTests
     {
         var format = new AudioFormat(SampleRate: 48000, Channels: 2, BitsPerSample: 24);
 
-        format.SampleRate.Should().Be(48000);
-        format.Channels.Should().Be(2);
-        format.BitsPerSample.Should().Be(24);
+        Assert.Equal(48000, format.SampleRate);
+        Assert.Equal(2, format.Channels);
+        Assert.Equal(24, format.BitsPerSample);
     }
 }

@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Toasts;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
 
@@ -46,8 +45,8 @@ public class ScheduledResumeCoordinatorTests
         var moment = DateTimeOffset.Parse("2026-07-25T07:30:00+02:00");
         var resume = Resume("pane", moment);
 
-        resume.IsDue(moment.AddMinutes(-1)).Should().BeFalse();
-        resume.IsDue(moment).Should().BeTrue();
+        Assert.False(resume.IsDue(moment.AddMinutes(-1)));
+        Assert.True(resume.IsDue(moment));
     }
 
     [Fact]
@@ -57,8 +56,8 @@ public class ScheduledResumeCoordinatorTests
         var moment = DateTimeOffset.Parse("2026-07-25T07:30:00+02:00");
         var resume = Resume("pane", moment);
 
-        resume.HasLapsed(moment.AddMinutes(2), TimeSpan.FromMinutes(5)).Should().BeFalse();
-        resume.HasLapsed(moment.AddHours(4), TimeSpan.FromMinutes(5)).Should().BeTrue();
+        Assert.False(resume.HasLapsed(moment.AddMinutes(2), TimeSpan.FromMinutes(5)));
+        Assert.True(resume.HasLapsed(moment.AddHours(4), TimeSpan.FromMinutes(5)));
     }
 
     [Fact]
@@ -70,7 +69,7 @@ public class ScheduledResumeCoordinatorTests
 
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddHours(1)));
 
-        store.Saved.Should().ContainSingle().Which.PaneId.Should().Be("pane-1");
+        Assert.Equal("pane-1", Assert.Single(store.Saved).PaneId);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class ScheduledResumeCoordinatorTests
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddHours(1), "first"));
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddHours(2), "second"));
 
-        coordinator.Pending.Should().ContainSingle().Which.Prompt.Should().Be("second");
+        Assert.Equal("second", Assert.Single(coordinator.Pending).Prompt);
     }
 
     [Fact]
@@ -94,8 +93,8 @@ public class ScheduledResumeCoordinatorTests
 
         await coordinator.CancelAsync("pane-1");
 
-        coordinator.PendingFor("pane-1").Should().BeNull();
-        store.Saved.Should().BeEmpty();
+        Assert.Null(coordinator.PendingFor("pane-1"));
+        Assert.Empty(store.Saved);
     }
 
     [Fact]
@@ -110,9 +109,9 @@ public class ScheduledResumeCoordinatorTests
         await coordinator.ScheduleAsync(Resume("pane-1", moment, "carry on"));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        session.Sent.Should().ContainSingle().Which.Should().Be("carry on");
-        coordinator.Pending.Should().BeEmpty("a resume fires once");
-        store.Saved.Should().BeEmpty();
+        Assert.Equal("carry on", Assert.Single(session.Sent));
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
     }
 
     [Fact]
@@ -126,8 +125,8 @@ public class ScheduledResumeCoordinatorTests
         await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddHours(3)));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        session.Sent.Should().BeEmpty();
-        coordinator.Pending.Should().ContainSingle();
+        Assert.Empty(session.Sent);
+        Assert.Single(coordinator.Pending);
     }
 
     [Fact]
@@ -141,8 +140,8 @@ public class ScheduledResumeCoordinatorTests
         await coordinator.ScheduleAsync(Resume("pane-gone", DateTimeOffset.Now.AddMinutes(-1)));
         await coordinator.RunDueAsync(DateTimeOffset.Now);
 
-        coordinator.Pending.Should().BeEmpty();
-        store.Saved.Should().BeEmpty();
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
     }
 
     [Fact]
@@ -154,9 +153,9 @@ public class ScheduledResumeCoordinatorTests
 
         await coordinator.LoadAsync();
 
-        coordinator.Pending.Should().BeEmpty();
-        session.Sent.Should().BeEmpty("firing four hours late is a surprise, not a service");
-        store.Saved.Should().BeEmpty();
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(session.Sent);
+        Assert.Empty(store.Saved);
     }
 
     [Fact]
@@ -167,7 +166,7 @@ public class ScheduledResumeCoordinatorTests
 
         await coordinator.LoadAsync();
 
-        coordinator.Pending.Should().ContainSingle();
+        Assert.Single(coordinator.Pending);
     }
 
     /// <summary>
@@ -175,7 +174,6 @@ public class ScheduledResumeCoordinatorTests
     /// pane the operator has not started yet — its runtime never came up, so sending into it "completes without
     /// going anywhere" (the failure mode <c>SessionPanelViewModel.CanTakeAPrompt</c> exists to describe). This must
     /// land in the same "could not be delivered" branch as a session that is gone outright, not the "was sent" one.
-    /// Asserted with xunit's own Assert (AC-372), unlike this file's older neighbours.
     /// </summary>
     [Fact]
     public async Task WhenTheResolvedPaneIsNotYetStarted_TheResumeIsNotSent_ButIsReported()

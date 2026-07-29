@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -26,7 +25,7 @@ public class CodexAppServerConnectionTests
 
         var result = await requestTask;
 
-        result.GetProperty("threadId").GetString().Should().Be("thread-1");
+        Assert.Equal("thread-1", result.GetProperty("threadId").GetString());
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class CodexAppServerConnectionTests
         var id = await _WaitForRequestIdAsync(fake, "thread/start");
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"error":{"code":-32000,"message":"nope"}}""");
 
-        await FluentActions.Awaiting(() => requestTask).Should().ThrowAsync<CodexAppServerException>();
+        await Assert.ThrowsAsync<CodexAppServerException>(() => requestTask);
     }
 
     [Fact]
@@ -56,10 +55,10 @@ public class CodexAppServerConnectionTests
         var notification = await _FirstNotificationAsync(connection);
         var serverRequest = await _FirstServerRequestAsync(connection);
 
-        notification.Method.Should().Be("turn/started");
-        serverRequest.Method.Should().Be("item/commandExecution/requestApproval");
-        serverRequest.Id.GetInt32().Should().Be(7);
-        serverRequest.Params.GetProperty("itemId").GetString().Should().Be("item-1");
+        Assert.Equal("turn/started", notification.Method);
+        Assert.Equal("item/commandExecution/requestApproval", serverRequest.Method);
+        Assert.Equal(7, serverRequest.Id.GetInt32());
+        Assert.Equal("item-1", serverRequest.Params.GetProperty("itemId").GetString());
     }
 
     [Fact]
@@ -73,7 +72,7 @@ public class CodexAppServerConnectionTests
         await _WaitForRequestIdAsync(fake, "initialize");
         fake.CompleteStdout();
 
-        await FluentActions.Awaiting(() => requestTask).Should().ThrowAsync<CodexAppServerException>();
+        await Assert.ThrowsAsync<CodexAppServerException>(() => requestTask);
     }
 
     private static async Task<long> _WaitForRequestIdAsync(FakeCliSubprocess fake, string method)

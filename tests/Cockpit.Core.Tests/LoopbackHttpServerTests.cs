@@ -1,6 +1,5 @@
 using System.Net.NetworkInformation;
 using Cockpit.TestSupport;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Core.Tests;
@@ -16,12 +15,12 @@ public class LoopbackHttpServerTests
     {
         await using var server = await LoopbackHttpServer.StartAsync(context => context.Response.WriteAsync("served"));
 
-        _ListeningPorts().Should().Contain(new Uri(server.BaseUrl).Port);
+        Assert.Contains(new Uri(server.BaseUrl).Port, _ListeningPorts());
 
         using var client = new HttpClient();
         var body = await client.GetStringAsync(server.BaseUrl);
 
-        body.Should().Be("served");
+        Assert.Equal("served", body);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public class LoopbackHttpServerTests
 
         await server.DisposeAsync();
 
-        _ListeningPorts().Should().NotContain(port);
+        Assert.DoesNotContain(port, _ListeningPorts());
     }
 
     private static IEnumerable<int> _ListeningPorts() =>

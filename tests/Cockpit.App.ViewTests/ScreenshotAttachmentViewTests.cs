@@ -1,6 +1,5 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -26,9 +25,9 @@ public class ScreenshotAttachmentViewTests
 
         var reason = _Inject(session, Png);
 
-        reason.Should().BeNull("nothing needs explaining when it landed");
-        session.PendingAttachments.Should().ContainSingle();
-        session.PendingAttachments[0].PngBytes.Should().Equal(Png);
+        Assert.Null(reason);
+        Assert.Single(session.PendingAttachments);
+        Assert.Equal(Png, session.PendingAttachments[0].PngBytes);
     });
 
     /// <summary>
@@ -42,8 +41,8 @@ public class ScreenshotAttachmentViewTests
 
         _Inject(session, Png);
 
-        session.InputText.Should().BeEmpty();
-        session.PendingAttachments.Should().ContainSingle("it is queued for the operator to send, not sent");
+        Assert.Empty(session.InputText);
+        Assert.Single(session.PendingAttachments);
     });
 
     /// <summary>Several in a row are several attachments — one capture must not replace the last.</summary>
@@ -55,7 +54,7 @@ public class ScreenshotAttachmentViewTests
         _Inject(session, Png);
         _Inject(session, Png);
 
-        session.PendingAttachments.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(session.PendingAttachments));
     });
 
     /// <summary>The chip is removable, so a screenshot taken by accident can be dropped before the message goes.</summary>
@@ -67,7 +66,7 @@ public class ScreenshotAttachmentViewTests
 
         session.PendingAttachments[0].RemoveCommand.Execute(null);
 
-        session.PendingAttachments.Should().BeEmpty();
+        Assert.Empty(session.PendingAttachments);
     });
 
     /// <summary>Send is enabled by a screenshot alone: "look at this" with no words is a complete message.</summary>
@@ -78,7 +77,7 @@ public class ScreenshotAttachmentViewTests
 
         _Inject(session, Png);
 
-        session.CanSend.Should().BeTrue();
+        Assert.True(session.CanSend);
     });
 
     /// <summary>A provider that cannot see images attaches nothing here either — the gate is the view model's, not the button's.</summary>
@@ -92,8 +91,8 @@ public class ScreenshotAttachmentViewTests
 
         var reason = _Inject(session, Png);
 
-        reason.Should().NotBeNull();
-        session.PendingAttachments.Should().BeEmpty();
+        Assert.NotNull(reason);
+        Assert.Empty(session.PendingAttachments);
     });
 
     /// <summary>
@@ -104,7 +103,7 @@ public class ScreenshotAttachmentViewTests
     private static string? _Inject(SessionViewModel session, byte[] png)
     {
         var injection = session.InjectScreenshotAsync(png);
-        injection.IsCompleted.Should().BeTrue("a chat session attaches without awaiting anything");
+        Assert.True(injection.IsCompleted, "a chat session attaches without awaiting anything");
         return injection.GetAwaiter().GetResult();
     }
 }

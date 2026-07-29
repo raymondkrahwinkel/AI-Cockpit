@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -33,14 +32,14 @@ public class ScreenshotControlPanelTests
         var selection = _Model(surface);
 
         _Press(surface, surface.RedactTool);
-        selection.MarkingNeedsARegion.Should().BeTrue("Hide was pressed with nothing marked out, which is the same refusal B gives");
+        Assert.True(selection.MarkingNeedsARegion, "Hide was pressed with nothing marked out, which is the same refusal B gives");
 
         surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
         _Press(surface, surface.RedactTool);
-        selection.Redacting.Should().BeTrue("with a region marked out the tool goes on, exactly as B would");
+        Assert.True(selection.Redacting, "with a region marked out the tool goes on, exactly as B would");
 
         _Press(surface, surface.RegionTool);
-        selection.DraggingRegion.Should().BeTrue("Region is the way back out of whichever tool was on");
+        Assert.True(selection.DraggingRegion, "Region is the way back out of whichever tool was on");
     });
 
     /// <summary>
@@ -56,10 +55,10 @@ public class ScreenshotControlPanelTests
 
             _Press(surface, surface.EverythingTool);
 
-            selection.Selection.Should().Be(
+            Assert.Equal(
                 new CaptureRect(0, 0, selection.ImageWidth, selection.ImageHeight),
-                "the whole capture, gaps and all, exactly as A marks it out");
-            surface.EverythingTool.Classes.Should().Contain("active");
+                selection.Selection);
+            Assert.Contains("active", surface.EverythingTool.Classes);
         });
 
     /// <summary>
@@ -72,7 +71,7 @@ public class ScreenshotControlPanelTests
     {
         _Press(surface, surface.EverythingTool);
 
-        surface.RegionTool.Classes.Should().NotContain("active");
+        Assert.DoesNotContain("active", surface.RegionTool.Classes);
     });
 
     /// <summary>
@@ -89,11 +88,11 @@ public class ScreenshotControlPanelTests
 
             _Press(surface, surface.RegionTool);
 
-            surface.RegionTool.Classes.Should().Contain("active");
-            surface.EverythingTool.Classes.Should().NotContain("active");
-            selection.Selection.Should().Be(
+            Assert.Contains("active", surface.RegionTool.Classes);
+            Assert.DoesNotContain("active", surface.EverythingTool.Classes);
+            Assert.Equal(
                 new CaptureRect(0, 0, selection.ImageWidth, selection.ImageHeight),
-                "what is marked out is untouched — this said which tool is in hand, not what to take");
+                selection.Selection);
         });
 
     /// <summary>The other two tools put it out as well, so the row never lights two at once whichever way it is reached.</summary>
@@ -104,8 +103,8 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.RedactTool);
 
-        surface.RedactTool.Classes.Should().Contain("active", "there is a region to hide part of, so Hide goes on");
-        surface.EverythingTool.Classes.Should().NotContain("active");
+        Assert.Contains("active", surface.RedactTool.Classes);
+        Assert.DoesNotContain("active", surface.EverythingTool.Classes);
     });
 
     /// <summary>
@@ -121,8 +120,8 @@ public class ScreenshotControlPanelTests
         surface.MouseMove(new Point(SurfaceWidth * 0.6, SurfaceHeight * 0.8), RawInputModifiers.LeftMouseButton);
         surface.MouseUp(new Point(SurfaceWidth * 0.6, SurfaceHeight * 0.8), MouseButton.Left);
 
-        surface.EverythingTool.Classes.Should().NotContain("active");
-        surface.RegionTool.Classes.Should().Contain("active", "and the tool the drag belonged to says so instead");
+        Assert.DoesNotContain("active", surface.EverythingTool.Classes);
+        Assert.Contains("active", surface.RegionTool.Classes);
     });
 
     /// <summary>
@@ -137,8 +136,8 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.EverythingTool);
 
-        Canvas.GetTop(surface.Controls).Should().Be(before, "there is nowhere better to be when the selection is everything");
-        before.Should().BeLessThan(SurfaceHeight / 2.0, "and where it is, is the top — this test says nothing otherwise");
+        Assert.Equal(before, Canvas.GetTop(surface.Controls));
+        Assert.True(before < SurfaceHeight / 2.0, "and where it is, is the top — this test says nothing otherwise");
     });
 
     /// <summary>
@@ -150,11 +149,11 @@ public class ScreenshotControlPanelTests
         _Staged(ScreenshotSelectionScene.WindowPick, surface =>
         {
             var selection = _Model(surface);
-            selection.PickingWindow.Should().BeTrue("the scene left the surface in window mode");
+            Assert.True(selection.PickingWindow, "the scene left the surface in window mode");
 
             _Press(surface, surface.EverythingTool);
 
-            selection.PickingWindow.Should().BeFalse();
+            Assert.False(selection.PickingWindow);
         });
 
     /// <summary>
@@ -165,9 +164,9 @@ public class ScreenshotControlPanelTests
     [Fact]
     public void AnAvailableTool_IsOfferedRatherThanGreyedOut() => _Staged(ScreenshotSelectionScene.Idle, surface =>
     {
-        _Model(surface).CanPickWindow.Should().BeTrue("the scene's stand-in desktop does say where its windows are");
+        Assert.True(_Model(surface).CanPickWindow, "the scene's stand-in desktop does say where its windows are");
 
-        surface.WindowTool.IsEffectivelyEnabled.Should().BeTrue();
+        Assert.True(surface.WindowTool.IsEffectivelyEnabled);
     });
 
     /// <summary>
@@ -209,18 +208,18 @@ public class ScreenshotControlPanelTests
         _Press(surface, surface.RegionTool);
         surface.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
 
-        selection.Result.Should().NotBeNull("Enter still reaches the surface, and takes the shot, after a tool was clicked");
+        Assert.NotNull(selection.Result);
     });
 
     [Fact]
     public void RInAnotherTool_GoesBackToDraggingARegion() => _Staged(ScreenshotSelectionScene.WindowPick, surface =>
     {
         var selection = _Model(surface);
-        selection.PickingWindow.Should().BeTrue("the scene left the surface in window mode");
+        Assert.True(selection.PickingWindow, "the scene left the surface in window mode");
 
         surface.KeyPressQwerty(PhysicalKey.R, RawInputModifiers.None);
 
-        selection.DraggingRegion.Should().BeTrue();
+        Assert.True(selection.DraggingRegion);
     });
 
     /// <summary>
@@ -235,8 +234,8 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.ArrowTool);
 
-        selection.Pointing.Should().BeTrue();
-        surface.ArrowTool.Classes.Should().Contain("active");
+        Assert.True(selection.Pointing);
+        Assert.Contains("active", surface.ArrowTool.Classes);
     });
 
     /// <summary>
@@ -252,13 +251,13 @@ public class ScreenshotControlPanelTests
             surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
 
             surface.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
-            selection.Pointing.Should().BeTrue("P is the arrow's key");
+            Assert.True(selection.Pointing, "P is the arrow's key");
 
             surface.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
-            selection.Selection.Should().Be(
+            Assert.Equal(
                 new CaptureRect(0, 0, selection.ImageWidth, selection.ImageHeight),
-                "and A still takes the whole capture, which is what it did before the arrow existed");
-            surface.EverythingTool.Classes.Should().Contain("active");
+                selection.Selection);
+            Assert.Contains("active", surface.EverythingTool.Classes);
         });
 
     /// <summary>
@@ -270,10 +269,12 @@ public class ScreenshotControlPanelTests
     {
         var centre = Canvas.GetLeft(surface.Controls) + (surface.Controls.Bounds.Width / 2);
 
-        centre.Should().BeGreaterThan(
-            SurfaceWidth / 2.0,
+        Assert.True(
+            centre > SurfaceWidth / 2.0,
             "the scene leaves the pointer on the right-hand screen, and the panel follows it there");
-        centre.Should().BeApproximately(SurfaceWidth * 0.75, 2, "centred on that screen rather than merely on its side of the line");
+        Assert.True(
+            Math.Abs(centre - (SurfaceWidth * 0.75)) <= 2,
+            "centred on that screen rather than merely on its side of the line");
     });
 
     /// <summary>The note is on the panel and on T, and answers being pressed like the rest of the row.</summary>
@@ -285,9 +286,9 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.LabelTool);
 
-        selection.Labelling.Should().BeTrue();
-        selection.Typing.Should().BeFalse("holding the tool is not the same as having a note open — nothing is typed yet");
-        surface.LabelTool.Classes.Should().Contain("active");
+        Assert.True(selection.Labelling);
+        Assert.False(selection.Typing, "holding the tool is not the same as having a note open — nothing is typed yet");
+        Assert.Contains("active", surface.LabelTool.Classes);
     });
 
     /// <summary>Freehand drawing is on the panel and on D, and answers being pressed like the rest of the row.</summary>
@@ -299,11 +300,11 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.DrawTool);
 
-        selection.Drawing.Should().BeTrue();
-        surface.DrawTool.Classes.Should().Contain("active");
+        Assert.True(selection.Drawing);
+        Assert.Contains("active", surface.DrawTool.Classes);
 
         surface.KeyPressQwerty(PhysicalKey.D, RawInputModifiers.None);
-        selection.Drawing.Should().BeFalse("D is the same switch the button is");
+        Assert.False(selection.Drawing, "D is the same switch the button is");
     });
 
     /// <summary>The wash is on the panel and on H, and answers being pressed like the rest of the row.</summary>
@@ -315,11 +316,11 @@ public class ScreenshotControlPanelTests
 
         _Press(surface, surface.HighlightTool);
 
-        selection.Highlighting.Should().BeTrue();
-        surface.HighlightTool.Classes.Should().Contain("active");
+        Assert.True(selection.Highlighting);
+        Assert.Contains("active", surface.HighlightTool.Classes);
 
         surface.KeyPressQwerty(PhysicalKey.H, RawInputModifiers.None);
-        selection.Highlighting.Should().BeFalse("H is the same switch the button is");
+        Assert.False(selection.Highlighting, "H is the same switch the button is");
     });
 
     /// <summary>
@@ -339,11 +340,12 @@ public class ScreenshotControlPanelTests
     {
         var left = Canvas.GetLeft(surface.Controls);
 
-        surface.Controls.Bounds.Width.Should().BeLessThanOrEqualTo(
-            SurfaceWidth / 2.0, "the scene's screens are half the surface each");
-        left.Should().BeGreaterThanOrEqualTo(SurfaceWidth / 2.0, "the pointer is on the right-hand one");
-        (left + surface.Controls.Bounds.Width).Should().BeLessThanOrEqualTo(
-            SurfaceWidth, "and the whole of it is on that screen, not spilling past its far edge");
+        Assert.True(
+            surface.Controls.Bounds.Width <= SurfaceWidth / 2.0, "the scene's screens are half the surface each");
+        Assert.True(left >= SurfaceWidth / 2.0, "the pointer is on the right-hand one");
+        Assert.True(
+            left + surface.Controls.Bounds.Width <= SurfaceWidth,
+            "and the whole of it is on that screen, not spilling past its far edge");
     });
 
     /// <summary>
@@ -360,11 +362,13 @@ public class ScreenshotControlPanelTests
             Canvas.GetLeft(surface.Controls), Canvas.GetTop(surface.Controls),
             surface.Controls.Bounds.Width, surface.Controls.Bounds.Height);
 
-        Canvas.GetTop(surface.Controls).Should().BeLessThan(
-            SurfaceHeight / 2.0, "it belongs at the top, and this scene does not move it");
+        Assert.True(
+            Canvas.GetTop(surface.Controls) < SurfaceHeight / 2.0, "it belongs at the top, and this scene does not move it");
 
-        var marked = selection.Selection.Should().NotBeNull().And.Subject as CaptureRect?;
-        _ToRect(selection.ToSurface(marked!.Value)).Intersects(panel).Should().BeTrue(
+        Assert.NotNull(selection.Selection);
+        var marked = selection.Selection;
+        Assert.True(
+            _ToRect(selection.ToSurface(marked!.Value)).Intersects(panel),
             "otherwise this scene's region does not reach the panel, and the test proves nothing about staying");
     });
 
@@ -380,10 +384,10 @@ public class ScreenshotControlPanelTests
     [Fact]
     public void ADisplaySmallerThanThePanel_DoesNotPushItOffTheEdge() => _Staged(ScreenshotSelectionScene.Idle, surface =>
     {
-        surface.Controls.Bounds.Width.Should().BeGreaterThan(NarrowWidth, "otherwise this window is not the small case at all");
+        Assert.True(surface.Controls.Bounds.Width > NarrowWidth, "otherwise this window is not the small case at all");
 
-        Canvas.GetLeft(surface.Controls).Should().Be(0, "a panel that cannot fit starts at the edge rather than before it");
-        Canvas.GetTop(surface.Controls).Should().BeGreaterThanOrEqualTo(0);
+        Assert.Equal(0, Canvas.GetLeft(surface.Controls));
+        Assert.True(Canvas.GetTop(surface.Controls) >= 0);
     }, NarrowWidth, NarrowHeight);
 
     /// <summary>Pressed through the pointer rather than by raising Click, because half of what these tests are about is which control the press lands on.</summary>
@@ -409,15 +413,14 @@ public class ScreenshotControlPanelTests
             surface.MouseMove(away, RawInputModifiers.LeftMouseButton);
             surface.MouseUp(away, MouseButton.Left);
 
-            _Model(surface).Selection.Should().BeNull("the drag started on the panel, which is not the picture");
+            Assert.Null(_Model(surface).Selection);
         });
 
     private static void _Staged(
         string scene, Action<ScreenshotSelectionWindow> assert, int width = SurfaceWidth, int height = SurfaceHeight) =>
         HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.BuildScene(scene, width, height)
-            .Should().BeOfType<ScreenshotSelectionWindow>().Subject;
+        var surface = Assert.IsType<ScreenshotSelectionWindow>(Screenshotter.BuildScene(scene, width, height));
 
         surface.Show();
         try

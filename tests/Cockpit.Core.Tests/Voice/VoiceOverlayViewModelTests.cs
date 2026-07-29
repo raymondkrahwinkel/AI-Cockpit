@@ -1,5 +1,4 @@
 using Cockpit.App.ViewModels;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Voice;
 
@@ -11,9 +10,9 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel();
 
-        vm.State.Should().Be(VoiceOverlayState.Hidden);
-        vm.IsListening.Should().BeFalse();
-        vm.IsTranscribing.Should().BeFalse();
+        Assert.Equal(VoiceOverlayState.Hidden, vm.State);
+        Assert.False(vm.IsListening);
+        Assert.False(vm.IsTranscribing);
     }
 
     [Fact]
@@ -21,8 +20,8 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Listening };
 
-        vm.IsListening.Should().BeTrue();
-        vm.IsTranscribing.Should().BeFalse();
+        Assert.True(vm.IsListening);
+        Assert.False(vm.IsTranscribing);
     }
 
     [Fact]
@@ -30,8 +29,8 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Transcribing };
 
-        vm.IsListening.Should().BeFalse();
-        vm.IsTranscribing.Should().BeTrue();
+        Assert.False(vm.IsListening);
+        Assert.True(vm.IsTranscribing);
     }
 
     [Fact]
@@ -41,8 +40,8 @@ public class VoiceOverlayViewModelTests
 
         vm.State = VoiceOverlayState.Hidden;
 
-        vm.IsListening.Should().BeFalse();
-        vm.IsTranscribing.Should().BeFalse();
+        Assert.False(vm.IsListening);
+        Assert.False(vm.IsTranscribing);
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel();
 
-        vm.Bars.Should().NotBeEmpty();
-        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
+        Assert.NotEmpty(vm.Bars);
+        Assert.All(vm.Bars, bar => Assert.Equal(2, bar.Height));
     }
 
     [Fact]
@@ -61,8 +60,8 @@ public class VoiceOverlayViewModelTests
 
         vm.PushLevel(1.0);
 
-        vm.Bars[^1].Height.Should().Be(20);
-        vm.Bars[0].Height.Should().Be(2);
+        Assert.Equal(20, vm.Bars[^1].Height);
+        Assert.Equal(2, vm.Bars[0].Height);
     }
 
     [Fact]
@@ -73,8 +72,8 @@ public class VoiceOverlayViewModelTests
         vm.PushLevel(1.0);
         vm.PushLevel(0.0);
 
-        vm.Bars[^1].Height.Should().Be(2);
-        vm.Bars[^2].Height.Should().Be(20);
+        Assert.Equal(2, vm.Bars[^1].Height);
+        Assert.Equal(20, vm.Bars[^2].Height);
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class VoiceOverlayViewModelTests
 
         vm.PushLevel(1.0);
 
-        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
+        Assert.All(vm.Bars, bar => Assert.Equal(2, bar.Height));
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public class VoiceOverlayViewModelTests
 
         vm.State = VoiceOverlayState.Transcribing;
 
-        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
+        Assert.All(vm.Bars, bar => Assert.Equal(2, bar.Height));
     }
 
     /// <summary>
@@ -111,7 +110,7 @@ public class VoiceOverlayViewModelTests
             StatusText = "Downloading speech model — 412 MB",
         };
 
-        vm.HasProgress.Should().BeFalse();
+        Assert.False(vm.HasProgress);
     }
 
     [Fact]
@@ -119,8 +118,8 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Preparing, Progress = 0.43 };
 
-        vm.HasProgress.Should().BeTrue();
-        vm.ProgressValue.Should().Be(0.43);
+        Assert.True(vm.HasProgress);
+        Assert.Equal(0.43, vm.ProgressValue);
     }
 
     /// <summary>
@@ -139,8 +138,8 @@ public class VoiceOverlayViewModelTests
 
         vm.State = VoiceOverlayState.Transcribing;
 
-        vm.StatusText.Should().BeEmpty();
-        vm.HasProgress.Should().BeFalse();
+        Assert.Empty(vm.StatusText);
+        Assert.False(vm.HasProgress);
     }
 
     /// <summary>The three rows sit in one cell, so exactly one of them may ever be visible.</summary>
@@ -149,8 +148,8 @@ public class VoiceOverlayViewModelTests
     {
         var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Preparing };
 
-        vm.IsPreparing.Should().BeTrue();
-        vm.IsTranscribing.Should().BeFalse();
-        vm.IsListening.Should().BeFalse();
+        Assert.True(vm.IsPreparing);
+        Assert.False(vm.IsTranscribing);
+        Assert.False(vm.IsListening);
     }
 }

@@ -3,7 +3,6 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
@@ -43,7 +42,7 @@ public class ProviderDispatchFacadeTests
         var checker = new ProfileLoginChecker(RegistryWith());
         var local = new SessionProfile("local", new OllamaConfig("http://localhost", "llama"));
 
-        checker.IsLoggedIn(local).Should().BeTrue("a local provider has no login gate to fail");
+        Assert.True(checker.IsLoggedIn(local), "a local provider has no login gate to fail");
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class ProviderDispatchFacadeTests
         var checker = new ProfileLoginChecker(RegistryWith(Registration("claude", isLoggedIn: _ => false)));
         var profile = new SessionProfile("p", new PluginProviderConfig("claude", "{}"));
 
-        checker.IsLoggedIn(profile).Should().BeFalse("the provider's gate reported logged out");
+        Assert.False(checker.IsLoggedIn(profile), "the provider's gate reported logged out");
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class ProviderDispatchFacadeTests
         var checker = new ProfileLoginChecker(RegistryWith(Registration("codex", isLoggedIn: null)));
         var profile = new SessionProfile("p", new PluginProviderConfig("codex", "{}"));
 
-        checker.IsLoggedIn(profile).Should().BeTrue("a provider with no gate manages its own auth");
+        Assert.True(checker.IsLoggedIn(profile), "a provider with no gate manages its own auth");
     }
 
     [Fact]
@@ -72,7 +71,7 @@ public class ProviderDispatchFacadeTests
             RegistryWith(Registration("codex", createTranscriptReader: null)));
         var profile = new SessionProfile("p", new PluginProviderConfig("codex", "{}"));
 
-        reader.SnapshotTranscripts(profile).Should().BeEmpty("the provider records no tailable transcript");
+        Assert.Empty(reader.SnapshotTranscripts(profile));
     }
 
     [Fact]
@@ -85,6 +84,6 @@ public class ProviderDispatchFacadeTests
             RegistryWith(Registration("claude", createTranscriptReader: _ => inner)));
         var profile = new SessionProfile("p", new PluginProviderConfig("claude", "{}"));
 
-        reader.SnapshotTranscripts(profile).Should().Contain("existing.jsonl");
+        Assert.Contains("existing.jsonl", reader.SnapshotTranscripts(profile));
     }
 }

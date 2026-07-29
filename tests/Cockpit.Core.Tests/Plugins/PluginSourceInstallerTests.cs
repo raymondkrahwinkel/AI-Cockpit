@@ -1,7 +1,6 @@
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Plugins;
 
@@ -39,9 +38,9 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
 
-        installed.Should().Equal("codex");
-        _InstalledAssembly("codex").Should().Be("rebuilt-bytes");
-        _registrations.Saved["codex"].PinnedSha256.Should().NotBe("old-pin");
+        Assert.Equal(new[] { "codex" }, installed);
+        Assert.Equal("rebuilt-bytes", _InstalledAssembly("codex"));
+        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
     }
 
     // AC-43: a rebuild that changed only a dependency DLL — the entry assembly byte-identical — must still be
@@ -60,9 +59,9 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
 
-        installed.Should().Equal("codex");
-        (await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"))).Should().Be("dep-v2");
-        _registrations.Saved["codex"].PinnedSha256.Should().NotBe("old-pin");
+        Assert.Equal(new[] { "codex" }, installed);
+        Assert.Equal("dep-v2", (await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"))));
+        Assert.NotEqual("old-pin", _registrations.Saved["codex"].PinnedSha256);
     }
 
     // The other side of the closure comparison: an install whose whole closure is byte-identical must be left
@@ -80,8 +79,8 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
 
-        installed.Should().BeEmpty("an unchanged closure must not reinstall or re-pin");
-        _registrations.Saved["codex"].PinnedSha256.Should().Be("pinned");
+        Assert.Empty(installed);
+        Assert.Equal("pinned", _registrations.Saved["codex"].PinnedSha256);
     }
 
     // Refresh-only is the looseness guarantee: a build never decides, on the operator's behalf, to install a
@@ -94,8 +93,8 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
 
-        installed.Should().BeEmpty();
-        Directory.Exists(Path.Combine(_plugins, "codex")).Should().BeFalse();
+        Assert.Empty(installed);
+        Assert.False(Directory.Exists(Path.Combine(_plugins, "codex")));
     }
 
     [Fact]
@@ -108,9 +107,9 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
 
-        installed.Should().BeEmpty();
-        _InstalledAssembly("codex").Should().Be("old-bytes");
-        _registrations.Saved["codex"].Should().Be(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"));
+        Assert.Empty(installed);
+        Assert.Equal("old-bytes", _InstalledAssembly("codex"));
+        Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["codex"]);
     }
 
     // The bundled caller's side of the same routine: a plugin that ships is installed even when not there yet.
@@ -122,9 +121,9 @@ public class PluginSourceInstallerTests : IDisposable
         var installed = await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: true);
 
-        installed.Should().Equal("clock");
-        File.Exists(Path.Combine(_plugins, "clock", "plugin.json")).Should().BeTrue();
-        _registrations.Saved["clock"].Enabled.Should().BeTrue();
+        Assert.Equal(new[] { "clock" }, installed);
+        Assert.True(File.Exists(Path.Combine(_plugins, "clock", "plugin.json")));
+        Assert.True(_registrations.Saved["clock"].Enabled);
     }
 
     // A stray Cockpit.Plugins.Abstractions.dll in a source folder (a test project's output offered one, which is
@@ -139,8 +138,8 @@ public class PluginSourceInstallerTests : IDisposable
         await new PluginSourceInstaller(_registrations, null)
             .InstallFromSourceFoldersAsync([source], _plugins, installNew: true);
 
-        File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugin.clock.dll")).Should().BeTrue();
-        File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")).Should().BeFalse();
+        Assert.True(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugin.clock.dll")));
+        Assert.False(File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")));
     }
 
     private string _InstalledAssembly(string id) =>

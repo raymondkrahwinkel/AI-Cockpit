@@ -3,7 +3,6 @@ using System.IO.Compression;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Plugins.Abstractions.ManagedCli;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.ManagedCli;
 
@@ -34,18 +33,18 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("acme");
 
-        result.Success.Should().BeTrue();
-        result.Version.Should().Be("1.2.3");
+        Assert.True(result.Success);
+        Assert.Equal("1.2.3", result.Version);
         var expected = Path.Combine(_root, "cli", "acme", "1.2.3", "acme");
-        result.ExecutablePath.Should().Be(expected);
-        File.Exists(expected).Should().BeTrue();
-        (await File.ReadAllBytesAsync(expected)).Should().Equal(payload);
+        Assert.Equal(expected, result.ExecutablePath);
+        Assert.True(File.Exists(expected));
+        Assert.Equal(payload, await File.ReadAllBytesAsync(expected));
         // The half-built ".download" staging dir must be gone once the swap completed.
-        Directory.Exists(Path.Combine(_root, "cli", "acme", "1.2.3.download")).Should().BeFalse();
+        Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme", "1.2.3.download")));
 
         if (!OperatingSystem.IsWindows())
         {
-            File.GetUnixFileMode(expected).Should().HaveFlag(UnixFileMode.UserExecute);
+            Assert.True(File.GetUnixFileMode(expected).HasFlag(UnixFileMode.UserExecute));
         }
     }
 
@@ -61,11 +60,11 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("acme");
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("SHA-256");
-        Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0")).Should().BeFalse();
-        Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0.download")).Should().BeFalse();
-        service.ResolveInstalledPath("acme").Should().BeNull();
+        Assert.False(result.Success);
+        Assert.Contains("SHA-256", result.Error);
+        Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0.download")));
+        Assert.Null(service.ResolveInstalledPath("acme"));
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("acme");
 
-        result.Success.Should().BeTrue();
-        result.Version.Should().Be("2.0.0");
-        handler.CallCount.Should().Be(0);
+        Assert.True(result.Success);
+        Assert.Equal("2.0.0", result.Version);
+        Assert.Equal(0, handler.CallCount);
     }
 
     [Fact]
@@ -97,8 +96,8 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("acme");
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("acme");
+        Assert.False(result.Success);
+        Assert.Contains("acme", result.Error);
     }
 
     [Theory]
@@ -115,10 +114,10 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("acme");
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("version");
-        handler.CallCount.Should().Be(0);
-        Directory.Exists(Path.Combine(_root, "cli", "acme")).Should().BeFalse();
+        Assert.False(result.Success);
+        Assert.Contains("version", result.Error);
+        Assert.Equal(0, handler.CallCount);
+        Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme")));
     }
 
     [Fact]
@@ -126,8 +125,8 @@ public sealed class ManagedCliServiceTests : IDisposable
     {
         var result = await _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException())).EnsureInstalledAsync("unknown");
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("unknown");
+        Assert.False(result.Success);
+        Assert.Contains("unknown", result.Error);
     }
 
     [Fact]
@@ -151,10 +150,10 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var result = await service.EnsureInstalledAsync("codex");
 
-        result.Success.Should().BeTrue();
+        Assert.True(result.Success);
         var expected = Path.Combine(_root, "cli", "codex", "0.9.0", "codex");
-        File.Exists(expected).Should().BeTrue();
-        (await File.ReadAllBytesAsync(expected)).Should().Equal(binary);
+        Assert.True(File.Exists(expected));
+        Assert.Equal(binary, await File.ReadAllBytesAsync(expected));
     }
 
     [Fact]
@@ -164,17 +163,15 @@ public sealed class ManagedCliServiceTests : IDisposable
         _PlaceInstalled("acme", "1.10.0"); // string-sorts below 1.2.0; version order must win
         _PlaceInstalled("acme", "1.3.0");
 
-        _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()))
-            .ResolveInstalledPath("acme")
-            .Should().Be(Path.Combine(_root, "cli", "acme", "1.10.0", "acme"));
+        Assert.Equal(Path.Combine(_root, "cli", "acme", "1.10.0", "acme"), _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()))
+            .ResolveInstalledPath("acme"));
     }
 
     [Fact]
     public void ResolveInstalledPath_NothingInstalled_ReturnsNull()
     {
-        _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()))
-            .ResolveInstalledPath("acme")
-            .Should().BeNull();
+        Assert.Null(_Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()))
+            .ResolveInstalledPath("acme"));
     }
 
     [Theory]
@@ -188,9 +185,9 @@ public sealed class ManagedCliServiceTests : IDisposable
         var service = _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException("must not download")));
         service.Register(_Descriptor(cliName, "1.0.0", _RawPlan("x"u8.ToArray())));
 
-        service.ResolveInstalledPath(cliName).Should().BeNull();
-        service.RemoveInstalled(cliName).Should().BeFalse();
-        (await service.EnsureInstalledAsync(cliName)).Success.Should().BeFalse();
+        Assert.Null(service.ResolveInstalledPath(cliName));
+        Assert.False(service.RemoveInstalled(cliName));
+        Assert.False((await service.EnsureInstalledAsync(cliName)).Success);
     }
 
     [Fact]
@@ -202,8 +199,8 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var status = await service.GetStatusAsync("acme");
 
-        status.InstalledVersion.Should().Be("1.0.0");
-        status.LatestVersion.Should().Be("2.0.0");
+        Assert.Equal("1.0.0", status.InstalledVersion);
+        Assert.Equal("2.0.0", status.LatestVersion);
     }
 
     [Fact]
@@ -214,8 +211,8 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var status = await service.GetStatusAsync("acme");
 
-        status.InstalledVersion.Should().BeNull();
-        status.LatestVersion.Should().Be("2.0.0");
+        Assert.Null(status.InstalledVersion);
+        Assert.Equal("2.0.0", status.LatestVersion);
     }
 
     [Fact]
@@ -228,8 +225,8 @@ public sealed class ManagedCliServiceTests : IDisposable
 
         var status = await service.GetStatusAsync("acme");
 
-        status.InstalledVersion.Should().Be("1.0.0");
-        status.LatestVersion.Should().BeNull();
+        Assert.Equal("1.0.0", status.InstalledVersion);
+        Assert.Null(status.LatestVersion);
     }
 
     // The internal ctor takes the cli root directly (in production that is <StateRoot>/cli); mirror that layout so

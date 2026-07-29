@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Docker.StatusBar;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Docker.Tests;
 
@@ -18,13 +17,13 @@ public sealed class RunningContainerRegistryTests
 
         var snapshot = registry.Snapshot();
 
-        snapshot.Should().ContainSingle();
+        Assert.Single(snapshot);
         var activity = snapshot[0];
-        activity.Title.Should().Be("web");
-        activity.Details.Should().Contain(detail => detail.Label == "Image" && detail.Value == "nginx:latest");
-        activity.Details.Should().Contain(detail => detail.Label == "Ports" && detail.Value == "8080:80");
-        activity.Details.Should().Contain(detail => detail.Label == "Session" && detail.Value == "pane-1");
-        activity.Details.Should().Contain(detail => detail.Label == "Uptime" && detail.Value == "3m00s");
+        Assert.Equal("web", activity.Title);
+        Assert.Contains(activity.Details, detail => detail.Label == "Image" && detail.Value == "nginx:latest");
+        Assert.Contains(activity.Details, detail => detail.Label == "Ports" && detail.Value == "8080:80");
+        Assert.Contains(activity.Details, detail => detail.Label == "Session" && detail.Value == "pane-1");
+        Assert.Contains(activity.Details, detail => detail.Label == "Uptime" && detail.Value == "3m00s");
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public sealed class RunningContainerRegistryTests
 
         registry.Track("abc123def456ghi789", name: "", "nginx", string.Empty, "pane-1");
 
-        registry.Snapshot()[0].Title.Should().Be("abc123def456");
+        Assert.Equal("abc123def456", registry.Snapshot()[0].Title);
     }
 
     [Fact]
@@ -50,8 +49,8 @@ public sealed class RunningContainerRegistryTests
 
         await registry.Snapshot()[0].StopAsync();
 
-        engine.Removed.Should().ContainSingle().Which.Should().Be(("abc123", true));
-        registry.Snapshot().Should().BeEmpty();
-        changed.Should().Be(1);
+        Assert.Equal(("abc123", true), Assert.Single(engine.Removed));
+        Assert.Empty(registry.Snapshot());
+        Assert.Equal(1, changed);
     }
 }

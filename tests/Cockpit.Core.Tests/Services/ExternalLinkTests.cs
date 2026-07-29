@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.Services;
@@ -17,8 +16,7 @@ public class ExternalLinkTests
     [InlineData("https://example.test:8443/path?q=1#frag")]
     [InlineData("HTTPS://EXAMPLE.TEST")]
     public void TryParseWebAddress_AnHttpOrHttpsUrl_IsAccepted(string value) =>
-        ExternalLink.TryParseWebAddress(value, out _)
-            .Should().BeTrue("a value the rows draw as a link has to be one this will actually open");
+        Assert.True(ExternalLink.TryParseWebAddress(value, out _), "a value the rows draw as a link has to be one this will actually open");
 
     [Theory]
     [InlineData(null)]
@@ -36,8 +34,7 @@ public class ExternalLinkTests
     [InlineData("vscode://file/etc/passwd")]
     [InlineData("mailto:someone@example.test")]
     public void TryParseWebAddress_AnythingElse_IsRefused(string? value) =>
-        ExternalLink.TryParseWebAddress(value, out _)
-            .Should().BeFalse("these are the values a weaker guard would have launched a program with");
+        Assert.False(ExternalLink.TryParseWebAddress(value, out _), "these are the values a weaker guard would have launched a program with");
 
     [Theory]
     [InlineData(null)]
@@ -45,8 +42,7 @@ public class ExternalLinkTests
     [InlineData("cmd.exe /c calc")]
     [InlineData("javascript:alert(1)")]
     public void TryOpen_SomethingItRefuses_StartsNothing(string? value) =>
-        ExternalLink.TryOpen(value)
-            .Should().BeFalse("a false return is the proof nothing was handed to the shell");
+        Assert.False(ExternalLink.TryOpen(value), "a false return is the proof nothing was handed to the shell");
 
     [Theory]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
@@ -57,7 +53,6 @@ public class ExternalLinkTests
         // The overload for a caller that parsed the address itself re-checks the scheme rather than trusting them: a
         // rule this class owns but only its callers apply is not a rule, and a caller that reaches the shell this way
         // writes no shell-out of its own for the source scan to notice.
-        ExternalLink.TryOpen(new Uri(value))
-            .Should().BeFalse("the guard belongs to this class, not to whoever calls it");
+        Assert.False(ExternalLink.TryOpen(new Uri(value)), "the guard belongs to this class, not to whoever calls it");
     }
 }

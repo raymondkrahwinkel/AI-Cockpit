@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.UsageTrend.Tests;
 
@@ -19,8 +18,8 @@ public class UsageTrendHistoryTests
     {
         var result = UsageTrendHistory.Append([], Sample(T0));
 
-        result.Should().NotBeNull();
-        result!.Should().HaveCount(1);
+        Assert.NotNull(result);
+        Assert.Single(result!);
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public class UsageTrendHistoryTests
         // Five minutes later, essentially the same figures: not worth a whole-file rewrite.
         var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(5), ctx: 21));
 
-        result.Should().BeNull("a near-identical reading inside the 10-minute window is dropped");
+        Assert.Null(result);
     }
 
     [Fact]
@@ -41,8 +40,8 @@ public class UsageTrendHistoryTests
 
         var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(11), ctx: 21));
 
-        result.Should().NotBeNull();
-        result!.Should().HaveCount(2);
+        Assert.NotNull(result);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class UsageTrendHistoryTests
         // Two minutes later but the context jumped 20 -> 80: a scarp the 10-minute grid must not skip.
         var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(2), ctx: 80));
 
-        result.Should().NotBeNull("a jump past the threshold overrides the debounce");
-        result!.Should().HaveCount(2);
+        Assert.NotNull(result);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
     }
 
     [Fact]
@@ -65,8 +64,8 @@ public class UsageTrendHistoryTests
         // A /compact drops the context to "not reported": presence changing is itself a jump worth a point.
         var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), ctx: null));
 
-        result.Should().NotBeNull();
-        result!.Should().HaveCount(2);
+        Assert.NotNull(result);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class UsageTrendHistoryTests
         // A different profile, one minute later: its first point must not be held back by Work's debounce window.
         var result = UsageTrendHistory.Append(existing, Sample(T0.AddMinutes(1), profile: "Personal"));
 
-        result.Should().NotBeNull();
-        result!.Should().HaveCount(2);
+        Assert.NotNull(result);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
     }
 
     [Fact]
@@ -88,7 +87,7 @@ public class UsageTrendHistoryTests
 
         var result = UsageTrendHistory.Append([], candidate);
 
-        result.Should().BeNull("a row of three nulls is a silence, not a data point");
+        Assert.Null(result);
     }
 
     [Fact]
@@ -100,10 +99,10 @@ public class UsageTrendHistoryTests
 
         var result = UsageTrendHistory.Append(existing, Sample(T0));
 
-        result.Should().NotBeNull();
-        result!.Should().NotContain(stale, "anything past 14 days is dropped in the same write");
-        result.Should().Contain(recent);
-        result.Should().HaveCount(2, "the recent sample and the new one survive; the 15-day-old one does not");
+        Assert.NotNull(result);
+        Assert.DoesNotContain(stale, result!);
+        Assert.Contains(recent, result);
+        Assert.Equal(2, System.Linq.Enumerable.Count(result!));
     }
 
     [Fact]
@@ -119,9 +118,10 @@ public class UsageTrendHistoryTests
 
         var kept = UsageTrendHistory.Prune(samples, T0);
 
-        kept.Should().HaveCount(2);
-        kept.Select(sample => sample.TimestampUtc).Should().BeInAscendingOrder();
-        kept.Should().OnlyContain(sample => sample.TimestampUtc >= T0 - TimeSpan.FromDays(14));
+        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
+        var timestamps = kept.Select(sample => sample.TimestampUtc).ToList();
+        Assert.Equal(timestamps.OrderBy(t => t), timestamps);
+        Assert.All(kept, sample => Assert.True(sample.TimestampUtc >= T0 - TimeSpan.FromDays(14)));
     }
 
     [Fact]
@@ -133,6 +133,6 @@ public class UsageTrendHistoryTests
 
         var kept = UsageTrendHistory.Prune(samples, T0);
 
-        kept.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(kept));
     }
 }

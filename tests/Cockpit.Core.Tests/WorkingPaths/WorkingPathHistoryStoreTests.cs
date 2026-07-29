@@ -1,7 +1,6 @@
 using Cockpit.Core.Notifications;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.WorkingPaths;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.WorkingPaths;
 
@@ -28,8 +27,8 @@ public class WorkingPathHistoryStoreTests : IDisposable
 
         var history = await store.LoadAsync();
 
-        history.Recent.Should().BeEmpty();
-        history.Favorites.Should().BeEmpty();
+        Assert.Empty(history.Recent);
+        Assert.Empty(history.Favorites);
     }
 
     [Fact]
@@ -41,7 +40,7 @@ public class WorkingPathHistoryStoreTests : IDisposable
         await store.RecordRecentAsync(@"C:\b");
 
         var loaded = await store.LoadAsync();
-        loaded.Recent.Should().Equal(@"C:\b", @"C:\a");
+        Assert.Equal(new[] { @"C:\b", @"C:\a" }, loaded.Recent);
     }
 
     [Fact]
@@ -50,11 +49,11 @@ public class WorkingPathHistoryStoreTests : IDisposable
         var store = new WorkingPathHistoryStore(_configFilePath);
 
         var pinned = await store.SetFavoriteAsync(@"C:\fav", favorite: true);
-        pinned.IsFavorite(@"C:\fav").Should().BeTrue();
-        (await store.LoadAsync()).Favorites.Should().Equal(@"C:\fav");
+        Assert.True(pinned.IsFavorite(@"C:\fav"));
+        Assert.Equal(new[] { @"C:\fav" }, (await store.LoadAsync()).Favorites);
 
         await store.SetFavoriteAsync(@"C:\fav", favorite: false);
-        (await store.LoadAsync()).Favorites.Should().BeEmpty();
+        Assert.Empty((await store.LoadAsync()).Favorites);
     }
 
     [Fact]
@@ -68,8 +67,8 @@ public class WorkingPathHistoryStoreTests : IDisposable
         await store.RemoveAsync(@"C:\a");
 
         var loaded = await store.LoadAsync();
-        loaded.Recent.Should().Equal(@"C:\b");
-        loaded.Favorites.Should().BeEmpty();
+        Assert.Equal(new[] { @"C:\b" }, loaded.Recent);
+        Assert.Empty(loaded.Favorites);
     }
 
     [Fact]
@@ -81,8 +80,8 @@ public class WorkingPathHistoryStoreTests : IDisposable
         var store = new WorkingPathHistoryStore(_configFilePath);
         await store.RecordRecentAsync(@"C:\project");
 
-        (await notificationStore.LoadAsync()).WebhookUrl.Should().Be("https://example/webhook");
-        (await store.LoadAsync()).Recent.Should().Equal(@"C:\project");
+        Assert.Equal("https://example/webhook", (await notificationStore.LoadAsync()).WebhookUrl);
+        Assert.Equal(new[] { @"C:\project" }, (await store.LoadAsync()).Recent);
     }
 
     public void Dispose()

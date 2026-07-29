@@ -1,7 +1,6 @@
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -41,11 +40,12 @@ public class PluginSessionUsageObserverTests
         var observer = new PluginSessionObserver(cockpit);
 
         var usage = observer.ActiveSessionUsage;
-        usage.Should().NotBeNull();
-        usage!.ProfileLabel.Should().Be("Work");
-        usage.ContextUsedPercent.Should().Be(42);
-        usage.RateLimits.Select(window => (window.Label, window.UsedPercent))
-            .Should().Equal(("5h", 55), ("wk", 66));
+        Assert.NotNull(usage);
+        Assert.Equal("Work", usage!.ProfileLabel);
+        Assert.Equal(42, usage.ContextUsedPercent);
+        Assert.Equal(
+            new[] { ("5h", 55.0), ("wk", 66.0) },
+            usage.RateLimits.Select(window => (window.Label, window.UsedPercent)));
     });
 
     [Fact]
@@ -54,7 +54,7 @@ public class PluginSessionUsageObserverTests
         var cockpit = new CockpitViewModel { SelectedSession = null };
         var observer = new PluginSessionObserver(cockpit);
 
-        observer.ActiveSessionUsage.Should().BeNull();
+        Assert.Null(observer.ActiveSessionUsage);
     });
 
     [Fact]
@@ -71,8 +71,8 @@ public class PluginSessionUsageObserverTests
 
         session.ContextUsedPercent = 80;
 
-        fired.Should().BeGreaterThan(0, "a ctx move on the selected session is a fresh usage story");
-        observer.ActiveSessionUsage!.ContextUsedPercent.Should().Be(80);
+        Assert.True(fired > 0, "a ctx move on the selected session is a fresh usage story");
+        Assert.Equal(80, observer.ActiveSessionUsage!.ContextUsedPercent);
     });
 
     [Fact]
@@ -89,7 +89,7 @@ public class PluginSessionUsageObserverTests
 
         session.RateLimits.Add(new SessionRateWindow("5h", 20, ResetsAt: null));
 
-        fired.Should().BeGreaterThan(0, "a rate window appearing changes the usage snapshot");
+        Assert.True(fired > 0, "a rate window appearing changes the usage snapshot");
     });
 
     [Fact]
@@ -108,6 +108,6 @@ public class PluginSessionUsageObserverTests
 
         background.ContextUsedPercent = 90;
 
-        fired.Should().Be(0, "only the selected session feeds the active-usage surface");
+        Assert.Equal(0, fired);
     });
 }

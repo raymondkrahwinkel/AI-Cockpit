@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -16,14 +15,13 @@ public class ClaudeExecutableLocatorManagedTests
     {
         var pin = Path.Combine(Path.GetTempPath(), "pinned-claude");
 
-        ClaudeExecutableLocator.Resolve(pin, _ => ManagedPath).Should().Be(pin);
+        Assert.Equal(pin, ClaudeExecutableLocator.Resolve(pin, _ => ManagedPath));
     }
 
     [Fact]
     public void BareName_WithManagedCopy_ResolvesToTheManagedCopy_NotPath()
     {
-        ClaudeExecutableLocator.Resolve("claude", name => name == "claude" ? ManagedPath : null)
-            .Should().Be(ManagedPath);
+        Assert.Equal(ManagedPath, ClaudeExecutableLocator.Resolve("claude", name => name == "claude" ? ManagedPath : null));
     }
 
     [Fact]
@@ -33,7 +31,7 @@ public class ClaudeExecutableLocatorManagedTests
         // unknown name then falls through PATH and returns unchanged, exactly as without a resolver.
         const string absent = "claude-provider-definitely-not-installed-xyz";
 
-        ClaudeExecutableLocator.Resolve(absent, _ => null).Should().Be(absent);
+        Assert.Equal(absent, ClaudeExecutableLocator.Resolve(absent, _ => null));
     }
 
     [Fact]
@@ -41,7 +39,7 @@ public class ClaudeExecutableLocatorManagedTests
     {
         const string absent = "claude-provider-definitely-not-installed-xyz";
 
-        ClaudeExecutableLocator.Resolve(absent, _ => string.Empty).Should().Be(absent);
+        Assert.Equal(absent, ClaudeExecutableLocator.Resolve(absent, _ => string.Empty));
     }
 
     [Fact]
@@ -49,6 +47,6 @@ public class ClaudeExecutableLocatorManagedTests
     {
         const string absent = "claude-provider-definitely-not-installed-xyz";
 
-        ClaudeExecutableLocator.Resolve(absent).Should().Be(absent);
+        Assert.Equal(absent, ClaudeExecutableLocator.Resolve(absent));
     }
 }

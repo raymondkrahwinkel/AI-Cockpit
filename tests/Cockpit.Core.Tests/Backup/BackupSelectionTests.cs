@@ -1,5 +1,4 @@
 using Cockpit.Core.Backup;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Backup;
 
@@ -18,8 +17,8 @@ public class BackupSelectionTests
     {
         var options = new BackupOptions();
 
-        options.Includes("youtrack").Should().BeTrue();
-        options.Includes("anything-at-all").Should().BeTrue();
+        Assert.True(options.Includes("youtrack"));
+        Assert.True(options.Includes("anything-at-all"));
     }
 
     [Fact]
@@ -27,9 +26,9 @@ public class BackupSelectionTests
     {
         var options = new BackupOptions(Plugins: ["youtrack", "workflows"]);
 
-        options.Includes("youtrack").Should().BeTrue();
-        options.Includes("WORKFLOWS").Should().BeTrue("a plugin id is not case to argue over");
-        options.Includes("git-status").Should().BeFalse();
+        Assert.True(options.Includes("youtrack"));
+        Assert.True(options.Includes("WORKFLOWS"), "a plugin id is not case to argue over");
+        Assert.False(options.Includes("git-status"));
     }
 
     [Fact]
@@ -38,7 +37,7 @@ public class BackupSelectionTests
         // "None" and "all" are different answers, and the difference is the whole reason the list is nullable.
         var options = new BackupOptions(Plugins: []);
 
-        options.Includes("youtrack").Should().BeFalse();
+        Assert.False(options.Includes("youtrack"));
     }
 
     [Fact]
@@ -46,8 +45,8 @@ public class BackupSelectionTests
     {
         var options = new RestoreOptions(Settings: false, Plugins: ["youtrack"]);
 
-        options.Settings.Should().BeFalse("this cockpit's own profiles and settings stay exactly as they are");
-        options.Includes("youtrack").Should().BeTrue();
-        options.Includes("workflows").Should().BeFalse();
+        Assert.False(options.Settings, "this cockpit's own profiles and settings stay exactly as they are");
+        Assert.True(options.Includes("youtrack"));
+        Assert.False(options.Includes("workflows"));
     }
 }

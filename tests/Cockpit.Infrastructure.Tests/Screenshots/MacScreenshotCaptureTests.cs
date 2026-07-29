@@ -1,8 +1,8 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Infrastructure.Tests.Screenshots;
 
@@ -22,10 +22,10 @@ public class MacScreenshotCaptureTests
     {
         var arguments = ScreenCaptureArguments.ForDisplay(2, "/tmp/shot.png");
 
-        arguments.Should().NotContain("-i");
-        arguments.Should().ContainInOrder("-D", "2");
-        arguments.Should().Contain("-x");
-        arguments.Should().EndWith("/tmp/shot.png");
+        Assert.DoesNotContain("-i", arguments);
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "-D", "2"));
+        Assert.Contains("-x", arguments);
+        Assert.Equal("/tmp/shot.png", arguments[^1]);
     }
 
     /// <summary>One invocation per display, each naming its own — without <c>-D</c> what the binary writes with several attached is not something anyone established.</summary>
@@ -39,7 +39,7 @@ public class MacScreenshotCaptureTests
 
         await _Capture(screens).CaptureAsync();
 
-        screens.Captured.Should().Equal(1, 2);
+        Assert.Equal(new[] { 1, 2 }, screens.Captured);
     }
 
     /// <summary>A single Retina panel: the capture is twice the points it reports, and the whole of it belongs to that display.</summary>
@@ -50,10 +50,10 @@ public class MacScreenshotCaptureTests
 
         var result = await _Capture(screens).CaptureAsync();
 
-        result.Should().NotBeNull();
-        result!.Displays.Should().ContainSingle();
-        result.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 3420, 2224));
-        result.Displays[0].Scale.Should().Be(2);
+        Assert.NotNull(result);
+        Assert.Single(result!.Displays);
+        Assert.Equal(new CaptureRect(0, 0, 3420, 2224), result.Displays[0].ImageBounds);
+        Assert.Equal(2, result.Displays[0].Scale);
     }
 
     /// <summary>
@@ -76,15 +76,15 @@ public class MacScreenshotCaptureTests
         var result = await _Capture(screens).CaptureAsync();
 
         using var image = SKBitmap.Decode(result!.Image);
-        image.Width.Should().Be(6720, "the desktop is 3360 points wide and the larger of the two scales is 2");
-        image.Height.Should().Be(2160);
+        Assert.Equal(6720, image.Width);
+        Assert.Equal(2160, image.Height);
 
         var laptop = result.Displays[0].ImageBounds;
         var monitor = result.Displays[1].ImageBounds;
-        image.GetPixel(laptop.X + 10, laptop.Y + 10).Should().Be(SKColors.White, "each capture carries a band across its top quarter");
-        image.GetPixel(laptop.X + 10, laptop.Y + (laptop.Height / 2)).Should().Be(screens.ColourOf(1));
-        image.GetPixel(monitor.X + 10, monitor.Y + (monitor.Height / 2)).Should().Be(screens.ColourOf(2));
-        monitor.X.Should().Be(2880, "the panel beside it contributed 1440 points at scale 2");
+        Assert.Equal(SKColors.White, image.GetPixel(laptop.X + 10, laptop.Y + 10));
+        Assert.Equal(screens.ColourOf(1), image.GetPixel(laptop.X + 10, laptop.Y + (laptop.Height / 2)));
+        Assert.Equal(screens.ColourOf(2), image.GetPixel(monitor.X + 10, monitor.Y + (monitor.Height / 2)));
+        Assert.Equal(2880, monitor.X);
     }
 
     /// <summary>
@@ -105,8 +105,8 @@ public class MacScreenshotCaptureTests
         using var image = SKBitmap.Decode(result!.Image);
         var monitor = result.Displays[1].ImageBounds;
         var quarter = monitor.Y + (monitor.Height / 4);
-        image.GetPixel(monitor.X + 10, quarter - 4).Should().Be(SKColors.White);
-        image.GetPixel(monitor.X + 10, quarter + 4).Should().Be(screens.ColourOf(2));
+        Assert.Equal(SKColors.White, image.GetPixel(monitor.X + 10, quarter - 4));
+        Assert.Equal(screens.ColourOf(2), image.GetPixel(monitor.X + 10, quarter + 4));
     }
 
     /// <summary>
@@ -126,7 +126,8 @@ public class MacScreenshotCaptureTests
 
         var act = async () => await _Capture(screens).CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not the 1920×1080 that display reports*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("not the 1920×1080 that display reports", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -149,9 +150,9 @@ public class MacScreenshotCaptureTests
 
         var result = await _Capture(screens).CaptureAsync();
 
-        result.Should().NotBeNull();
+        Assert.NotNull(result);
         using var image = SKBitmap.Decode(result!.Image);
-        image.Width.Should().Be(3002);
+        Assert.Equal(3002, image.Width);
     }
 
     /// <summary>
@@ -169,8 +170,8 @@ public class MacScreenshotCaptureTests
         var result = await _Capture(screens).CaptureAsync();
 
         using var image = SKBitmap.Decode(result!.Image);
-        image.GetPixel(10, 10).Should().Be(SKColors.Black, "nothing sits above the display that starts 400 points down");
-        result.DisplayAt(new CapturePoint(10, 10)).Should().BeNull();
+        Assert.Equal(SKColors.Black, image.GetPixel(10, 10));
+        Assert.Null(result.DisplayAt(new CapturePoint(10, 10)));
     }
 
     /// <summary>
@@ -187,7 +188,7 @@ public class MacScreenshotCaptureTests
             CapturesNothing = [1],
         };
 
-        (await _Capture(screens).CaptureAsync()).Should().BeNull();
+        Assert.Null((await _Capture(screens).CaptureAsync()));
     }
 
     /// <summary>
@@ -206,7 +207,8 @@ public class MacScreenshotCaptureTests
 
         var act = async () => await _Capture(screens).CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*changed while*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("changed while", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>A Mac with no active display is not a cancel — there was nothing there to read, and an operator who pressed a key is owed the difference.</summary>
@@ -217,7 +219,8 @@ public class MacScreenshotCaptureTests
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no active displays*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("no active displays", ex.Message, StringComparison.Ordinal);
     }
 
     private static MacScreenshotCapture _Capture(IMacScreenReader screens) =>

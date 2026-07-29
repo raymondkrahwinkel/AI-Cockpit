@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -21,8 +20,8 @@ public class SkiaStrokeTests
         using var image = _Burn(new StrokeMark(
             [new(40, 40), new(140, 40), new(240, 40)], Blue, Thickness));
 
-        image.GetPixel(140, 40).Should().Be(new SKColor(0, 0, 255), "the line runs through there");
-        image.GetPixel(140, 120).Should().Be(SKColors.Black, "and nowhere near there");
+        Assert.Equal(new SKColor(0, 0, 255), image.GetPixel(140, 40));
+        Assert.Equal(SKColors.Black, image.GetPixel(140, 120));
     }
 
     /// <summary>
@@ -35,8 +34,8 @@ public class SkiaStrokeTests
     {
         using var image = _Burn(new StrokeMark([new(40, 60), new(240, 60)], Blue, Thickness));
 
-        image.GetPixel(140, 60).Should().Be(new SKColor(0, 0, 255), "the middle of it is the ink it was given");
-        image.GetPixel(140, 70).Should().Be(SKColors.Black, "and clear of it the picture is untouched");
+        Assert.Equal(new SKColor(0, 0, 255), image.GetPixel(140, 60));
+        Assert.Equal(SKColors.Black, image.GetPixel(140, 70));
     }
 
     /// <summary>
@@ -64,7 +63,7 @@ public class SkiaStrokeTests
         var x = centre.X + (int)Math.Round(98 * Math.Cos(between));
         var y = centre.Y + (int)Math.Round(98 * Math.Sin(between));
 
-        image.GetPixel(x, y).Should().NotBe(SKColors.Black, "the curve bulges out to where the hand went");
+        Assert.NotEqual(SKColors.Black, image.GetPixel(x, y));
     }
 
     /// <summary>A press that never moved leaves the picture as it was — there is no gesture to draw.</summary>
@@ -73,7 +72,7 @@ public class SkiaStrokeTests
     {
         using var image = _Burn(new StrokeMark([new(150, 100)], Blue, Thickness));
 
-        image.GetPixel(150, 100).Should().Be(SKColors.Black);
+        Assert.Equal(SKColors.Black, image.GetPixel(150, 100));
     }
 
     private static SKBitmap _Burn(Mark mark, int width = 300, int height = 200) =>

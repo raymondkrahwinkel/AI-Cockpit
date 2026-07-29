@@ -1,7 +1,6 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
@@ -23,12 +22,12 @@ public class WorkflowEngineTests
 
         var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Succeeded);
-        run.Steps.Select(step => step.NodeName).Should().Equal("Start", "First", "Second");
+        Assert.Equal(RunStatus.Succeeded, run.Status);
+        Assert.Equal(new[] { "Start", "First", "Second" }, run.Steps.Select(step => step.NodeName));
 
         // The trigger's item reaches the first step, and the first step's output reaches the second.
-        recorder.Inputs.Should().HaveCount(2);
-        recorder.Inputs[1].Single().Json["from"]!.ToString().Should().Be("First");
+        Assert.Equal(2, System.Linq.Enumerable.Count(recorder.Inputs));
+        Assert.Equal("First", recorder.Inputs[1].Single().Json["from"]!.ToString());
     }
 
     [Fact]
@@ -42,8 +41,9 @@ public class WorkflowEngineTests
         await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         // The last step sees both the trigger and the step before it — not only its own input.
-        recorder.Reachable[^1].Keys.Should().Contain(["Start", "First"]);
-        recorder.Reachable[^1]["First"][0].Json["from"]!.ToString().Should().Be("First");
+        Assert.Contains("Start", recorder.Reachable[^1].Keys);
+        Assert.Contains("First", recorder.Reachable[^1].Keys);
+        Assert.Equal("First", recorder.Reachable[^1]["First"][0].Json["from"]!.ToString());
     }
 
     [Fact]
@@ -56,8 +56,8 @@ public class WorkflowEngineTests
         var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
             .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Select(step => step.NodeName).Should().BeEquivalentTo(["Start", "First", "Second"]);
-        run.Status.Should().Be(RunStatus.Succeeded);
+        Assert.Equivalent(new object[] { "Start", "First", "Second" }, run.Steps.Select(step => step.NodeName));
+        Assert.Equal(RunStatus.Succeeded, run.Status);
     }
 
     [Fact]
@@ -70,8 +70,8 @@ public class WorkflowEngineTests
         var run = await new WorkflowEngine([new ManualTriggerRunner()], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         var step = run.Steps.Single(step => step.NodeId == unknown.Id);
-        step.Status.Should().Be(RunStatus.Skipped);
-        step.Note.Should().Contain("cannot run");
+        Assert.Equal(RunStatus.Skipped, step.Status);
+        Assert.Contains("cannot run", step.Note);
     }
 
     [Fact]
@@ -85,11 +85,11 @@ public class WorkflowEngineTests
 
         var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Single(step => step.NodeId == skipped.Id).Status.Should().Be(RunStatus.Skipped);
+        Assert.Equal(RunStatus.Skipped, run.Steps.Single(step => step.NodeId == skipped.Id).Status);
 
         // The step after it still ran, on the data it would have had.
-        recorder.Inputs.Should().ContainSingle();
-        recorder.Inputs[0].Single().Json["startedBy"]!.ToString().Should().Be("you");
+        Assert.Single(recorder.Inputs);
+        Assert.Equal("you", recorder.Inputs[0].Single().Json["startedBy"]!.ToString());
     }
 
     [Fact]
@@ -102,10 +102,10 @@ public class WorkflowEngineTests
         var run = await new WorkflowEngine([new ManualTriggerRunner(), new ThrowingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
             .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Failed);
-        run.Error.Should().Contain("no message");
-        run.Steps.Single(step => step.NodeId == failing.Id).Status.Should().Be(RunStatus.Failed);
-        run.Steps.Should().NotContain(step => step.NodeId == after.Id, "the branch stops where it broke");
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.Contains("no message", run.Error);
+        Assert.Equal(RunStatus.Failed, run.Steps.Single(step => step.NodeId == failing.Id).Status);
+        Assert.DoesNotContain(run.Steps, step => step.NodeId == after.Id);
     }
 
     [Fact]
@@ -119,9 +119,9 @@ public class WorkflowEngineTests
         var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
             .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Failed);
-        run.Error.Should().Contain("loop");
-        run.Steps.Count.Should().BeLessThanOrEqualTo(WorkflowEngine.MaxSteps + 1);
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.Contains("loop", run.Error);
+        Assert.True(run.Steps.Count <= WorkflowEngine.MaxSteps + 1);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class WorkflowEngineTests
             ], Substitute.For<ICockpitHost>())
             .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
-        run.Steps.Select(step => step.NodeName).Should().Equal("Start", "If", "No");
+        Assert.Equal(new[] { "Start", "If", "No" }, run.Steps.Select(step => step.NodeName));
     }
 
     [Fact]
@@ -159,8 +159,8 @@ public class WorkflowEngineTests
 
         var run = await new WorkflowEngine([new ManualTriggerRunner()], Substitute.For<ICockpitHost>()).RunAsync(workflow, "t", RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Failed);
-        run.Error.Should().Contain("wired to nothing");
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.Contains("wired to nothing", run.Error);
     }
 
     [Fact]
@@ -168,8 +168,8 @@ public class WorkflowEngineTests
     {
         var run = await new WorkflowEngine([], Substitute.For<ICockpitHost>()).RunAsync(_Flow(out _, out _, out _), "nope", RunOrigin.Operator);
 
-        run.Status.Should().Be(RunStatus.Failed);
-        run.Error.Should().NotBeNullOrEmpty();
+        Assert.Equal(RunStatus.Failed, run.Status);
+        Assert.False(string.IsNullOrEmpty(run.Error));
     }
 
     private static WorkflowNode _Node(string id, string typeId, string name) =>

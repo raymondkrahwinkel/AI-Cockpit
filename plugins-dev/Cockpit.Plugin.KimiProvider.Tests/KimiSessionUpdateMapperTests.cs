@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.KimiProvider.Tests;
 
@@ -20,9 +19,9 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello"}}}""");
 
-        var delta = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginAssistantTextDelta>().Subject;
-        delta.SessionId.Should().Be("s1");
-        delta.Text.Should().Be("Hello");
+        var delta = Assert.IsType<PluginAssistantTextDelta>(Assert.Single(result.Events));
+        Assert.Equal("s1", delta.SessionId);
+        Assert.Equal("Hello", delta.Text);
     }
 
     [Fact]
@@ -31,8 +30,8 @@ public class KimiSessionUpdateMapperTests
         // Reasoning must land as thinking, not as ordinary assistant text.
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Let me consider"}}}""");
 
-        var delta = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginAssistantThinkingDelta>().Subject;
-        delta.Thinking.Should().Be("Let me consider");
+        var delta = Assert.IsType<PluginAssistantThinkingDelta>(Assert.Single(result.Events));
+        Assert.Equal("Let me consider", delta.Thinking);
     }
 
     // D4/P1-3, trigger (a): a tool_call with no rawInput yet is remembered but produces nothing on its own.
@@ -41,7 +40,7 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"pending"}}""");
 
-        result.Events.Should().BeEmpty();
+        Assert.Empty(result.Events);
     }
 
     // Trigger (a): a tool_call that already carries rawInput fires the one PluginToolUseRequested immediately.
@@ -50,10 +49,10 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"in_progress","rawInput":{"path":"/x"}}}""");
 
-        var toolUse = result.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolUseRequested>().Subject;
-        toolUse.ToolUseId.Should().Be("turn-1:tool-1");
-        toolUse.ToolName.Should().Be("Read");
-        toolUse.InputJson.Should().Be("""{"path":"/x"}""");
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(result.Events));
+        Assert.Equal("turn-1:tool-1", toolUse.ToolUseId);
+        Assert.Equal("Read", toolUse.ToolName);
+        Assert.Equal("""{"path":"/x"}""", toolUse.InputJson);
     }
 
     // P1-3, trigger (b): the lazy tool_call (no rawInput) followed by the refining tool_call_update (real
@@ -67,13 +66,13 @@ public class KimiSessionUpdateMapperTests
         var lazy = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","status":"pending"}}"""));
         var refined = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"in_progress","title":"Read file.txt","rawInput":{"path":"file.txt"}}}"""));
 
-        lazy.Events.Should().BeEmpty();
-        var toolUse = refined.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolUseRequested>().Subject;
-        toolUse.ToolName.Should().Be("Read file.txt");
-        toolUse.InputJson.Should().Be("""{"path":"file.txt"}""");
+        Assert.Empty(lazy.Events);
+        var toolUse = Assert.IsType<PluginToolUseRequested>(Assert.Single(refined.Events));
+        Assert.Equal("Read file.txt", toolUse.ToolName);
+        Assert.Equal("""{"path":"file.txt"}""", toolUse.InputJson);
 
         var terminal = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"done"}}]}}"""));
-        terminal.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolResult>();
+        Assert.IsType<PluginToolResult>(Assert.Single(terminal.Events));
     }
 
     [Theory]
@@ -83,7 +82,7 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"{{{status}}}"}}""");
 
-        result.Events.Should().BeEmpty();
+        Assert.Empty(result.Events);
     }
 
     // P1-3, trigger (c): a terminal update for an id that never got a prior tool_call (or refining update) must
@@ -95,12 +94,12 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"done"}}]}}""");
 
-        result.Events.Should().HaveCount(2);
-        result.Events[0].Should().BeOfType<PluginToolUseRequested>().Which.ToolUseId.Should().Be("turn-1:tool-1");
-        var toolResult = result.Events[1].Should().BeOfType<PluginToolResult>().Subject;
-        toolResult.ToolUseId.Should().Be("turn-1:tool-1");
-        toolResult.Content.Should().Be("done");
-        toolResult.IsError.Should().BeFalse();
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.Events));
+        Assert.Equal("turn-1:tool-1", Assert.IsType<PluginToolUseRequested>(result.Events[0]).ToolUseId);
+        var toolResult = Assert.IsType<PluginToolResult>(result.Events[1]);
+        Assert.Equal("turn-1:tool-1", toolResult.ToolUseId);
+        Assert.Equal("done", toolResult.Content);
+        Assert.False(toolResult.IsError);
     }
 
     [Fact]
@@ -108,11 +107,11 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"failed","rawOutput":{"message":"boom"}}}""");
 
-        result.Events.Should().HaveCount(2);
-        result.Events[0].Should().BeOfType<PluginToolUseRequested>();
-        var toolResult = result.Events[1].Should().BeOfType<PluginToolResult>().Subject;
-        toolResult.IsError.Should().BeTrue();
-        toolResult.Content.Should().Be("""{"message":"boom"}""");
+        Assert.Equal(2, System.Linq.Enumerable.Count(result.Events));
+        Assert.IsType<PluginToolUseRequested>(result.Events[0]);
+        var toolResult = Assert.IsType<PluginToolResult>(result.Events[1]);
+        Assert.True(toolResult.IsError);
+        Assert.Equal("""{"message":"boom"}""", toolResult.Content);
     }
 
     // D5: content is REPLACE not APPEND — proving the mapper reads only the current update's content, never a
@@ -124,7 +123,7 @@ public class KimiSessionUpdateMapperTests
         mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{}}}"""));
         var result = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"a"}},{"type":"content","content":{"type":"text","text":"b"}}]}}"""));
 
-        result.Events.Single().Should().BeOfType<PluginToolResult>().Which.Content.Should().Be("ab");
+        Assert.Equal("ab", Assert.IsType<PluginToolResult>(result.Events.Single()).Content);
     }
 
     // P1-3: once the one PluginToolUseRequested has fired, a further refining update for the same id must not
@@ -136,8 +135,8 @@ public class KimiSessionUpdateMapperTests
         var first = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{"path":"a"}}}"""));
         var second = mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"turn-1:tool-1","status":"in_progress","title":"Read again","rawInput":{"path":"b"}}}"""));
 
-        first.Events.Should().ContainSingle().Which.Should().BeOfType<PluginToolUseRequested>();
-        second.Events.Should().BeEmpty();
+        Assert.IsType<PluginToolUseRequested>(Assert.Single(first.Events));
+        Assert.Empty(second.Events);
     }
 
     [Fact]
@@ -145,9 +144,9 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"config_option_update","configOptions":[{"type":"select","id":"model","name":"Model","currentValue":"kimi-k2","options":[]}]}}""");
 
-        result.Events.Should().BeEmpty();
-        result.ConfigOptions.Should().NotBeNull();
-        result.ConfigOptions!.Value.GetArrayLength().Should().Be(1);
+        Assert.Empty(result.Events);
+        Assert.NotNull(result.ConfigOptions);
+        Assert.Equal(1, result.ConfigOptions!.Value.GetArrayLength());
     }
 
     [Theory]
@@ -157,8 +156,8 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map($$$"""{"sessionId":"s1","update":{"sessionUpdate":"{{{discriminator}}}"}}""");
 
-        result.Events.Should().BeEmpty();
-        result.ConfigOptions.Should().BeNull();
+        Assert.Empty(result.Events);
+        Assert.Null(result.ConfigOptions);
     }
 
     [Fact]
@@ -167,8 +166,8 @@ public class KimiSessionUpdateMapperTests
         var mapper = new KimiSessionUpdateMapper();
         var map = () => mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"something_kimi_added_later"}}"""));
 
-        map.Should().NotThrow();
-        map().Events.Should().BeEmpty();
+        map();
+        Assert.Empty(map().Events);
     }
 
     [Fact]
@@ -178,8 +177,8 @@ public class KimiSessionUpdateMapperTests
         var mapper = new KimiSessionUpdateMapper();
         var map = () => mapper.Map(default);
 
-        map.Should().NotThrow();
-        map().Events.Should().BeEmpty();
+        map();
+        Assert.Empty(map().Events);
     }
 
     [Fact]
@@ -187,7 +186,7 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"someOtherField":true}}""");
 
-        result.Events.Should().BeEmpty();
+        Assert.Empty(result.Events);
     }
 
     [Fact]
@@ -195,7 +194,7 @@ public class KimiSessionUpdateMapperTests
     {
         var result = _Map("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","title":"Read"}}""");
 
-        result.Events.Should().BeEmpty();
+        Assert.Empty(result.Events);
     }
 
     // --- EnsureToolUseRequested (P1-3, trigger (c) for a permission request) ---------------------------------
@@ -207,10 +206,10 @@ public class KimiSessionUpdateMapperTests
 
         var emitted = mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "shell");
 
-        emitted.Should().NotBeNull();
-        emitted!.ToolUseId.Should().Be("turn-1:tool-1");
-        emitted.ToolName.Should().Be("shell");
-        emitted.InputJson.Should().Be("{}");
+        Assert.NotNull(emitted);
+        Assert.Equal("turn-1:tool-1", emitted!.ToolUseId);
+        Assert.Equal("shell", emitted.ToolName);
+        Assert.Equal("{}", emitted.InputJson);
     }
 
     [Fact]
@@ -221,8 +220,8 @@ public class KimiSessionUpdateMapperTests
 
         var emitted = mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool");
 
-        emitted.Should().NotBeNull();
-        emitted!.ToolName.Should().Be("Read");
+        Assert.NotNull(emitted);
+        Assert.Equal("Read", emitted!.ToolName);
     }
 
     [Fact]
@@ -231,7 +230,7 @@ public class KimiSessionUpdateMapperTests
         var mapper = new KimiSessionUpdateMapper();
         mapper.Map(_Parse("""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"turn-1:tool-1","title":"Read","rawInput":{}}}"""));
 
-        mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool").Should().BeNull();
+        Assert.Null(mapper.EnsureToolUseRequested("turn-1:tool-1", "s1", fallbackToolName: "tool"));
     }
 
     // Both maps are keyed on toolCallIds the child process invents and neither empties on its own, so a child
@@ -248,12 +247,12 @@ public class KimiSessionUpdateMapperTests
             mapper.Map(_Parse($$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{index}}}","title":"Read"}}"""));
         }
 
-        mapper.TrackedToolCallCountForTests.Should().BeLessThanOrEqualTo(KimiSessionUpdateMapper.MaxTrackedToolCalls);
+        Assert.True(mapper.TrackedToolCallCountForTests <= KimiSessionUpdateMapper.MaxTrackedToolCalls);
 
         // The most recent id is the one that still matters: its permission request must still find what the
         // mapper knows about it rather than falling back to a bare name.
         var latest = mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool");
-        latest!.ToolName.Should().Be("Read");
+        Assert.Equal("Read", latest!.ToolName);
     }
 
     [Fact]
@@ -267,10 +266,10 @@ public class KimiSessionUpdateMapperTests
             mapper.Map(_Parse($$$$"""{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"tool-{{{{index}}}}","title":"Read","rawInput":{}}}"""));
         }
 
-        mapper.EmittedToolCallCountForTests.Should().BeLessThanOrEqualTo(KimiSessionUpdateMapper.MaxTrackedToolCalls);
+        Assert.True(mapper.EmittedToolCallCountForTests <= KimiSessionUpdateMapper.MaxTrackedToolCalls);
 
         // Recent ids keep their "already emitted" answer — only ids thousands of calls old are forgotten.
-        mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool").Should().BeNull();
+        Assert.Null(mapper.EnsureToolUseRequested($"tool-{overflow - 1}", "s1", fallbackToolName: "tool"));
     }
 
     private static JsonElement _Parse(string paramsJson)

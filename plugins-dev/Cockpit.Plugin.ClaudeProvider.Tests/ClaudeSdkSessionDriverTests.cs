@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -25,24 +24,24 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
         // StartAsync puts an SDK client on the control channel first (so the CLI routes approvals here), then applies
         // the launch effort as the session's initial thinking-token budget (default medium).
-        fake.WrittenLines.Should().HaveCount(2);
-        JsonDocument.Parse(fake.WrittenLines[0]).RootElement.GetProperty("request").GetProperty("subtype").GetString().Should().Be("initialize");
-        JsonDocument.Parse(fake.WrittenLines[1]).RootElement.GetProperty("request").GetProperty("subtype").GetString().Should().Be("set_max_thinking_tokens");
+        Assert.Equal(2, System.Linq.Enumerable.Count(fake.WrittenLines));
+        Assert.Equal("initialize", JsonDocument.Parse(fake.WrittenLines[0]).RootElement.GetProperty("request").GetProperty("subtype").GetString());
+        Assert.Equal("set_max_thinking_tokens", JsonDocument.Parse(fake.WrittenLines[1]).RootElement.GetProperty("request").GetProperty("subtype").GetString());
 
         await fake.PushStdoutAsync("""
         {"type":"control_request","request_id":"req-42","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf /"},"tool_use_id":"toolu_7"}}
         """);
 
         var permission = (PluginPermissionRequested)await _ReadEventAsync(driver, e => e is PluginPermissionRequested);
-        permission.ToolUseId.Should().Be("toolu_7");
-        permission.ToolName.Should().Be("Bash");
+        Assert.Equal("toolu_7", permission.ToolUseId);
+        Assert.Equal("Bash", permission.ToolName);
 
         await driver.RespondToPermissionAsync("toolu_7", allow: false, CancellationToken.None);
 
         // The deny is written back as a control_response keyed on the CLI's own request_id, not the tool_use_id.
         var response = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("response");
-        response.GetProperty("request_id").GetString().Should().Be("req-42");
-        response.GetProperty("response").GetProperty("behavior").GetString().Should().Be("deny");
+        Assert.Equal("req-42", response.GetProperty("request_id").GetString());
+        Assert.Equal("deny", response.GetProperty("response").GetProperty("behavior").GetString());
     }
 
     [Fact]
@@ -63,8 +62,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.RespondToPermissionAsync("toolu_3", allow: true, CancellationToken.None);
 
         var decision = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("response").GetProperty("response");
-        decision.GetProperty("behavior").GetString().Should().Be("allow");
-        decision.GetProperty("updatedInput").GetProperty("command").GetString().Should().Be("ls -la");
+        Assert.Equal("allow", decision.GetProperty("behavior").GetString());
+        Assert.Equal("ls -la", decision.GetProperty("updatedInput").GetProperty("command").GetString());
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         // No pending approval under this id (the CLI auto-allowed, or it already resolved) — nothing to feed back.
         await driver.RespondToPermissionAsync("never-seen", allow: true, CancellationToken.None);
 
-        fake.WrittenLines.Count.Should().Be(writtenAfterStart);
+        Assert.Equal(writtenAfterStart, fake.WrittenLines.Count);
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         """);
 
         var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
-        delta.Text.Should().Be("Hi");
+        Assert.Equal("Hi", delta.Text);
     }
 
     [Fact]
@@ -106,10 +105,10 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.SendUserMessageAsync("hello", CancellationToken.None);
 
         var payload = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        payload.GetProperty("type").GetString().Should().Be("user");
+        Assert.Equal("user", payload.GetProperty("type").GetString());
         var message = payload.GetProperty("message");
-        message.GetProperty("role").GetString().Should().Be("user");
-        message.GetProperty("content").GetString().Should().Be("hello");
+        Assert.Equal("user", message.GetProperty("role").GetString());
+        Assert.Equal("hello", message.GetProperty("content").GetString());
     }
 
     [Fact]
@@ -127,13 +126,13 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             CancellationToken.None);
 
         var content = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("message").GetProperty("content");
-        content.ValueKind.Should().Be(JsonValueKind.Array);
-        content[0].GetProperty("type").GetString().Should().Be("text");
-        content[0].GetProperty("text").GetString().Should().Be("what is this?");
-        content[1].GetProperty("type").GetString().Should().Be("image");
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+        Assert.Equal("text", content[0].GetProperty("type").GetString());
+        Assert.Equal("what is this?", content[0].GetProperty("text").GetString());
+        Assert.Equal("image", content[1].GetProperty("type").GetString());
         var source = content[1].GetProperty("source");
-        source.GetProperty("media_type").GetString().Should().Be("image/png");
-        source.GetProperty("data").GetString().Should().Be("aGVsbG8=");
+        Assert.Equal("image/png", source.GetProperty("media_type").GetString());
+        Assert.Equal("aGVsbG8=", source.GetProperty("data").GetString());
     }
 
     [Fact]
@@ -142,7 +141,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var fake = new FakeClaudeSdkSubprocess();
         var driver = _CreateDriver(fake);
 
-        driver.Capabilities.SupportsVision.Should().BeTrue();
+        Assert.True(driver.Capabilities.SupportsVision);
     }
 
     [Fact]
@@ -155,8 +154,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.ModelOptionKey, "sonnet", CancellationToken.None);
 
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        request.GetProperty("subtype").GetString().Should().Be("set_model");
-        request.GetProperty("model").GetString().Should().Be("sonnet");
+        Assert.Equal("set_model", request.GetProperty("subtype").GetString());
+        Assert.Equal("sonnet", request.GetProperty("model").GetString());
     }
 
     [Fact]
@@ -173,8 +172,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         // The field is snake_case (max_thinking_tokens) exactly as the Agent SDK's Query.set_max_thinking_tokens
         // writes it; camelCase is silently dropped by the CLI, so the budget would never change — the effort-not-live bug.
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
-        request.GetProperty("subtype").GetString().Should().Be("set_max_thinking_tokens");
-        request.GetProperty("max_thinking_tokens").GetInt32().Should().Be(24_000);
+        Assert.Equal("set_max_thinking_tokens", request.GetProperty("subtype").GetString());
+        Assert.Equal(24_000, request.GetProperty("max_thinking_tokens").GetInt32());
     }
 
     [Fact]
@@ -185,9 +184,9 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
         var effort = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.EffortOptionKey);
-        effort.Choices.Should().Equal("low", "medium", "high", "xhigh", "max");
-        effort.ChoiceLabels!["xhigh"].Should().Be("Extra high");
-        effort.DefaultValue.Should().Be("medium");
+        Assert.Equal(new[] { "low", "medium", "high", "xhigh", "max" }, effort.Choices);
+        Assert.Equal("Extra high", effort.ChoiceLabels!["xhigh"]);
+        Assert.Equal("medium", effort.DefaultValue);
     }
 
     [Fact]
@@ -198,8 +197,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
         var permissionOption = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
-        permissionOption.Choices.Should().BeEquivalentTo(["default", "acceptEdits", "plan"]);
-        permissionOption.Choices.Should().NotContain("bypassPermissions");
+        Assert.Equivalent(new object[] { "default", "acceptEdits", "plan" }, permissionOption.Choices);
+        Assert.DoesNotContain("bypassPermissions", permissionOption.Choices);
     }
 
     [Fact]
@@ -216,7 +215,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             CancellationToken.None);
 
         // Bypass cannot be left mid-session, so no live permission-mode switch is offered at all.
-        driver.LiveOptions.Should().NotContain(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
+        Assert.DoesNotContain(driver.LiveOptions, option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
     }
 
     // The profile's environment variables (AC-22) ride the environment-carrying StartAsync overload into the
@@ -232,7 +231,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             environment: new Dictionary<string, string> { ["AI_OS_ROOT"] = "/home/raymond/AI-OS" },
             CancellationToken.None);
 
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"));
+        Assert.NotNull(fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"), fake.EnvironmentVariables);
     }
 
     // AC-146: sub-agent activity is worth seeing by default (Raymond, 2026-07-29) — an env var rather than a CLI
@@ -247,7 +247,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
             CancellationToken.None);
 
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "1"));
+        Assert.NotNull(fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "1"), fake.EnvironmentVariables);
     }
 
     [Fact]
@@ -261,7 +262,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             environment: new Dictionary<string, string> { ["CLAUDE_CODE_FORWARD_SUBAGENT_TEXT"] = "0" },
             CancellationToken.None);
 
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "0"));
+        Assert.NotNull(fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT", "0"), fake.EnvironmentVariables);
     }
 
     [Fact]
@@ -276,7 +278,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             CancellationToken.None);
 
         // Null = remove at the subprocess seam: the key must be an explicit removal, never the smuggled value.
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("ANTHROPIC_API_KEY", null));
+        Assert.NotNull(fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("ANTHROPIC_API_KEY", null), fake.EnvironmentVariables);
     }
 
     [Fact]
@@ -290,7 +293,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             environment: new Dictionary<string, string> { ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile" },
             CancellationToken.None);
 
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir));
+        Assert.NotNull(fake.EnvironmentVariables);
+        Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir), fake.EnvironmentVariables);
     }
 
     // AC-378: with registry servers resolved, the spawn carries --strict-mcp-config alongside --mcp-config, so the
@@ -306,8 +310,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
             CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
     // AC-378, criterion 4 — the empty-resolution trap: a narrowing that resolves to zero eligible servers must
@@ -325,13 +329,13 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             mcpServers: [],
             CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
 
         var mcpConfigIndex = fake.Arguments!.ToList().IndexOf("--mcp-config");
         var path = fake.Arguments![mcpConfigIndex + 1];
-        File.Exists(path).Should().BeTrue("the strict path must write an explicit config file rather than dropping the flag");
-        System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+        Assert.True(File.Exists(path), "the strict path must write an explicit config file rather than dropping the flag");
+        Assert.Empty(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject());
     }
 
     // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
@@ -344,8 +348,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>

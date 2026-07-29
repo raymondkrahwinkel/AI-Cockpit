@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Services;
 
@@ -49,7 +48,7 @@ public partial class ExternalLinkSingleSourceTests
             ?? throw new InvalidOperationException("No src/Cockpit.App directory above the test output — this test reads the repo it belongs to.");
 
         var appSources = _AppSourceFiles(appDirectory).ToList();
-        appSources.Should().HaveCountGreaterThan(50,
+        Assert.True(System.Linq.Enumerable.Count(appSources) > 50,
             "the app has well over fifty source files — finding almost none means the walk broke, not that the rule holds");
 
         var shellOuts = appSources
@@ -57,19 +56,14 @@ public partial class ExternalLinkSingleSourceTests
             .Where(file => file.Count > 0)
             .ToList();
 
-        shellOuts.Should().Contain(file => file.Path == "Services/ExternalLink.cs",
-            "if the one opener stopped shelling out, this test would pass for the wrong reason");
+        Assert.Contains(shellOuts, file => file.Path == "Services/ExternalLink.cs");
 
         var unexpected = shellOuts
             .Where(file => !AllowedShellCallers.TryGetValue(file.Path, out var allowed) || allowed.Occurrences != file.Count)
             .Select(file => $"{file.Path} ({file.Count}×)")
             .ToList();
 
-        unexpected.Should().BeEmpty(
-            "a shell-out for a link belongs in ExternalLink.TryOpen — that is where the http(s)-only guard and the " +
-            "swallowed launch failure live. If a new caller opens a folder rather than a web address, add or raise its " +
-            $"entry in {nameof(AllowedShellCallers)} with the reason. Allowed today: " +
-            $"{string.Join(", ", AllowedShellCallers.Select(entry => $"{entry.Key} ({entry.Value.Occurrences}×)"))}");
+        Assert.Empty(unexpected);
     }
 
     private static int _ShellExecuteCount(string path) => ShellExecuteRegex().Count(File.ReadAllText(path));

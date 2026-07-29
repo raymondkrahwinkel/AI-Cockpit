@@ -3,7 +3,6 @@ using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.ViewTests;
@@ -49,9 +48,9 @@ public class WorkspaceTypeRegistryTests
     {
         var registry = _NewRegistry();
 
-        registry.Register(_Type("autopilot.run", "First"), new FakeStorage(), NullCockpitSessionObserver.Instance).Should().BeTrue();
-        registry.Register(_Type("autopilot.run", "Second"), new FakeStorage(), NullCockpitSessionObserver.Instance).Should().BeFalse();
-        registry.WorkspaceTypes.Should().ContainSingle().Which.Title.Should().Be("First");
+        Assert.True(registry.Register(_Type("autopilot.run", "First"), new FakeStorage(), NullCockpitSessionObserver.Instance));
+        Assert.False(registry.Register(_Type("autopilot.run", "Second"), new FakeStorage(), NullCockpitSessionObserver.Instance));
+        Assert.Equal("First", Assert.Single(registry.WorkspaceTypes).Title);
     }
 
     [Fact]
@@ -63,13 +62,13 @@ public class WorkspaceTypeRegistryTests
 
         registry.Register(_Type("a.type"), new FakeStorage(), NullCockpitSessionObserver.Instance);
 
-        raised.Should().Be(1);
+        Assert.Equal(1, raised);
     }
 
     [Fact]
     public void CreateBody_AnUnregisteredType_IsNull_SoTheViewCanShowAPlaceholder()
     {
-        _NewRegistry().CreateBody("missing.type", "w1").Should().BeNull();
+        Assert.Null(_NewRegistry().CreateBody("missing.type", "w1"));
     }
 
     [Fact]
@@ -80,8 +79,8 @@ public class WorkspaceTypeRegistryTests
 
         var built = registry.CreateBody("autopilot.run", "w42");
 
-        built.Should().NotBeNull();
-        built!.Value.Context.WorkspaceId.Should().Be("w42");
-        built.Value.Registration.CreateBody(built.Value.Context).Should().BeOfType<Panel>();
+        Assert.NotNull(built);
+        Assert.Equal("w42", built!.Value.Context.WorkspaceId);
+        Assert.IsType<Panel>(built.Value.Registration.CreateBody(built.Value.Context));
     });
 }

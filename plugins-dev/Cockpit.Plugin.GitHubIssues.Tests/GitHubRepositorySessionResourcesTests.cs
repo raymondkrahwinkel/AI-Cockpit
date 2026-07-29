@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -28,7 +27,7 @@ public class GitHubRepositorySessionResourcesTests
 
         var contribution = await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-1", "project-1"));
 
-        contribution.EnvironmentVariables.Should().Contain("GH_REPO", "raymondkrahwinkel/AI-Cockpit");
+        Assert.Equal("raymondkrahwinkel/AI-Cockpit", contribution.EnvironmentVariables["GH_REPO"]);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class GitHubRepositorySessionResourcesTests
 
         var contribution = await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-1", ProjectId: null));
 
-        contribution.IsEmpty.Should().BeTrue();
-        host.ProjectFieldPanesAsked.Should().BeEmpty("a session with no project needs no lookup at all");
+        Assert.True(contribution.IsEmpty);
+        Assert.Empty(host.ProjectFieldPanesAsked);
     }
 
     [Fact]
@@ -52,7 +51,7 @@ public class GitHubRepositorySessionResourcesTests
 
         var contribution = await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-1", "project-1"));
 
-        contribution.IsEmpty.Should().BeTrue();
+        Assert.True(contribution.IsEmpty);
     }
 
     [Fact]
@@ -64,7 +63,7 @@ public class GitHubRepositorySessionResourcesTests
 
         var contribution = await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-1", "project-1"));
 
-        contribution.IsEmpty.Should().BeTrue();
+        Assert.True(contribution.IsEmpty);
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public class GitHubRepositorySessionResourcesTests
 
         await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-7", "project-1"));
 
-        host.ProjectFieldPanesAsked.Should().Equal("pane-7");
+        Assert.Equal(new[] { "pane-7" }, host.ProjectFieldPanesAsked);
     }
 
     [Fact]
@@ -86,6 +85,6 @@ public class GitHubRepositorySessionResourcesTests
 
         var contribution = await provider.GetSessionResourcesAsync(new SessionResourceRequest("pane-1", "project-1"));
 
-        contribution.EnvironmentVariables.Should().Contain("GH_REPO", "owner/repo");
+        Assert.Equal("owner/repo", contribution.EnvironmentVariables["GH_REPO"]);
     }
 }

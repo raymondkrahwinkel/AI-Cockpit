@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Core.Abstractions.Screenshots;
 
 namespace Cockpit.Core.Tests.Screenshots;
@@ -20,9 +19,9 @@ public class HighlightMarkTests
     {
         var wash = new HighlightMark(new CaptureRect(0, 0, 10, 10), Accent, HighlightBlend.Darken).Wash;
 
-        _Red(wash).Should().BeGreaterThan(_Red(Accent));
-        _Blue(wash).Should().BeGreaterThan(_Blue(Accent));
-        wash.Should().NotBe(0xFFFFFFFF, "pale, not gone — a wash of nothing marks nothing");
+        Assert.True(_Red(wash) > _Red(Accent));
+        Assert.True(_Blue(wash) > _Blue(Accent));
+        Assert.NotEqual(0xFFFFFFFF, wash);
     }
 
     /// <summary>
@@ -34,9 +33,9 @@ public class HighlightMarkTests
     {
         var wash = new HighlightMark(new CaptureRect(0, 0, 10, 10), Accent, HighlightBlend.Lighten).Wash;
 
-        _Red(wash).Should().BeLessThan(_Red(Accent));
-        _Blue(wash).Should().BeLessThan(_Blue(Accent));
-        wash.Should().NotBe(0xFF000000, "still the colour, only quieter");
+        Assert.True(_Red(wash) < _Red(Accent));
+        Assert.True(_Blue(wash) < _Blue(Accent));
+        Assert.NotEqual(0xFF000000, wash);
     }
 
     /// <summary>
@@ -50,17 +49,16 @@ public class HighlightMarkTests
         var clipped = new HighlightMark(new CaptureRect(450, 150, 200, 100), Accent, HighlightBlend.Darken)
             .ClipTo(new CaptureRect(100, 100, 500, 400));
 
-        clipped.Should().BeOfType<HighlightMark>().Which
-            .Area.Should().Be(new CaptureRect(350, 50, 150, 100), "only the part that is being sent is washed");
+        var highlight = Assert.IsType<HighlightMark>(clipped);
+        Assert.Equal(new CaptureRect(350, 50, 150, 100), highlight.Area);
     }
 
     /// <summary>A band over something that is not being sent emphasises nothing, so it does not travel either.</summary>
     [Fact]
     public void AWashOutsideTheRegion_IsNotCarried()
     {
-        new HighlightMark(new CaptureRect(700, 700, 50, 50), Accent, HighlightBlend.Darken)
-            .ClipTo(new CaptureRect(0, 0, 500, 500))
-            .Should().BeNull();
+        Assert.Null(new HighlightMark(new CaptureRect(700, 700, 50, 50), Accent, HighlightBlend.Darken)
+            .ClipTo(new CaptureRect(0, 0, 500, 500)));
     }
 
     private static int _Red(uint colour) => (int)((colour >> 16) & 0xFF);

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -17,13 +17,13 @@ public class ClaudeSdkArgumentsTests
         // NO -p/--print: the in-band can_use_tool permission channel only fires in the SDK's streaming mode, matching
         // the official Agent SDK's own spawn. Adding -p routes permissions via --permission-prompt-tool and the CLI
         // never sends can_use_tool — proven ungated in a live run.
-        arguments.Should().NotContain("-p");
-        arguments.Should().NotContain("--print");
-        arguments.Should().ContainInOrder("--output-format", "stream-json");
-        arguments.Should().ContainInOrder("--input-format", "stream-json");
-        arguments.Should().Contain("--verbose");
-        arguments.Should().Contain("--include-partial-messages");
-        arguments.Should().ContainInOrder("--permission-mode", "default");
+        Assert.DoesNotContain("-p", arguments);
+        Assert.DoesNotContain("--print", arguments);
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--output-format", "stream-json"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--input-format", "stream-json"));
+        Assert.Contains("--verbose", arguments);
+        Assert.Contains("--include-partial-messages", arguments);
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "default"));
     }
 
     [Fact]
@@ -33,9 +33,9 @@ public class ClaudeSdkArgumentsTests
         // but NONE of the HTTP MCP permission-server flags the in-tree route uses.
         var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false);
 
-        arguments.Should().ContainInOrder("--permission-prompt-tool", "stdio");
-        arguments.Should().NotContain("--mcp-config");
-        arguments.Should().NotContain("--strict-mcp-config");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-prompt-tool", "stdio"));
+        Assert.DoesNotContain("--mcp-config", arguments);
+        Assert.DoesNotContain("--strict-mcp-config", arguments);
     }
 
     [Fact]
@@ -47,19 +47,21 @@ public class ClaudeSdkArgumentsTests
         // user/project claude.ai-connectors unioned in on top.
         var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "/tmp/cockpit-mcp/abc.json");
 
-        arguments.Should().ContainInOrder("--mcp-config", "/tmp/cockpit-mcp/abc.json");
-        arguments.Should().Contain("--strict-mcp-config");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/cockpit-mcp/abc.json"));
+        Assert.Contains("--strict-mcp-config", arguments);
         // Still over the control protocol for approvals — the mcp-config is the user's servers, not a permission tool.
-        arguments.Should().ContainInOrder("--permission-prompt-tool", "stdio");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-prompt-tool", "stdio"));
     }
 
     [Fact]
     public void BuildArguments_OmitsMcpConfigAndStrict_WhenPathIsNullOrBlank()
     {
-        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: null)
-            .Should().NotContain("--mcp-config").And.NotContain("--strict-mcp-config");
-        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "   ")
-            .Should().NotContain("--mcp-config").And.NotContain("--strict-mcp-config");
+        var argsWithNullPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: null);
+        Assert.DoesNotContain("--mcp-config", argsWithNullPath);
+        Assert.DoesNotContain("--strict-mcp-config", argsWithNullPath);
+        var argsWithBlankPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "   ");
+        Assert.DoesNotContain("--mcp-config", argsWithBlankPath);
+        Assert.DoesNotContain("--strict-mcp-config", argsWithBlankPath);
     }
 
     [Fact]
@@ -68,8 +70,8 @@ public class ClaudeSdkArgumentsTests
         // Bypass allows everything with no prompt; wiring the stdio permission tool would re-introduce prompts.
         var arguments = ClaudeSdkArguments.BuildArguments("bypassPermissions", null, null, false);
 
-        arguments.Should().NotContain("--permission-prompt-tool");
-        arguments.Should().ContainInOrder("--permission-mode", "bypassPermissions");
+        Assert.DoesNotContain("--permission-prompt-tool", arguments);
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "bypassPermissions"));
     }
 
     [Fact]
@@ -77,10 +79,10 @@ public class ClaudeSdkArgumentsTests
     {
         var arguments = ClaudeSdkArguments.BuildArguments("plan", "sonnet", resumeSessionId: "sess-123", continueMostRecent: true);
 
-        arguments.Should().ContainInOrder("--model", "sonnet");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--model", "sonnet"));
         // A named resume wins over "most recent": --resume with the id, never --continue.
-        arguments.Should().ContainInOrder("--resume", "sess-123");
-        arguments.Should().NotContain("--continue");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--resume", "sess-123"));
+        Assert.DoesNotContain("--continue", arguments);
     }
 
     [Fact]
@@ -88,8 +90,8 @@ public class ClaudeSdkArgumentsTests
     {
         var arguments = ClaudeSdkArguments.BuildArguments("default", null, resumeSessionId: null, continueMostRecent: true);
 
-        arguments.Should().Contain("--continue");
-        arguments.Should().NotContain("--resume");
+        Assert.Contains("--continue", arguments);
+        Assert.DoesNotContain("--resume", arguments);
     }
 
     [Fact]
@@ -97,7 +99,7 @@ public class ClaudeSdkArgumentsTests
     {
         var arguments = ClaudeSdkArguments.BuildArguments(permissionMode: "  ", model: null, resumeSessionId: null, continueMostRecent: false);
 
-        arguments.Should().ContainInOrder("--permission-mode", "default");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "default"));
     }
 
     [Fact]
@@ -107,15 +109,13 @@ public class ClaudeSdkArgumentsTests
         // resolves it and hands it here, so it must reach the CLI as --append-system-prompt without a visible turn.
         var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "You are the CEO.");
 
-        arguments.Should().ContainInOrder("--append-system-prompt", "You are the CEO.");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt", "You are the CEO."));
     }
 
     [Fact]
     public void BuildArguments_OmitsAppendSystemPrompt_WhenNullOrBlank()
     {
-        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: null)
-            .Should().NotContain("--append-system-prompt");
-        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "   ")
-            .Should().NotContain("--append-system-prompt");
+        Assert.DoesNotContain("--append-system-prompt", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: null));
+        Assert.DoesNotContain("--append-system-prompt", ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "   "));
     }
 }

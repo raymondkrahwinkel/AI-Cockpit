@@ -1,6 +1,5 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -34,10 +33,10 @@ public class McpToolProviderConfinementTests
     {
         var confined = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1");
 
-        var filesystem = confined.Should().ContainSingle(server => server.Name == "filesystem").Subject;
+        var filesystem = Assert.Single(confined, server => server.Name == "filesystem");
         // Its allowed directory (the last arg) is the worktree, not the operator's home.
-        filesystem.Args[^1].Should().Be("/wt/run-1");
-        filesystem.Args.Should().NotContain("/home/op");
+        Assert.Equal("/wt/run-1", filesystem.Args[^1]);
+        Assert.DoesNotContain("/home/op", filesystem.Args);
     }
 
     [Fact]
@@ -45,11 +44,11 @@ public class McpToolProviderConfinementTests
     {
         var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
 
-        names.Should().NotContain("cockpit-terminal");
-        names.Should().NotContain("cockpit-orchestrator");
-        names.Should().NotContain("cockpit-worktrees");
-        names.Should().NotContain("fetch");
-        names.Should().NotContain("git");
+        Assert.DoesNotContain("cockpit-terminal", names);
+        Assert.DoesNotContain("cockpit-orchestrator", names);
+        Assert.DoesNotContain("cockpit-worktrees", names);
+        Assert.DoesNotContain("fetch", names);
+        Assert.DoesNotContain("git", names);
     }
 
     [Fact]
@@ -57,8 +56,8 @@ public class McpToolProviderConfinementTests
     {
         var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
 
-        names.Should().Contain("memory");
-        names.Should().Contain("cockpit-autopilot-run");
+        Assert.Contains("memory", names);
+        Assert.Contains("cockpit-autopilot-run", names);
     }
 
     [Fact]
@@ -73,6 +72,6 @@ public class McpToolProviderConfinementTests
 
         var names = McpToolProvider._ConfinedServers(noReport, "/wt/run-1").Select(server => server.Name).ToList();
 
-        names.Should().BeEquivalentTo(["filesystem", "memory"]);
+        Assert.Equivalent(new object[] { "filesystem", "memory" }, names);
     }
 }

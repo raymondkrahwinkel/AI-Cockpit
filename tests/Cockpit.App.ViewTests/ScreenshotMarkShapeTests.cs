@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless;
 using Avalonia.Input;
-using FluentAssertions;
 using Cockpit.App.Views;
 
 // The shape, not the file system's — both are in scope through the implicit usings.
@@ -32,7 +31,7 @@ public class ScreenshotMarkShapeTests
         _Region(surface);
         _MarkWith(surface, PhysicalKey.P, new Point(400, 300), new Point(700, 500));
 
-        _Drawing(surface).OfType<Path>().Should().ContainSingle("the arrow is the only mark on the surface");
+        Assert.Single(_Drawing(surface).OfType<Path>());
     });
 
     /// <summary>
@@ -51,8 +50,8 @@ public class ScreenshotMarkShapeTests
         // and a double click inside what is marked out takes the shot and closes the surface.
         _MarkWith(surface, PhysicalKey.O, new Point(500, 350), new Point(800, 560));
 
-        _Drawing(surface).OfType<Path>().Should().BeEmpty("no path is left drawing anything");
-        _Drawing(surface).Should().ContainSingle("and the frame is drawn with a rectangle");
+        Assert.Empty(_Drawing(surface).OfType<Path>());
+        Assert.Single(_Drawing(surface));
     });
 
     /// <summary>Every shape that is currently drawing something, which is what an operator sees — the emptied ones are kept but paint nothing.</summary>
@@ -81,8 +80,7 @@ public class ScreenshotMarkShapeTests
 
     private static void _OnTheSurface(Action<ScreenshotSelectionWindow> assert) => HeadlessAvalonia.Run(() =>
     {
-        var surface = Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight)
-            .Should().BeOfType<ScreenshotSelectionWindow>().Subject;
+        var surface = Assert.IsType<ScreenshotSelectionWindow>(Screenshotter.BuildScene(ScreenshotSelectionScene.Idle, SurfaceWidth, SurfaceHeight));
 
         surface.Show();
         try

@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
-using FluentAssertions;
 using Cockpit.TestSupport;
 using Microsoft.AspNetCore.Http;
 
@@ -36,8 +35,8 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         var result = await _client.FetchIndexAsync(store);
 
-        result.IsSuccess.Should().BeTrue();
-        _authByPath["/mystore/index.json"].Should().Be("Bearer s3cr3t");
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Bearer s3cr3t", _authByPath["/mystore/index.json"]);
     }
 
     [Fact]
@@ -47,8 +46,8 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         var result = await _client.FetchIndexAsync(store);
 
-        result.IsSuccess.Should().BeTrue();
-        _authByPath["/public/index.json"].Should().BeNull();
+        Assert.True(result.IsSuccess);
+        Assert.Null(_authByPath["/public/index.json"]);
     }
 
     [Fact]
@@ -58,7 +57,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         await _client.DownloadZipAsync(store, "plugin.zip", null);
 
-        _authByPath["/mystore/plugin.zip"].Should().Be("Bearer s3cr3t");
+        Assert.Equal("Bearer s3cr3t", _authByPath["/mystore/plugin.zip"]);
     }
 
     [Fact]
@@ -69,7 +68,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         await _client.DownloadZipAsync(store, $"{_foreignPrefix}evil.zip", null);
 
-        _authByPath["/evil.zip"].Should().BeNull();
+        Assert.Null(_authByPath["/evil.zip"]);
     }
 
     [Fact]
@@ -79,7 +78,7 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         await _client.DownloadImageAsync(store, $"{_foreignPrefix}logo.png");
 
-        _authByPath["/logo.png"].Should().BeNull();
+        Assert.Null(_authByPath["/logo.png"]);
     }
 
     [Fact]
@@ -90,8 +89,8 @@ public class PluginStoreClientRemoteAuthTests : IAsyncLifetime
 
         var result = await _client.DownloadZipAsync(store, "../../other/repo/x.zip", null);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("unsafe");
+        Assert.False(result.IsSuccess);
+        Assert.Contains("unsafe", result.Error);
     }
 
     private async Task _RecordAndAnswerAsync(HttpContext context)

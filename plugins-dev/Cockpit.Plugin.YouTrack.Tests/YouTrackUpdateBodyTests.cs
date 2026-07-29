@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -17,10 +16,10 @@ public class YouTrackUpdateBodyTests
 
         var customField = _SingleCustomField(YouTrackUpdateBody.ForState(field, "Done"));
 
-        customField.GetProperty("name").GetString().Should().Be("Stage");
-        customField.GetProperty("$type").GetString().Should().Be("StateIssueCustomField");
-        customField.GetProperty("value").GetProperty("name").GetString().Should().Be("Done");
-        customField.TryGetProperty("event", out _).Should().BeFalse();
+        Assert.Equal("Stage", customField.GetProperty("name").GetString());
+        Assert.Equal("StateIssueCustomField", customField.GetProperty("$type").GetString());
+        Assert.Equal("Done", customField.GetProperty("value").GetProperty("name").GetString());
+        Assert.False(customField.TryGetProperty("event", out _));
     }
 
     [Fact]
@@ -36,9 +35,9 @@ public class YouTrackUpdateBodyTests
 
         var customField = _SingleCustomField(YouTrackUpdateBody.ForState(field, "start progress"));
 
-        customField.GetProperty("$type").GetString().Should().Be(YouTrackStateField.StateMachineType);
-        customField.GetProperty("event").GetString().Should().Be("start progress");
-        customField.TryGetProperty("value", out _).Should().BeFalse();
+        Assert.Equal(YouTrackStateField.StateMachineType, customField.GetProperty("$type").GetString());
+        Assert.Equal("start progress", customField.GetProperty("event").GetString());
+        Assert.False(customField.TryGetProperty("value", out _));
     }
 
     [Fact]
@@ -46,16 +45,16 @@ public class YouTrackUpdateBodyTests
     {
         var customField = _SingleCustomField(YouTrackUpdateBody.ForAssignee("Assignee", "raymond"));
 
-        customField.GetProperty("name").GetString().Should().Be("Assignee");
-        customField.GetProperty("$type").GetString().Should().Be("SingleUserIssueCustomField");
-        customField.GetProperty("value").GetProperty("login").GetString().Should().Be("raymond");
+        Assert.Equal("Assignee", customField.GetProperty("name").GetString());
+        Assert.Equal("SingleUserIssueCustomField", customField.GetProperty("$type").GetString());
+        Assert.Equal("raymond", customField.GetProperty("value").GetProperty("login").GetString());
     }
 
     private static JsonElement _SingleCustomField(string body)
     {
         using var document = JsonDocument.Parse(body);
         var fields = document.RootElement.GetProperty("customFields");
-        fields.GetArrayLength().Should().Be(1);
+        Assert.Equal(1, fields.GetArrayLength());
 
         return fields[0].Clone();
     }

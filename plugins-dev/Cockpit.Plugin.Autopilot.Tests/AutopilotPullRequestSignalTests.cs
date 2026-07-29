@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -17,30 +16,31 @@ public class AutopilotPullRequestSignalTests
         var code = AutopilotTemplate.ForPlugin("youtrack", new PluginAutopilotTemplate("t.code", "Bug fix", "body", null, DeliversPullRequest: true));
         var admin = AutopilotTemplate.ForPlugin("youtrack", new PluginAutopilotTemplate("t.admin", "Triage", "body"));
 
-        code.DeliversPullRequest.Should().BeTrue();
-        admin.DeliversPullRequest.Should().BeFalse();
+        Assert.True(code.DeliversPullRequest);
+        Assert.False(admin.DeliversPullRequest);
     }
 
     [Fact]
     public void Plan_DefaultsToNoPr_AndCanBeStampedAtApproval()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Do the thing");
-        plan.DeliversPullRequest.Should().BeFalse();
+        Assert.False(plan.DeliversPullRequest);
 
-        plan.WithDeliversPullRequest(true).DeliversPullRequest.Should().BeTrue();
+        Assert.True(plan.WithDeliversPullRequest(true).DeliversPullRequest);
         // The stamp is a pure with-copy — the original is untouched.
-        plan.DeliversPullRequest.Should().BeFalse();
+        Assert.False(plan.DeliversPullRequest);
     }
 
     [Fact]
     public void PreApprovedRunTools_AreOnlyAutopilotsOwnControlTools_NeverFileOrShell()
     {
-        AutopilotRunToolNames.ForStepWorker.Should().Contain("mcp__cockpit-autopilot-run__autopilot_step_done");
-        AutopilotRunToolNames.ForStepWorker.Should().Contain("mcp__cockpit-autopilot-run__autopilot_blocked");
-        AutopilotRunToolNames.ForValidatorCeo.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_validate");
+        Assert.Contains("mcp__cockpit-autopilot-run__autopilot_step_done", AutopilotRunToolNames.ForStepWorker);
+        Assert.Contains("mcp__cockpit-autopilot-run__autopilot_blocked", AutopilotRunToolNames.ForStepWorker);
+        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_validate", AutopilotRunToolNames.ForValidatorCeo);
 
         // Every pre-approved name is an autopilot endpoint tool — nothing else is pre-authorized.
-        AutopilotRunToolNames.ForStepWorker.Concat(AutopilotRunToolNames.ForValidatorCeo)
-            .Should().OnlyContain(tool => tool.StartsWith("mcp__cockpit-autopilot-"));
+        Assert.All(
+            AutopilotRunToolNames.ForStepWorker.Concat(AutopilotRunToolNames.ForValidatorCeo),
+            tool => Assert.StartsWith("mcp__cockpit-autopilot-", tool));
     }
 }

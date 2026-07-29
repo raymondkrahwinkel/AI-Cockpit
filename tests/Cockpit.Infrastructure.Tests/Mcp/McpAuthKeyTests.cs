@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Mcp;
 
@@ -14,7 +13,7 @@ public class McpAuthKeyTests
     {
         var key = new McpAuthKey();
 
-        key.IsAuthorized($"Bearer {key.Value}").Should().BeTrue();
+        Assert.True(key.IsAuthorized($"Bearer {key.Value}"));
     }
 
     [Fact]
@@ -22,26 +21,26 @@ public class McpAuthKeyTests
     {
         var key = new McpAuthKey();
 
-        key.IsAuthorized("Bearer not-the-key").Should().BeFalse();
+        Assert.False(key.IsAuthorized("Bearer not-the-key"));
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     public void IsAuthorized_NoHeader_IsRejected(string? header) =>
-        new McpAuthKey().IsAuthorized(header).Should().BeFalse();
+        Assert.False(new McpAuthKey().IsAuthorized(header));
 
     [Fact]
     public void IsAuthorized_TheBareKeyWithoutTheBearerScheme_IsRejected()
     {
         var key = new McpAuthKey();
 
-        key.IsAuthorized(key.Value).Should().BeFalse();
+        Assert.False(key.IsAuthorized(key.Value));
     }
 
     [Fact]
     public void Value_IsFreshPerInstance_SoAKeyDoesNotSurviveARestart() =>
-        new McpAuthKey().Value.Should().NotBe(new McpAuthKey().Value);
+        Assert.NotEqual(new McpAuthKey().Value, new McpAuthKey().Value);
 
     [Fact]
     public void OneKeyDoesNotAuthorizeAnother()
@@ -49,6 +48,6 @@ public class McpAuthKeyTests
         var first = new McpAuthKey();
         var second = new McpAuthKey();
 
-        first.IsAuthorized($"Bearer {second.Value}").Should().BeFalse();
+        Assert.False(first.IsAuthorized($"Bearer {second.Value}"));
     }
 }

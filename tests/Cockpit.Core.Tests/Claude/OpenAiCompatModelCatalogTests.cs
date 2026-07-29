@@ -1,6 +1,5 @@
 using System.Net;
 using Cockpit.Infrastructure.Sessions;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -19,8 +18,8 @@ public class OpenAiCompatModelCatalogTests
 
         var models = await catalog.ListModelsAsync("http://localhost:11434");
 
-        models.Should().Equal("llama3.1", "qwen2.5-7b-instruct");
-        handler.LastRequestUri.Should().Be("http://localhost:11434/v1/models");
+        Assert.Equal(new[] { "llama3.1", "qwen2.5-7b-instruct" }, models);
+        Assert.Equal("http://localhost:11434/v1/models", handler.LastRequestUri);
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public class OpenAiCompatModelCatalogTests
             new HttpClient(new StubHandler(string.Empty, HttpStatusCode.ServiceUnavailable)),
             NullLogger<OpenAiCompatModelCatalog>.Instance);
 
-        (await catalog.ListModelsAsync("http://localhost:1234")).Should().BeEmpty();
+        Assert.Empty((await catalog.ListModelsAsync("http://localhost:1234")));
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class OpenAiCompatModelCatalogTests
         var catalog = new OpenAiCompatModelCatalog(
             new HttpClient(new StubHandler("{}", HttpStatusCode.OK)), NullLogger<OpenAiCompatModelCatalog>.Instance);
 
-        (await catalog.ListModelsAsync("")).Should().BeEmpty();
+        Assert.Empty((await catalog.ListModelsAsync("")));
     }
 
     private sealed class StubHandler(string body, HttpStatusCode status) : HttpMessageHandler

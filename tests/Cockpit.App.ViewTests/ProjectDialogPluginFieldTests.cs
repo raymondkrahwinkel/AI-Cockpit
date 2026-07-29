@@ -3,7 +3,6 @@ using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Plugins.Abstractions.Projects;
-using FluentAssertions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -59,7 +58,7 @@ public class ProjectDialogPluginFieldTests
         var heading = VisibleHeading(window);
         window.Close();
 
-        heading.Should().BeNull("a cockpit with no tracker plugin must not hold an empty section open");
+        Assert.Null(heading);
     });
 
     [Fact]
@@ -81,9 +80,9 @@ public class ProjectDialogPluginFieldTests
             var box = window.GetVisualDescendants().OfType<AutoCompleteBox>().FirstOrDefault();
             window.Close();
 
-            heading.Should().NotBeNull();
-            titles.Should().Contain("YouTrack project");
-            box.Should().NotBeNull("the field is a box the operator can filter and type in");
+            Assert.NotNull(heading);
+            Assert.Contains("YouTrack project", titles);
+            Assert.NotNull(box);
         });
     }
 
@@ -104,8 +103,8 @@ public class ProjectDialogPluginFieldTests
             window.UpdateLayout();
             window.Close();
 
-            viewModel.PluginFields.Single().Value.Should().Be("PRIVATE");
-            viewModel.ToProject().LinkedAs("youtrack.project").Should().Be("PRIVATE");
+            Assert.Equal("PRIVATE", viewModel.PluginFields.Single().Value);
+            Assert.Equal("PRIVATE", viewModel.ToProject().LinkedAs("youtrack.project"));
         });
     }
 
@@ -125,7 +124,7 @@ public class ProjectDialogPluginFieldTests
             window.UpdateLayout();
             window.Close();
 
-            viewModel.ToProject().LinkedAs("youtrack.project").Should().Be("AC", "the plugin queries with the tag, not the label");
+            Assert.Equal("AC", viewModel.ToProject().LinkedAs("youtrack.project"));
         });
     }
 }
