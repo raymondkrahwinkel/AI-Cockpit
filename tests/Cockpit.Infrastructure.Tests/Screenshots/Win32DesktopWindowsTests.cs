@@ -27,27 +27,12 @@ public class Win32DesktopWindowsTests
         windows.Should().OnlyContain(window => window.Bounds.Width > 0 && window.Bounds.Height > 0);
     }
 
-    /// <summary>
-    /// Nothing is reported larger than the screen it sits on. A weak check, and knowingly so: it does not tell
-    /// the extended frame bounds from <c>GetWindowRect</c>, whose invisible resize border is a few pixels rather
-    /// than anything that would show up here. Distinguishing the two needs a window whose real edges are known,
-    /// which the desktop cannot supply — so which attribute is asked for stays a reading of the documentation,
-    /// and a maximised window with a band of the wallpaper around it is what a human would notice in [g].
-    /// </summary>
-    [Fact]
-    public void NoWindowIsReportedWiderThanTheVirtualScreen()
-    {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
-        var screen = new Win32ScreenReader().ReadLayout().VirtualBounds;
-
-        foreach (var window in new Win32DesktopWindows().Enumerate())
-        {
-            window.Bounds.Width.Should().BeLessThanOrEqualTo(screen.Width);
-            window.Bounds.Height.Should().BeLessThanOrEqualTo(screen.Height);
-        }
-    }
+    // A former assertion here checked that no enumerated window was wider or taller than the virtual screen
+    // (AC-370). Windows does not guarantee that: a window dragged partly off-screen, or restored onto a display
+    // that shrank since it was last positioned, legitimately reports bounds sticking out past the virtual
+    // screen. The check was flaky because it depended on whatever happened to be open on the machine running the
+    // test, not on a bug in this class. The invariant that actually matters — that a window hanging off the edge
+    // is still handled, cropped to the part of it that was captured — is covered deterministically against a fake
+    // IDesktopWindows in ScreenshotWindowPickingTests.AWindowHalfOffTheScreen_IsOfferedForThePartThatWasCaptured,
+    // which does not depend on the live desktop.
 }

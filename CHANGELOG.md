@@ -1009,6 +1009,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the window-picker test suite no longer fails depending on which windows happen to be open on the
+  machine it runs on — it stopped asserting that no window is ever reported larger than the screen, which
+  Windows never guaranteed in the first place (a window dragged partly off-screen legitimately has bounds
+  sticking out), and relies instead on a deterministic check that an off-screen window is still cropped and
+  offered correctly.
 - fixed: several widgets (a markdown link, the mic level meter, a handful of plugin loading bars and canvas
   controls) had kept the accent's old, lighter shade in their own fallback colour instead of picking up the
   darker one the theme moved to — so they now draw the same accent as the rest of the cockpit again.
