@@ -981,6 +981,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a plugin section's chevron, title and header border now fall back to the cockpit's own faint-text,
   primary-text and hairline colours if the theme lookup ever misses, instead of a plain grey or white that
   was never part of the palette.
+- fixed: the Worktrees dialog's row buttons (Open folder, Reattach, Remove) and a code block's Copy button
+  now actually dim to the theme's secondary/faint ink at rest and brighten on hover — three hover rules
+  tried to set that colour and never reached the label, so all three looked like plain, undimmed text the
+  whole time.
 
 - fixed: the cost shown for a session was far too high, because the session's whole spend was counted again on
   every turn. The figure the CLI reports alongside each answer is what the session has cost so far, not what

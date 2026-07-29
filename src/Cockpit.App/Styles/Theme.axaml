@@ -374,22 +374,18 @@
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
 
-    <!-- Declared after every variant on purpose: each of those names the label to tint it, and between two
-         rules that both name it the later one wins. Disabled has to be able to override Ghost's grey and
-         Accent's white, so it comes last and covers every variant in one rule. -->
-    <Style Selector="Button:disabled :is(TextBlock)">
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
-    </Style>
-
     <!-- Subtle buttons used as toggles (chevrons, "Thinking..." collapsers) — no chrome, just text. -->
     <Style Selector="Button.Subtle">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="2"/>
     </Style>
+    <!-- No text-colour setter here (AC-406): Subtle sets no Foreground at rest, so its label is already
+         CockpitTextPrimaryBrush via the base :is(TextBlock) rule above. A hover rule that named the same
+         brush would be dead by construction — not just unreachable like the TextBlock.Foreground form this
+         replaced, but a no-op even if it worked. -->
     <Style Selector="Button.Subtle:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
     <!-- Disabled Subtle button (e.g. Remove with nothing selected): stay chromeless — without this the
          default theme paints a grey disabled box, which reads as a broken/mis-styled button. -->
@@ -418,14 +414,23 @@
         <Setter Property="MinHeight" Value="26"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <!-- Text colour has to name the label itself (AC-406): the Foreground this used to set on the button was
+         inherited by the label, and the base :is(TextBlock) rule above names the label directly — a named rule
+         always beats an inherited value, so the row read primary at rest instead of secondary. -->
+    <Style Selector="Button.RowAction :is(TextBlock)">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
     <Style Selector="Button.RowAction:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitHairlineBrush}"/>
-        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.RowAction:pointerover :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
     <!-- Disabled keeps the button shape (fill + border) so it still reads as a button, but dims the whole thing
-         and fades the text — deterministically, rather than letting the base theme paint its own grey box. -->
+         and fades the text — deterministically, rather than letting the base theme paint its own grey box. The
+         text fade itself comes from the shared Button:disabled :is(TextBlock) rule below, which has to be
+         declared after this so it can override the rest/hover rules just above. -->
     <Style Selector="Button.RowAction:disabled">
         <Setter Property="Opacity" Value="0.5"/>
     </Style>
@@ -858,13 +863,29 @@
         <Setter Property="Padding" Value="6,2"/>
         <Setter Property="Margin" Value="0,2,2,0"/>
         <Setter Property="MinHeight" Value="0"/>
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>
+    <!-- Text colour has to name the label itself (AC-406): same defect as RowAction — the Foreground this
+         used to set on the button was inherited, and the base :is(TextBlock) rule above names the label
+         directly, so the faint copy-button ink at rest never actually reached it. -->
+    <Style Selector="Button.copyBtn :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
     <Style Selector="Button.copyBtn:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
-        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.copyBtn:pointerover :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
+    <!-- Declared after every variant that names the label directly — Ghost and Accent above, RowAction and
+         copyBtn here — so it can win over each of their rest/hover colours (AC-336, widened by AC-406). Avalonia
+         has no CSS specificity: between two rules that both name :is(TextBlock), the later-declared one wins, so
+         disabled has to come last among all of them to be able to override Ghost's grey, Accent's white,
+         RowAction's secondary/primary pair and copyBtn's faint/primary pair in one rule. -->
+    <Style Selector="Button:disabled :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- Cockpit sidebar session item. State is driven only by classes (never inline on the Border) so
@@ -905,9 +926,13 @@
     </Style>
 
     <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot.
-         Declared after .active so an active+waiting row keeps this tint (with .active's accent edge). -->
+         Declared after .active so an active+waiting row keeps this tint (with .active's accent edge).
+         2A-alpha echo of CockpitStatusWaitingColor (AC-406) — was a pre-mixed opaque literal that would
+         have held the old waiting colour through a repaint. Picked by rendering the real row against the
+         sidebar's own background (CockpitSecondaryBgColor) and matching the previous pixels, not by eye
+         against a mockup background — see ThemeHexColorGuardTests.AllowedLiterals for the measurement. -->
     <Style Selector="Border.sessionItem.attention">
-        <Setter Property="Background" Value="#2E2A26"/>
+        <Setter Property="Background" Value="#2AE0A33E"/>
     </Style>
 
     <!-- ListBox (profile manager): flat, transparent; the selected row gets a quiet panel-bg fill

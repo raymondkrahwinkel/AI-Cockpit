@@ -53,6 +53,11 @@ public partial class ThemeHexColorGuardTests
                 (1, "26-alpha echo of CockpitAccentColor for the update banner tint"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#26E0A33E")] =
                 (1, "26-alpha echo of CockpitStatusWaitingColor for the unprotected-secrets banner tint"),
+            [("src/Cockpit.App/Styles/Theme.axaml", "#2AE0A33E")] =
+                (1, "2A-alpha echo of CockpitStatusWaitingColor for the needs-attention sidebar row (AC-406) — " +
+                     "replaces a pre-mixed opaque #2E2A26 that would have held the old waiting colour through a " +
+                     "repaint; the alpha was picked by rendering the row against CockpitSecondaryBgColor, the " +
+                     "sidebar's real background, and matching the previous pixels"),
             [("src/Cockpit.App/Views/CockpitView.axaml", "#40000000")] =
                 (1, "black drop-shadow on the resource flyout panel, not tied to any theme colour"),
             [("src/Cockpit.App/Views/OptionsDialog.axaml", "#CC0f1116")] =
@@ -128,18 +133,36 @@ public partial class ThemeHexColorGuardTests
         foreach (var file in scannedFiles)
         {
             var relativePath = _RepositoryPath(repositoryRoot, file);
-            if (relativePath == "src/Cockpit.App/Styles/Theme.axaml")
-            {
-                continue; // the one file allowed to define the palette itself
-            }
-
             if (AllowedFiles.Contains(relativePath))
             {
                 continue; // not the cockpit's colour — see AllowedFiles
             }
 
+            var isThemeAxaml = relativePath == "src/Cockpit.App/Styles/Theme.axaml";
+            var insideResourcesBlock = false;
             foreach (var line in File.ReadLines(file))
             {
+                if (isThemeAxaml)
+                {
+                    // Only the <Styles.Resources> dictionary is where a colour is meant to live; a literal in a
+                    // Style's own Setter (AC-406's needs-attention tint) is the same drift as anywhere else and
+                    // this exemption must not hide it.
+                    if (line.Contains("<Styles.Resources>", StringComparison.Ordinal))
+                    {
+                        insideResourcesBlock = true;
+                    }
+
+                    if (line.Contains("</Styles.Resources>", StringComparison.Ordinal))
+                    {
+                        insideResourcesBlock = false;
+                    }
+
+                    if (insideResourcesBlock)
+                    {
+                        continue; // the token dictionary itself — colours are meant to live here
+                    }
+                }
+
                 foreach (var hex in _NonExemptHexMatches(line))
                 {
                     var key = (relativePath, hex);

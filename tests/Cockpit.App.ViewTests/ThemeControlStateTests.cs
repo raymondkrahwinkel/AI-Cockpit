@@ -186,12 +186,15 @@ public class ThemeControlStateTests
     [InlineData("Ghost")]
     [InlineData("Subtle")]
     [InlineData("RowAction")]
+    [InlineData("copyBtn")]
     public void ADisabledButton_FadesItsLabel(string variant) => HeadlessAvalonia.Run(() =>
     {
         // The label is the part that says "not now"; the fill barely moves. Three rules in this theme tried to
         // fade it by setting TextBlock.Foreground on the presenter and none of them ever did anything: the
         // theme's own `:is(TextBlock)` rule names the text element directly, and a named rule beats a value
         // inherited from an ancestor. Rendering is what showed it — every one of these looked enabled.
+        // copyBtn added by AC-406, alongside RowAction: both gained a real rest/hover :is(TextBlock) rule and
+        // this is what proves the shared disabled rule — moved after them for exactly this — still outranks it.
         var button = new Button { Content = "x", IsEnabled = false };
         if (variant != "Button")
         {
@@ -204,6 +207,43 @@ public class ThemeControlStateTests
 
         // A disabled button's label has to read as unavailable, whichever variant it is.
         Assert.Equal(RenderedScene.Token("CockpitTextFaintColor"), _ColourOf(label.Foreground));
+    });
+
+    [Theory]
+    [InlineData("RowAction", "CockpitTextSecondaryColor")]
+    [InlineData("copyBtn", "CockpitTextFaintColor")]
+    public void AButtonVariant_UsesItsOwnRestColour_NotTheBasePrimary(string variant, string expectedToken) => HeadlessAvalonia.Run(() =>
+    {
+        // AC-406: RowAction and copyBtn each set Foreground on the button itself at rest, which is an inherited
+        // value the base `:is(TextBlock)` rule (naming the label directly) always won over — so both read the
+        // base's primary text colour regardless of what they asked for. Fixed by naming the label with their own
+        // `:is(TextBlock)` rule instead.
+        var button = new Button { Content = "x", Classes = { variant } };
+        using var host = RenderedScene.Show(button);
+
+        var label = button.GetVisualDescendants().OfType<TextBlock>().First();
+
+        Assert.Equal(RenderedScene.Token(expectedToken), _ColourOf(label.Foreground));
+    });
+
+    [Theory]
+    [InlineData("RowAction")]
+    [InlineData("copyBtn")]
+    public void AButtonVariant_LightensItsLabel_OnHover(string variant) => HeadlessAvalonia.Run(() =>
+    {
+        // The hover half of the same defect: both variants set TextBlock.Foreground on the ContentPresenter,
+        // which paints nothing a ContentPresenter has never claimed as its own property — the label never saw it.
+        var button = new Button { Content = "x", Classes = { variant } };
+        using var host = RenderedScene.Show(button);
+
+        var label = button.GetVisualDescendants().OfType<TextBlock>().First();
+        Assert.NotEqual(RenderedScene.Token("CockpitTextPrimaryColor"), _ColourOf(label.Foreground));
+
+        host.Window.MouseMove(button.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+
+        Assert.True(button.IsPointerOver, "the test only means something while the pointer is on the button");
+        Assert.Equal(RenderedScene.Token("CockpitTextPrimaryColor"), _ColourOf(label.Foreground));
     });
 
     [Fact]
@@ -233,6 +273,31 @@ public class ThemeControlStateTests
         Assert.True(travelled < trackWidth, $"the knob travels within the {trackWidth}px track, not {travelled}px");
         // An on switch carries the accent.
         Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _Fill(on, "Track"));
+    });
+
+    [Fact]
+    public void ANeedsAttentionSidebarRow_StillReadsAsTheOldAmberWash() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-406: Border.sessionItem.attention traded a pre-mixed opaque #2E2A26 for a 2A-alpha echo of
+        // CockpitStatusWaitingColor, composited live over the sidebar's own CockpitSecondaryBgBrush — the row's
+        // real background, since the row itself is Transparent at rest. Rendered rather than compared as a
+        // string: an alpha blend is not a hex diff, it is pixels on a screen, and the previous colour is gone
+        // from Theme.axaml (mutated to prove the guard, then restored) so this pins the actual visual result
+        // instead of re-deriving it.
+        var sidebar = new Border
+        {
+            Background = RenderedScene.TokenBrush("CockpitSecondaryBgBrush"),
+            Width = 100,
+            Height = 40,
+            Child = new Border { Classes = { "sessionItem", "attention" }, Margin = new Thickness(4) },
+        };
+        using var host = RenderedScene.Show(sidebar, width: 100, height: 40);
+
+        var painted = RenderedScene.PaintedAt(host.Window, new Point(50, 20));
+        var oldWash = RenderedScene.AsRendered(new SolidColorBrush(Color.FromRgb(0x2E, 0x2A, 0x26)));
+
+        var delta = Math.Abs(painted.R - oldWash.R) + Math.Abs(painted.G - oldWash.G) + Math.Abs(painted.B - oldWash.B);
+        Assert.True(delta <= 20, $"the needs-attention row painted {painted}, which reads as a different colour than the old wash {oldWash} (Δ{delta})");
     });
 
     [Fact]
