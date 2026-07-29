@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Cockpit.Infrastructure.Screenshots;
 
 namespace Cockpit.Infrastructure.Tests.Screenshots;
@@ -22,9 +21,9 @@ public class Win32DesktopWindowsTests
 
         var windows = new Win32DesktopWindows().Enumerate();
 
-        windows.Should().NotBeEmpty("a machine running this has something on screen");
-        windows.Should().OnlyContain(window => window.Title.Length > 0, "a rectangle nobody can name is not one to offer");
-        windows.Should().OnlyContain(window => window.Bounds.Width > 0 && window.Bounds.Height > 0);
+        Assert.NotEmpty(windows);
+        Assert.All(windows, window => Assert.True(window.Title.Length > 0));
+        Assert.All(windows, window => Assert.True(window.Bounds.Width > 0 && window.Bounds.Height > 0));
     }
 
     // A former assertion here checked that no enumerated window was wider or taller than the virtual screen

@@ -1,6 +1,5 @@
 using Cockpit.Core.Verify;
 using Cockpit.Infrastructure.Verify;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Verify;
 
@@ -25,7 +24,7 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
     {
         var store = new VerifyRunnerRegistryStore(_configPath);
 
-        (await store.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await store.ListAsync()));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
 
         var reloaded = await new VerifyRunnerRegistryStore(_configPath).ListAsync();
 
-        reloaded.Should().ContainSingle().Which.Should().BeEquivalentTo(runner);
+        Assert.Equivalent(runner, Assert.Single(reloaded));
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
 
         var runners = await store.ListAsync();
 
-        runners.Should().ContainSingle().Which.Command.Should().Be("pwsh");
+        Assert.Equal("pwsh", Assert.Single(runners).Command);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public sealed class VerifyRunnerRegistryStoreTests : IDisposable
 
         await store.RemoveAsync("Cockpit");
 
-        (await store.ListAsync()).Should().ContainSingle().Which.Label.Should().Be("StartPage");
+        Assert.Equal("StartPage", Assert.Single((await store.ListAsync())).Label);
     }
 
     private static VerifyRunner _Runner(string label, string workingDirectory) => new(

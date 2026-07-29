@@ -1,6 +1,5 @@
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Security;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Security;
 
@@ -26,8 +25,9 @@ public sealed class ScreenLockSettingsStoreTests : IDisposable
 
     [Fact]
     public async Task DefaultsToOn_WhenNothingWasSaved() =>
-        (await new ScreenLockSettingsStore(ConfigPath).LoadAsync())
-            .LockWhenOperatingSystemLocks.Should().BeTrue("locking with the OS is the default while encryption is on");
+        Assert.True(
+            (await new ScreenLockSettingsStore(ConfigPath).LoadAsync()).LockWhenOperatingSystemLocks,
+            "locking with the OS is the default while encryption is on");
 
     [Fact]
     public async Task Save_RoundTripsTheChoice()
@@ -35,9 +35,9 @@ public sealed class ScreenLockSettingsStoreTests : IDisposable
         var store = new ScreenLockSettingsStore(ConfigPath);
 
         await store.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = false });
-        (await store.LoadAsync()).LockWhenOperatingSystemLocks.Should().BeFalse("the operator turned it off");
+        Assert.False((await store.LoadAsync()).LockWhenOperatingSystemLocks, "the operator turned it off");
 
         await store.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = true });
-        (await store.LoadAsync()).LockWhenOperatingSystemLocks.Should().BeTrue("and back on again");
+        Assert.True((await store.LoadAsync()).LockWhenOperatingSystemLocks, "and back on again");
     }
 }

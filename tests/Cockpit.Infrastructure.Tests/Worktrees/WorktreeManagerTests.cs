@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.TestSupport;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
@@ -46,7 +45,7 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var info = await _manager.DetectRepositoryAsync(plain);
 
-        info.Should().BeNull();
+        Assert.Null(info);
     }
 
     [Fact]
@@ -54,11 +53,11 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var info = await _manager.DetectRepositoryAsync(_repo);
 
-        info.Should().NotBeNull();
-        info!.Root.Should().Be(Path.GetFullPath(_Git(_repo, "rev-parse", "--show-toplevel")));
-        info.CurrentBranch.Should().Be("main");
-        info.IsDetachedHead.Should().BeFalse();
-        info.HeadCommit.Should().NotBeNullOrEmpty();
+        Assert.NotNull(info);
+        Assert.Equal(Path.GetFullPath(_Git(_repo, "rev-parse", "--show-toplevel")), info!.Root);
+        Assert.Equal("main", info.CurrentBranch);
+        Assert.False(info.IsDetachedHead);
+        Assert.False(string.IsNullOrEmpty(info.HeadCommit));
     }
 
     [Fact]
@@ -68,9 +67,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var info = await _manager.DetectRepositoryAsync(_repo);
 
-        info.Should().NotBeNull();
-        info!.IsDetachedHead.Should().BeTrue();
-        info.CurrentBranch.Should().BeNull();
+        Assert.NotNull(info);
+        Assert.True(info!.IsDetachedHead);
+        Assert.Null(info.CurrentBranch);
     }
 
     [Fact]
@@ -80,13 +79,13 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, branch, _repo);
 
-        Directory.Exists(record.Path).Should().BeTrue();
-        record.Path.Should().StartWith(Path.GetFullPath(_worktreesRoot));
-        record.Branch.Should().Be(branch);
-        record.BaseCommit.Should().Be(_Git(_repo, "rev-parse", "HEAD"));
+        Assert.True(Directory.Exists(record.Path));
+        Assert.StartsWith(Path.GetFullPath(_worktreesRoot), record.Path);
+        Assert.Equal(branch, record.Branch);
+        Assert.Equal(_Git(_repo, "rev-parse", "HEAD"), record.BaseCommit);
 
-        (await _manager.ListAsync()).Should().ContainSingle().Which.Branch.Should().Be(branch);
-        _Git(_repo, "branch", "--list", branch).Should().NotBeEmpty();
+        Assert.Equal(branch, Assert.Single((await _manager.ListAsync())).Branch);
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", branch));
     }
 
     [Fact]
@@ -96,8 +95,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // The branch it forked from is what the cleanup check later measures "unmerged" against, so it must survive a
         // round-trip through the registry rather than only living on the in-memory record.
-        record.BaseBranch.Should().Be("main");
-        (await _manager.ListAsync()).Should().ContainSingle().Which.BaseBranch.Should().Be("main");
+        Assert.Equal("main", record.BaseBranch);
+        Assert.Equal("main", Assert.Single((await _manager.ListAsync())).BaseBranch);
     }
 
     [Fact]
@@ -108,7 +107,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var create = async () => await _manager.CreateAsync(_sessionId, branch, _repo);
 
-        (await create.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*already exists*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(create);
+        Assert.Contains("already exists", ex.Message);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var create = async () => await _manager.CreateAsync(_sessionId, "branch", plain);
 
-        await create.Should().ThrowAsync<InvalidOperationException>();
+        await Assert.ThrowsAsync<InvalidOperationException>(create);
     }
 
     [Fact]
@@ -131,7 +131,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var create = async () => await manager.CreateAsync(_sessionId, "branch", _repo);
 
-        (await create.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*inside the repository*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(create);
+        Assert.Contains("inside the repository", ex.Message);
     }
 
     [Fact]
@@ -139,7 +140,7 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -148,7 +149,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
         File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
 
-        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+        Assert.False((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -159,7 +160,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(record.Path, "add", "-A");
         _Git(record.Path, "commit", "-m", "work");
 
-        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+        Assert.False((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -169,11 +170,11 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.RemoveAsync(record);
 
-        Directory.Exists(record.Path).Should().BeFalse();
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.False(Directory.Exists(record.Path));
+        Assert.Empty((await _manager.ListAsync()));
         // Removing a worktree does not remove its branch — branch cleanup is the teardown policy's decision (F3),
         // not this primitive's, so a forced removal can still keep the commits on the branch.
-        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -183,15 +184,15 @@ public sealed class WorktreeManagerTests : IDisposable
         File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
 
         var remove = async () => await _manager.RemoveAsync(record);
-        await remove.Should().ThrowAsync<InvalidOperationException>();
-        Directory.Exists(record.Path).Should().BeTrue();
+        await Assert.ThrowsAsync<InvalidOperationException>(remove);
+        Assert.True(Directory.Exists(record.Path));
         // The refusal keeps the registry entry too: the worktree is still there, so forgetting it would hide a tree
         // holding work from the panel that is meant to show it.
-        (await _manager.ListAsync()).Should().ContainSingle();
+        Assert.Single((await _manager.ListAsync()));
 
         await _manager.RemoveAsync(record, force: true);
-        Directory.Exists(record.Path).Should().BeFalse();
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.False(Directory.Exists(record.Path));
+        Assert.Empty((await _manager.ListAsync()));
     }
 
     [Fact]
@@ -205,11 +206,11 @@ public sealed class WorktreeManagerTests : IDisposable
         TestGitDirectory.Remove(record.Path);
         _Git(_repo, "worktree", "unlock", record.Path);
         _Git(_repo, "worktree", "prune");
-        _Git(_repo, "worktree", "list").Split('\n').Should().HaveCount(1, "git only knows the main worktree now");
+        Assert.Single(_Git(_repo, "worktree", "list").Split('\n'));
 
         await _manager.RemoveAsync(record);
 
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await _manager.ListAsync()));
     }
 
     [Fact]
@@ -223,15 +224,15 @@ public sealed class WorktreeManagerTests : IDisposable
         _ClearCheckout(record.Path);
         _Git(_repo, "worktree", "unlock", record.Path);
         _Git(_repo, "worktree", "prune");
-        _Git(_repo, "worktree", "list").Split('\n').Should().HaveCount(1, "git only knows the main worktree now");
+        Assert.Single(_Git(_repo, "worktree", "list").Split('\n'));
 
         await _manager.RemoveAsync(record);
 
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await _manager.ListAsync()));
         // The shell goes too: it is empty, so nothing is lost with it, and leaving it behind is what put an
         // undeletable folder in the operator's state directory in the first place.
-        Directory.Exists(record.Path).Should().BeFalse();
-        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+        Assert.False(Directory.Exists(record.Path));
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -245,8 +246,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.RemoveAsync(record);
 
-        (await _manager.ListAsync()).Should().BeEmpty();
-        Directory.Exists(record.Path).Should().BeFalse();
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.False(Directory.Exists(record.Path));
     }
 
     [Fact]
@@ -263,8 +264,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Dropping the entry is a claim about what the cockpit manages, never a licence to delete: git cannot see
         // these files, but they are still someone's, so only the registry row goes.
-        (await _manager.ListAsync()).Should().BeEmpty();
-        File.Exists(leftover).Should().BeTrue();
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(File.Exists(leftover));
     }
 
     [Fact]
@@ -275,14 +276,14 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "worktree", "unlock", record.Path);
         _Git(_repo, "worktree", "prune");
 
-        var status = (await _manager.GetStatusesAsync()).Should().ContainSingle().Subject;
+        var status = Assert.Single((await _manager.GetStatusesAsync()));
 
         // It used to read as "uncommitted changes" — a claim about work nobody can point at, and the reason the
         // sweep skipped an empty folder it should have taken.
-        status.HasUncommittedChanges.Should().BeFalse();
-        status.WorkingCopyMissing.Should().BeTrue();
-        status.NothingToKeep.Should().BeTrue();
-        status.IsClean.Should().BeFalse("nothing about a tree that is not there can be measured");
+        Assert.False(status.HasUncommittedChanges);
+        Assert.True(status.WorkingCopyMissing);
+        Assert.True(status.NothingToKeep);
+        Assert.False(status.IsClean, "nothing about a tree that is not there can be measured");
     }
 
     [Fact]
@@ -296,8 +297,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Teardown used to call this "not clean" and retain it, which is how the panel filled with rows for folders
         // holding nothing. The branch survives, so the commit that only lives on it is still reachable.
-        (await _manager.ListAsync()).Should().BeEmpty();
-        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -312,8 +313,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // Nothing can be measured about a tree that is not there, so teardown used to call it "not clean" and keep
         // the record — leaving behind exactly the row the panel could not remove. The branch survives, so the commit
         // that only lives on it is still reachable.
-        (await _manager.ListAsync()).Should().BeEmpty();
-        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -334,7 +335,7 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.RemoveAsync(record);
 
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await _manager.ListAsync()));
     }
 
     [Fact]
@@ -343,15 +344,15 @@ public sealed class WorktreeManagerTests : IDisposable
         var first = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/session-1", _repo);
         var second = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/session-2", _repo);
 
-        first.Path.Should().NotBe(second.Path);
-        first.Branch.Should().NotBe(second.Branch);
-        (await _manager.ListAsync()).Should().HaveCount(2);
+        Assert.NotEqual(second.Path, first.Path);
+        Assert.NotEqual(second.Branch, first.Branch);
+        Assert.Equal(2, System.Linq.Enumerable.Count((await _manager.ListAsync())));
 
         File.WriteAllText(Path.Combine(first.Path, "only-in-first.txt"), "x\n");
         _Git(first.Path, "add", "-A");
         _Git(first.Path, "commit", "-m", "first-only work");
 
-        File.Exists(Path.Combine(second.Path, "only-in-first.txt")).Should().BeFalse();
+        Assert.False(File.Exists(Path.Combine(second.Path, "only-in-first.txt")));
     }
 
     [Fact]
@@ -361,10 +362,10 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.ReleaseAsync(_sessionId);
 
-        Directory.Exists(record.Path).Should().BeFalse();
-        (await _manager.ListAsync()).Should().BeEmpty();
+        Assert.False(Directory.Exists(record.Path));
+        Assert.Empty((await _manager.ListAsync()));
         // Unlike a bare RemoveAsync, teardown of a clean worktree also deletes its (work-free) branch.
-        _Git(_repo, "branch", "--list", "wt").Should().BeEmpty();
+        Assert.Empty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -375,11 +376,11 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.ReleaseAsync(_sessionId);
 
-        Directory.Exists(record.Path).Should().BeTrue();
-        var retained = (await _manager.ListAsync()).Should().ContainSingle().Subject;
-        retained.IsRetained.Should().BeTrue();
-        retained.Path.Should().Be(record.Path);
-        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+        Assert.True(Directory.Exists(record.Path));
+        var retained = Assert.Single((await _manager.ListAsync()));
+        Assert.True(retained.IsRetained);
+        Assert.Equal(record.Path, retained.Path);
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -390,9 +391,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.ReconcileAsync([live.SessionId]);
 
-        Directory.Exists(orphan.Path).Should().BeFalse();
-        Directory.Exists(live.Path).Should().BeTrue();
-        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(live.SessionId);
+        Assert.False(Directory.Exists(orphan.Path));
+        Assert.True(Directory.Exists(live.Path));
+        Assert.Equal(live.SessionId, Assert.Single((await _manager.ListAsync())).SessionId);
     }
 
     [Fact]
@@ -400,18 +401,18 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        (await _manager.GetStatusesAsync()).Should().ContainSingle().Which.IsClean.Should().BeTrue();
+        Assert.True(Assert.Single((await _manager.GetStatusesAsync())).IsClean);
 
         File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
         var dirty = (await _manager.GetStatusesAsync()).Single();
-        dirty.HasUncommittedChanges.Should().BeTrue();
-        dirty.IsClean.Should().BeFalse();
+        Assert.True(dirty.HasUncommittedChanges);
+        Assert.False(dirty.IsClean);
 
         _Git(record.Path, "add", "-A");
         _Git(record.Path, "commit", "-m", "work");
         var holdingWork = (await _manager.GetStatusesAsync()).Single();
-        holdingWork.StrandableCommits.Should().Be(1);
-        holdingWork.IsClean.Should().BeFalse();
+        Assert.Equal(1, holdingWork.StrandableCommits);
+        Assert.False(holdingWork.IsClean);
     }
 
     [Fact]
@@ -428,9 +429,9 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "merge", "--no-ff", "wt", "-m", "merge wt");
 
         var status = (await _manager.GetStatusesAsync()).Single();
-        status.StrandableCommits.Should().Be(0);
-        status.IsClean.Should().BeTrue();
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.Equal(0, status.StrandableCommits);
+        Assert.True(status.IsClean);
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -444,7 +445,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Commit(record.Path, "change.txt", "work\n");
         _Git(record.Path, "push", "origin", "wt");
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -456,7 +457,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
         _Commit(record.Path, "change.txt", "work\n");
 
-        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+        Assert.False((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -470,7 +471,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "merge", "--squash", "wt");
         _Git(_repo, "commit", "-m", "squashed wt");
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -486,7 +487,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "merge", "--squash", "wt");
         _Git(_repo, "commit", "-m", "squashed wt");
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -504,7 +505,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "push", "origin", "main");
         _Git(_repo, "reset", "--hard", "HEAD~1");
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -521,7 +522,7 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var legacy = record with { BaseBranch = null };
 
-        (await _manager.IsCleanAsync(legacy)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(legacy)));
     }
 
     [Fact]
@@ -542,7 +543,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(record.Path, "add", "-A");
         _Git(record.Path, "commit", "-m", "merge side, with a fix of its own");
 
-        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+        Assert.False((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -554,7 +555,7 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
         _Commit(record.Path, "café.txt", "unmerged work\n");
 
-        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+        Assert.False((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -572,8 +573,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.ReleaseAsync(_sessionId);
 
-        Directory.Exists(record.Path).Should().BeFalse();
-        _Git(_repo, "branch", "--list", "wt").Should().Contain("wt");
+        Assert.False(Directory.Exists(record.Path));
+        Assert.Contains("wt", _Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -587,8 +588,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         await _manager.ReleaseAsync(_sessionId);
 
-        Directory.Exists(record.Path).Should().BeFalse();
-        _Git(_repo, "branch", "--list", "wt").Should().BeEmpty();
+        Assert.False(Directory.Exists(record.Path));
+        Assert.Empty(_Git(_repo, "branch", "--list", "wt"));
     }
 
     [Fact]
@@ -609,7 +610,7 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "push", "origin", "feat/thing");
         _Git(_repo, "reset", "--hard", "HEAD~1");
 
-        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+        Assert.True((await _manager.IsCleanAsync(record)));
     }
 
     [Fact]
@@ -620,10 +621,10 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var reattached = await _manager.ReattachAsync(record.Path, newSession);
 
-        reattached.Should().NotBeNull();
-        reattached!.SessionId.Should().Be(newSession);
-        reattached.IsRetained.Should().BeFalse();
-        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(newSession);
+        Assert.NotNull(reattached);
+        Assert.Equal(newSession, reattached!.SessionId);
+        Assert.False(reattached.IsRetained);
+        Assert.Equal(newSession, Assert.Single((await _manager.ListAsync())).SessionId);
     }
 
     [Fact]
@@ -631,7 +632,7 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var reattached = await _manager.ReattachAsync(Path.Combine(_tempRoot, "nope"), Guid.NewGuid().ToString("n"));
 
-        reattached.Should().BeNull();
+        Assert.Null(reattached);
     }
 
     [Fact]
@@ -644,8 +645,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await manager.CreateAsync(_sessionId, "wt", _repo);
 
-        record.Path.Should().StartWith(Path.GetFullPath(customRoot));
-        Directory.Exists(record.Path).Should().BeTrue();
+        Assert.StartsWith(Path.GetFullPath(customRoot), record.Path);
+        Assert.True(Directory.Exists(record.Path));
     }
 
     [Fact]
@@ -658,13 +659,13 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // The whole point of AC-349: the session starts on what the remote holds, not on what this checkout last
         // pulled — and the operator's own branch is carried along, so it is no longer behind either.
-        record.BaseCommit.Should().Be(moved);
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
-        _Git(record.Path, "rev-parse", "HEAD").Should().Be(moved);
+        Assert.Equal(moved, record.BaseCommit);
+        Assert.Equal(moved, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(moved, _Git(record.Path, "rev-parse", "HEAD"));
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        refresh.BehindCount.Should().Be(1);
-        refresh.Notice.Should().Contain("origin/main");
+        Assert.Equal(WorktreeSourceOutcome.FastForwarded, refresh.Outcome);
+        Assert.Equal(1, refresh.BehindCount);
+        Assert.Contains("origin/main", refresh.Notice);
     }
 
     [Fact]
@@ -679,11 +680,11 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // The session still starts on the latest state — that is the whole point of AC-349 — but a folder an agent
         // merely named is not one to write to on its say-so. Same fork base, no branch moving under anyone.
-        record.BaseCommit.Should().Be(moved);
-        _Git(record.Path, "rev-parse", "HEAD").Should().Be(moved);
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.ForkedFromUpstream);
-        refresh.Notice.Should().Contain("left where it is");
+        Assert.Equal(moved, record.BaseCommit);
+        Assert.Equal(moved, _Git(record.Path, "rev-parse", "HEAD"));
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(WorktreeSourceOutcome.ForkedFromUpstream, refresh.Outcome);
+        Assert.Contains("left where it is", refresh.Notice);
     }
 
     [Fact]
@@ -697,9 +698,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // An uncommitted edit is a reason not to *write* to the tree, and nothing is being written here — so it is
         // no reason to hand the session an older base than it could have had. The edit is untouched either way.
-        record.BaseCommit.Should().Be(moved);
-        _SourceRefreshOf(record).Outcome.Should().Be(WorktreeSourceOutcome.ForkedFromUpstream);
-        File.ReadAllText(Path.Combine(_repo, "README.md")).Should().Be("half-finished edit\n");
+        Assert.Equal(moved, record.BaseCommit);
+        Assert.Equal(WorktreeSourceOutcome.ForkedFromUpstream, _SourceRefreshOf(record).Outcome);
+        Assert.Equal("half-finished edit\n", File.ReadAllText(Path.Combine(_repo, "README.md")));
     }
 
     [Fact]
@@ -714,8 +715,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Commits that exist only here belong in what the session starts from: forking from the upstream instead
         // would quietly hand the agent a base without the work that is actually being done.
-        record.BaseCommit.Should().Be(before);
-        _SourceRefreshOf(record).Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
+        Assert.Equal(before, record.BaseCommit);
+        Assert.Equal(WorktreeSourceOutcome.Diverged, _SourceRefreshOf(record).Outcome);
     }
 
     [Fact]
@@ -729,10 +730,10 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Untracked leftovers are in nearly every checkout; counting them as work in progress would mean the source
         // is never updated, which is the feature. This one is nowhere near an incoming path, so nothing can touch it.
-        record.BaseCommit.Should().Be(moved);
+        Assert.Equal(moved, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        File.Exists(Path.Combine(_repo, "scratch.log")).Should().BeTrue();
+        Assert.Equal(WorktreeSourceOutcome.FastForwarded, refresh.Outcome);
+        Assert.True(File.Exists(Path.Combine(_repo, "scratch.log")));
     }
 
     [Fact]
@@ -749,9 +750,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // one has to go, is. Counting neighbours would stop the update in any repository with a stray file in a
         // touched folder, which is nearly all of them: the feature would quietly never fire again.
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        record.BaseCommit.Should().Be(moved);
-        File.ReadAllText(Path.Combine(_repo, "src", "app", "notes.txt")).Should().Be("my scratch file\n");
+        Assert.Equal(WorktreeSourceOutcome.FastForwarded, refresh.Outcome);
+        Assert.Equal(moved, record.BaseCommit);
+        Assert.Equal("my scratch file\n", File.ReadAllText(Path.Combine(_repo, "src", "app", "notes.txt")));
     }
 
     [Fact]
@@ -768,9 +769,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // The other direction of the same question: here a folder of untracked files sits exactly where an incoming
         // file has to be written. git lists what is inside it, not the folder, so the match has to run upwards.
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        File.ReadAllText(Path.Combine(_repo, "libs", "mine.txt")).Should().Be("not in git\n");
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal("not in git\n", File.ReadAllText(Path.Combine(_repo, "libs", "mine.txt")));
     }
 
     [Fact]
@@ -790,12 +791,12 @@ public sealed class WorktreeManagerTests : IDisposable
         // git refuses to overwrite an untracked file but overwrites an *ignored* one without a word, and a local
         // .env is both the file that gets ignored and the one nobody has a second copy of. Asking about the incoming
         // paths ourselves is the only thing standing between an update and that content.
-        File.ReadAllText(Path.Combine(_repo, ".env")).Should().Be("API_KEY=the-only-copy\n");
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal("API_KEY=the-only-copy\n", File.ReadAllText(Path.Combine(_repo, ".env")));
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
-        refresh.Notice.Should().Contain(".env");
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
+        Assert.Contains(".env", refresh.Notice);
     }
 
     [Fact]
@@ -808,10 +809,10 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        File.ReadAllText(Path.Combine(_repo, "shipped.txt")).Should().Be("mine, never committed\n");
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        Assert.Equal("mine, never committed\n", File.ReadAllText(Path.Combine(_repo, "shipped.txt")));
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
     }
 
     [Fact]
@@ -835,9 +836,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Handing these paths to git as a pathspec is what makes this one dangerous: a leading colon is read as
         // pathspec magic, the answer comes back empty, and "nothing in the way" is exactly the wrong conclusion.
-        File.ReadAllText(Path.Combine(_repo, ":colon.txt")).Should().Be("the only copy\n");
+        Assert.Equal("the only copy\n", File.ReadAllText(Path.Combine(_repo, ":colon.txt")));
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
     }
 
     [Fact]
@@ -866,12 +867,12 @@ public sealed class WorktreeManagerTests : IDisposable
         // word, and it never descends into it either — so asking about "libs/dep.txt" finds nothing while the link
         // itself is what the update lands on. Without the check the operator's arrangement is simply gone.
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
 
         // What the update destroys is the link itself — it becomes a real folder with the incoming file in it, while
         // the directory it pointed at is left untouched. So the link is what has to be asserted on.
-        new DirectoryInfo(Path.Combine(_repo, "libs")).LinkTarget.Should().NotBeNull();
+        Assert.NotNull(new DirectoryInfo(Path.Combine(_repo, "libs")).LinkTarget);
     }
 
     [Fact]
@@ -887,14 +888,14 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwardFailed);
-        refresh.Notice.Should().Contain("could not be updated");
+        Assert.Equal(WorktreeSourceOutcome.FastForwardFailed, refresh.Outcome);
+        Assert.Contains("could not be updated", refresh.Notice);
 
         // The tree was never opened, so the operator must not be sent looking through it.
-        refresh.Notice.Should().NotContain("now has changes in it");
+        Assert.DoesNotContain("now has changes in it", refresh.Notice);
     }
 
     [Fact]
@@ -916,8 +917,8 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UntrackedFilesInTheWay);
-        File.ReadAllText(Path.Combine(_repo, "local.cfg")).Should().Be("the only copy\n");
+        Assert.Equal(WorktreeSourceOutcome.UntrackedFilesInTheWay, refresh.Outcome);
+        Assert.Equal("the only copy\n", File.ReadAllText(Path.Combine(_repo, "local.cfg")));
     }
 
     [Fact]
@@ -942,9 +943,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // git moves the branch before it runs the post-merge hook, so a hook that outlives the guard is killed with
         // the update already done. Believing the exit code there would report failure and then fork the session from
         // the commit the branch has just left — the very staleness this exists to prevent.
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        refresh.ForkCommit.Should().Be(moved);
+        Assert.Equal(moved, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(WorktreeSourceOutcome.FastForwarded, refresh.Outcome);
+        Assert.Equal(moved, refresh.ForkCommit);
     }
 
     [Fact]
@@ -970,9 +971,9 @@ public sealed class WorktreeManagerTests : IDisposable
         // been written to. Asking the repository what happened has to ignore it for the same reason: a caller who
         // walks away in this window would otherwise take the answer with them, leaving the update standing and
         // unreported while the start fails on the cancellation instead.
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FastForwarded);
-        refresh.ForkCommit.Should().Be(moved);
+        Assert.Equal(moved, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(WorktreeSourceOutcome.FastForwarded, refresh.Outcome);
+        Assert.Equal(moved, refresh.ForkCommit);
     }
 
     [Fact]
@@ -998,11 +999,10 @@ public sealed class WorktreeManagerTests : IDisposable
         // The start is abandoned while the merge runs, so it never returns the record the notice used to travel on —
         // and by then the operator's own branch has already moved. Hearing about that cannot depend on a caller who
         // is no longer listening: a branch that moved without a word is the thing this whole feature is against.
-        await create.Should().ThrowAsync<OperationCanceledException>();
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(moved);
-        announced.Should().ContainSingle()
-            .Which.Should().Match<WorktreeSourceRefresh>(refresh =>
-                refresh.Outcome == WorktreeSourceOutcome.FastForwarded && refresh.Notice != null);
+        await Assert.ThrowsAsync<OperationCanceledException>(create);
+        Assert.Equal(moved, _Git(_repo, "rev-parse", "HEAD"));
+        var refresh = Assert.Single(announced);
+        Assert.True(refresh.Outcome == WorktreeSourceOutcome.FastForwarded && refresh.Notice != null);
     }
 
     [Fact]
@@ -1015,8 +1015,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // Telling someone is best-effort; making the worktree is not. A subscriber that falls over is its own
         // problem and must not become the reason a session cannot start.
-        Directory.Exists(record.Path).Should().BeTrue();
-        (await _manager.ListAsync()).Should().ContainSingle();
+        Assert.True(Directory.Exists(record.Path));
+        Assert.Single((await _manager.ListAsync()));
     }
 
     [Fact]
@@ -1035,8 +1035,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // and nobody would hear about. Nothing enforces that on purpose: it holds because every step from detecting
         // the repository onwards runs on the caller's token, so an abandoned start stops while it is still reading.
         // Pinned here because that is a property of the whole path rather than of any one line in it.
-        await create.Should().ThrowAsync<OperationCanceledException>();
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
+        await Assert.ThrowsAsync<OperationCanceledException>(create);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
     }
 
     [Fact]
@@ -1052,10 +1052,10 @@ public sealed class WorktreeManagerTests : IDisposable
         // The branch still tracks origin/main in config, but with the remote-tracking ref gone @{upstream} cannot be
         // resolved. Reading that as "this branch tracks nothing" would turn an unreachable remote into silence —
         // which is the exact blind spot this ticket is about.
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
-        refresh.Notice.Should().Contain("Could not reach");
+        Assert.Equal(WorktreeSourceOutcome.FetchFailed, refresh.Outcome);
+        Assert.Contains("Could not reach", refresh.Notice);
     }
 
     [Fact]
@@ -1068,12 +1068,12 @@ public sealed class WorktreeManagerTests : IDisposable
 
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        File.ReadAllText(Path.Combine(_repo, "README.md")).Should().Be("half-finished edit\n");
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal("half-finished edit\n", File.ReadAllText(Path.Combine(_repo, "README.md")));
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.KeptLocalChanges);
-        refresh.Notice.Should().Contain("uncommitted changes");
+        Assert.Equal(WorktreeSourceOutcome.KeptLocalChanges, refresh.Outcome);
+        Assert.Contains("uncommitted changes", refresh.Notice);
     }
 
     [Fact]
@@ -1087,11 +1087,11 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
         // Nothing that only exists here may be silently rewound; a fast-forward would not have been one anyway.
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.Diverged);
-        refresh.Notice.Should().Contain("left");
+        Assert.Equal(WorktreeSourceOutcome.Diverged, refresh.Outcome);
+        Assert.Contains("left", refresh.Notice);
     }
 
     [Fact]
@@ -1107,11 +1107,11 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // The remote-tracking ref still says "one behind", but nothing confirmed that just now — so the session
         // starts on the local head rather than on a claim about the past, and it is told which.
-        _Git(_repo, "rev-parse", "HEAD").Should().Be(before);
-        record.BaseCommit.Should().Be(before);
+        Assert.Equal(before, _Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(before, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
-        refresh.Notice.Should().Contain("Could not reach");
+        Assert.Equal(WorktreeSourceOutcome.FetchFailed, refresh.Outcome);
+        Assert.Contains("Could not reach", refresh.Notice);
     }
 
     [Fact]
@@ -1122,8 +1122,8 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.UpToDate);
-        refresh.Notice.Should().BeNull();
+        Assert.Equal(WorktreeSourceOutcome.UpToDate, refresh.Outcome);
+        Assert.Null(refresh.Notice);
     }
 
     [Fact]
@@ -1143,8 +1143,8 @@ public sealed class WorktreeManagerTests : IDisposable
         // nothing left to be behind of, so this must stay as quiet as any other branch without an upstream —
         // otherwise every session started from a finished feature branch opens with a warning about nothing.
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
-        refresh.Notice.Should().BeNull();
+        Assert.Equal(WorktreeSourceOutcome.NoUpstream, refresh.Outcome);
+        Assert.Null(refresh.Notice);
     }
 
     [Fact]
@@ -1158,8 +1158,10 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // git takes a URL where a remote's name would go, and a URL can carry a token. This sentence reaches a toast
         // and, through the worktree tool, an agent's context — so not one character of it may be the token.
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.FetchFailed);
-        refresh.Notice.Should().NotBeNull().And.Subject.As<string>().Should().NotContain("s3cr3t-token").And.NotContain("someone");
+        Assert.Equal(WorktreeSourceOutcome.FetchFailed, refresh.Outcome);
+        Assert.NotNull(refresh.Notice);
+        Assert.DoesNotContain("s3cr3t-token", refresh.Notice);
+        Assert.DoesNotContain("someone", refresh.Notice);
     }
 
     [Fact]
@@ -1173,8 +1175,8 @@ public sealed class WorktreeManagerTests : IDisposable
 
         // "I could not tell" and "there is nothing to tell" are the same silence if you let them be, and only one of
         // them is honest. A config git refuses to parse is the former.
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.CheckFailed);
-        refresh.Notice.Should().NotBeNull();
+        Assert.Equal(WorktreeSourceOutcome.CheckFailed, refresh.Outcome);
+        Assert.NotNull(refresh.Notice);
     }
 
     [Fact]
@@ -1182,10 +1184,10 @@ public sealed class WorktreeManagerTests : IDisposable
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
-        record.BaseCommit.Should().Be(_Git(_repo, "rev-parse", "HEAD"));
+        Assert.Equal(_Git(_repo, "rev-parse", "HEAD"), record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.NoUpstream);
-        refresh.Notice.Should().BeNull();
+        Assert.Equal(WorktreeSourceOutcome.NoUpstream, refresh.Outcome);
+        Assert.Null(refresh.Notice);
     }
 
     [Fact]
@@ -1199,10 +1201,10 @@ public sealed class WorktreeManagerTests : IDisposable
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
         // There is no source branch to update, so the commit HEAD points at stays the fork base.
-        record.BaseCommit.Should().Be(detachedAt);
+        Assert.Equal(detachedAt, record.BaseCommit);
         var refresh = _SourceRefreshOf(record);
-        refresh.Outcome.Should().Be(WorktreeSourceOutcome.DetachedHead);
-        refresh.Notice.Should().BeNull();
+        Assert.Equal(WorktreeSourceOutcome.DetachedHead, refresh.Outcome);
+        Assert.Null(refresh.Notice);
     }
 
     public void Dispose() => TestGitDirectory.Remove(_tempRoot);

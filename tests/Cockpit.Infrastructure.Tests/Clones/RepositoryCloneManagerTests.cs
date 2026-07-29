@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Cockpit.Core.Clones;
 using Cockpit.Infrastructure.Clones;
 using Cockpit.TestSupport;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Clones;
 
@@ -44,12 +43,12 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     {
         var record = await _manager.CloneAsync(_sourceUrl);
 
-        record.Path.Should().StartWith(Path.GetFullPath(_clonesRoot));
-        Directory.Exists(Path.Combine(record.Path, ".git")).Should().BeTrue();
-        File.Exists(Path.Combine(record.Path, "README.md")).Should().BeTrue();
+        Assert.StartsWith(Path.GetFullPath(_clonesRoot), record.Path);
+        Assert.True(Directory.Exists(Path.Combine(record.Path, ".git")));
+        Assert.True(File.Exists(Path.Combine(record.Path, "README.md")));
 
         var registered = await _registry.ListAsync();
-        registered.Should().ContainSingle().Which.Path.Should().Be(record.Path);
+        Assert.Equal(record.Path, Assert.Single(registered).Path);
     }
 
     [Fact]
@@ -59,10 +58,10 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         var record = await _manager.CloneAsync(_sourceUrl, target);
 
-        record.Path.Should().Be(Path.GetFullPath(target));
-        Directory.Exists(Path.Combine(target, ".git")).Should().BeTrue();
-        File.Exists(Path.Combine(target, "README.md")).Should().BeTrue();
-        (await _registry.ListAsync()).Should().ContainSingle().Which.Path.Should().Be(Path.GetFullPath(target));
+        Assert.Equal(Path.GetFullPath(target), record.Path);
+        Assert.True(Directory.Exists(Path.Combine(target, ".git")));
+        Assert.True(File.Exists(Path.Combine(target, "README.md")));
+        Assert.Equal(Path.GetFullPath(target), Assert.Single((await _registry.ListAsync())).Path);
     }
 
     [Fact]
@@ -71,8 +70,8 @@ public sealed class RepositoryCloneManagerTests : IDisposable
         var record = await _manager.CloneAsync(_sourceUrl, "   ");
 
         var root = await _manager.GetEffectiveClonesRootAsync();
-        record.Path.Should().Be(_manager.BuildClonePath(root, _sourceUrl));
-        record.Path.Should().StartWith(Path.GetFullPath(_clonesRoot));
+        Assert.Equal(_manager.BuildClonePath(root, _sourceUrl), record.Path);
+        Assert.StartsWith(Path.GetFullPath(_clonesRoot), record.Path);
     }
 
     [Fact]
@@ -80,8 +79,8 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     {
         var root = await _manager.GetEffectiveClonesRootAsync();
 
-        _manager.BuildClonePath(root, _sourceUrl).Should().StartWith(Path.GetFullPath(_clonesRoot));
-        _manager.BuildClonePath(root, "   ").Should().BeNull();
+        Assert.StartsWith(Path.GetFullPath(_clonesRoot), _manager.BuildClonePath(root, _sourceUrl));
+        Assert.Null(_manager.BuildClonePath(root, "   "));
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         var manager = new RepositoryCloneManager(_registry, settings);
 
-        (await manager.GetEffectiveClonesRootAsync()).Should().Be(Path.GetFullPath(custom));
+        Assert.Equal(Path.GetFullPath(custom), (await manager.GetEffectiveClonesRootAsync()));
     }
 
     [Fact]
@@ -110,9 +109,9 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         var second = await _manager.CloneAsync(_sourceUrl);
 
-        second.Path.Should().Be(first.Path);
-        File.Exists(marker).Should().BeTrue();
-        (await _registry.ListAsync()).Should().ContainSingle();
+        Assert.Equal(first.Path, second.Path);
+        Assert.True(File.Exists(marker));
+        Assert.Single((await _registry.ListAsync()));
     }
 
     [Fact]
@@ -130,8 +129,8 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         var act = () => _manager.CloneAsync(_sourceUrl);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        File.Exists(untouched).Should().BeTrue();
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.True(File.Exists(untouched));
     }
 
     [Fact]
@@ -148,9 +147,9 @@ public sealed class RepositoryCloneManagerTests : IDisposable
         await _manager.ReconcileAsync();
 
         var remaining = await _registry.ListAsync();
-        remaining.Should().ContainSingle().Which.Path.Should().Be(present.Path);
+        Assert.Equal(present.Path, Assert.Single(remaining).Path);
         // Never deletes disk: the surviving clone's folder is left exactly as it was.
-        Directory.Exists(present.Path).Should().BeTrue();
+        Assert.True(Directory.Exists(present.Path));
     }
 
     [Fact]
@@ -160,8 +159,8 @@ public sealed class RepositoryCloneManagerTests : IDisposable
 
         var act = () => _manager.CloneAsync(missingUrl);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        (await _registry.ListAsync()).Should().BeEmpty();
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Empty((await _registry.ListAsync()));
     }
 
     [Fact]
@@ -169,7 +168,7 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     {
         var act = () => _manager.CloneAsync("   ");
 
-        await act.Should().ThrowAsync<FormatException>();
+        await Assert.ThrowsAsync<FormatException>(act);
     }
 
     private static string _Git(string workingDirectory, params string[] arguments)

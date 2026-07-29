@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Worktrees;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -24,10 +23,10 @@ public class GitCliTests
 
         var cleaned = GitCli.StripProgress(stderr);
 
-        cleaned.Should().Contain("Preparing worktree");
-        cleaned.Should().Contain("Filename too long");
-        cleaned.Should().Contain("fatal: could not checkout worktree");
-        cleaned.Should().NotContain("Updating files:");
+        Assert.Contains("Preparing worktree", cleaned);
+        Assert.Contains("Filename too long", cleaned);
+        Assert.Contains("fatal: could not checkout worktree", cleaned);
+        Assert.DoesNotContain("Updating files:", cleaned);
     }
 
     // git echoes the remote URL in its own failures ("fatal: unable to access 'https://token@host/…'"); a clone
@@ -40,8 +39,8 @@ public class GitCliTests
 
         var redacted = GitCli.RedactUrlCredentials(stderr);
 
-        redacted.Should().NotContain("ghp_secretsecret");
-        redacted.Should().Contain("https://***@github.com/org/repo.git");
+        Assert.DoesNotContain("ghp_secretsecret", redacted);
+        Assert.Contains("https://***@github.com/org/repo.git", redacted);
     }
 
     [Fact]
@@ -49,7 +48,7 @@ public class GitCliTests
     {
         const string stderr = "fatal: repository 'https://github.com/org/repo.git/' not found";
 
-        GitCli.RedactUrlCredentials(stderr).Should().Be(stderr);
+        Assert.Equal(stderr, GitCli.RedactUrlCredentials(stderr));
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class GitCliTests
         // \r-separated blob — the split has to treat it the same as newlines.
         var stderr = "Updating files:  50%\rUpdating files:  99%\rUpdating files: 100%\rerror: boom";
 
-        GitCli.StripProgress(stderr).Should().Be("error: boom");
+        Assert.Equal("error: boom", GitCli.StripProgress(stderr));
     }
 
     [Fact]
@@ -68,6 +67,6 @@ public class GitCliTests
         // A git that reported nothing but progress must not be reduced to an empty message.
         var stderr = "Updating files: 100% (11974/11974)";
 
-        GitCli.StripProgress(stderr).Should().Be(stderr.Trim());
+        Assert.Equal(stderr.Trim(), GitCli.StripProgress(stderr));
     }
 }

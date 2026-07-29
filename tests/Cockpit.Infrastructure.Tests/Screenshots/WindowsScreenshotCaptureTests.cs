@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -24,9 +23,9 @@ public class WindowsScreenshotCaptureTests
 
         var result = await capture.CaptureAsync();
 
-        result.Should().NotBeNull();
-        result!.Displays.Should().ContainSingle();
-        result.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
+        Assert.NotNull(result);
+        Assert.Single(result!.Displays);
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), result.Displays[0].ImageBounds);
     }
 
     /// <summary>
@@ -45,10 +44,10 @@ public class WindowsScreenshotCaptureTests
 
         var result = await capture.CaptureAsync();
 
-        result!.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 2880, 1620));
-        result.Displays[1].ImageBounds.Should().Be(new CaptureRect(2880, 0, 1920, 1080));
-        result.Displays[0].Scale.Should().Be(1.5);
-        result.ToImagePixel(new CapturePoint(2880, 0)).Should().Be(new CapturePoint(2880, 0));
+        Assert.Equal(new CaptureRect(0, 0, 2880, 1620), result!.Displays[0].ImageBounds);
+        Assert.Equal(new CaptureRect(2880, 0, 1920, 1080), result.Displays[1].ImageBounds);
+        Assert.Equal(1.5, result.Displays[0].Scale);
+        Assert.Equal(new CapturePoint(2880, 0), result.ToImagePixel(new CapturePoint(2880, 0)));
     }
 
     /// <summary>
@@ -67,9 +66,9 @@ public class WindowsScreenshotCaptureTests
 
         var result = await capture.CaptureAsync();
 
-        result!.Displays[0].ImageBounds.Should().Be(new CaptureRect(0, 0, 1920, 1080));
-        result.Displays[1].ImageBounds.Should().Be(new CaptureRect(1920, 0, 1920, 1080));
-        result.ToImagePixel(new CapturePoint(-1920, 0)).Should().Be(new CapturePoint(0, 0));
+        Assert.Equal(new CaptureRect(0, 0, 1920, 1080), result!.Displays[0].ImageBounds);
+        Assert.Equal(new CaptureRect(1920, 0, 1920, 1080), result.Displays[1].ImageBounds);
+        Assert.Equal(new CapturePoint(0, 0), result.ToImagePixel(new CapturePoint(-1920, 0)));
     }
 
     /// <summary>
@@ -87,7 +86,7 @@ public class WindowsScreenshotCaptureTests
 
         await _Capture(screen).CaptureAsync();
 
-        screen.Requested.Should().Be(new CaptureRect(0, 0, 3840, 1440));
+        Assert.Equal(new CaptureRect(0, 0, 3840, 1440), screen.Requested);
     }
 
     /// <summary>A virtual screen with no area is a desktop nobody can capture, and blitting zero by zero would hand back an empty image as though it had worked.</summary>
@@ -102,7 +101,8 @@ public class WindowsScreenshotCaptureTests
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no area*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("no area", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -122,8 +122,8 @@ public class WindowsScreenshotCaptureTests
 
         var act = async () => await _Capture(screen).CaptureAsync(cancellation.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
-        screen.Requested.Should().BeNull("nothing should have been blitted");
+        await Assert.ThrowsAsync<OperationCanceledException>(act);
+        Assert.Null(screen.Requested);
     }
 
     /// <summary>
@@ -143,7 +143,8 @@ public class WindowsScreenshotCaptureTests
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*changed while*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("changed while", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>A process that is not per-monitor aware still captures — one screen is self-consistent at any scale — so this is a warning, not a refusal.</summary>
@@ -157,7 +158,7 @@ public class WindowsScreenshotCaptureTests
             IsPerMonitorDpiAware = false,
         });
 
-        (await capture.CaptureAsync()).Should().NotBeNull();
+        Assert.NotNull((await capture.CaptureAsync()));
     }
 
     private static WindowsScreenshotCapture _Capture(IWindowsScreenReader screen) =>

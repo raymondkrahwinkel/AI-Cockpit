@@ -1,7 +1,6 @@
 using System.IO.Compression;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Voice;
 
@@ -42,9 +41,10 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         var extracted = WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging);
 
-        extracted.Should().Be(3);
-        Directory.GetFiles(staging).Select(Path.GetFileName)
-            .Should().BeEquivalentTo("ggml-base-whisper.dll", "ggml-cuda-whisper.dll", "whisper.dll");
+        Assert.Equal(3, extracted);
+        Assert.Equivalent(
+            new object[] { "ggml-base-whisper.dll", "ggml-cuda-whisper.dll", "whisper.dll" },
+            Directory.GetFiles(staging).Select(Path.GetFileName));
     }
 
     /// <summary>A .nupkg also carries a nuspec, a readme and signatures; none of that belongs next to the natives.</summary>
@@ -61,8 +61,8 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         var extracted = WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging);
 
-        extracted.Should().Be(1);
-        Directory.GetFiles(staging).Select(Path.GetFileName).Should().BeEquivalentTo("whisper.dll");
+        Assert.Equal(1, extracted);
+        Assert.Equivalent(new[] { "whisper.dll" }, Directory.GetFiles(staging).Select(Path.GetFileName));
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
         var staging = Path.Combine(_root, "staging");
         Directory.CreateDirectory(staging);
 
-        WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging).Should().Be(0);
+        Assert.Equal(0, WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging));
     }
 
     /// <summary>
@@ -95,8 +95,8 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         WhisperRuntimeCache.ExtractNatives(package, Cuda12Windows, staging);
 
-        File.Exists(Path.Combine(_root, "escaped.dll")).Should().BeFalse();
-        Directory.GetFiles(staging).Select(Path.GetFileName).Should().BeEquivalentTo("escaped.dll");
+        Assert.False(File.Exists(Path.Combine(_root, "escaped.dll")));
+        Assert.Equivalent(new[] { "escaped.dll" }, Directory.GetFiles(staging).Select(Path.GetFileName));
     }
 
     /// <summary>
@@ -112,7 +112,7 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         WhisperRuntimeCache.RemoveOtherVersions(_root, "1.9.1", logger: null);
 
-        Directory.GetDirectories(_root).Select(Path.GetFileName).Should().BeEquivalentTo("1.9.1");
+        Assert.Equivalent(new[] { "1.9.1" }, Directory.GetDirectories(_root).Select(Path.GetFileName));
     }
 
     /// <summary>Nothing has been fetched yet on a fresh install; that is not a failure to clean up.</summary>
@@ -123,7 +123,7 @@ public sealed class WhisperRuntimeCacheTests : IDisposable
 
         var removing = () => WhisperRuntimeCache.RemoveOtherVersions(absent, "1.9.1", logger: null);
 
-        removing.Should().NotThrow();
+        removing();
     }
 
     private string _CreatePackage(params (string EntryPath, string Content)[] entries)

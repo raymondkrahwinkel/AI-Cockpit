@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Configuration;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
@@ -43,8 +42,8 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         })));
 
         var written = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-        written!.Plugins!.Keys.Should().BeEquivalentTo(ids);
-        written.Plugins.Should().OnlyContain(entry => entry.Value.PinnedSha256 == entry.Key);
+        Assert.Equivalent(ids, written!.Plugins!.Keys);
+        Assert.All(written.Plugins, entry => Assert.True(entry.Value.PinnedSha256 == entry.Key));
     }
 
     /// <summary>
@@ -65,13 +64,13 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
 
         // It must not have gone through while the gate is held elsewhere.
         await Task.Delay(150);
-        write.IsCompleted.Should().BeFalse("the gate is held by another writer");
+        Assert.False(write.IsCompleted, "the gate is held by another writer");
 
         foreignHold.Dispose();
         await write;
 
         var written = await access.ReadAsync(CancellationToken.None);
-        written!.Plugins!.Keys.Should().BeEquivalentTo("kept", "added");
+        Assert.Equivalent(new[] { "kept", "added" }, written!.Plugins!.Keys);
     }
 
     /// <summary>A reader does not queue behind the write gate: it is not a writer, and it has no reason to wait for one to think.</summary>
@@ -86,7 +85,7 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
 
         var read = await access.ReadAsync(CancellationToken.None);
 
-        read!.Plugins!.Keys.Should().Contain("there");
+        Assert.Contains("there", read!.Plugins!.Keys);
     }
 
     /// <summary>
@@ -117,7 +116,7 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         var read = await access.ReadAsync(CancellationToken.None);
 
         await release;
-        read!.Plugins!.Keys.Should().Contain("there", "a read that lands during a swap waits it out rather than throwing");
+        Assert.Contains("there", read!.Plugins!.Keys);
     }
 
     /// <summary>Waiting is not forgiving: a hold that outlasts any swap is not contention, and the read has to stop pretending otherwise.</summary>
@@ -132,7 +131,7 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
 
         var act = async () => await access.ReadAsync(CancellationToken.None);
 
-        await act.Should().ThrowAsync<IOException>();
+        await Assert.ThrowsAsync<IOException>(act);
     }
 
     /// <summary>Each writer still only touches its own section — the gate serialises them, it does not merge them.</summary>
@@ -146,7 +145,7 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         await access.UpdateAsync(file => file.Layout = new LayoutSettingsEntry { SingleSessionLayout = true }, CancellationToken.None);
 
         var written = await access.ReadAsync(CancellationToken.None);
-        written!.Plugins!.Keys.Should().Contain("a");
-        written.Layout!.SingleSessionLayout.Should().BeTrue();
+        Assert.Contains("a", written!.Plugins!.Keys);
+        Assert.True(written.Layout!.SingleSessionLayout);
     }
 }

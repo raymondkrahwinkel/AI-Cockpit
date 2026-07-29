@@ -1,7 +1,6 @@
 using Cockpit.Core.Rendering;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Rendering;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Rendering;
 
@@ -33,9 +32,9 @@ public sealed class RenderingSettingsStoreTests : IDisposable
 
         await store.SaveAsync(new RenderingSettings { Backend = RenderBackendChoice.OpenGl });
 
-        (await store.LoadAsync()).Backend.Should().Be(RenderBackendChoice.OpenGl);
+        Assert.Equal(RenderBackendChoice.OpenGl, (await store.LoadAsync()).Backend);
         // The early, pre-container reader must see exactly what the store wrote.
-        RenderBackendConfig.Read(ConfigPath).Should().Be(RenderBackendChoice.OpenGl);
+        Assert.Equal(RenderBackendChoice.OpenGl, RenderBackendConfig.Read(ConfigPath));
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public sealed class RenderingSettingsStoreTests : IDisposable
     {
         Directory.CreateDirectory(_directory);
 
-        (await new RenderingSettingsStore(ConfigPath).LoadAsync()).Backend.Should().Be(RenderBackendChoice.Auto);
-        RenderBackendConfig.Read(ConfigPath).Should().Be(RenderBackendChoice.Auto);
+        Assert.Equal(RenderBackendChoice.Auto, (await new RenderingSettingsStore(ConfigPath).LoadAsync()).Backend);
+        Assert.Equal(RenderBackendChoice.Auto, RenderBackendConfig.Read(ConfigPath));
     }
 }

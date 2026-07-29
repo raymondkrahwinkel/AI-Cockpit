@@ -4,7 +4,6 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Terminal;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Terminal;
@@ -35,16 +34,16 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        asked.Should().ContainSingle();
-        asked[0].Risk.Should().Be(ConsentRisk.Dangerous, "driving a terminal is never remembered");
-        asked[0].Source.PaneId.Should().Be("term-1", "the prompt appears on the pane being taken over");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+        Assert.Equal(ConsentRisk.Dangerous, asked[0].Risk);
+        Assert.Equal("term-1", asked[0].Source.PaneId);
 
         // Nothing before the coupling; output after it comes back on the next read.
         registry.CaptureOutput("term-1", "build finished\n");
         var second = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
-        second!["output"]!.GetValue<string>().Should().Be("build finished\n");
-        asked.Should().ContainSingle("an already-coupled pane is not re-prompted");
+        Assert.Equal("build finished\n", second!["output"]!.GetValue<string>());
+        Assert.Single(asked);
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["output"]!.GetValue<string>().Should().Be("ok done\n");
+        Assert.Equal("ok done\n", json!["output"]!.GetValue<string>());
     }
 
     [Fact]
@@ -79,9 +78,9 @@ public class TerminalMcpToolsTests
             var json = JsonNode.Parse(await tools.ReadTerminal("victim-pane", "zsh-5"));
 
             // Keyed on the verified "attacker-pane": the pane is coupled to another agent → refused, nothing leaks.
-            json!["ok"]!.GetValue<bool>().Should().BeFalse();
-            json!["error"]!.GetValue<string>().Should().Contain("another agent");
-            json!["output"].Should().BeNull("the victim's output must not reach a spoofed session id");
+            Assert.False(json!["ok"]!.GetValue<bool>());
+            Assert.Contains("another agent", json!["error"]!.GetValue<string>());
+            Assert.Null(json!["output"]);
         }
         finally
         {
@@ -97,9 +96,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("not approved");
-        registry.IsCoupled("term-1").Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not approved", json["error"]!.GetValue<string>());
+        Assert.False(registry.IsCoupled("term-1"));
     }
 
     [Fact]
@@ -109,9 +108,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "ghost"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("No such terminal");
-        asked.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("No such terminal", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -123,9 +122,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("another agent");
-        asked.Should().BeEmpty("exclusivity is checked before the operator is bothered");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("another agent", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -137,8 +136,8 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        registry.IsCoupled("term-1").Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.False(registry.IsCoupled("term-1"));
     }
 
     [Fact]
@@ -151,9 +150,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "echo hi", submit: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        asked.Should().ContainSingle("touching a pane asks once, for read and drive together");
-        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("echo hi\r");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Single(asked);
+        Assert.Equal("echo hi\r", System.Text.Encoding.UTF8.GetString(Assert.Single(written)));
     }
 
     [Fact]
@@ -166,9 +165,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "rm -rf /"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        written.Should().BeEmpty();
-        registry.IsCoupled("term-1").Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(written);
+        Assert.False(registry.IsCoupled("term-1"));
     }
 
     [Fact]
@@ -181,11 +180,11 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(tools.ListTerminals(Session));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(json!["ok"]!.GetValue<bool>());
         var names = json["terminals"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()).ToList();
-        names.Should().BeEquivalentTo("zsh-5", "bash-2");
+        Assert.Equivalent(new object[] { "zsh-5", "bash-2" }, names);
         var coupled = json["terminals"]!.AsArray().First(t => t!["name"]!.GetValue<string>() == "zsh-5");
-        coupled!["coupled"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(coupled!["coupled"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -198,12 +197,12 @@ public class TerminalMcpToolsTests
 
         await tools.ReadTerminal(Session, "zsh-5");
 
-        asked.Should().ContainSingle();
-        asked[0].Scope.Should().Be("terminal.watch");
-        asked[0].Action.Should().Contain("cannot type");
-        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Watch);
-        registry.SendInput(Session, "term-1", "ls\r"u8.ToArray()).Should().BeFalse("approving a read must not hand over the keyboard");
-        written.Should().BeEmpty();
+        Assert.Single(asked);
+        Assert.Equal("terminal.watch", asked[0].Scope);
+        Assert.Contains("cannot type", asked[0].Action);
+        Assert.Equal(TerminalCouplingMode.Watch, registry.CouplingOf(Session, "term-1"));
+        Assert.False(registry.SendInput(Session, "term-1", "ls\r"u8.ToArray()), "approving a read must not hand over the keyboard");
+        Assert.Empty(written);
     }
 
     [Fact]
@@ -217,11 +216,11 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "ls", submit: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        asked.Should().HaveCount(2);
-        asked[1].Scope.Should().Be("terminal.drive");
-        asked[1].Title.Should().Contain("now wants to type", "the operator is told this is a widening, not a fresh ask");
-        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("ls\r");
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(2, System.Linq.Enumerable.Count(asked));
+        Assert.Equal("terminal.drive", asked[1].Scope);
+        Assert.Contains("now wants to type", asked[1].Title);
+        Assert.Equal("ls\r", System.Text.Encoding.UTF8.GetString(Assert.Single(written)));
     }
 
     [Fact]
@@ -238,9 +237,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "ls", submit: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("still be able to read");
-        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Watch, "a refused widening does not revoke what was granted");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("still be able to read", json["error"]!.GetValue<string>());
+        Assert.Equal(TerminalCouplingMode.Watch, registry.CouplingOf(Session, "term-1"));
     }
 
     [Fact]
@@ -252,9 +251,9 @@ public class TerminalMcpToolsTests
 
         await tools.SendTerminal(Session, "zsh-5", "ls", submit: true);
 
-        asked.Should().ContainSingle("an agent that means to type is asked that question, not the read one first");
-        asked[0].Scope.Should().Be("terminal.drive");
-        registry.CouplingOf(Session, "term-1").Should().Be(TerminalCouplingMode.Drive);
+        Assert.Single(asked);
+        Assert.Equal("terminal.drive", asked[0].Scope);
+        Assert.Equal(TerminalCouplingMode.Drive, registry.CouplingOf(Session, "term-1"));
     }
 
     private const string Osc = "\x1b]133;";
@@ -272,11 +271,11 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
         // Named specifically: the at-prompt guard below refuses this same input for its own reason, and asserting on
         // the shared "Nothing was run" would pass even with this guard gone.
-        json["error"]!.GetValue<string>().Should().Contain("does not publish shell-integration marks");
-        written.Should().BeEmpty("refusing after typing would be the worst of both");
+        Assert.Contains("does not publish shell-integration marks", json["error"]!.GetValue<string>());
+        Assert.Empty(written);
     }
 
     [Fact]
@@ -293,9 +292,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("not sitting at a prompt");
-        written.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("not sitting at a prompt", json["error"]!.GetValue<string>());
+        Assert.Empty(written);
     }
 
     [Fact]
@@ -311,11 +310,11 @@ public class TerminalMcpToolsTests
         registry.CaptureOutput("term-1", $"{Osc}C{Bell}file-a  file-b\r\n{Osc}D;0{Bell}");
         var json = JsonNode.Parse(await run);
 
-        json!["ok"]!.GetValue<bool>().Should().BeTrue();
-        json["exitCode"]!.GetValue<int>().Should().Be(0);
+        Assert.True(json!["ok"]!.GetValue<bool>());
+        Assert.Equal(0, json["exitCode"]!.GetValue<int>());
         var output = json["output"]!.GetValue<string>();
-        output.Should().Contain("file-a  file-b");
-        output.Should().NotContain("older output", "the read starts where this command did, not at the coupling");
+        Assert.Contains("file-a  file-b", output);
+        Assert.DoesNotContain("older output", output);
     }
 
     [Fact]
@@ -331,10 +330,10 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "sleep 900", timeoutSeconds: 1));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("still running");
-        json["error"]!.GetValue<string>().Should().Contain("not cancelled");
-        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("sleep 900\r");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("still running", json["error"]!.GetValue<string>());
+        Assert.Contains("not cancelled", json["error"]!.GetValue<string>());
+        Assert.Equal("sleep 900\r", System.Text.Encoding.UTF8.GetString(Assert.Single(written)));
     }
 
     [Fact]
@@ -352,8 +351,8 @@ public class TerminalMcpToolsTests
         registry.CaptureOutput("term-1", $"{Osc}D;3{Bell}");   // a finish with no start of ours behind it
         var json = JsonNode.Parse(await run);
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse("a finish alone does not mean the command we sent is done");
-        json["error"]!.GetValue<string>().Should().Contain("still running");
+        Assert.False(json!["ok"]!.GetValue<bool>(), "a finish alone does not mean the command we sent is done");
+        Assert.Contains("still running", json["error"]!.GetValue<string>());
     }
 
     [Fact]
@@ -366,7 +365,7 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["truncated"]!.GetValue<bool>().Should().BeTrue("an agent must not read a build as clean when the errors scrolled out of reach");
+        Assert.True(json!["truncated"]!.GetValue<bool>(), "an agent must not read a build as clean when the errors scrolled out of reach");
     }
 
     [Fact]
@@ -387,8 +386,8 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("no longer available");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("no longer available", json["error"]!.GetValue<string>());
     }
 
     [Fact]
@@ -405,9 +404,9 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.RunInTerminal(Session, "zsh-5", "ls"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        written.Should().BeEmpty();
-        registry.CouplingOf(Session, "term-1").Should().BeNull();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(written);
+        Assert.Null(registry.CouplingOf(Session, "term-1"));
     }
 
     [Fact]
@@ -419,7 +418,7 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(tools.ListTerminals(Session));
 
-        json!["terminals"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()).Should().Equal("zsh-5");
+        Assert.Equal(new[] { "zsh-5" }, json!["terminals"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()));
     }
 
     [Fact]
@@ -433,11 +432,11 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "work-6"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("No such terminal");
-        json["output"].Should().BeNull();
-        asked.Should().BeEmpty();
-        registry.IsCoupled("term-2").Should().BeFalse();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("No such terminal", json["error"]!.GetValue<string>());
+        Assert.Null(json["output"]);
+        Assert.Empty(asked);
+        Assert.False(registry.IsCoupled("term-2"));
     }
 
     [Fact]
@@ -450,8 +449,8 @@ public class TerminalMcpToolsTests
 
         var json = JsonNode.Parse(await tools.SendTerminal(Session, "work-6", "/exit", submit: true));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        written.Should().BeEmpty("typing into another agent's session is not what the terminal consent covers");
-        asked.Should().BeEmpty();
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Empty(written);
+        Assert.Empty(asked);
     }
 }

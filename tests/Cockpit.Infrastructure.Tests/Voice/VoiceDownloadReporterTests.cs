@@ -1,7 +1,6 @@
 using System.Text;
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Voice;
 
@@ -21,9 +20,10 @@ public class VoiceDownloadReporterTests
         await VoiceDownloadReporter.CopyAsync(
             source, Stream.Null, "Downloading Vulkan runtime", source.Length, _Collect(steps), CancellationToken.None);
 
-        steps.Should().NotBeEmpty();
-        steps[^1].Fraction.Should().Be(1);
-        steps[^1].Description.Should().Contain("Downloading Vulkan runtime").And.Contain("100%");
+        Assert.NotEmpty(steps);
+        Assert.Equal(1, steps[^1].Fraction);
+        Assert.Contains("Downloading Vulkan runtime", steps[^1].Description);
+        Assert.Contains("100%", steps[^1].Description);
     }
 
     /// <summary>
@@ -39,8 +39,8 @@ public class VoiceDownloadReporterTests
         await VoiceDownloadReporter.CopyAsync(
             source, Stream.Null, "Downloading speech model", totalBytes: null, _Collect(steps), CancellationToken.None);
 
-        steps.Should().OnlyContain(step => step.Fraction == null);
-        steps[^1].Description.Should().Be("Downloading speech model — 3 MB");
+        Assert.All(steps, step => Assert.True(step.Fraction == null));
+        Assert.Equal("Downloading speech model — 3 MB", steps[^1].Description);
     }
 
     /// <summary>A zero Content-Length is not a total; dividing by it would be worse than counting bytes.</summary>
@@ -52,7 +52,7 @@ public class VoiceDownloadReporterTests
         await VoiceDownloadReporter.CopyAsync(
             new MemoryStream([1, 2, 3]), Stream.Null, "Downloading", totalBytes: 0, _Collect(steps), CancellationToken.None);
 
-        steps.Should().OnlyContain(step => step.Fraction == null);
+        Assert.All(steps, step => Assert.True(step.Fraction == null));
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class VoiceDownloadReporterTests
         await VoiceDownloadReporter.CopyAsync(
             new MemoryStream(payload), target, "Downloading", payload.Length, _Collect([]), CancellationToken.None);
 
-        target.ToArray().Should().Equal(payload);
+        Assert.Equal(payload, target.ToArray());
     }
 
     /// <summary>Without a progress sink this is a plain copy — the caller that wants no narration pays nothing for it.</summary>
@@ -77,7 +77,7 @@ public class VoiceDownloadReporterTests
         await VoiceDownloadReporter.CopyAsync(
             new MemoryStream(payload), target, "Downloading", payload.Length, progress: null, CancellationToken.None);
 
-        target.ToArray().Should().Equal(payload);
+        Assert.Equal(payload, target.ToArray());
     }
 
     private static IProgress<VoicePreparationProgress> _Collect(List<VoicePreparationProgress> into) =>

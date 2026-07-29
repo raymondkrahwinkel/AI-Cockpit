@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -27,10 +26,10 @@ public class SkiaOutlineTests
             png, [new OutlineMark(new CaptureRect(50, 50, 100, 100), Green, Thickness)]);
 
         using var image = SKBitmap.Decode(burnt);
-        image.GetPixel(52, 100).Should().Be(new SKColor(0, 255, 0), "the left side of the frame is drawn");
-        image.GetPixel(100, 52).Should().Be(new SKColor(0, 255, 0), "and its top side");
-        image.GetPixel(100, 100).Should().Be(SKColors.Black, "what it frames is left exactly as it was");
-        image.GetPixel(20, 20).Should().Be(SKColors.Black, "and so is everything outside it");
+        Assert.Equal(new SKColor(0, 255, 0), image.GetPixel(52, 100));
+        Assert.Equal(new SKColor(0, 255, 0), image.GetPixel(100, 52));
+        Assert.Equal(SKColors.Black, image.GetPixel(100, 100));
+        Assert.Equal(SKColors.Black, image.GetPixel(20, 20));
     }
 
     /// <summary>
@@ -46,8 +45,8 @@ public class SkiaOutlineTests
             png, [new OutlineMark(new CaptureRect(50, 20, 200, 40), Green, Thickness)]);
 
         using var image = SKBitmap.Decode(burnt);
-        image.GetPixel(52, 40).Should().Be(new SKColor(0, 255, 0), "the side that is in the picture is drawn");
-        image.GetPixel(97, 40).Should().Be(SKColors.Black, "and no side appears where the image happens to end");
+        Assert.Equal(new SKColor(0, 255, 0), image.GetPixel(52, 40));
+        Assert.Equal(SKColors.Black, image.GetPixel(97, 40));
     }
 
     /// <summary>
@@ -66,8 +65,8 @@ public class SkiaOutlineTests
             _Checkerboard(100, 100),
             [new OutlineMark(area, Green, Thickness), new RedactionMark(area)]));
 
-        frameOnTop.GetPixel(22, 50).Should().Be(new SKColor(0, 255, 0), "the frame went on last, so it survives");
-        boxOnTop.GetPixel(22, 50).Should().NotBe(new SKColor(0, 255, 0), "here the box went over it");
+        Assert.Equal(new SKColor(0, 255, 0), frameOnTop.GetPixel(22, 50));
+        Assert.NotEqual(new SKColor(0, 255, 0), boxOnTop.GetPixel(22, 50));
     }
 
     /// <summary>A picture with nothing on it is handed straight back, untouched and un-re-encoded.</summary>
@@ -76,7 +75,7 @@ public class SkiaOutlineTests
     {
         var png = _Filled(50, 50, SKColors.Black);
 
-        new SkiaScreenshotImageEditor().Burn(png, []).Should().BeSameAs(png);
+        Assert.Same(png, new SkiaScreenshotImageEditor().Burn(png, []));
     }
 
     private static byte[] _Filled(int width, int height, SKColor colour)

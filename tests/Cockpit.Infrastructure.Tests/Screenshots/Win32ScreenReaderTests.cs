@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Screenshots;
@@ -34,14 +33,14 @@ public class Win32ScreenReaderTests
         var reader = new Win32ScreenReader();
         var layout = reader.ReadLayout();
 
-        layout.VirtualBounds.Width.Should().BePositive();
-        layout.Displays.Should().NotBeEmpty("a machine running this has at least one monitor");
+        Assert.True(layout.VirtualBounds.Width > 0);
+        Assert.NotEmpty(layout.Displays);
 
         var png = reader.CapturePng(layout.VirtualBounds);
 
-        PngImage.TryReadSize(png, out var width, out var height).Should().BeTrue("what GDI produced has to be a readable image");
-        width.Should().Be(layout.VirtualBounds.Width);
-        height.Should().Be(layout.VirtualBounds.Height);
+        Assert.True(PngImage.TryReadSize(png, out var width, out var height), "what GDI produced has to be a readable image");
+        Assert.Equal(layout.VirtualBounds.Width, width);
+        Assert.Equal(layout.VirtualBounds.Height, height);
     }
 
     /// <summary>
@@ -61,7 +60,7 @@ public class Win32ScreenReaderTests
         var png = reader.CapturePng(reader.ReadLayout().VirtualBounds);
 
         // Past the header, a PNG of one flat colour compresses to almost nothing. A real desktop does not.
-        png.Length.Should().BeGreaterThan(20_000);
+        Assert.True(png.Length > 20_000);
     }
 
     /// <summary>
@@ -85,8 +84,8 @@ public class Win32ScreenReaderTests
         var png = new Win32ScreenReader().CopyFromForTest(source.DeviceContext, new CaptureRect(0, 0, 8, 8));
 
         using var image = SKBitmap.Decode(png);
-        image.GetPixel(0, 0).Red.Should().Be(255, "the white half was drawn at the top");
-        image.GetPixel(0, 7).Red.Should().Be(0, "the black half was drawn at the bottom");
+        Assert.Equal(255, image.GetPixel(0, 0).Red);
+        Assert.Equal(0, image.GetPixel(0, 7).Red);
     }
 
     /// <summary>Every monitor Windows reports has to sit inside the rectangle that is blitted, or its pixels are not in the image the layout describes.</summary>
@@ -102,11 +101,11 @@ public class Win32ScreenReaderTests
 
         foreach (var display in layout.Displays)
         {
-            display.Bounds.X.Should().BeGreaterThanOrEqualTo(layout.VirtualBounds.X);
-            display.Bounds.Y.Should().BeGreaterThanOrEqualTo(layout.VirtualBounds.Y);
-            display.Bounds.Right.Should().BeLessThanOrEqualTo(layout.VirtualBounds.Right);
-            display.Bounds.Bottom.Should().BeLessThanOrEqualTo(layout.VirtualBounds.Bottom);
-            display.Scale.Should().BeGreaterThanOrEqualTo(1);
+            Assert.True(display.Bounds.X >= layout.VirtualBounds.X);
+            Assert.True(display.Bounds.Y >= layout.VirtualBounds.Y);
+            Assert.True(display.Bounds.Right <= layout.VirtualBounds.Right);
+            Assert.True(display.Bounds.Bottom <= layout.VirtualBounds.Bottom);
+            Assert.True(display.Scale >= 1);
         }
     }
 }

@@ -1,6 +1,5 @@
 using Cockpit.Core.Clones;
 using Cockpit.Infrastructure.Clones;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Clones;
 
@@ -25,7 +24,7 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
     {
         var store = new RepositoryCloneRegistryStore(_configPath);
 
-        (await store.ListAsync()).Should().BeEmpty();
+        Assert.Empty((await store.ListAsync()));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
 
         var reloaded = await new RepositoryCloneRegistryStore(_configPath).ListAsync();
 
-        reloaded.Should().ContainSingle().Which.Should().BeEquivalentTo(record);
+        Assert.Equivalent(record, Assert.Single(reloaded));
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
 
         var records = await store.ListAsync();
 
-        records.Should().ContainSingle().Which.RemoteUrl.Should().Be("https://github.com/org/repo2");
+        Assert.Equal("https://github.com/org/repo2", Assert.Single(records).RemoteUrl);
     }
 
     [Fact]
@@ -60,7 +59,7 @@ public sealed class RepositoryCloneRegistryStoreTests : IDisposable
 
         await store.RemoveAsync("/clones/one");
 
-        (await store.ListAsync()).Should().ContainSingle().Which.Path.Should().Be(Path.GetFullPath("/clones/two"));
+        Assert.Equal(Path.GetFullPath("/clones/two"), Assert.Single((await store.ListAsync())).Path);
     }
 
     private static RepositoryClone _Record(string slug, string path, string remoteUrl = "https://github.com/org/repo") =>

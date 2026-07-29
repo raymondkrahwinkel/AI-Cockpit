@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Cockpit.Infrastructure.Screenshots;
 
 namespace Cockpit.Infrastructure.Tests.Screenshots;
@@ -13,7 +12,7 @@ public class UnsupportedScreenshotCaptureTests
     [Fact]
     public void ItSaysUpFrontThatItCannotCapture()
     {
-        new UnsupportedScreenshotCapture().IsSupported.Should().BeFalse();
+        Assert.False(new UnsupportedScreenshotCapture().IsSupported);
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class UnsupportedScreenshotCaptureTests
 
         var act = async () => await capture.CaptureAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*not supported on this platform*");
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Contains("not supported on this platform", ex.Message, StringComparison.Ordinal);
     }
 }

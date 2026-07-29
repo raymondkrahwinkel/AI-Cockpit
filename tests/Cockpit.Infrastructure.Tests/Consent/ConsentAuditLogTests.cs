@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Consent;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Consent;
@@ -36,7 +35,7 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync();
 
-        recent.Select(entry => entry.Scope).Should().Equal("second", "first");
+        Assert.Equal(new[] { "second", "first" }, recent.Select(entry => entry.Scope));
     }
 
     [Fact]
@@ -48,9 +47,9 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync();
 
-        recent.Should().ContainSingle();
-        recent[0].ActionText.Length.Should().BeLessThan(longAction.Length);
-        recent[0].ActionText.Should().EndWith("…");
+        Assert.Single(recent);
+        Assert.True(recent[0].ActionText.Length < longAction.Length);
+        Assert.EndsWith("…", recent[0].ActionText);
     }
 
     [Fact]
@@ -66,7 +65,7 @@ public sealed class ConsentAuditLogTests : IDisposable
 
             var act = async () => await log.RecordAsync(Entry("scope"));
 
-            await act.Should().NotThrowAsync();
+            await act();
         }
         finally
         {
@@ -83,7 +82,7 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync();
 
-        recent.Should().ContainSingle().Which.Scope.Should().Be("valid");
+        Assert.Equal("valid", Assert.Single(recent).Scope);
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public sealed class ConsentAuditLogTests : IDisposable
     {
         var recent = await CreateLog().ReadRecentAsync();
 
-        recent.Should().BeEmpty();
+        Assert.Empty(recent);
     }
 
     [Fact]
@@ -105,7 +104,7 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync(limit: 3);
 
-        recent.Select(entry => entry.Scope).Should().Equal("9", "8", "7");
+        Assert.Equal(new[] { "9", "8", "7" }, recent.Select(entry => entry.Scope));
     }
 
     [Fact]
@@ -123,10 +122,11 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync(limit: 250);
 
-        recent.Should().HaveCount(250);
-        recent[0].Scope.Should().Be("399", "the newest entry comes first");
-        recent[^1].Scope.Should().Be("150", "exactly the last 250 are kept");
-        recent.Select(entry => int.Parse(entry.Scope)).Should().BeInDescendingOrder();
+        Assert.Equal(250, System.Linq.Enumerable.Count(recent));
+        Assert.Equal("399", recent[0].Scope);
+        Assert.Equal("150", recent[^1].Scope);
+        var scopes = recent.Select(entry => int.Parse(entry.Scope)).ToList();
+        Assert.Equal(scopes.OrderByDescending(x => x), scopes);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync(limit: 2);
 
-        recent.Select(entry => entry.Scope).Should().Equal("second", "first");
+        Assert.Equal(new[] { "second", "first" }, recent.Select(entry => entry.Scope));
     }
 
     [Fact]
@@ -156,9 +156,9 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync(limit: 200);
 
-        recent.Should().HaveCount(200);
-        recent.Should().OnlyContain(entry => entry.ActionText.Contains("😀") && entry.ActionText.Contains("—"));
-        recent.Should().NotContain(entry => entry.ActionText.Contains('�'));
+        Assert.Equal(200, System.Linq.Enumerable.Count(recent));
+        Assert.All(recent, entry => Assert.True(entry.ActionText.Contains("😀") && entry.ActionText.Contains("—")));
+        Assert.DoesNotContain(recent, entry => entry.ActionText.Contains('�'));
     }
 
     [Fact]
@@ -172,7 +172,8 @@ public sealed class ConsentAuditLogTests : IDisposable
 
         var recent = await log.ReadRecentAsync();
 
-        recent.Should().ContainSingle();
-        recent[0].ActionText.Should().NotContain("�").And.EndWith("…");
+        Assert.Single(recent);
+        Assert.DoesNotContain("�", recent[0].ActionText);
+        Assert.EndsWith("…", recent[0].ActionText);
     }
 }

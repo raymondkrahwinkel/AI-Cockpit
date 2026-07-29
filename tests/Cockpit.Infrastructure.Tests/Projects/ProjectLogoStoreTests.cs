@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Projects;
-using FluentAssertions;
 using SkiaSharp;
 
 namespace Cockpit.Infrastructure.Tests.Projects;
@@ -39,10 +38,10 @@ public class ProjectLogoStoreTests : IDisposable
 
         var stored = await store.SaveAsync("p1", source);
 
-        stored.Should().NotBeNull();
-        File.Exists(stored!).Should().BeTrue();
-        stored.Should().NotBe(source, "the point of the copy is that it survives the original going away");
-        store.IsStoredCopy(stored).Should().BeTrue();
+        Assert.NotNull(stored);
+        Assert.True(File.Exists(stored!));
+        Assert.NotEqual(source, stored);
+        Assert.True(store.IsStoredCopy(stored));
     }
 
     [Fact]
@@ -61,15 +60,15 @@ public class ProjectLogoStoreTests : IDisposable
         var stored = await Store().SaveAsync("p1", source);
 
         Assert.NotNull(stored);
-        Path.GetExtension(stored).Should().Be(".png");
+        Assert.Equal(".png", Path.GetExtension(stored));
         // Decoded from bytes, not from the path: the path overload has SkiaSharp open the file itself, and that handle
         // goes at finalization rather than when the bitmap is disposed. Under the load of the full solution run the
         // teardown's delete then hits an open handle and fails the class from Dispose (AC-340) — a failure that names
         // whichever test ran last and says nothing about this one.
         using var decoded = SKBitmap.Decode(File.ReadAllBytes(stored));
-        decoded.Should().NotBeNull("a stored logo that no decoder accepts is the same as no logo");
-        decoded!.Width.Should().BeGreaterThan(1);
-        decoded.GetPixel(decoded.Width / 2, decoded.Height / 2).Alpha.Should().BeGreaterThan(0, "the drawing must actually be on it");
+        Assert.NotNull(decoded);
+        Assert.True(decoded.Width > 1);
+        Assert.True(decoded.GetPixel(decoded.Width / 2, decoded.Height / 2).Alpha > 0, "the drawing must actually be on it");
     }
 
     [Fact]
@@ -82,10 +81,10 @@ public class ProjectLogoStoreTests : IDisposable
         var stored = await Store().SaveAsync("p1", source);
 
         Assert.NotNull(stored);
-        Path.GetExtension(stored).Should().Be(".png");
+        Assert.Equal(".png", Path.GetExtension(stored));
         // Bytes rather than the path, for the reason spelled out in AnSvg_IsStoredAsThePngItDrawsTo (AC-340).
         using var decoded = SKBitmap.Decode(File.ReadAllBytes(stored));
-        decoded.Should().NotBeNull();
+        Assert.NotNull(decoded);
     }
 
     [Fact]
@@ -96,13 +95,13 @@ public class ProjectLogoStoreTests : IDisposable
 
         await store.SaveAsync("p1", WriteFile("second.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 4 4\"><rect width=\"4\" height=\"4\"/></svg>"u8.ToArray()));
 
-        Directory.EnumerateFiles(_root, "p1.*").Should().ContainSingle();
+        Assert.Single(Directory.EnumerateFiles(_root, "p1.*"));
     }
 
     [Fact]
     public async Task ASourceThatIsNotThere_StoresNothing()
     {
-        (await Store().SaveAsync("p1", Path.Combine(_root, "missing.png"))).Should().BeNull();
+        Assert.Null((await Store().SaveAsync("p1", Path.Combine(_root, "missing.png"))));
     }
 
     [Fact]
@@ -113,7 +112,7 @@ public class ProjectLogoStoreTests : IDisposable
 
         store.Remove("p1");
 
-        Directory.EnumerateFiles(_root, "p1.*").Should().BeEmpty();
+        Assert.Empty(Directory.EnumerateFiles(_root, "p1.*"));
     }
 
     [Fact]
@@ -126,9 +125,9 @@ public class ProjectLogoStoreTests : IDisposable
 
         var stored = await store.SaveAsync("../../escaped", source);
 
-        stored.Should().NotBeNull();
-        Path.GetFullPath(stored!).Should().StartWith(Path.GetFullPath(_root));
-        store.IsStoredCopy(stored).Should().BeTrue();
+        Assert.NotNull(stored);
+        Assert.StartsWith(Path.GetFullPath(_root), Path.GetFullPath(stored!));
+        Assert.True(store.IsStoredCopy(stored));
     }
 
     [Fact]
@@ -141,7 +140,7 @@ public class ProjectLogoStoreTests : IDisposable
 
         store.Remove("*");
 
-        Directory.EnumerateFiles(_root, "keep-me.*").Should().ContainSingle("only this project's own logo is its to remove");
+        Assert.Single(Directory.EnumerateFiles(_root, "keep-me.*"));
     }
 
     public void Dispose()

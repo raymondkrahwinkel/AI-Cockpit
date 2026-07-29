@@ -1,6 +1,5 @@
 using Cockpit.Core.Terminal;
 using Cockpit.Infrastructure.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Terminal;
 
@@ -14,7 +13,7 @@ public class TerminalAccessSettingsStoreTests : IDisposable
     {
         var store = new TerminalAccessSettingsStore(_path);
 
-        (await store.LoadAsync()).Enabled.Should().BeFalse();
+        Assert.False((await store.LoadAsync()).Enabled);
     }
 
     [Fact]
@@ -24,7 +23,7 @@ public class TerminalAccessSettingsStoreTests : IDisposable
 
         await store.SaveAsync(new TerminalAccessSettings { Enabled = true });
 
-        (await new TerminalAccessSettingsStore(_path).LoadAsync()).Enabled.Should().BeTrue();
+        Assert.True((await new TerminalAccessSettingsStore(_path).LoadAsync()).Enabled);
     }
 
     public void Dispose()

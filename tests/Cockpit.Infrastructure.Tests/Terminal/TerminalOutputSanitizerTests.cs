@@ -1,5 +1,4 @@
 using Cockpit.Infrastructure.Terminal;
-using FluentAssertions;
 
 namespace Cockpit.Infrastructure.Tests.Terminal;
 
@@ -15,7 +14,7 @@ public class TerminalOutputSanitizerTests
     {
         var raw = $"{Esc}[31mbuild {Esc}[1mfailed{Esc}[0m{Esc}[2K on line 12";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("build failed on line 12");
+        Assert.Equal("build failed on line 12", TerminalOutputSanitizer.ToPlainText(raw));
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class TerminalOutputSanitizerTests
     {
         var raw = $"{Esc}]0;my-terminal{Bel}hello";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("hello");
+        Assert.Equal("hello", TerminalOutputSanitizer.ToPlainText(raw));
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public class TerminalOutputSanitizerTests
     {
         var raw = "line1\r\nline2\tcol";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("line1\nline2\tcol");
+        Assert.Equal("line1\nline2\tcol", TerminalOutputSanitizer.ToPlainText(raw));
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class TerminalOutputSanitizerTests
         // "abc\rXY" redraws from column 0 → "XYc" on a real terminal, so read_terminal must match, not concatenate.
         var raw = "abc\rXY";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("XYc");
+        Assert.Equal("XYc", TerminalOutputSanitizer.ToPlainText(raw));
     }
 
     [Fact]
@@ -50,12 +49,12 @@ public class TerminalOutputSanitizerTests
         // concatenated and read_terminal showed "lls" for "ls" (AC-34).
         var raw = "l\rls\n";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("ls\n");
+        Assert.Equal("ls\n", TerminalOutputSanitizer.ToPlainText(raw));
     }
 
     [Fact]
     public void PlainText_IsUnchanged()
     {
-        TerminalOutputSanitizer.ToPlainText("just plain output\n").Should().Be("just plain output\n");
+        Assert.Equal("just plain output\n", TerminalOutputSanitizer.ToPlainText("just plain output\n"));
     }
 }

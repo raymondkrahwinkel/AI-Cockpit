@@ -6,7 +6,6 @@ using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions.Consent;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
@@ -52,8 +51,8 @@ public class WorktreeToolsTests
         {
             using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/victim"));
 
-            result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
-            result.RootElement.GetProperty("error").GetString().Should().Contain("another session");
+            Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
+            Assert.Contains("another session", result.RootElement.GetProperty("error").GetString());
             await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         }
         finally
@@ -75,9 +74,9 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
-        result.RootElement.GetProperty("path").GetString().Should().Be("/wt/path");
-        result.RootElement.GetProperty("branch").GetString().Should().Be("cockpit/x");
+        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("/wt/path", result.RootElement.GetProperty("path").GetString());
+        Assert.Equal("cockpit/x", result.RootElement.GetProperty("branch").GetString());
     }
 
     [Fact]
@@ -89,7 +88,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/nope"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
@@ -105,7 +104,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/live"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
@@ -123,7 +122,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.Received(1).RemoveAsync(record, false, Arg.Any<CancellationToken>());
         await consent.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
     }
@@ -142,7 +141,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/dirty"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.Received(1).RemoveAsync(record, true, Arg.Any<CancellationToken>());
     }
 
@@ -160,7 +159,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/dirty"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
@@ -175,7 +174,7 @@ public class WorktreeToolsTests
 
         using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/dirty"));
 
-        result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+        Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 }

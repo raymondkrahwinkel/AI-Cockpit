@@ -1,4 +1,3 @@
-using FluentAssertions;
 using SkiaSharp;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Infrastructure.Screenshots;
@@ -29,9 +28,9 @@ public class SkiaTextTests
         // Just inside the corner that was clicked, which is plate rather than letter — the padding is there.
         var plate = image.GetPixel(44, 44);
 
-        plate.Red.Should().BeGreaterThan(200, "the plate is the opposite of the letters, which are dark blue");
-        plate.Green.Should().BeGreaterThan(200);
-        plate.Blue.Should().BeGreaterThan(200);
+        Assert.True(plate.Red > 200, "the plate is the opposite of the letters, which are dark blue");
+        Assert.True(plate.Green > 200);
+        Assert.True(plate.Blue > 200);
     }
 
     /// <summary>The letters are on the plate, in their own colour — a plate with nothing on it is not a note.</summary>
@@ -42,7 +41,7 @@ public class SkiaTextTests
 
         var ink = _DarkestIn(image, 40, 40, 160, 40 + Size + 20);
 
-        ink.Should().BeLessThan(120, "somewhere on that plate there are letters, and they are not the plate's colour");
+        Assert.True(ink < 120, "somewhere on that plate there are letters, and they are not the plate's colour");
     }
 
     /// <summary>Nothing outside the plate is touched — a note is a note, not a repaint of the picture.</summary>
@@ -51,8 +50,8 @@ public class SkiaTextTests
     {
         using var image = _Burn(new TextMark(new CapturePoint(40, 40), "note", Blue, Size), SKColors.Black);
 
-        image.GetPixel(10, 10).Should().Be(SKColors.Black);
-        image.GetPixel(10, 180).Should().Be(SKColors.Black);
+        Assert.Equal(SKColors.Black, image.GetPixel(10, 10));
+        Assert.Equal(SKColors.Black, image.GetPixel(10, 180));
     }
 
     private static SKBitmap _Burn(Mark mark, SKColor background) =>
