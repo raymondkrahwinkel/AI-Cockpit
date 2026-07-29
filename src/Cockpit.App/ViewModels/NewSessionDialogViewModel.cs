@@ -1314,8 +1314,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // The probe is I/O, which Resolve deliberately never does itself (see its own remarks) — Start is an actual
         // launch, not a preview, so this is the one call site in this dialog worth paying a filesystem check for.
         var unresolvedReferences = ProjectResourceProbe.FindUnresolved(SelectedProject?.Resources ?? []);
+
+        // Reading a ticked Instructions row's content (AC-486) is the same kind of I/O, and for the same reason
+        // never done inside Resolve itself — this is the other of the two launch call sites its own remarks name.
+        var instructionContents = ProjectInstructionContentReader.Read(SelectedProject?.Resources ?? []);
         var startDefaults = SessionStartDefaults.Resolve(
-            SelectedProject, SelectedProfile, memorySources: _memorySources, unresolvedReferences: unresolvedReferences);
+            SelectedProject, SelectedProfile,
+            memorySources: _memorySources,
+            unresolvedReferences: unresolvedReferences,
+            instructionContents: instructionContents);
 
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,

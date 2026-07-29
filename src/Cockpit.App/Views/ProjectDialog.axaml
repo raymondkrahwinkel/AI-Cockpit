@@ -242,7 +242,7 @@
                                         BorderThickness="{Binding IsLastRow, Converter={x:Static conv:LastResourceRowBorderThicknessConverter.Instance}}"
                                         Padding="0,0,0,10" Margin="0,0,0,10">
                                     <StackPanel Spacing="6">
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
                                             <ComboBox Grid.Column="0" MinWidth="112"
                                                       ItemsSource="{x:Static vm:ProjectResourceRowViewModel.RoleChoices}"
                                                       SelectedItem="{Binding Role}"/>
@@ -250,13 +250,29 @@
                                             <CheckBox Grid.Column="2" IsChecked="{Binding ReachesSessions}"
                                                       Content="Tell sessions" FontSize="11" VerticalAlignment="Center"
                                                       ToolTip.Tip="A session started on this project is told this row as it begins. On by default here — unlike the rows above, this one exists to be told to a session, not just kept for you to read."/>
-                                            <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
+                                            <!-- AC-486: Instructions only, next to "Tell sessions" rather than apart from it — both checkboxes
+                                                 are about what a starting session is given for this row, and off by default (unlike the one
+                                                 beside it): opening a file is a bigger step than mentioning it exists, so nothing is read until
+                                                 the operator says so. See ProjectResource.SendsContent's own doc comment for the reasoning. -->
+                                            <CheckBox Grid.Column="3" IsChecked="{Binding SendsContent}" IsVisible="{Binding ShowsSendsContentOption}"
+                                                      Content="Send along" FontSize="11" VerticalAlignment="Center"
+                                                      ToolTip.Tip="Ticked, this file's contents are read and sent to the session at start — never for anything sensitive. Unticked (the default), only where it lives is sent. Either way it is a snapshot from when the session starts; an edit made afterward is not seen by a session already running."/>
+                                            <Button Grid.Column="4" Classes="Subtle" VerticalAlignment="Center"
                                                     ToolTip.Tip="Remove this row"
                                                     Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveResourceRowCommand}"
                                                     CommandParameter="{Binding}">
                                                 <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
                                             </Button>
                                         </Grid>
+
+                                        <!-- AC-486: always shown alongside the checkbox above, not tooltip-only like "Tell sessions" is —
+                                             this one decides whether a file's contents are opened and handed to a session at all, which is a
+                                             bigger consequence than being mentioned, and deserves to be readable at a glance rather than only
+                                             on hover. The two facts an operator cannot infer from the label alone: ticking it opens the file
+                                             (so leave it off for anything sensitive), and what travels is fixed at session start, not kept
+                                             live across it. -->
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding ShowsSendsContentOption}"
+                                                   Text="Ticking this reads the file and sends its contents to the session — leave it off for anything sensitive. What is sent is a snapshot from when the session starts; a change made to the file afterward is not seen by that session."/>
 
                                         <!-- Only for a Memory row once a plugin registered a source (AC-166), the same picker the
                                              single Memory row used to show, folded per row instead of once for the dialog. -->

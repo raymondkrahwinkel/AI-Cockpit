@@ -58,6 +58,20 @@ public sealed record SessionStartDefaults(
     /// null, which reads as "nothing known to be missing" rather than "nothing is missing" — the difference matters
     /// only in that the former never mentions a broken reference, never that it blocks one.
     /// </param>
+    /// <param name="instructionContents">
+    /// The file content already read (AC-486) for whichever <see cref="ProjectResourceRole.Instructions"/> rows
+    /// ticked <see cref="ProjectResource.SendsContent"/>, keyed by <see cref="ProjectResource.Reference"/> — the same
+    /// kind of input <paramref name="unresolvedReferences"/> already is, and for the same reason: reading a file is
+    /// I/O, and this class stays pure whether the question is "does this exist" or "what does it say". A row ticked
+    /// for content with no entry here is read the same way either way this can happen — the reader could not read it
+    /// (missing, too large, a permissions error) or it simply was not asked for — so the session is told its
+    /// location only, with a note that the content it was ticked to carry did not come along; a session must never
+    /// be left thinking it saw a file's contents when it only ever got told where the file is. Null (the default) is
+    /// exactly "nothing was read" — every caller that does not yet pass this gets the location-only sentence this
+    /// class always produced, unchanged. The caller assembling an actual launch (<c>ProjectQuickStart</c>, the
+    /// New-session dialog's Start) runs <c>Cockpit.Infrastructure.Projects.ProjectInstructionContentReader.Read</c>
+    /// next to its own <c>ProjectResourceProbe</c> call and hands the result in here.
+    /// </param>
     /// <remarks>
     /// The MCP selection here stays the profile's, and that is not a gap in "the project wins": a project's
     /// selection is a per-server answer rather than a list (<see cref="ProjectMcpOverlay.IsSelectedByDefault"/>),
@@ -69,7 +83,8 @@ public sealed record SessionStartDefaults(
         SessionProfile? profile,
         string? globalWorkingDirectory = null,
         IReadOnlyList<ProjectMemorySource>? memorySources = null,
-        IReadOnlyCollection<string>? unresolvedReferences = null)
+        IReadOnlyCollection<string>? unresolvedReferences = null,
+        IReadOnlyDictionary<string, string>? instructionContents = null)
     {
         // A row switched off (ReachesSessions = false) is filtered out before any block below ever sees it — the
         // one place that rule is honored, rather than each block having to remember to check it itself. A blank
@@ -104,12 +119,10 @@ public sealed record SessionStartDefaults(
         var memoryNote = _MemoryNote(memoryRows, memorySources, unresolvedReferences, remaining);
         remaining = Math.Max(0, remaining - _ReservedLength(memoryNote));
 
-        // Give-up order, step 1 (within the instructions block itself): an Instructions row's file *content* would
-        // be dropped back to its location-only sentence here first, before a whole row is ever dropped — AC-486 is
-        // the work that teaches this block to carry a file's content in the first place. Until it does there is
-        // nothing here to drop, so this call is a deliberate no-op today; it stays in the pipeline, named, so
-        // AC-486 has a slot to fill rather than having to invent the step from scratch.
-        var instructionsNote = _WithoutInstructionContent(_InstructionsNote(instructionRows, unresolvedReferences, remaining));
+        // Give-up order, step 1 (within the instructions block itself, AC-486): for a fixed set of instruction
+        // rows, whether to include their ticked file content at all is tried before a whole row is ever dropped —
+        // see _InstructionsNote's own remarks.
+        var instructionsNote = _InstructionsNote(instructionRows, instructionContents, unresolvedReferences, remaining);
         remaining = Math.Max(0, remaining - _ReservedLength(instructionsNote));
 
         var referenceNote = _ReferenceNote(referenceRows, unresolvedReferences, remaining);
@@ -242,16 +255,17 @@ public sealed record SessionStartDefaults(
     };
 
     /// <summary>
-    /// Step 1 of the give-up order documented on <see cref="ProjectContributionBudget"/>: when the shared budget is
-    /// tight, an Instructions row's file <em>content</em> should be the first thing dropped back to its
-    /// location-only sentence — content is the least essential part of an instructions block (the session can
-    /// still be told where to go read it itself), where the memory sentence is the one thing a session cannot do
-    /// without at all. AC-486 is the work that gives this block content to read in the first place; until then
-    /// <paramref name="instructionsNote"/> never carries any, so there is nothing to drop and this is a deliberate
-    /// no-op — kept as a named step rather than left out, so the budget pipeline already has the slot AC-486 needs
-    /// instead of that work having to invent one.
+    /// Step 1 of the give-up order documented on <see cref="ProjectContributionBudget"/>, now that AC-486 gives this
+    /// block content to carry in the first place: the same rendering <see cref="_InstructionsNoteText"/> produces
+    /// for <paramref name="kept"/>, but with every ticked row's content held back — content is the least essential
+    /// part of an instructions block (the session can still be told where to go read it itself), where the memory
+    /// sentence is the one thing a session cannot do without at all. Called by <see cref="_InstructionsNote"/> only
+    /// once the same row count's content-carrying rendering has already been tried and did not fit — a whole row is
+    /// never dropped to make room for a row's content when dropping the content alone would have been enough.
     /// </summary>
-    private static string? _WithoutInstructionContent(string? instructionsNote) => instructionsNote;
+    private static string _WithoutInstructionContent(
+        IReadOnlyList<ProjectResource> kept, IReadOnlyCollection<string>? unresolvedReferences, int dropped) =>
+        _InstructionsNoteText(kept, instructionContents: null, unresolvedReferences, dropped, includeContent: false);
 
     /// <summary>
     /// Sentence endings that count as "already punctuated" for <see cref="_SingleMemorySentence"/> — the same idea
@@ -612,33 +626,114 @@ public sealed record SessionStartDefaults(
     }
 
     /// <summary>
-    /// A block asking the session to follow this project's standing instructions, naming where they are kept —
-    /// content-free today (AC-484 is scoped to the sentence, not reading the file; AC-486 is what teaches this
-    /// class to read one). One row names it directly; more than one row is asked to follow all of them, listed —
-    /// as many as fit <paramref name="budget"/>, the rest dropped and announced rather than growing the sentence
-    /// without limit (AC-484 review, MUST-FIX 1; see <see cref="_FitRowsToBudget"/>).
+    /// A block asking the session to follow this project's standing instructions, naming where they are kept, and —
+    /// for a row that ticked <see cref="ProjectResource.SendsContent"/> and whose content <paramref name="instructionContents"/>
+    /// actually holds — carrying that content along too (AC-486). One row names it directly; more than one row is
+    /// asked to follow all of them, listed — as many as fit <paramref name="budget"/>, the rest dropped and
+    /// announced rather than growing the sentence without limit (AC-484 review, MUST-FIX 1).
+    /// <para>
+    /// The give-up order for a tight budget (AC-486, step 1 of the order documented on
+    /// <see cref="ProjectContributionBudget"/>): for the full set of rows, content is tried first
+    /// (<see cref="_InstructionsNoteText"/> with <c>includeContent: true</c>); only if that still does not fit is
+    /// content given up for that same set of rows (<see cref="_WithoutInstructionContent"/>) before a row is ever
+    /// dropped to make room. Both are tried again at each smaller row count in turn — the same prefix-of-rows rule
+    /// <see cref="_FitRowsToBudget"/> already applies elsewhere, just with two renderings per count instead of one,
+    /// since content is now something this block can give up on its own before a whole row goes.
+    /// </para>
     /// </summary>
-    private static string? _InstructionsNote(IReadOnlyList<ProjectResource> instructionRows, IReadOnlyCollection<string>? unresolvedReferences, int budget)
+    private static string? _InstructionsNote(
+        IReadOnlyList<ProjectResource> instructionRows,
+        IReadOnlyDictionary<string, string>? instructionContents,
+        IReadOnlyCollection<string>? unresolvedReferences,
+        int budget)
     {
         if (instructionRows.Count == 0)
         {
             return null;
         }
 
-        return _FitRowsToBudget(instructionRows, Math.Max(0, budget), (kept, dropped) =>
+        var effectiveBudget = Math.Max(0, budget);
+        for (var count = instructionRows.Count; count > 0; count--)
         {
-            var places = kept.Select(_ResourceDisplay).ToList();
-            var sentence = places.Count == 1
-                ? $"This project keeps standing instructions at {places[0]}. Read them and follow them for the rest of this session."
-                : $"This project keeps standing instructions in {_JoinWithAnd(places)}. Read them and follow them all for the rest of this session.";
+            var kept = instructionRows.Take(count).ToList();
+            var dropped = instructionRows.Count - count;
 
-            var missing = kept
-                .Where(row => _IsUnresolved(row.Reference, unresolvedReferences))
-                .Select(_ResourceDisplay)
-                .ToList();
-            return sentence + _NotFoundSuffix(missing) + _DroppedRowsSuffix(dropped);
-        });
+            var withContent = _InstructionsNoteText(kept, instructionContents, unresolvedReferences, dropped, includeContent: true);
+            if (withContent.Length <= effectiveBudget)
+            {
+                return withContent;
+            }
+
+            var withoutContent = _WithoutInstructionContent(kept, unresolvedReferences, dropped);
+            if (withoutContent.Length <= effectiveBudget)
+            {
+                return withoutContent;
+            }
+        }
+
+        return null;
     }
+
+    /// <summary>
+    /// The actual rendering both <see cref="_InstructionsNote"/> (with content) and <see cref="_WithoutInstructionContent"/>
+    /// (without) build from — the unchanged location-naming sentence this class has always produced for
+    /// <paramref name="kept"/>, followed by one content block per row that ticked
+    /// <see cref="ProjectResource.SendsContent"/>: its file's content when <paramref name="includeContent"/> is true
+    /// and <paramref name="instructionContents"/> actually holds an entry for that row's
+    /// <see cref="ProjectResource.Reference"/> (<see cref="_ContentBlock"/>), or otherwise a short notice that the
+    /// content it was ticked to carry did not make it into this prompt — the same notice whether the reader could
+    /// not read the file at all (missing, too large, unreadable) or <paramref name="includeContent"/> is false
+    /// because the whole block did not fit the budget with content included. A session must never be left thinking
+    /// it saw a file's contents when it only ever got told where the file is (AC-486): the one thing worse than
+    /// content not making it in is not saying so.
+    /// </summary>
+    private static string _InstructionsNoteText(
+        IReadOnlyList<ProjectResource> kept,
+        IReadOnlyDictionary<string, string>? instructionContents,
+        IReadOnlyCollection<string>? unresolvedReferences,
+        int dropped,
+        bool includeContent)
+    {
+        var places = kept.Select(_ResourceDisplay).ToList();
+        var sentence = places.Count == 1
+            ? $"This project keeps standing instructions at {places[0]}. Read them and follow them for the rest of this session."
+            : $"This project keeps standing instructions in {_JoinWithAnd(places)}. Read them and follow them all for the rest of this session.";
+
+        var missing = kept
+            .Where(row => _IsUnresolved(row.Reference, unresolvedReferences))
+            .Select(_ResourceDisplay)
+            .ToList();
+        var head = sentence + _NotFoundSuffix(missing) + _DroppedRowsSuffix(dropped);
+
+        var contentBlocks = new List<string>();
+        for (var index = 0; index < kept.Count; index++)
+        {
+            var row = kept[index];
+            if (!row.SendsContent)
+            {
+                continue;
+            }
+
+            var place = places[index];
+            contentBlocks.Add(includeContent && instructionContents is not null && instructionContents.TryGetValue(row.Reference, out var content)
+                ? _ContentBlock(place, content)
+                : $"{place} was ticked to send its content along, but it is not included in this prompt — read it directly at that location.");
+        }
+
+        return contentBlocks.Count == 0 ? head : $"{head}\n\n{string.Join("\n\n", contentBlocks)}";
+    }
+
+    /// <summary>
+    /// A single Instructions row's file content, said as a labelled snapshot rather than dropped in unannounced
+    /// (AC-486): named by <paramref name="place"/> so the citation matches the location sentence above it, marked
+    /// explicitly as a copy taken at session start rather than a live view, and pointed back at
+    /// <paramref name="place"/> for the current version — the failure this guards against is a session that thinks
+    /// it has seen this project's conventions in full when it was only ever handed a path (Raymond's own framing for
+    /// AC-486: accept that the copy can go stale, and say so, rather than pretend it cannot).
+    /// </summary>
+    private static string _ContentBlock(string place, string content) =>
+        $"{place}'s content, captured below as it stood at the start of this session (a snapshot, not a live view — " +
+        $"reread {place} for the current version if you suspect it has since changed):\n\n{content}";
 
     /// <summary>
     /// A block saying this project keeps material worth looking things up in — never obeyed, never written to,

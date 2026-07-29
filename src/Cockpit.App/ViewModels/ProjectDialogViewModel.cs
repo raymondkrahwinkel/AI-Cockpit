@@ -117,7 +117,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         foreach (var resource in viewModel._pendingResources)
         {
             var row = new ProjectResourceRowViewModel(
-                viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions);
+                viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions, resource.SendsContent);
 
             // Folder is the default selection the instant there is a picker at all — a plain path, a reference
             // naming no installed source, or a role other than Memory. The match below overwrites this only when

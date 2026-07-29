@@ -51,8 +51,15 @@ public sealed class ProjectQuickStart(
         // unresolvedReferences) — a quick start is an actual launch, so it is worth the filesystem check a preview
         // field elsewhere in the dialog skips.
         var unresolvedReferences = ProjectResourceProbe.FindUnresolved(project.Resources);
+
+        // Reading a ticked Instructions row's content (AC-486) is the same kind of I/O, and for the same reason
+        // never done inside Resolve itself — this is one of the two launch call sites its own remarks name.
+        var instructionContents = ProjectInstructionContentReader.Read(project.Resources);
         var defaults = SessionStartDefaults.Resolve(
-            project, profile, memorySources: memorySources.Sources.ToMemorySources(), unresolvedReferences: unresolvedReferences);
+            project, profile,
+            memorySources: memorySources.Sources.ToMemorySources(),
+            unresolvedReferences: unresolvedReferences,
+            instructionContents: instructionContents);
 
         // The same rule the dialog opens on, from the same place: the promise here is "the dialog, skipped", so what
         // starts has to be what pressing Start would have started.
