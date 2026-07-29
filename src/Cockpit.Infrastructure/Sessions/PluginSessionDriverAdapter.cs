@@ -513,6 +513,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             SessionId = initialized.SessionId,
             Cwd = initialized.Cwd ?? string.Empty,
             Tools = initialized.Tools,
+            Model = initialized.Model,
         },
         PluginAssistantThinkingDelta thinking => new AssistantThinkingDelta
         {

@@ -12,4 +12,13 @@ public sealed record PluginSessionInitialized : PluginSessionEvent
     /// already-compiled plugin that never sets it keeps constructing this the old way.
     /// </summary>
     public string? Cwd { get; init; }
+
+    /// <summary>
+    /// The model the session actually started under, when the provider's own init event names it (AC-141) — a
+    /// session launched with no explicit model (Auto/default) otherwise leaves the host's model live-control with
+    /// nothing to show. Optional, and only ever used to seed a control's starting value, never to fire a live
+    /// switch back at the driver: a provider with no such concept, or an already-compiled plugin that never sets
+    /// it, keeps constructing this the old way.
+    /// </summary>
+    public string? Model { get; init; }
 }

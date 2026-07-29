@@ -986,6 +986,11 @@ public class PluginSessionDriverAdapterTests
         ];
         yield return
         [
+            new PluginSessionInitialized { SessionId = "s1", Tools = [], Model = "claude-sonnet-4-5-20250929" },
+            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.Model == "claude-sonnet-4-5-20250929"),
+        ];
+        yield return
+        [
             new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, Usage = new PluginTokenUsage(100, 20, 5, 0), NumTurns = 3 },
             (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Usage == new TokenUsage(100, 20, 5, 0) && turn.NumTurns == 3),
         ];

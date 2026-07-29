@@ -48,4 +48,31 @@ public class ClaudeStreamJsonTests
 
         Assert.Equal("real reason", Assert.Single(completed.Errors!));
     }
+
+    // AC-141: the init event is the only place a session launched with no explicit model (Auto/default) states
+    // which one the CLI actually resolved it to — without reading it, the host's Model live-control has nothing
+    // to seed itself with and shows an empty placeholder even though effort and permission mode, which always
+    // have a default, show theirs.
+    [Fact]
+    public void InitEvent_WithModel_CarriesItOnPluginSessionInitialized()
+    {
+        const string line = """
+        {"type":"system","subtype":"init","session_id":"abc","cwd":"/work","tools":["Read"],
+         "model":"claude-sonnet-4-5-20250929"}
+        """;
+
+        var initialized = Assert.IsType<PluginSessionInitialized>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal("claude-sonnet-4-5-20250929", initialized.Model);
+    }
+
+    [Fact]
+    public void InitEvent_WithNoModel_LeavesItNull()
+    {
+        const string line = """{"type":"system","subtype":"init","session_id":"abc","cwd":"/work","tools":[]}""";
+
+        var initialized = Assert.IsType<PluginSessionInitialized>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Null(initialized.Model);
+    }
 }

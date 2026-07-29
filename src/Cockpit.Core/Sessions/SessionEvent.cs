@@ -31,6 +31,14 @@ public sealed record SessionInitialized : SessionEvent
 {
     public required string Cwd { get; init; }
     public required IReadOnlyList<string> Tools { get; init; }
+
+    /// <summary>
+    /// The model the session actually started under, when the driver's own init event names it (AC-141) — null
+    /// when the provider has no such concept, or the session was launched with an explicit model the live-control
+    /// already shows. Only ever used to seed a live-control's starting value; never fires a switch back at the
+    /// driver.
+    /// </summary>
+    public string? Model { get; init; }
 }
 
 /// <summary>
