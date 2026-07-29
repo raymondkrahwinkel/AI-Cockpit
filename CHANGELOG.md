@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: an incompatible plugin now says so before you install it, not after. The plugin store's browse card shows
+  a red "Incompatible" badge with the reason — a contract version it was built for, or a cockpit version it needs —
+  and its Install/Update button is disabled; nothing is hidden from the catalogue, but a click that would only fail
+  is. The host now also refuses the install itself when a plugin needs a newer cockpit, rather than letting it
+  install and only refusing it the next time the cockpit starts.
 - added: a project can now keep more than one memory location, plus standing instructions and reference material,
   each as its own row in the project editor — "Memory, instructions and reference" replaces the single Memory field.
   Add as many rows as you like, pick what each one is for, name it, and say whether a starting session is told
