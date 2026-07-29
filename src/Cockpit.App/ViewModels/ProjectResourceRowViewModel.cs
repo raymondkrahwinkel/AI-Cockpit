@@ -284,11 +284,16 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     public bool IsMemoryFolderMode => SelectedMemorySourceChoice?.Scheme is null;
 
     /// <summary>
-    /// Whether "Choose…" browses for anything at all. A Memory row with a source other than Folder picked takes a
-    /// typed identifier, not a path — the same reason the single Memory row's own button used to go insensitive.
-    /// Every other role always browses (for a file — see <see cref="ReferencePlaceholder"/>).
+    /// Whether "Choose…" does anything at all. A Memory row with a source other than Folder picked used to always
+    /// take a typed identifier, not a path — the same reason the single Memory row's own button used to go
+    /// insensitive. AC-502 narrows that: it stays insensitive only for a source that cannot enumerate its own
+    /// locations (<see cref="MemorySourceChoice.ListLocationsAsync"/> null); one that can opens a picker of names
+    /// instead of a folder browser. Every other role always browses (for a file — see <see cref="ReferencePlaceholder"/>).
     /// </summary>
-    public bool CanBrowse => Role != ProjectResourceRole.Memory || IsMemoryFolderMode;
+    public bool CanBrowse =>
+        Role != ProjectResourceRole.Memory
+        || IsMemoryFolderMode
+        || SelectedMemorySourceChoice?.ListLocationsAsync is not null;
 
     /// <summary>
     /// The line under a Memory row's picker (AC-166): stops calling the location a folder once a source other than

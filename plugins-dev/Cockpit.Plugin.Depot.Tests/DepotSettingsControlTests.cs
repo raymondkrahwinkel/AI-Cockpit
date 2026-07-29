@@ -181,19 +181,19 @@ public class DepotSettingsControlTests
     }
 
     /// <summary>
-    /// AC-503, explicitly: <see cref="DepotSettingsControl._SyncMemorySources"/> (private) calls
+    /// AC-502/AC-503, explicitly: <see cref="DepotSettingsControl._SyncMemorySources"/> (private) calls
     /// <see cref="DepotMemorySource.BuildRegistrationPairs"/> twice for the same connection content — once for
-    /// <c>_originalConnections</c>, once for the freshly-saved list — and each call wires a brand-new
-    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> closure over that call's own connection
-    /// instance. Two such closures are never delegate-equal, so the record's own generated <c>==</c> would call
-    /// every connection "changed" on every single save — this is exactly the regression
-    /// <c>Save_UnchangedConnection_DoesNotReRegisterItsMemorySource</c> above already happens to catch (proven
-    /// red without <c>DepotSettingsControl</c>'s own <c>_SameApartFromCheck</c> helper during this ticket's own
-    /// review), restated here under a name that says why, rather than leaving that connection to a reader who has
-    /// to already know the bug to see it pinned.
+    /// <c>_originalConnections</c>, once for the freshly-saved list — and each call wires brand-new
+    /// <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>/<see cref="ProjectMemorySourceRegistration.SignInAsync"/>/
+    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> closures over that call's own connection
+    /// instance. Two such closures are never delegate-equal, but <see cref="ProjectMemorySourceRegistration"/>'s own
+    /// equality override (AC-502) deliberately ignores all three, comparing only Scheme/Title/Instruction — so the
+    /// record's own <c>==</c> correctly reads two independently-built registrations for the same connection as
+    /// equal, which is exactly what lets <see cref="DepotSettingsControl._SyncMemorySources"/>'s plain <c>==</c>
+    /// diff (no hand-rolled comparison needed) skip an unchanged connection.
     /// </summary>
     [Fact]
-    public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosure()
+    public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosures()
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
@@ -201,19 +201,17 @@ public class DepotSettingsControlTests
             Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
         };
 
-        // The underlying fact _SameApartFromCheck exists to work around: two independent BuildRegistrationPairs
-        // calls for the very same connection content produce registrations that are NOT record-equal, purely
-        // because of their own distinct CheckReachability closures.
         var first = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
         var second = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
-        Assert.NotEqual(first, second);
+        Assert.Equal(first, second);
         Assert.NotSame(first.CheckReachability, second.CheckReachability);
+        Assert.NotSame(first.ListLocationsAsync, second.ListLocationsAsync);
 
         var view = new DepotSettingsControl(host, settings);
 
         view.Save();
 
-        // And yet Save — which runs exactly this shape internally — must not treat the connection as changed.
+        // And Save — which runs exactly this shape internally — must not treat the connection as changed.
         host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
         host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
     }
@@ -267,7 +265,7 @@ public class DepotSettingsControlTests
                 new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
             ],
         };
-        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
             registry.Add(pair.Registration);
         }

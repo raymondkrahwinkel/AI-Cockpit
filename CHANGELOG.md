@@ -42,6 +42,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   entry that couldn't say which instance it meant. Adding, renaming or removing a connection takes effect
   immediately in the picker, no restart needed. Your first connection keeps working exactly as before under its
   existing project link.
+- added: the project editor's "Choose…" button next to a Depot memory row now opens a picker of your Depot
+  projects by name, instead of staying disabled and asking you to type a slug you can't see anywhere. Not signed in
+  yet? One "Sign in" button, not an empty list. Couldn't reach Depot? It says so.
 - added: a Memory row pointed at Depot now confirms the project you typed actually exists, the same way a broken
   file path is already flagged under a Reference row. Type a Depot project slug and, a moment later, you'll see
   either a green confirmation, a red "could not be found" (also shown for one you don't have access to — Depot can't

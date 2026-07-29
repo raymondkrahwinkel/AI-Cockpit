@@ -81,6 +81,13 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-502: the "Choose…" picker itself, in the state that paints the most of its own surface — a loaded
+        // list with a two-line entry (name plus its detail) — plus the two states that must never read as an empty
+        // list (not signed in, and a failed load), each its own scene since only one of the four states shows at a
+        // time and a resting-state screenshot would otherwise never catch the other three regressing silently.
+        ["memory-source-location-picker"] = (_, _) => _MemorySourceLocationPicker(),
+        ["memory-source-location-picker-sign-in"] = (_, _) => _MemorySourceLocationPickerSignIn(),
+        ["memory-source-location-picker-error"] = (_, _) => _MemorySourceLocationPickerError(),
         // AC-503: the three states a Memory row's own reachability check can land on — confirmed, not found, and
         // not signed in/unreachable — staged directly (see _ProjectEditorWithMemorySourceReachability's own
         // remarks on why this scene sets Reachability rather than going through a real check delegate).
@@ -306,6 +313,46 @@ internal static class Screenshotter
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // AC-502: a loaded picker, two locations so the list itself (not just a single row) is verifiable — one with
+    // a detail line, one without, since ProjectMemorySourceLocation.Detail is optional and both must render cleanly.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — Synvolution",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+            [
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("depot", "Depot"),
+            ])));
+        // Loaded synchronously rather than left to the window's own fire-and-forget OnDataContextChanged call: a
+        // static screenshot needs the list settled before the frame is captured, not racing a dispatcher tick.
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
+    // The "not signed in" state (AC-502 criterion 4): one action, not an empty list — this is the scene that proves
+    // it never renders as "you have nothing" on screen, not merely in a unit test's assertions.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerSignIn()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — Synvolution",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.AuthorizationRequired),
+            signInAsync: _ => Task.FromResult(true));
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
+    // The failed-load state (AC-502 criterion 5): says what went wrong rather than showing nothing.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerError()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — Synvolution",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed(
+                "Couldn't reach the Depot server — check the connection's URL in Depot's settings.")));
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
     }
 
     /// <summary>

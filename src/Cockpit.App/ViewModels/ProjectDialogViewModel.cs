@@ -111,6 +111,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
             viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme)
             {
+                ListLocationsAsync = registration.ListLocationsAsync,
+                SignInAsync = registration.SignInAsync,
                 CheckReachability = registration.CheckReachability,
             });
         }

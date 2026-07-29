@@ -550,6 +550,55 @@ internal sealed class CockpitHost(
     }
 
     /// <summary>
+    /// Calls a tool on this plugin's own MCP server through the same <see cref="IMcpToolInvoker"/> a session's
+    /// tool-loop uses to reach it (AC-502) — on the app's behalf, never opening a browser and never handing the
+    /// plugin the bearer token the invoker used to authenticate the call.
+    /// <para>
+    /// Refuses any <paramref name="name"/> that resolves to neither the shared registry nor any plugin's own
+    /// <see cref="IPluginMcpProvider.GetMcpServers()"/> — the same <see cref="_ResolveOAuthServerAsync"/> lookup
+    /// <see cref="GetMcpServerAuthStateAsync"/>/<see cref="SignInMcpServerAsync"/> already use (AC-504), so a plugin
+    /// whose servers are delivered per-project (Depot, since AC-504) rather than pushed via <see cref="AddMcpServer"/>
+    /// is reachable here the same way its own sign-in already is. What this still excludes: a cockpit-internal
+    /// endpoint (terminal, worktrees, the delegation orchestrator, …) mounted via <see cref="AddMcpEndpoint"/> —
+    /// those carry no plugin's consent and go through no permission gate a session's own connect applies, and
+    /// neither the registry nor <see cref="IPluginMcpProvider"/> ever lists them.
+    /// </para>
+    /// </summary>
+    public async Task<PluginMcpToolCallResult> CallMcpToolAsync(
+        string name,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        string? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _IsKnownMcpServerNameAsync(name, cancellationToken).ConfigureAwait(false))
+        {
+            return PluginMcpToolCallResult.Unavailable;
+        }
+
+        if (services.GetService<IMcpToolInvoker>() is not { } invoker)
+        {
+            return PluginMcpToolCallResult.Unavailable;
+        }
+
+        try
+        {
+            var result = await invoker.InvokeAsync(name, toolName, arguments, projectId, cancellationToken).ConfigureAwait(false);
+            return result.Outcome switch
+            {
+                McpToolInvocationOutcome.Success => PluginMcpToolCallResult.Success(result.Content ?? string.Empty),
+                McpToolInvocationOutcome.AuthorizationRequired => PluginMcpToolCallResult.AuthorizationRequired,
+                _ => PluginMcpToolCallResult.Failed(result.Error ?? "The tool call failed."),
+            };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-tool-call", exception.Message);
+            return PluginMcpToolCallResult.Failed(exception.Message);
+        }
+    }
+
+    /// <summary>
     /// The OAuth server named <paramref name="name"/>, wherever it lives: the shared registry first (a
     /// registry-configured server, or a plugin still on the AC-243 push model), then, if nothing there matches
     /// (AC-504), every <see cref="IPluginMcpProvider"/>'s own project-agnostic <see cref="IPluginMcpProvider.GetMcpServers()"/>
@@ -573,6 +622,32 @@ internal sealed class CockpitHost(
             .SelectMany(_SafeContributionsOf)
             .Select(PluginMcpMapping.ToServerConfig)
             .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> resolves to anything at all — the shared registry (any auth kind, not only
+    /// OAuth, unlike <see cref="_ResolveOAuthServerAsync"/>) or any plugin's own <see cref="IPluginMcpProvider.GetMcpServers()"/>
+    /// (AC-502 review). This is <see cref="CallMcpToolAsync"/>'s own scope check: it deliberately does not
+    /// distinguish "this calling plugin's own server" from "some other plugin's" — the same laxness
+    /// <see cref="_ResolveOAuthServerAsync"/> already accepts for a sign-in — because there is no way from inside a
+    /// shared-container-resolved <see cref="IPluginMcpProvider"/> list to tell whose instance is whose. What matters
+    /// is that a cockpit-internal endpoint (never in the registry, never behind <see cref="IPluginMcpProvider"/>)
+    /// can never pass this check.
+    /// </summary>
+    private async Task<bool> _IsKnownMcpServerNameAsync(string name, CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var inRegistry = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+
+        if (inRegistry)
+        {
+            return true;
+        }
+
+        return services.GetServices<IPluginMcpProvider>()
+            .SelectMany(_SafeContributionsOf)
+            .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
     }
 
     private IReadOnlyList<McpServerContribution> _SafeContributionsOf(IPluginMcpProvider provider)

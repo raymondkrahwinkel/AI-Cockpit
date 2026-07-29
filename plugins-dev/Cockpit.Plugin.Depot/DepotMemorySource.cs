@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -11,8 +12,12 @@ namespace Cockpit.Plugin.Depot;
 /// Synvolution" apart instead of the single fixed "Depot project" a pre-AC-501 install offered regardless of how
 /// many instances were connected.
 /// <para>
-/// A separate, host-free type — like <see cref="Cockpit.Plugin.YouTrack.YouTrackProjectField"/> is for a project
-/// field — so a test can build registrations and assert on them without standing up an <c>ICockpitHost</c>.
+/// A separate type from <see cref="DepotPlugin"/> and <see cref="Ui.DepotSettingsControl"/> — like
+/// <see cref="Cockpit.Plugin.YouTrack.YouTrackProjectField"/> is for a project field — so a test can build
+/// registrations and assert on the scheme/title/instruction shape without a real MCP server behind them. Since
+/// AC-502 it does take an <c>ICockpitHost</c>: each registration's <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>
+/// closes over it to call this connection's own contributed server, but that delegate is never invoked at
+/// registration-build time — a test still gets a real, comparable registration without ever calling it.
 /// </para>
 /// </summary>
 internal static class DepotMemorySource
@@ -79,8 +84,104 @@ internal static class DepotMemorySource
                 + "you go. If the Depot MCP is not available in this session, say so rather than working from "
                 + "memory you cannot see.")
         {
+            ListLocationsAsync = host is null ? null : cancellationToken => _ListLocationsAsync(connection, host, cancellationToken),
+            SignInAsync = host is null ? null : async cancellationToken =>
+                await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
             CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, value, cancellationToken),
         };
+
+    /// <summary>
+    /// AC-502: lists this connection's own Depot projects through its contributed MCP server's <c>list_projects</c>
+    /// tool, via <see cref="ICockpitHost.CallMcpToolAsync"/> — the host owns the token, this plugin only ever sees
+    /// the tool's JSON text result. <c>includeSummary</c> is worth the extra server-side walk here (DEP-159): this
+    /// is a picker the operator opens once to make a choice, not a per-keystroke read.
+    /// </summary>
+    private static async Task<ProjectMemorySourceLocationsResult> _ListLocationsAsync(
+        DepotConnectionRegistration connection, ICockpitHost host, CancellationToken cancellationToken)
+    {
+        var result = await host.CallMcpToolAsync(
+            connection.McpServerName,
+            "list_projects",
+            new Dictionary<string, object?> { ["includeSummary"] = true },
+            // A Depot connection is pushed into the shared MCP registry (AddMcpServer), not scoped to one project
+            // (AC-500/AC-501), so it is reachable regardless of which project's editor opened this picker.
+            projectId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        switch (result.Outcome)
+        {
+            case PluginMcpToolCallOutcome.AuthorizationRequired:
+                return ProjectMemorySourceLocationsResult.AuthorizationRequired;
+            case PluginMcpToolCallOutcome.Success:
+                return _ParseLocations(result.Content ?? string.Empty);
+            default:
+                return ProjectMemorySourceLocationsResult.Failed(
+                    result.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
+        }
+    }
+
+    private static ProjectMemorySourceLocationsResult _ParseLocations(string json)
+    {
+        try
+        {
+            var payload = JsonSerializer.Deserialize<_ListProjectsPayload>(json, _SerializerOptions);
+            if (payload?.Projects is not { } projects)
+            {
+                return ProjectMemorySourceLocationsResult.Failed("Depot's project list came back in an unexpected shape.");
+            }
+
+            var locations = projects
+                .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
+                .Select(project => new ProjectMemorySourceLocation(
+                    project.Slug!,
+                    string.IsNullOrWhiteSpace(project.Name) ? project.Slug! : project.Name!,
+                    _DetailFor(project)))
+                .ToList();
+
+            return ProjectMemorySourceLocationsResult.Success(locations);
+        }
+        catch (JsonException exception)
+        {
+            return ProjectMemorySourceLocationsResult.Failed($"Couldn't read Depot's project list: {exception.Message}");
+        }
+    }
+
+    private static string? _DetailFor(_ListProjectsProject project)
+    {
+        if (project.Summary is not { } summary)
+        {
+            return project.Role is { Length: > 0 } role ? role : null;
+        }
+
+        var documents = summary.DocumentCount == 1 ? "1 document" : $"{summary.DocumentCount} documents";
+        return summary.LastModifiedAt is { } lastModified
+            ? $"{documents} · updated {lastModified.ToLocalTime():d MMM yyyy}"
+            : documents;
+    }
+
+    private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
+
+    // Mirrors only the fields DEP-159's list_projects response actually carries — {slug, name, role, kind} plus an
+    // optional per-project summary — not a shared contract type, the same "plugin builds its own DTO for the tool
+    // it calls" idiom the rest of this file already follows for DepotConnectionRegistration.
+    private sealed class _ListProjectsPayload
+    {
+        public List<_ListProjectsProject>? Projects { get; set; }
+    }
+
+    private sealed class _ListProjectsProject
+    {
+        public string? Slug { get; set; }
+        public string? Name { get; set; }
+        public string? Role { get; set; }
+        public _ListProjectsSummary? Summary { get; set; }
+    }
+
+    private sealed class _ListProjectsSummary
+    {
+        public int DocumentCount { get; set; }
+        public DateTimeOffset? LastModifiedAt { get; set; }
+    }
 
     /// <summary>
     /// The AC-503 reachability check for one Depot connection: confirms the slug the operator typed by asking this

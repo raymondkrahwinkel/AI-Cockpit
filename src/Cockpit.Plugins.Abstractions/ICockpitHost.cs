@@ -370,6 +370,33 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
 
     /// <summary>
+    /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/> via
+    /// <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502). What a plugin uses to ask its
+    /// own server a question before any session exists (a project editor's picker asking a Depot connection to list
+    /// its projects, say), using the same connect path and OAuth standing a session would, without a session ever
+    /// starting. Refuses any <paramref name="name"/> this plugin did not itself register — the merged catalog
+    /// <see cref="Mcp.IMcpToolInvoker"/>-backed calls resolve against also holds every other plugin's contributions,
+    /// every operator-configured registry server, and every cockpit-internal endpoint, none of which this plugin has
+    /// any standing to reach through here. Never opens a browser: an OAuth server with no usable token yet answers
+    /// <see cref="Mcp.PluginMcpToolCallOutcome.AuthorizationRequired"/> rather than prompting — offer
+    /// <see cref="SignInMcpServerAsync"/> instead. Never returns a bearer token (Iron Law #8), only the tool's own
+    /// result. <paramref name="projectId"/> (AC-218) scopes the same way <see cref="AddMcpServer"/>'s own project
+    /// overload's callers scope a session's connect — a server contributed only for one project (a plugin's
+    /// <c>IPluginMcpProvider.GetMcpServers(projectId)</c>) is invisible without it; <see langword="null"/> reaches
+    /// only servers pushed into the shared registry (this plugin's own, via <see cref="AddMcpServer"/>) regardless
+    /// of project. Default <see cref="Mcp.PluginMcpToolCallResult.Unavailable"/> so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host can
+    /// actually reach a server.
+    /// </summary>
+    Task<Mcp.PluginMcpToolCallResult> CallMcpToolAsync(
+        string name,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        string? projectId = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Mcp.PluginMcpToolCallResult.Unavailable);
+
+    /// <summary>
     /// Makes one tool call against an MCP server this plugin contributed under <paramref name="serverName"/> via
     /// <see cref="AddMcpServer"/>, outside any running session (AC-503) — what a project editor's own reachability
     /// check uses to confirm a value the operator just typed (a Depot project slug, say) actually resolves to

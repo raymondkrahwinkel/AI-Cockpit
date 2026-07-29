@@ -18,12 +18,14 @@ public class DepotMemorySourceTests
     private static DepotConnectionRegistration Connection(string id, string name, string url = "https://depot.example.com") =>
         new(id, name, url);
 
+    private static ICockpitHost Host() => Substitute.For<ICockpitHost>();
+
     [Fact]
     public void FirstConnection_KeepsThePlainDepotScheme()
     {
         // The existing-projects compatibility guarantee (AC-501 acceptance criterion 3): a project stored as
         // "depot:cockpit" before this ticket must keep resolving, whichever connection is now first.
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
 
         Assert.Equal("depot", Assert.Single(pairs).Registration.Scheme);
     }
@@ -34,7 +36,7 @@ public class DepotMemorySourceTests
         var pairs = DepotMemorySource.BuildRegistrationPairs([
             Connection("c1", "Synvolution"),
             Connection("c2", "Wispslate"),
-        ]);
+        ], Host());
 
         Assert.Equal("depot", pairs[0].Registration.Scheme);
         Assert.Equal("depot.wispslate", pairs[1].Registration.Scheme);
@@ -46,7 +48,7 @@ public class DepotMemorySourceTests
         var pairs = DepotMemorySource.BuildRegistrationPairs([
             Connection("c1", "Synvolution"),
             Connection("c2", "Wispslate"),
-        ]);
+        ], Host());
 
         Assert.Equal("Depot project — Synvolution", pairs[0].Registration.Title);
         Assert.Equal("Depot project — Wispslate", pairs[1].Registration.Title);
@@ -57,7 +59,7 @@ public class DepotMemorySourceTests
     {
         // Acceptance criterion 7: the Instruction has to say *which* Depot a starting session's memory lives on,
         // not just that it lives on Depot.
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Wispslate")]);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Wispslate")], Host());
 
         Assert.Contains("Wispslate", pairs.Single().Registration.Instruction);
     }
@@ -65,7 +67,7 @@ public class DepotMemorySourceTests
     [Fact]
     public void Instruction_StillCarriesTheHonestyClause_WhenTheMcpIsUnavailable()
     {
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
 
         Assert.Contains(
             "If the Depot MCP is not available in this session, say so rather than working from memory you cannot see.",
@@ -77,7 +79,7 @@ public class DepotMemorySourceTests
     {
         // Acceptance criterion 5: without a configured connection the row behaves exactly as it did before this
         // plugin existed — nothing offered, not a fixed "Depot project" nothing points at.
-        Assert.Empty(DepotMemorySource.BuildRegistrationPairs([]));
+        Assert.Empty(DepotMemorySource.BuildRegistrationPairs([], Host()));
     }
 
     [Fact]
@@ -88,7 +90,7 @@ public class DepotMemorySourceTests
         var pairs = DepotMemorySource.BuildRegistrationPairs([
             Connection("c1", "Primary"),
             Connection("abc123", "★★★"),
-        ]);
+        ], Host());
 
         // Mirrors ProjectMemoryRef.IsUsableScheme (Cockpit.Core, not referenced from this test project): at least
         // two characters, no colon, no surrounding whitespace.
@@ -108,7 +110,7 @@ public class DepotMemorySourceTests
             Connection("dup", "Work"),
             Connection("dup", "Work"),
             Connection("dup", "Work"),
-        ]);
+        ], Host());
 
         var schemes = pairs.Skip(1).Select(pair => pair.Registration.Scheme).ToList();
         Assert.Equal(schemes.Count, schemes.Distinct().Count());
@@ -123,7 +125,7 @@ public class DepotMemorySourceTests
             Connection("primary", "Synvolution"),
             Connection("c1", "Work"),
             Connection("c2", "Work"),
-        ]);
+        ], Host());
 
         Assert.Equal("depot.work", pairs[1].Registration.Scheme);
         Assert.Equal("depot.c2", pairs[2].Registration.Scheme);
@@ -133,10 +135,14 @@ public class DepotMemorySourceTests
     public void BuildRegistrations_ReturnsTheSameRegistrationsAsThePairs()
     {
         var connections = new[] { Connection("c1", "Synvolution"), Connection("c2", "Wispslate") };
+        var host = Host();
 
-        var registrations = DepotMemorySource.BuildRegistrations(connections);
-        var pairs = DepotMemorySource.BuildRegistrationPairs(connections);
+        var registrations = DepotMemorySource.BuildRegistrations(connections, host);
+        var pairs = DepotMemorySource.BuildRegistrationPairs(connections, host);
 
+        // ProjectMemorySourceRegistration's own equality ignores ListLocationsAsync/SignInAsync (AC-502) — two
+        // delegates built fresh for the same connection are never reference-equal, so this is exactly the
+        // comparison that equality override exists to make possible here.
         Assert.Equal(pairs.Select(pair => pair.Registration), registrations);
     }
 
