@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
@@ -87,7 +88,7 @@ public class CockpitViewModelProjectStartTests
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
-        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>());
+        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
         var vm = NewVm(Substitute.For<ISessionDialogService>(), quickStart: quickStart);
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 
@@ -106,7 +107,7 @@ public class CockpitViewModelProjectStartTests
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
-        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>());
+        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry());
         var vm = NewVm(Substitute.For<ISessionDialogService>(), quickStart: quickStart);
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 
@@ -134,7 +135,7 @@ public class CockpitViewModelProjectStartTests
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"))]);
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
-        var vm = NewVm(dialogs, projects, new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>()));
+        var vm = NewVm(dialogs, projects, new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry()));
 
         await vm.StartProjectSessionCommand.ExecuteAsync(project);
 

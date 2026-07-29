@@ -27,8 +27,10 @@ The official plugin store is
 pre-seeded into a fresh cockpit install; the example plugins under
 [`plugins-dev/`](../../plugins-dev) — UI plugins (GitHub Issues, GitHub Pull Requests, YouTrack, Git Status,
 GitHub Actions, Session Review, Prompt Library, Claude Transcript Search), MCP plugins (Docker, Kubernetes),
-widget plugins (Clock, System Monitor) and provider plugins (Gemini/OpenAI, GitHub Models,
-CLI Agent/Codex) — are published there.
+widget plugins (Clock, System Monitor), provider plugins (Gemini/OpenAI, GitHub Models,
+CLI Agent/Codex) — are published there. (Depot — a project memory source, `AddProjectMemorySource` — lives
+under `plugins-dev/` as well, but its `minHostVersion` (0.10.0) is ahead of the newest host the publish
+workflow's gate has seen released, so it is not published yet; see [AUTOMATED-PUBLISH.md](AUTOMATED-PUBLISH.md).)
 
 **Git Status, Claude Transcript Search and the Clock ship with the app.** The first two used to be core
 features, and bundling them means you have them without having to know they exist. The clock is there so a new

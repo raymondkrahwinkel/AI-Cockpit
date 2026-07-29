@@ -103,6 +103,8 @@ public interface ICockpitHost
     IReadOnlyList<ProjectFieldRegistration> ProjectFields { get; }               // default []
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // default null
+    void AddProjectMemorySource(ProjectMemorySourceRegistration registration);    // default no-op
+    IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; } // default []
     void AddSessionResourceProvider(ISessionResourceProvider provider);          // default no-op
     IReadOnlyList<ISessionResourceProvider> SessionResourceProviders { get; }     // default []
     Task SetSessionStatusline(string paneId, string statusline);                 // default no-op
@@ -724,6 +726,54 @@ two say different things to an operator deciding whether their project points at
 Two plugins may register the **same key**: that is agreement, not a clash (a repository is a repository), and the
 first registration wins, so either plugin alone still offers the field. Different keys that differ only in case are
 different fields, because a link is read back case-sensitively.
+
+### `void AddProjectMemorySource(ProjectMemorySourceRegistration registration)`
+
+Names a place a project's memory can live **other than a folder** (AC-165/166) — a Depot project, say. The project
+editor's memory picker offers your source beside "Folder", and a session started on a project whose `MemoryRef` is
+`<scheme>:<value>` for your registered scheme has its standing instructions say, in one sentence, where its memory
+is *and* how to reach it — instead of the plain, unexplained sentence a bare path gets. Default no-op.
+
+```csharp
+host.AddProjectMemorySource(new ProjectMemorySourceRegistration(
+    Scheme: "depot",                       // the prefix a MemoryRef carries this source under: "depot:cockpit"
+    Title: "Depot project",                 // named back to the operator and the session
+    Instruction: "Read and write it through the Depot MCP: look the project up by that slug before you start, "
+        + "and write back what you learn as you go. If the Depot MCP is not available in this session, say so "
+        + "rather than working from memory you cannot see."));
+```
+
+`Title` and `Instruction` are each trimmed, then read into the standing-instructions sentence — not carried
+verbatim: if your trimmed `Instruction` does not already end in `.`, `!` or `?`, the host appends a period so the
+sentence that follows it still reads as one (an instruction you wrote ending in `)`, say, becomes `…).` in the
+prompt):
+
+> This project's memory lives in {Title} "{value}". {Instruction}[.]
+
+Declared rather than resolved eagerly, the same as `AddProjectField`: there is no network call or credential at
+registration time, because the host only ever quotes `Title`/`Instruction` into a prompt — reaching or writing the
+memory itself happens inside the session, through whatever your `Instruction` points it at.
+
+A blank `Scheme`, `Title` or `Instruction` is refused, and unlike the first two, a blank `Instruction` is not a
+cosmetic gap: a source named but not explained leaves a session no better off than the bare reference it would
+otherwise have gotten, so such a source is not offered at all. A scheme another plugin already registered is kept
+as it was and this registration ignored (matched case-insensitively, the same agreement `AddProjectField` makes
+for a key two plugins both offer — a project's stored `MemoryRef` is itself matched case-insensitively when read
+back).
+
+**What this does not do:**
+
+- **It does not mount an MCP server.** This only supplies the sentence a session reads; if your `Instruction`
+  points at an MCP the session also needs put in front of it, register that separately with `AddMcpServer` (which
+  itself only carries HTTP + bearer auth, no OAuth — see [MCP server registration](PLUGIN-SDK.md#mcp-server-registration)).
+- **It does not offer a live list of options.** Unlike `AddProjectField`'s `LoadOptionsAsync`, there is nothing
+  here to fetch — the operator picks your source by `Title` from the editor's small dropdown, but still types the
+  bare identifier (`cockpit` in `depot:cockpit`) into a free-text box themselves.
+
+### `IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources { get; }`
+
+Every memory source plugins have contributed, in registration order — what the project editor's picker and a
+starting session's standing instructions both read. A plugin that is neither has no reason to call this. Default `[]`.
 
 ### `void AddSessionResourceProvider(ISessionResourceProvider provider)`
 

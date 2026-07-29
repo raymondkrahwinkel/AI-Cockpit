@@ -53,29 +53,6 @@ public sealed record ProjectInfoField(string Label, string Value)
     public const string Mask = "••••••••";
 
     /// <summary>
-    /// Unicode's complete set of mandatory line breaks, not only CR and LF: a value pasted out of a web page or a PDF
-    /// can carry a vertical tab, a form feed, a NEL or a line/paragraph separator, and Avalonia's text layout breaks a
-    /// line on every one of them. The whole set rather than the ones seen so far, because the point is that no value
-    /// with a hard break in it ever reaches a wrapping text block — that combination never finishes measuring on
-    /// Avalonia 12.0.5 and allocates until the process is killed.
-    /// </summary>
-    private static readonly char[] LineBreaks =
-        [(char)0x0A, (char)0x0B, (char)0x0C, (char)0x0D, (char)0x85, (char)0x2028, (char)0x2029];
-
-    /// <summary>
-    /// Characters that change how text reads without being seen: the bidirectional overrides and isolates, and the
-    /// zero-width marks. They matter here more than in ordinary text because a row's value is both the link's label
-    /// and its target — the two must not be able to disagree about where a click goes.
-    /// </summary>
-    private static readonly char[] DeceptiveMarks =
-    [
-        (char)0x200B, (char)0x200C, (char)0x200D, (char)0x200E, (char)0x200F,
-        (char)0x202A, (char)0x202B, (char)0x202C, (char)0x202D, (char)0x202E,
-        (char)0x2066, (char)0x2067, (char)0x2068, (char)0x2069,
-        (char)0xFEFF,
-    ];
-
-    /// <summary>
     /// Whether this row says nothing yet — an untouched row the editor added and the operator left alone. Dropped
     /// rather than saved: there is nothing in it to lose, and an empty row would come back as a blank line on the
     /// project's card.
@@ -109,13 +86,9 @@ public sealed record ProjectInfoField(string Label, string Value)
     /// silently dropped every other member — and this runs on load and on save, so a row the operator had ticked to
     /// share would have quietly unticked itself.
     /// </remarks>
-    public ProjectInfoField Tidied() => this with { Label = _Tidied(Label), Value = _Tidied(Value) };
-
-    private static string _Tidied(string text) => _WithoutDeceptiveMarks(
-        string.Join(' ', text.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)));
-
-    private static string _WithoutDeceptiveMarks(string text) =>
-        text.IndexOfAny(DeceptiveMarks) < 0
-            ? text
-            : new string([.. text.Where(character => !DeceptiveMarks.Contains(character))]);
+    public ProjectInfoField Tidied() => this with
+    {
+        Label = ProjectPromptText.OneLine(Label),
+        Value = ProjectPromptText.OneLine(Value),
+    };
 }

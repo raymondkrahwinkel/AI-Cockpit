@@ -53,6 +53,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly IProjectStore? _projectStore;
+
+    /// <summary>
+    /// The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
+    /// <see cref="SessionStartDefaults.Resolve"/> reads, rather than per call — the registry's contents do not
+    /// change over the dialog's lifetime, and three call sites below would otherwise each repeat the mapping.
+    /// </summary>
+    private readonly IReadOnlyList<ProjectMemorySource>? _memorySources;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
     private CancellationTokenSource? _launchOptionsRefreshCts;
     private CancellationTokenSource? _repoDetectCts;
@@ -526,9 +533,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IWorktreeManager? worktreeManager = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         IProjectStore? projectStore = null,
-        IMcpOAuthCoordinator? oauthCoordinator = null)
+        IMcpOAuthCoordinator? oauthCoordinator = null,
+        IProjectMemorySourceRegistry? memorySourceRegistry = null)
     {
         _projectStore = projectStore;
+        _memorySources = memorySourceRegistry?.Sources.ToMemorySources();
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -735,7 +744,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             SelectedProfile = matched;
         }
 
-        var defaults = SessionStartDefaults.Resolve(value, SelectedProfile);
+        var defaults = SessionStartDefaults.Resolve(value, SelectedProfile, memorySources: _memorySources);
 
         if (!_workingDirectoryTouched && defaults.WorkingDirectory is { Length: > 0 } directory)
         {
@@ -1040,7 +1049,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             _applyingProfileWorkingDirectory = true;
             try
             {
-                WorkingDirectory = SessionStartDefaults.Resolve(SelectedProject, value).WorkingDirectory ?? string.Empty;
+                WorkingDirectory = SessionStartDefaults.Resolve(SelectedProject, value, memorySources: _memorySources).WorkingDirectory ?? string.Empty;
             }
             finally
             {
@@ -1303,7 +1312,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // Resolved at Start rather than read off the project directly, so what the session actually launches with is
         // the same precedence every other surface applies (AC-142/AC-163): the profile's identity, the project's
         // instructions appended under it.
-        var startDefaults = SessionStartDefaults.Resolve(SelectedProject, SelectedProfile);
+        var startDefaults = SessionStartDefaults.Resolve(SelectedProject, SelectedProfile, memorySources: _memorySources);
 
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,

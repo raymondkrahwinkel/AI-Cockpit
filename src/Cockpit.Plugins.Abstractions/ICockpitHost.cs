@@ -604,6 +604,26 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ProjectFieldRegistration> ProjectFields => [];
 
     /// <summary>
+    /// Registers a place a project's memory can live other than a folder (AC-165/166) — a Depot project, say — so a
+    /// project's editor can offer it beside "Folder" and a session started on a project pointing at this scheme is
+    /// told, in its own standing instructions, how to reach it rather than only where it is.
+    /// <para>
+    /// A scheme another plugin already registered is kept as it was and this registration ignored (matched
+    /// case-insensitively — a project's stored reference is read the same way), the same agreement
+    /// <see cref="AddProjectField"/> makes for a key two plugins both offer.
+    /// </para>
+    /// This is additive to the AC-40 contract: <see cref="AbstractionsContract.Version"/> stays 1, the same as every
+    /// other default-implemented member added here. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddProjectMemorySource(Projects.ProjectMemorySourceRegistration registration)
+    {
+    }
+
+    /// <summary>The memory sources every plugin has contributed — what the project editor's picker and a session's standing instructions both read. Default empty.</summary>
+    IReadOnlyList<Projects.ProjectMemorySourceRegistration> ProjectMemorySources => [];
+
+    /// <summary>
     /// What the operator picked for <paramref name="key"/> on the project a session belongs to (AC-317), or
     /// <see langword="null"/> when that session has no project, the project is not linked, or nothing matches
     /// <paramref name="paneId"/>. This is the reading half of <see cref="AddProjectField"/>, and a plugin may read a

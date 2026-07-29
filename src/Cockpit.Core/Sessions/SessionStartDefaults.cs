@@ -38,6 +38,12 @@ public sealed record SessionStartDefaults(
     /// may be absent — a session without a project is how the cockpit has always started one.
     /// </summary>
     /// <param name="globalWorkingDirectory">The configured app-wide working directory, used when neither the project nor the profile names one.</param>
+    /// <param name="memorySources">
+    /// The memory sources plugins have registered (AC-165/166, <c>ICockpitHost.AddProjectMemorySource</c>), so a
+    /// project's <see cref="Project.MemoryRef"/> naming one of them is explained rather than merely quoted. Null (the
+    /// default) is exactly "none registered" — every caller that does not yet pass this list gets the plain,
+    /// unexplained sentence it always got, unchanged.
+    /// </param>
     /// <remarks>
     /// The MCP selection here stays the profile's, and that is not a gap in "the project wins": a project's
     /// selection is a per-server answer rather than a list (<see cref="ProjectMcpOverlay.IsSelectedByDefault"/>),
@@ -47,13 +53,14 @@ public sealed record SessionStartDefaults(
     public static SessionStartDefaults Resolve(
         Project? project,
         SessionProfile? profile,
-        string? globalWorkingDirectory = null) =>
+        string? globalWorkingDirectory = null,
+        IReadOnlyList<ProjectMemorySource>? memorySources = null) =>
         new(
             _FirstNonBlank(project?.SourceDirectory, profile?.DefaultWorkingDirectory, globalWorkingDirectory),
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project), _InformationNote(project)));
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project, memorySources), _InformationNote(project)));
 
     /// <summary>
     /// How much of the standing instructions a project's shared information rows may take. A ceiling rather than trust,
@@ -63,18 +70,106 @@ public sealed record SessionStartDefaults(
     /// </summary>
     private const int InformationNoteBudget = 4000;
 
+    /// <summary>
+    /// How much of the standing instructions a memory note may take. A ceiling for the same reason
+    /// <see cref="InformationNoteBudget"/> is one: the Claude route hands the whole prompt to its CLI as one process
+    /// argument, and a command line has a hard limit, so an unbounded sentence does not merely cost budget, it stops
+    /// the session starting at all. Far smaller than the information block's budget because this is one sentence, not
+    /// a list that grows by the row — a realistic memory location is a path or a project key, at most a few hundred
+    /// characters, and a realistic source instruction is a sentence or two a plugin author wrote by hand. 1500 leaves
+    /// room for both together several times over while still refusing to let either grow without limit.
+    /// </summary>
+    private const int MemoryNoteBudget = 1500;
+
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
 
     /// <summary>
-    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
-    /// one. Deliberately told rather than loaded: the host does not know what lives there — a folder of notes, a
-    /// Depot project (AC-165/166) — and a session that is told where to look can go and look.
+    /// Sentence endings that count as "already punctuated" for <see cref="_MemoryNote"/> — the same idea
+    /// <see cref="_InformationNote"/> applies to a label's trailing colon, just for a sentence rather than a word.
     /// </summary>
-    private static string? _MemoryNote(Project? project) =>
-        project?.MemoryRef is { Length: > 0 } memory && !string.IsNullOrWhiteSpace(memory)
-            ? $"This project's memory lives at {memory.Trim()}. Read it there when you need what this project already knows, and keep it up to date as you work."
-            : null;
+    private static readonly char[] _SentenceEndings = ['.', '!', '?'];
+
+    /// <summary>
+    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
+    /// one.
+    /// <para>
+    /// A reference of the shape <c>&lt;scheme&gt;:&lt;value&gt;</c> naming a registered <paramref name="memorySources"/>
+    /// entry is explained — named by that source's own <c>Title</c>, with its <c>Instruction</c> appended so the
+    /// session is told how to reach it, not only where it is. Anything else — a bare path, a scheme nothing
+    /// registered, an empty value after the colon, a matched source whose <c>Title</c> is itself blank — falls back
+    /// to the plain, unexplained sentence this always said: deliberately told rather than loaded, because the host
+    /// does not know what lives there, and a session that is told where to look can go and look.
+    /// </para>
+    /// <para>
+    /// Every piece is put on one line before it is said (<see cref="ProjectPromptText.OneLine"/>): the value is
+    /// operator-typed and only ever trimmed upstream, and the title and instruction are a plugin's free text, so
+    /// none of the three come pre-guaranteed to be a single line the way an <see cref="ProjectInfoField"/> row is by
+    /// the time it gets here. A pasted line break would otherwise arrive in the standing instructions as a fresh
+    /// line the session reads as an instruction of its own.
+    /// </para>
+    /// </summary>
+    private static string? _MemoryNote(Project? project, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (project?.MemoryRef is not { Length: > 0 } memory || string.IsNullOrWhiteSpace(memory))
+        {
+            return null;
+        }
+
+        var trimmed = ProjectPromptText.OneLine(memory.Trim());
+        if (memorySources is { Count: > 0 }
+            && ProjectMemoryRef.TryParse(trimmed, out var scheme, out var value)
+            && memorySources.FirstOrDefault(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched
+            && ProjectPromptText.OneLine(matched.Title.Trim()) is { Length: > 0 } title)
+        {
+            var tidiedValue = ProjectPromptText.OneLine(value);
+            var located = _CappedSentence($"This project's memory lives in {title} \"", tidiedValue, "\".");
+            var instruction = ProjectPromptText.OneLine(matched.Instruction.Trim());
+            if (instruction.Length == 0)
+            {
+                // The registry refuses a source without an instruction, so reaching this is a caller that built its
+                // own list. Say where the memory is and stop, rather than trailing a lone full stop behind the place.
+                return located;
+            }
+
+            // An instruction that already ends its own sentence keeps its own full stop rather than getting a second.
+            var sentence = _SentenceEndings.Contains(instruction[^1]) ? instruction : $"{instruction}.";
+            var withInstruction = $"{located} {sentence}";
+
+            // The instruction is a plugin's free text with no length limit upstream, so the combined sentence might
+            // not fit even though the place alone (already capped above) does. Cutting an instruction in half can
+            // flip what it means — "do not delete the old notes" becomes "do not delete" — so a too-long instruction
+            // is left out whole rather than clipped: the place is still said, just not how to use it.
+            return withInstruction.Length <= MemoryNoteBudget ? withInstruction : located;
+        }
+
+        return _CappedSentence(
+            "This project's memory lives at ",
+            trimmed,
+            ". Read it there when you need what this project already knows, and keep it up to date as you work.");
+    }
+
+    /// <summary>
+    /// <paramref name="prefix"/> + <paramref name="value"/> + <paramref name="suffix"/>, cut down to
+    /// <see cref="MemoryNoteBudget"/> if it does not fit. Only <paramref name="value"/> is ever shortened: it is a
+    /// name — a path, a project key — not an instruction, so unlike an instruction it is safe to cut rather than
+    /// having to be dropped whole. The cut is marked in place, in the spirit of <see cref="_InformationNote"/>'s
+    /// "(and N more that did not fit here…)": the session, and the operator reading the prompt back, should be able
+    /// to see that the location shown is not the whole of it.
+    /// </summary>
+    private static string _CappedSentence(string prefix, string value, string suffix)
+    {
+        var sentence = $"{prefix}{value}{suffix}";
+        if (sentence.Length <= MemoryNoteBudget)
+        {
+            return sentence;
+        }
+
+        const string truncationMarker = " (truncated)";
+        var available = Math.Max(0, MemoryNoteBudget - prefix.Length - suffix.Length - truncationMarker.Length);
+        var shortenedValue = value[..Math.Min(value.Length, available)] + truncationMarker;
+        return $"{prefix}{shortenedValue}{suffix}";
+    }
 
     /// <summary>
     /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block — never a

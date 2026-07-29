@@ -94,6 +94,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Project field | `host.AddProjectField(registration)` | Adds a field to the **project editor** (AC-317) — "which YouTrack project is this", "which repository" — so a project carries the identifier you resolve, picked from a list you supply. Read it back with `host.GetProjectFieldValueAsync(key)`. See [Project fields](#project-fields--link-a-project-to-your-side-of-the-world). |
+| Project memory source | `host.AddProjectMemorySource(registration)` | Names a place a project's memory can live **other than a folder** (AC-165/166) — a Depot project, say — so the project editor can offer it and a session started on such a project is told, in its own standing instructions, how to reach it rather than only where it is. See [Project memory sources](#project-memory-sources--somewhere-other-than-a-folder). |
 | Session resources | `host.AddSessionResourceProvider(provider)` | Gives every session **as it starts** (AC-165) environment variables its process runs with, asked for per session so the answer can depend on the project it belongs to. Reaches every provider — Claude, Codex, Kimi, a TTY — without your knowing any of them. See [`AddSessionResourceProvider`](API-REFERENCE.md#void-addsessionresourceproviderisessionresourceprovider-provider). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
@@ -143,6 +144,7 @@ public interface ICockpitHost
     void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // and what it was set to
+    void AddProjectMemorySource(ProjectMemorySourceRegistration registration); // a place memory can live besides a folder (AC-165/166)
     void AddSessionResourceProvider(ISessionResourceProvider provider); // what a starting session carries (AC-165)
 }
 
@@ -515,6 +517,53 @@ What is worth knowing before you add one:
   linked when the other arrives. The first registration wins; a second one for the same key is ignored, not an error.
 - **A link outlives your plugin.** A value under a key nothing currently claims is stored and rewritten untouched, so
   uninstalling a plugin does not unlink every project that used it.
+
+## Project memory sources — somewhere other than a folder
+
+A project already carries free-text memory: `Project.MemoryRef`, told to a starting session as "this project's
+memory lives at …". That is fine for a folder of notes, but some plugins keep a project's memory somewhere a path
+cannot name — a Depot project, an internal wiki page. `host.AddProjectMemorySource(...)` is how such a plugin
+says so: it names the scheme its own memory references use, and how a session should actually reach one.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddProjectMemorySource(new ProjectMemorySourceRegistration(
+        Scheme: "depot",                      // the prefix in a project's MemoryRef, e.g. "depot:cockpit"
+        Title: "Depot project",                // how it is named back to the operator and the session
+        Instruction: "Read and write it through the Depot MCP: look the project up by that slug before you "
+            + "start, and write back what you learn as you go. If the Depot MCP is not available in this "
+            + "session, say so rather than working from memory you cannot see."));
+}
+```
+
+When the project editor's `MemoryRef` is set to `<scheme>:<value>` and `<scheme>` matches a registration, a
+starting session's standing instructions read:
+
+> This project's memory lives in {Title} "{value}". {Instruction}
+
+instead of the plain, unexplained sentence a bare path gets. Worth knowing before you register one:
+
+- **You describe it; the host trims it and quotes it back — not verbatim.** `Title` and `Instruction` are each
+  trimmed before they reach the prompt, and if your trimmed `Instruction` does not already end in `.`, `!` or `?`
+  the host appends a period so the sentence after it still reads as one (an instruction you wrote ending in `)`,
+  say, becomes `…).` in the prompt). There is no network call, no credential, nothing else resolved at
+  registration time — what actually reads or writes that memory happens inside the session, through whatever MCP
+  or tool your instruction points at.
+- **The first scheme wins**, matched case-insensitively — the same agreement `AddProjectField` makes for a key,
+  because a project's stored `MemoryRef` is itself matched case-insensitively when it is read back.
+- **A blank `Scheme`, `Title` or `Instruction` is refused**, and the last one is not a cosmetic requirement: a
+  source named but not explained leaves a session no better off than the bare reference it would otherwise have
+  been handed, so it is not offered at all rather than offered half-working.
+- **This does not mount an MCP server.** Registering a scheme here is not the same as `host.AddMcpServer(...)` —
+  `AddProjectMemorySource` only supplies the sentence a session reads; if the session also needs the Depot MCP
+  itself put in front of it, that is a separate registration (and `McpServerContribution` only carries HTTP +
+  bearer auth, not OAuth — see [MCP server registration](#mcp-server-registration)).
+- **It does not offer a live list of Depot projects to pick from**, unlike `AddProjectField`'s
+  `LoadOptionsAsync`. The editor's picker lets the operator choose your source by its `Title` from a small
+  dropdown ("Folder" plus one entry per registration), but the identifier itself (`cockpit` in `depot:cockpit`)
+  is still typed into a free-text box — this extension point changes how that value is *explained* once typed
+  and saved, not how it is looked up or validated.
 
 ## Consent — gate a risky action
 

@@ -56,6 +56,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
     private readonly IProjectStore _projectStore;
     private readonly IProjectFieldRegistry _projectFields;
+    private readonly IProjectMemorySourceRegistry _memorySources;
     private readonly SurfaceWindows _surfaces;
 
     public SessionDialogService(
@@ -78,6 +79,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IVerifyRunnerRegistry verifyRunnerRegistry,
         IProjectStore projectStore,
         IProjectFieldRegistry projectFields,
+        IProjectMemorySourceRegistry memorySources,
         SurfaceWindows surfaces)
     {
         _surfaces = surfaces;
@@ -100,6 +102,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _verifyRunnerRegistry = verifyRunnerRegistry;
         _projectStore = projectStore;
         _projectFields = projectFields;
+        _memorySources = memorySources;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
@@ -126,7 +129,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator);
+            _projectStore, _oauthCoordinator, _memorySources);
         await viewModel.LoadAsync();
 
         // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
@@ -281,7 +284,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return await open;
         }
 
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog, _projectFields.Fields);
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

@@ -174,6 +174,21 @@ internal sealed class CockpitHost(
     public IReadOnlyList<ProjectFieldRegistration> ProjectFields =>
         services.GetRequiredService<IProjectFieldRegistry>().Fields;
 
+    public void AddProjectMemorySource(ProjectMemorySourceRegistration registration)
+    {
+        // Refused means another plugin already contributes this scheme — agreement, not a clash, the same reason
+        // AddProjectField logs at debug rather than warning.
+        if (!services.GetRequiredService<IProjectMemorySourceRegistry>().Register(registration))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Memory source '{MemorySourceScheme}' is already contributed; this registration is ignored",
+                registration.Scheme);
+        }
+    }
+
+    public IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources =>
+        services.GetRequiredService<IProjectMemorySourceRegistry>().Sources;
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         // No pane named and none selected means there is no project to read from — not an error, just nothing to say.

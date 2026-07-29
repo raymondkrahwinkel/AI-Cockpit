@@ -214,10 +214,27 @@
 
                     <StackPanel Spacing="2">
                         <TextBlock Classes="FieldLabel" Text="Memory"/>
-                        <TextBlock Classes="FieldHint" Text="Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again."/>
+                        <TextBlock Classes="FieldHint" Text="{Binding MemoryHint}"/>
+                        <!-- IsVisible="False" collapses in Avalonia — the control is pulled out of layout entirely,
+                             not merely painted invisible — so with no source registered (HasMemorySources) the combo
+                             box takes no space at all and the row underneath is the whole story, exactly as it was
+                             before a plugin could offer anything else. -->
+                        <ComboBox IsVisible="{Binding HasMemorySources}"
+                                  ItemsSource="{Binding MemorySourceChoices}"
+                                  SelectedItem="{Binding SelectedMemorySourceChoice}"
+                                  HorizontalAlignment="Stretch" Margin="0,0,0,6">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MemorySourceChoice">
+                                    <TextBlock Text="{Binding Label}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                            <TextBox Grid.Column="0" Text="{Binding MemoryRef}" PlaceholderText="No memory location"/>
-                            <Button Grid.Column="1" Content="Choose…" Command="{Binding PickMemoryCommand}"/>
+                            <TextBox Grid.Column="0" Text="{Binding MemoryRef}" PlaceholderText="{Binding MemoryValuePlaceholder}"/>
+                            <Button Grid.Column="1" Content="Choose…" Command="{Binding PickMemoryCommand}"
+                                    IsEnabled="{Binding IsMemoryFolderMode}"
+                                    ToolTip.Tip="A source other than a folder is picked from the dropdown above, not browsed for."
+                                    ToolTip.ShowOnDisabled="True"/>
                         </Grid>
                     </StackPanel>
                 </StackPanel>
