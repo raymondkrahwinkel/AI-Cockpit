@@ -71,7 +71,7 @@ public class ClaudeMcpConfigTests
     {
         // The TTY route's existing behaviour (unchanged by AC-378): nothing to add means the flag is dropped
         // entirely, so the operator's own connectors add on top of a config that was never written at all.
-        ClaudeMcpConfig.Write([]).Should().BeNull();
+        Assert.Null(ClaudeMcpConfig.Write([]));
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            path.Should().NotBeNull();
-            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+            Assert.NotNull(path);
+            Assert.Empty(JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject());
         }
         finally
         {
@@ -105,7 +105,7 @@ public class ClaudeMcpConfigTests
 
         try
         {
-            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>().Should().Be("http://example/mcp");
+            Assert.Equal("http://example/mcp", JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>());
         }
         finally
         {

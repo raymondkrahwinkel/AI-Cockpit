@@ -56,8 +56,8 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void BuildArguments_NeverAddsStrictMcpConfig_EvenWithAnMcpConfigPath()
     {
-        ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", null, null, null)
-            .Should().NotContain("--strict-mcp-config");
+        Assert.DoesNotContain("--strict-mcp-config",
+            ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", null, null, null));
     }
 
     [Fact]

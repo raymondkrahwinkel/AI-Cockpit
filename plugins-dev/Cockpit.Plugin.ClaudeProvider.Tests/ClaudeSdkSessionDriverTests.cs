@@ -310,8 +310,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
             CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
     // AC-378, criterion 4 — the empty-resolution trap: a narrowing that resolves to zero eligible servers must
@@ -329,13 +329,13 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             mcpServers: [],
             CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
 
         var mcpConfigIndex = fake.Arguments!.ToList().IndexOf("--mcp-config");
         var path = fake.Arguments![mcpConfigIndex + 1];
-        File.Exists(path).Should().BeTrue("the strict path must write an explicit config file rather than dropping the flag");
-        System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+        Assert.True(File.Exists(path), "the strict path must write an explicit config file rather than dropping the flag");
+        Assert.Empty(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]!.AsObject());
     }
 
     // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
@@ -348,8 +348,8 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
-        fake.Arguments.Should().Contain("--mcp-config");
-        fake.Arguments.Should().Contain("--strict-mcp-config");
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>

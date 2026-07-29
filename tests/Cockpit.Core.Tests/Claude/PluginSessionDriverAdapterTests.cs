@@ -659,7 +659,7 @@ public class PluginSessionDriverAdapterTests
 
         await adapter.StartAsync();
 
-        Assert.Empty(inner.LastMcpServers);
+        Assert.Empty(inner.LastMcpServers!);
         logger.Received(1).Log(
             LogLevel.Warning,
             Arg.Any<EventId>(),
@@ -694,7 +694,7 @@ public class PluginSessionDriverAdapterTests
         // unnarrowed baseline's one real server, and the strict headless wiring (ClaudeSdkArguments/
         // ClaudeSdkSessionDriver) is what keeps an empty resolution from then being read by the CLI as "no
         // restriction, use your own config" and silently inheriting more than the baseline.
-        Assert.Empty(narrowedInner.LastMcpServers);
+        Assert.Empty(narrowedInner.LastMcpServers!);
         Assert.True(narrowedInner.LastMcpServers!.Count <= unnarrowedInner.LastMcpServers!.Count);
     }
 
