@@ -7,4 +7,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 /// <param name="Activity">The classified turn-activity this reading represents.</param>
 /// <param name="RawLine">The raw transcript line, or null for a synthetic signal (e.g. a background keep-alive).</param>
-public sealed record PluginTranscriptActivity(PluginSessionActivity Activity, string? RawLine);
+/// <param name="Usage">
+/// The token usage this transcript line carried (AC-398), or null when the line carried none — most lines. A
+/// provider that records no usage in its transcript at all simply never sets this, which reads to the host
+/// exactly like a session with nothing to report yet.
+/// </param>
+public sealed record PluginTranscriptActivity(PluginSessionActivity Activity, string? RawLine, PluginTokenUsage? Usage = null);

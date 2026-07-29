@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
@@ -69,4 +70,67 @@ internal static class ClaudeTranscriptLineParser
             return true;
         }
     }
+
+    /// <summary>
+    /// Extracts the <c>usage</c> object off an assistant transcript line (AC-398) — the same token buckets
+    /// <c>ClaudeStreamJson</c> reads off the SDK path's <c>result</c> event. <paramref name="messageId"/> is the
+    /// API response (<c>message.id</c>) this usage belongs to: the CLI can write more than one transcript line for
+    /// the same response (progressive content-block saves within one turn), and every one of those lines repeats
+    /// the identical usage figure — the caller must dedupe on this id before summing, or it double- (sometimes
+    /// 2-3x-) counts a single API call, the same class of bug as AC-481's cumulative-cost mis-sum. Returns false
+    /// (with a null <paramref name="usage"/> and <paramref name="messageId"/>) for a non-assistant line, one with
+    /// no <c>usage</c> object, a blank line, or a line that fails to parse as JSON (a tail read landing mid-write).
+    /// </summary>
+    public static bool TryExtractUsage(string transcriptLine, out PluginTokenUsage? usage, out string? messageId)
+    {
+        usage = null;
+        messageId = null;
+        if (string.IsNullOrWhiteSpace(transcriptLine))
+        {
+            return false;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(transcriptLine);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (!root.TryGetProperty("type", out var typeProperty)
+                || typeProperty.GetString() != "assistant"
+                || !root.TryGetProperty("message", out var message)
+                || !message.TryGetProperty("usage", out var usageElement)
+                || usageElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            messageId = message.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String
+                ? idElement.GetString()
+                : null;
+
+            usage = new PluginTokenUsage(
+                _ReadTokenCount(usageElement, "input_tokens"),
+                _ReadTokenCount(usageElement, "output_tokens"),
+                _ReadTokenCount(usageElement, "cache_read_input_tokens"),
+                _ReadTokenCount(usageElement, "cache_creation_input_tokens"));
+            return true;
+        }
+    }
+
+    // TryGetInt32 rather than GetInt32: a non-integral or out-of-range Number (unlikely, but not this parser's
+    // contract to assume) must read as "none", not throw and kill the tail's async iterator.
+    private static int _ReadTokenCount(JsonElement usage, string propertyName) =>
+        usage.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var count)
+            ? count
+            : 0;
 }
