@@ -505,30 +505,20 @@
         <Setter Property="Padding" Value="12,9"/>
         <Setter Property="FontSize" Value="13"/>
     </Style>
-    <!-- The template paints its own surface over the control's: setting Background on the ComboBox alone
-         leaves Fluent's fill on Border#Background underneath every state below. -->
-    <Style Selector="ComboBox /template/ Border#Background">
-        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
-    </Style>
-    <!-- Fluent's own ComboBox theme re-claims Background on this part while the pointer is over it, behind a
-         pseudo-class — a priority the plain rule above cannot reach. Measured on a plain picker and on
-         ComboBox.Compact: without this both fell back to Fluent's #99000000 on hover. Focus reclaims nothing
-         here, so there is nothing to hold on to in that state. Focus is declared after hover for the same
-         reason as the input below: clicking a picker makes both true, and the later rule wins. -->
+    <!-- Border#Background's own Background/BorderBrush are a TemplateBinding back to the ComboBox (Template
+         priority), which already carries the control's own colours through at rest — a plain style rule setting
+         the same properties on this part would sit at Style priority and never be reached. Hover is different:
+         Fluent's own ComboBox theme re-claims Background on this part while the pointer is over it, behind a
+         pseudo-class (StyleTrigger priority, above Template), so it has to be reclaimed here or it falls back to
+         Fluent's #99000000. Measured on a plain picker and on ComboBox.Compact. Focus reclaims nothing here, so
+         there is nothing to hold on to in that state. Focus is declared after hover for the same reason as the
+         input below: clicking a picker makes both true, and the later rule wins. -->
     <Style Selector="ComboBox:pointerover /template/ Border#Background">
         <Setter Property="Background" Value="{TemplateBinding Background}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
     </Style>
     <Style Selector="ComboBox:focus /template/ Border#Background">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
-    </Style>
-    <!-- Fluent lights Border#HighlightBackground in its own blue while the picker is pressed or open.
-         Neutralised rather than recoloured: the accent edge above already says which picker is live, and a
-         second accent surface underneath it would double the signal. -->
-    <Style Selector="ComboBox /template/ Border#HighlightBackground">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
     <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
