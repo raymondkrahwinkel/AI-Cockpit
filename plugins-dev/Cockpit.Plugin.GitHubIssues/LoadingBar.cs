@@ -27,7 +27,7 @@ internal static class LoadingBar
         MinHeight = 2,
         HorizontalAlignment = HorizontalAlignment.Stretch,
         VerticalAlignment = VerticalAlignment.Top,
-        Foreground = Brush("CockpitAccentBrush", "#3b82f6"),
+        Foreground = Brush("CockpitAccentBrush", "#2563eb"),
         Background = Brushes.Transparent,
         BorderThickness = default,
     };

@@ -53,7 +53,7 @@ public sealed class MicLevelMeter : Control
         var fillWidth = level * width;
         if (fillWidth > 0)
         {
-            var fill = level >= threshold ? ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") : ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576");
+            var fill = level >= threshold ? ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb") : ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576");
             context.DrawRectangle(fill, null, new RoundedRect(new Rect(0, 0, fillWidth, height), radius));
         }
 

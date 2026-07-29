@@ -191,7 +191,7 @@ internal sealed class SessionDiffDialogControl : UserControl
     {
         DiffLineKind.Added => _Brush("CockpitStatusDoneBrush", "#5AA576"),
         DiffLineKind.Removed => _Brush("CockpitStatusErrorBrush", "#D64545"),
-        DiffLineKind.Hunk => _Brush("CockpitAccentBrush", "#3b82f6"),
+        DiffLineKind.Hunk => _Brush("CockpitAccentBrush", "#2563eb"),
         DiffLineKind.FileHeader => _Brush("CockpitTextPrimaryBrush", "#e8eaef"),
         _ => _Brush("CockpitTextFaintBrush", "#656c78"),
     };

@@ -57,7 +57,7 @@ public class CanvasThemeRenderTests
 
         // If the theme had failed to load, this lookup would miss and the card would fall back to Fluent — the
         // failure mode the fixture exists to rule out, and one that would make every other assertion here a lie.
-        Assert.Equal(Color.Parse("#3b82f6"), Assert.IsType<Color>(accent));
+        Assert.Equal(Color.Parse("#2563eb"), Assert.IsType<Color>(accent));
 
         var stripe = _StripeColourOf("cockpit.manual", "Run manually", "canvas-kind-trigger.png");
 
