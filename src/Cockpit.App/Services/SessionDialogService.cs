@@ -340,7 +340,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task<Window> _BuildManageProfilesAsync()
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver);
         await viewModel.LoadAsync();
 
         return new ManageProfilesDialog { DataContext = viewModel };

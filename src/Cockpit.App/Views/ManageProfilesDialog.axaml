@@ -322,6 +322,26 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- Default kind (AC-139): which route (SDK/TTY) a New session under this profile pre-selects —
+                         the operator can still overrule it per session with the dialog's own Kind toggle. Only a
+                         real choice for a provider with a TTY route of its own (Claude, or a plugin that registered
+                         one) — a provider with none (a local HTTP model, or a plugin that registered none) always
+                         starts SDK regardless, so the toggle disappears entirely in favour of a plain "SDK-only"
+                         label rather than offering a setting that could never take effect. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="DEFAULT KIND" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTtyProvider}">
+                            <Button Content="SDK" Classes.Accent="{Binding IsDefaultKindSdk}" Command="{Binding SelectDefaultKindSdkCommand}"/>
+                            <Button Content="TTY" Classes.Accent="{Binding IsDefaultKindTty}" Command="{Binding SelectDefaultKindTtyCommand}"/>
+                        </StackPanel>
+                        <TextBlock Text="SDK-only" FontSize="12.5" IsVisible="{Binding !HasTtyProvider}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="Which kind of session the New-session dialog's Kind toggle opens on for this profile."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <!-- Default view (AC-138): the reading level a new SDK session under this profile opens with —
                          provider-neutral, since any profile can launch an SDK session, so it sits outside the
                          Claude-only session-defaults block below. Has no effect on a TTY session, which has no levels. -->

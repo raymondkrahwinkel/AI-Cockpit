@@ -398,6 +398,76 @@ public class NewSessionDialogViewModelTests
         vm.SelectedKind.Should().Be(SessionKind.Sdk);
     }
 
+    // AC-139: a profile can set its own default Kind, so the New-session dialog pre-selects the route it is
+    // actually meant for (a TUI-averse Codex-style profile that should always open as SDK, say) instead of the
+    // hard TTY default.
+    [Fact]
+    public async Task SelectingAProfileWithAnSdkDefaultKind_PreSelectsSdk()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")) { DefaultKind = ProfileSessionKind.Sdk };
+        var vm = NewVm(out _, profile);
+
+        await vm.LoadAsync();
+
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+    }
+
+    [Fact]
+    public async Task SelectingAProfileWithATtyDefaultKind_PreSelectsTty()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")) { DefaultKind = ProfileSessionKind.Tty };
+        var vm = NewVm(out _, profile);
+
+        await vm.LoadAsync();
+
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+    }
+
+    [Fact]
+    public async Task PerSession_TheKindToggleStillOverrulesTheProfilesDefaultKind()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")) { DefaultKind = ProfileSessionKind.Sdk };
+        var vm = NewVm(out _, profile);
+        await vm.LoadAsync();
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+
+        vm.SelectTtyCommand.Execute(null);
+
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+    }
+
+    // AC-139 pitfall 1: a profile that says "TTY" but has no TTY route to run at all must not land on TTY — the
+    // force-SDK branch keeps winning over the profile's saved default.
+    [Fact]
+    public async Task AProfileWithNoTtyProvider_ForcesSdk_EvenWhenItsSavedDefaultKindIsTty()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}")) { DefaultKind = ProfileSessionKind.Tty };
+        var registry = Substitute.For<IPluginTtyProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns((TtyProviderRegistration?)null);
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(plugin).Returns((ITtySessionProvider?)null);
+        var vm = NewVmWithTty(out _, [plugin], resolver, registry);
+
+        await vm.LoadAsync();
+
+        vm.HasTtyProvider.Should().BeFalse();
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+    }
+
+    // AC-139/AC-6: an existing profile saved before this setting existed carries no DefaultKind at all — it must
+    // keep behaving exactly like today, defaulting to TTY.
+    [Fact]
+    public async Task AProfileWithNoSavedDefaultKind_StillPreSelectsTty_SoAnOlderProfileBehavesExactlyAsBefore()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        profile.DefaultKind.Should().BeNull();
+        var vm = NewVm(out _, profile);
+
+        await vm.LoadAsync();
+
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+    }
+
     [Fact]
     public async Task SelectingAPluginProfileWithATtyProvider_KeepsTtyAvailable_AndDeclaredOptionsRender()
     {
@@ -658,6 +728,42 @@ public class NewSessionDialogViewModelTests
 
         invocations[0].Should().Be(1);
         vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("m");
+    }
+
+    // AC-139/AC-5: seeding Kind from a profile's saved SDK default (on a profile that does have a TTY route, so
+    // the seed is the profile default winning, not the force-SDK branch) must still fire only the profile switch's
+    // own single refresh, not a second one from the kind change it causes.
+    [Fact]
+    public async Task OpeningTheDialogOnAProfileWithAnSdkDefaultKind_RunsTheLiveResolverExactlyOnce()
+    {
+        var profile = new SessionProfile("codex", new PluginProviderConfig("codex", "{}")) { DefaultKind = ProfileSessionKind.Sdk };
+
+        var ttyResolver = Substitute.For<ITtySessionProviderResolver>();
+        ttyResolver.Resolve(profile).Returns(Substitute.For<ITtySessionProvider>());
+
+        var invocations = new int[1];
+        var sessionRegistry = Substitute.For<IPluginProviderRegistry>();
+        sessionRegistry.Resolve("codex").Returns(_SessionRegistration(
+            [new PluginSessionLaunchOption("model", "Model", [])],
+            resolveOptionsAsync: (_, _) =>
+            {
+                Interlocked.Increment(ref invocations[0]);
+                return Task.FromResult<IReadOnlyList<PluginSessionLaunchOption>>([new PluginSessionLaunchOption("model", "Model", ["m"], "m")]);
+            }));
+
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { profile });
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
+        var vm = new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: null,
+            ttyResolver, ttyProviderRegistry: null, sessionRegistry);
+
+        await vm.LoadAsync();
+        await vm.LaunchOptionsRefresh;
+
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        invocations[0].Should().Be(1);
     }
 
     [Fact]

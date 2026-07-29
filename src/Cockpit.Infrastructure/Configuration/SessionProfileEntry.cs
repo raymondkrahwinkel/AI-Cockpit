@@ -53,6 +53,9 @@ internal sealed class SessionProfileEntry
     /// <summary>Standing instructions every session under this profile starts with (AC-142); absent/blank appends nothing.</summary>
     public string? SystemPrompt { get; set; }
 
+    /// <summary>The New-session Kind toggle's pre-selection for this profile (AC-139); absent means TTY, the long-standing hard default (and what every profile saved before this setting existed still gets).</summary>
+    public string? DefaultKind { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -75,6 +78,7 @@ internal sealed class SessionProfileEntry
         EnabledMcpServers = profile.EnabledMcpServerNames is { } names ? [.. names] : null,
         DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
         SystemPrompt = string.IsNullOrWhiteSpace(profile.SystemPrompt) ? null : profile.SystemPrompt,
+        DefaultKind = profile.DefaultKind?.ToString(),
     };
 
     public SessionProfile ToDomain()
@@ -98,6 +102,12 @@ internal sealed class SessionProfileEntry
             EnabledMcpServerNames = EnabledMcpServers is { } names ? [.. names] : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory,
             SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt,
+            // An absent/unrecognised value reads as "no default" (null) rather than throwing, the same tolerance
+            // WorkspacePaneEntry gives PaneSessionKind — an older cockpit.json (or a hand-edited value) never fails
+            // to load over this, it just falls back to the TTY default SessionKindDefaults.ResolveDefaultKind applies.
+            DefaultKind = Enum.TryParse<ProfileSessionKind>(DefaultKind, ignoreCase: true, out var parsedDefaultKind)
+                ? parsedDefaultKind
+                : null,
         };
     }
 }

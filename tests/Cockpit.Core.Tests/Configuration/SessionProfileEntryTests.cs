@@ -145,6 +145,37 @@ public class SessionProfileEntryTests
         profile.DefaultWorkingDirectory.Should().BeNull();
     }
 
+    // AC-139/AC-6: a cockpit.json written before "Default kind" existed has no DefaultKind key at all — this is
+    // exactly that pre-change shape, and it must keep resolving to no saved default (which SessionKindDefaults
+    // falls back to TTY for) rather than throwing or silently picking SDK.
+    [Fact]
+    public void ToDomain_WithNoDefaultKindKey_LeavesItUnset_SoAPreChangeCockpitJsonKeepsWorking()
+    {
+        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
+
+        entry.ToDomain().DefaultKind.Should().BeNull();
+    }
+
+    [Fact]
+    public void RoundTrip_KeepsTheDefaultKind()
+    {
+        var sdkProfile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null)) { DefaultKind = ProfileSessionKind.Sdk };
+        var ttyProfile = sdkProfile with { DefaultKind = ProfileSessionKind.Tty };
+
+        SessionProfileEntry.FromDomain(sdkProfile).ToDomain().DefaultKind.Should().Be(ProfileSessionKind.Sdk);
+        SessionProfileEntry.FromDomain(ttyProfile).ToDomain().DefaultKind.Should().Be(ProfileSessionKind.Tty);
+    }
+
+    // An unrecognised value (a hand-edited cockpit.json, or a future value an older cockpit does not know) reads as
+    // "no saved default" rather than throwing — the same tolerance ToDomain gives an absent/unknown reading level.
+    [Fact]
+    public void ToDomain_WithAnUnrecognisedDefaultKind_LeavesItUnset()
+    {
+        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/x", DefaultKind = "Nonsense" };
+
+        entry.ToDomain().DefaultKind.Should().BeNull();
+    }
+
     [Fact]
     public void ToDomain_MigratesALegacyClaudeProfilesTypedDefaults_IntoTheGenericOptionDefaults()
     {
