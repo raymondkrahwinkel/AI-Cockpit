@@ -41,34 +41,59 @@ public partial class ProjectDialog : Window
         _ = viewModel.LoadPluginFieldOptionsAsync();
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
         viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
-        viewModel.PickMemoryRequested += () => _ = _PickMemoryFolderAsync(viewModel);
+        viewModel.PickResourceRequested += row => _ = _PickResourceAsync(viewModel, row);
     }
 
-    // Deliberately a folder picker and not the source-folder one: memory is somewhere else by definition, and
-    // seeding this picker at the project's own folder would suggest otherwise.
-    private async Task _PickMemoryFolderAsync(ProjectDialogViewModel viewModel)
+    /// <summary>
+    /// "Choose…" on a resource row (AC-485): a folder picker for a Memory row — memory is somewhere else by
+    /// definition, the same reason the single Memory row's own picker never seeded itself at the project's own
+    /// folder — or a file picker for any other role, since standing instructions and reference material are most
+    /// often one document rather than a whole folder.
+    /// </summary>
+    private async Task _PickResourceAsync(ProjectDialogViewModel viewModel, ProjectResourceRowViewModel row)
     {
         try
         {
-            var start = string.IsNullOrWhiteSpace(viewModel.MemoryRef)
-                ? null
-                : await StorageProvider.TryGetFolderFromPathAsync(viewModel.MemoryRef);
+            string? picked;
 
-            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            if (row.Role == ProjectResourceRole.Memory)
             {
-                Title = "Select where this project's memory lives",
-                AllowMultiple = false,
-                SuggestedStartLocation = start,
-            });
+                var start = string.IsNullOrWhiteSpace(row.Reference)
+                    ? null
+                    : await StorageProvider.TryGetFolderFromPathAsync(row.Reference);
 
-            if (folders.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+                var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Select where this project's memory lives",
+                    AllowMultiple = false,
+                    SuggestedStartLocation = start,
+                });
+
+                picked = folders.FirstOrDefault()?.TryGetLocalPath();
+            }
+            else
             {
-                viewModel.MemoryRef = path;
+                var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Select the file this row points at",
+                    AllowMultiple = false,
+                });
+
+                picked = files.FirstOrDefault()?.TryGetLocalPath();
+            }
+
+            if (picked is { Length: > 0 })
+            {
+                // Portable when it lives inside the project's own folder (Raymond's sharing requirement, AC-485):
+                // stored relative to it rather than as an absolute path that names nothing on a machine that does
+                // not have this project at the same place.
+                row.Reference = ProjectResourcePathPortability.ToStoredReference(viewModel.SourceDirectory, picked);
             }
         }
         catch
         {
-            // No picker here either — the field takes a typed path, or a reference a plugin understands.
+            // No picker on this platform, or the operator's file manager refused. The field takes a typed value, so
+            // the flow is not lost.
         }
     }
 

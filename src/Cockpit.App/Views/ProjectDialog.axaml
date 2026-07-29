@@ -211,32 +211,97 @@
                         <TextBlock Classes="FieldHint" Margin="0,4,0,0" IsVisible="{Binding GitUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
                                    Text="{Binding GitUrl, StringFormat='Cloned from {0}'}"/>
                     </StackPanel>
+                </StackPanel>
 
-                    <StackPanel Spacing="2">
-                        <TextBlock Classes="FieldLabel" Text="Memory"/>
-                        <TextBlock Classes="FieldHint" Text="{Binding MemoryHint}"/>
-                        <!-- IsVisible="False" collapses in Avalonia — the control is pulled out of layout entirely,
-                             not merely painted invisible — so with no source registered (HasMemorySources) the combo
-                             box takes no space at all and the row underneath is the whole story, exactly as it was
-                             before a plugin could offer anything else. -->
-                        <ComboBox IsVisible="{Binding HasMemorySources}"
-                                  ItemsSource="{Binding MemorySourceChoices}"
-                                  SelectedItem="{Binding SelectedMemorySourceChoice}"
-                                  HorizontalAlignment="Stretch" Margin="0,0,0,6">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:MemorySourceChoice">
-                                    <TextBlock Text="{Binding Label}"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                            <TextBox Grid.Column="0" Text="{Binding MemoryRef}" PlaceholderText="{Binding MemoryValuePlaceholder}"/>
-                            <Button Grid.Column="1" Content="Choose…" Command="{Binding PickMemoryCommand}"
-                                    IsEnabled="{Binding IsMemoryFolderMode}"
-                                    ToolTip.Tip="A source other than a folder is picked from the dropdown above, not browsed for."
-                                    ToolTip.ShowOnDisabled="True"/>
-                        </Grid>
+                <!-- What a session reads besides the folder (AC-483/485): a memory location it can write back to, an
+                     instructions file it follows, or material it only looks up when it needs it — see
+                     ProjectResourceRole. The old standalone "Memory" row above is now just one row here with that
+                     role; every project that used it opens with exactly one row already in this list. -->
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="Memory, instructions and reference"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
                     </StackPanel>
+                    <TextBlock Classes="FieldHint" Margin="0"
+                               Text="Each row is something a session can read, write back to, or follow — pick which with the role. Unlike the rows above, &quot;Tell sessions&quot; is ticked by default here: a memory or instructions row exists specifically to be told to a session, not just kept for you to read."/>
+                    <ItemsControl ItemsSource="{Binding ResourceRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectResourceRowViewModel">
+                                <!-- The ordinary hairline, not the soft one. A row here is three or four stacked
+                                     controls rather than the single line the section above it uses, so where one row
+                                     ends and the next begins is not otherwise readable — and the soft hairline sits
+                                     six steps off the panel it is drawn on, which is invisible at this size. Checked
+                                     by rendering the scene and looking for it: a divider nobody can see is not a
+                                     quieter divider, it is none.
+                                     AC-485 review (FIX 8): BorderThickness is bound to IsLastRow, not fixed at
+                                     "0,0,0,1" — the last row has no next row to separate itself from, so it must
+                                     draw no bottom line at all (see LastResourceRowBorderThicknessConverter's and
+                                     IsLastRow's own remarks on the two approaches that were tried and measured not
+                                     to work before this one). -->
+                                <Border Classes="resourceRowDivider" BorderBrush="{StaticResource CockpitHairlineBrush}"
+                                        BorderThickness="{Binding IsLastRow, Converter={x:Static conv:LastResourceRowBorderThicknessConverter.Instance}}"
+                                        Padding="0,0,0,10" Margin="0,0,0,10">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                            <ComboBox Grid.Column="0" MinWidth="112"
+                                                      ItemsSource="{x:Static vm:ProjectResourceRowViewModel.RoleChoices}"
+                                                      SelectedItem="{Binding Role}"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label (optional)"/>
+                                            <CheckBox Grid.Column="2" IsChecked="{Binding ReachesSessions}"
+                                                      Content="Tell sessions" FontSize="11" VerticalAlignment="Center"
+                                                      ToolTip.Tip="A session started on this project is told this row as it begins. On by default here — unlike the rows above, this one exists to be told to a session, not just kept for you to read."/>
+                                            <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
+                                                    ToolTip.Tip="Remove this row"
+                                                    Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).RemoveResourceRowCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                            </Button>
+                                        </Grid>
+
+                                        <!-- Only for a Memory row once a plugin registered a source (AC-166), the same picker the
+                                             single Memory row used to show, folded per row instead of once for the dialog. -->
+                                        <ComboBox IsVisible="{Binding ShowsMemorySourcePicker}"
+                                                  ItemsSource="{Binding MemorySourceChoices}"
+                                                  SelectedItem="{Binding SelectedMemorySourceChoice}"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:MemorySourceChoice">
+                                                    <TextBlock Text="{Binding Label}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding ShowsMemorySourcePicker}"
+                                                   Text="{Binding MemoryHint}"/>
+
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <!-- AC-485 review (MUST-FIX 2): committed on focus loss, not per keystroke.
+                                                 Every edit here re-runs the broken-reference probe and the
+                                                 machine-bound check for the whole dialog; with the default
+                                                 per-character trigger, a single row whose path check cannot answer
+                                                 quickly (an unreachable mapped drive, say) cost up to the probe's own
+                                                 200 ms budget on every character typed — measured at 204 ms/call, so
+                                                 roughly 7 seconds of a frozen window for 35 keystrokes. -->
+                                            <TextBox Grid.Column="0" Text="{Binding Reference}" PlaceholderText="{Binding ReferencePlaceholder}"/>
+                                            <Button Grid.Column="1" Content="Choose…" IsEnabled="{Binding CanBrowse}"
+                                                    ToolTip.Tip="A source other than a folder is picked from the dropdown above, not browsed for."
+                                                    ToolTip.ShowOnDisabled="True"
+                                                    Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).PickResourceCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </Grid>
+
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsBroken}"
+                                                   Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                                   Text="This reference could not be found."/>
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsMachineBound}"
+                                                   Text="This is an absolute path specific to this machine — it will not travel if the project definition is shared."/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="+ Add row" Classes="Subtle" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Command="{Binding AddResourceRowCommand}"/>
                 </StackPanel>
 
                 <StackPanel Spacing="14">
