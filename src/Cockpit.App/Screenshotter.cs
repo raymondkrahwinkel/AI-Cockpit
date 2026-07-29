@@ -65,6 +65,10 @@ internal static class Screenshotter
         // The project editor and the projects window, both of which show a project's own information rows
         // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
         ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
+        // The same editor once a plugin contributes a memory source (AC-165/166). Its own scene because the Memory
+        // row only grows its picker when something is registered, and nothing is in a plain render: without this the
+        // one state the operator sees differently is the one state that cannot be looked at.
+        ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
@@ -194,6 +198,25 @@ internal static class Screenshotter
         }
 
         File.WriteAllText(snapshotPath, VisualTreeSnapshot.Capture(root, target));
+    }
+
+    // Renders the project editor as it looks with a memory source installed: the Memory row leads with the source
+    // picker, the box holds the bare identifier rather than a path, and "Choose…" has stepped aside. Staged on the
+    // view model directly rather than through a registry, because what this scene has to show is the row — the
+    // wiring that fills the picker is covered by tests, and a scene that needed a plugin loaded to render would not
+    // be renderable at all.
+    private static ProjectDialog _ProjectEditorWithMemorySource()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel();
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
+        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        viewModel.MemoryRef = "cockpit";
+
+        // Taller than the dialog opens, the way the profiles scene is: the Memory row sits below the fold of a
+        // default-sized editor, and a scene that renders the part you cannot see proves nothing about the part
+        // this change is in.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
     // Renders the Verify-runners dialog with the add/edit form open and pre-filled, so the labelled fields and the

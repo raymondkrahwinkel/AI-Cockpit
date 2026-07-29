@@ -177,4 +177,31 @@ public class ProjectDialogMemorySourceTests
         viewModel.SelectedMemorySourceChoice?.Scheme.Should().Be("depot");
         viewModel.ToProject().MemoryRef.Should().Be("depot:cockpit");
     }
+
+    /// <summary>
+    /// Caught by rendering the row, not by a test: with a source picked, the hint went on calling the location "a
+    /// folder, kept apart from the source folder" while the box beside it held a project key — the one line on the
+    /// row asserting exactly the thing this feature exists to stop assuming.
+    /// </summary>
+    [Fact]
+    public async Task MemoryHint_ASourceSelected_StopsCallingTheLocationAFolder()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(), memorySources: [DepotSource()]);
+
+        viewModel.SelectedMemorySourceChoice = viewModel.MemorySourceChoices.Single(choice => choice.Scheme == "depot");
+
+        viewModel.MemoryHint.Should().NotContain("a folder");
+    }
+
+    [Fact]
+    public async Task MemoryHint_NoSourceRegistered_ReadsExactlyAsItDidBefore()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(), memorySources: []);
+
+        viewModel.MemoryHint.Should().Be(
+            "Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told " +
+            "about it, so they can look things up instead of being told again.");
+    }
 }

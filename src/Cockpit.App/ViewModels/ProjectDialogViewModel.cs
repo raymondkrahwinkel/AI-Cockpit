@@ -233,10 +233,23 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsMemoryFolderMode))]
     [NotifyPropertyChangedFor(nameof(MemoryValuePlaceholder))]
+    [NotifyPropertyChangedFor(nameof(MemoryHint))]
     private MemorySourceChoice? _selectedMemorySourceChoice;
 
     /// <summary>Whether <see cref="MemoryRef"/> holds a folder path rather than a source's bare value — gates "Choose…", which only ever browses for a folder.</summary>
     public bool IsMemoryFolderMode => SelectedMemorySourceChoice?.Scheme is null;
+
+    /// <summary>
+    /// The line under the Memory label, which has to stop calling the location a folder once it is not one. Found by
+    /// rendering the row rather than by a test: with a source picked, the hint still read "a folder, kept apart from
+    /// the source folder" directly above a box holding a project key — the one sentence on the row insisting on
+    /// exactly what this feature exists to stop assuming. The folder wording is unchanged to the character, so a
+    /// cockpit with no source registered reads precisely as it did before.
+    /// </summary>
+    public string MemoryHint =>
+        SelectedMemorySourceChoice is { Scheme.Length: > 0 }
+            ? "Where this project's memory lives — the name it goes by in the source above, not a path. Sessions are told about it, so they can look things up instead of being told again."
+            : "Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again.";
 
     /// <summary>What the empty memory box hints at: a folder when none is picked, an identifier once a source is.</summary>
     public string MemoryValuePlaceholder =>

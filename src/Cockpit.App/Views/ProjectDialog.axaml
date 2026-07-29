@@ -214,7 +214,7 @@
 
                     <StackPanel Spacing="2">
                         <TextBlock Classes="FieldLabel" Text="Memory"/>
-                        <TextBlock Classes="FieldHint" Text="Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again."/>
+                        <TextBlock Classes="FieldHint" Text="{Binding MemoryHint}"/>
                         <!-- IsVisible="False" collapses in Avalonia — the control is pulled out of layout entirely,
                              not merely painted invisible — so with no source registered (HasMemorySources) the combo
                              box takes no space at all and the row underneath is the whole story, exactly as it was
