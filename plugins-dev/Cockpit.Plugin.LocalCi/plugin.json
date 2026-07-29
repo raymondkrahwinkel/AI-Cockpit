@@ -1,11 +1,11 @@
 {
   "id": "local-ci",
   "name": "Local CI",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entryAssembly": "Cockpit.Plugin.LocalCi.dll",
   "entryType": "Cockpit.Plugin.LocalCi.LocalCiPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.3.0",
-  "description": "Tells you whether this machine can run a GitHub workflow job locally, before it promises anything. It reports Docker in three states rather than two — missing, installed but the engine is not answering, or ready — checks that the engine runs Linux containers, and says whether the act runtime is on PATH, naming the install command when it is not. It also reads the project's .github/workflows and says, per job, either that it can run locally or the concrete reason it cannot: a matrix, a runner that is not Linux, artifacts exchanged with another job, or an action that only means something on GitHub. Anything it does not understand it refuses rather than guesses. It runs nothing itself.",
+  "minHostVersion": "0.9.0",
+  "description": "Runs your GitHub workflow jobs on this machine's own Docker, from the session that is working on the code. It reports Docker in three states rather than two — missing, installed but the engine is not answering, or ready — checks that the engine runs Linux containers, and says whether the act runtime is on PATH, naming the install command when it is not. It reads the project's .github/workflows and says, per job, either that it can run here or the concrete reason it cannot: a matrix, a runner that is not Linux, artifacts exchanged with another job, or an action that only means something on GitHub. A job runs whole or not at all — anything it does not understand it refuses rather than guesses. A session can start a run itself and read the verdict back, with the operator approving the exact command each time, and a project can be set to hold back its pull requests until a local run has passed. The verdict is about this machine: act's images are not GitHub's, so it predicts the pull-request check rather than replacing it.",
   "author": "Cockpit"
 }

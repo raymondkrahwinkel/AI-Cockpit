@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Media;
+using Cockpit.Plugin.LocalCi.Execution;
 using Cockpit.Plugin.LocalCi.Runtime;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.LocalCi.Ui;
@@ -16,19 +18,36 @@ namespace Cockpit.Plugin.LocalCi.Ui;
 /// runs against a runner with its own deadline, and the lines are filled when the answer arrives. Opening this page
 /// with a dead Docker pipe costs the operator nothing but a five-second wait for one line to settle.
 /// </remarks>
-internal sealed class LocalCiSettingsControl : UserControl
+internal sealed class LocalCiSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly ILocalCiRuntime _runtime;
+    private readonly LocalCiSettings _settings;
     private readonly TextBlock _dockerLine = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _actLine = ProviderConfigStatus.CreateLine();
+    private readonly TextBox _runnerImage;
+    private readonly CheckBox _mcpEnabled;
     private readonly Button _checkAgain;
 
-    public LocalCiSettingsControl(ILocalCiRuntime runtime)
+    public LocalCiSettingsControl(ILocalCiRuntime runtime, LocalCiSettings settings)
     {
         _runtime = runtime;
+        _settings = settings;
 
         _checkAgain = new Button { Content = "Check again", Margin = new(0, 12, 0, 0) };
         _checkAgain.Click += (_, _) => _ = _CheckAsync(invalidateFirst: true);
+
+        _runnerImage = new TextBox
+        {
+            PlaceholderText = ActRunOptions.DefaultRunnerImage,
+            Text = settings.RunnerImage,
+        };
+
+        _mcpEnabled = new CheckBox
+        {
+            Content = "Offer the cockpit-local-ci tools to sessions",
+            IsChecked = settings.McpEnabled,
+            Margin = new(0, 16, 0, 0),
+        };
 
         Content = new StackPanel
         {
@@ -48,10 +67,35 @@ internal sealed class LocalCiSettingsControl : UserControl
                 new TextBlock { Text = "act", Margin = new(0, 8, 0, 0) },
                 _actLine,
                 _checkAgain,
+                new TextBlock { Text = "Runner image", Margin = new(0, 16, 0, 0) },
+                _runnerImage,
+                new TextBlock
+                {
+                    Text = "The image a Linux job runs in. act's images are not GitHub's runner images, so a job that "
+                        + "needs a tool the default image lacks can be pointed at a bigger one here. Blank uses "
+                        + ActRunOptions.DefaultRunnerImage + ".",
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                _mcpEnabled,
+                new TextBlock
+                {
+                    Text = "A session can then start these checks on its own project and read the verdict back. Every "
+                        + "run still asks you to approve the exact command first.",
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap,
+                },
             },
         };
 
         _ = _CheckAsync(invalidateFirst: false);
+    }
+
+    public bool Save()
+    {
+        _settings.RunnerImage = _runnerImage.Text ?? string.Empty;
+        _settings.McpEnabled = _mcpEnabled.IsChecked ?? true;
+        return true;
     }
 
     private async Task _CheckAsync(bool invalidateFirst)

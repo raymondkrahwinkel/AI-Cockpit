@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Material.Icons;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -19,10 +20,14 @@ internal static class PullRequestWorkflowSteps
     /// <summary>Fired when one of your pull requests goes from not-merged to merged — see <see cref="MergedPullRequestWatcher"/>.</summary>
     public const string MergedTrigger = "github.pr.merged";
 
-    public static IEnumerable<IWorkflowStep> All() =>
+    /// <summary>
+    /// The steps this plugin contributes. The host comes in because opening a pull request now asks the Local CI
+    /// plugin first, when that plugin is installed — see <see cref="LocalCiGate"/>.
+    /// </summary>
+    public static IEnumerable<IWorkflowStep> All(ICockpitHost host) =>
     [
         new PullRequestMergedTrigger(),
-        new OpenPullRequestStep(),
+        new OpenPullRequestStep(host),
     ];
 
     /// <summary>
@@ -57,7 +62,7 @@ internal static class PullRequestWorkflowSteps
         };
     }
 
-    private sealed class OpenPullRequestStep : IWorkflowStep
+    private sealed class OpenPullRequestStep(ICockpitHost host) : IWorkflowStep
     {
         public string TypeId => "github.pr.open";
 
@@ -98,6 +103,14 @@ internal static class PullRequestWorkflowSteps
                     directory.Length == 0
                         ? "This step has no working directory. Write one, or {directory} to take it from the step before."
                         : $"There is no directory '{directory}'.");
+            }
+
+            // Before anything reaches GitHub: a checkout the operator has gated is not allowed to open a pull
+            // request on a local run that failed or never happened. The gate itself decides whether to offer them
+            // a way past, so reaching here with a refusal means a person already said no.
+            if (await LocalCiGate.RefusalFor(host, directory) is { } heldBack)
+            {
+                throw new InvalidOperationException(heldBack);
             }
 
             var arguments = new List<string> { "pr", "create", "--title", title, "--body", context.Parameter("Body") };

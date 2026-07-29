@@ -33,7 +33,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
     {
         // Opening a pull request from a flow, and the trigger for one being merged (#69) — the two ends of the day the
         // git steps describe.
-        foreach (var step in PullRequestWorkflowSteps.All())
+        foreach (var step in PullRequestWorkflowSteps.All(host))
         {
             host.AddWorkflowStep(step);
         }
