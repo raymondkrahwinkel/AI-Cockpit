@@ -42,6 +42,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   entry that couldn't say which instance it meant. Adding, renaming or removing a connection takes effect
   immediately in the picker, no restart needed. Your first connection keeps working exactly as before under its
   existing project link.
+- changed: a session on a project linked to a Depot connection is now offered only that connection's MCP server,
+  not every configured Depot instance — and a project with no Depot connection gets none at all. It shows up
+  ticked in the New-session checklist like any other plugin-offered server, so you still have the last word on
+  whether it's used.
 - added: an incompatible plugin now says so before you install it, not after. The plugin store's browse card shows
   a red "Incompatible" badge with the reason — a contract version it was built for, or a cockpit version it needs —
   and its Install/Update button is disabled; nothing is hidden from the catalogue, but a click that would only fail

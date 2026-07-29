@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
@@ -10,11 +9,14 @@ namespace Cockpit.Plugin.Depot.Ui;
 /// <summary>
 /// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of Depot connection
 /// rows (AC-243). Implements <see cref="IPluginSettingsView"/>, so the host renders the Save/Close footer and
-/// <see cref="Save"/> persists on Save — the connection metadata to storage, each connection as an OAuth
-/// <see cref="McpServerContribution"/> in the shared MCP registry, and (AC-501) each connection's own memory-source
-/// registration. A connection removed or renamed here has its old MCP-registry entry and its old memory-source
-/// scheme both reclaimed the same save, so neither a stale "Depot: &lt;old name&gt;" MCP entry nor a stale picker
-/// row lingers until a restart.
+/// <see cref="Save"/> persists on Save — the connection metadata to storage, and (AC-501) each connection's own
+/// memory-source registration. Since AC-504 a connection's MCP server is offered per-project by
+/// <see cref="DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})"/> rather than pushed into the shared
+/// registry here, so Save only has to reclaim a removed or renamed connection's <em>old</em> "Depot: &lt;old
+/// name&gt;" registry entry — left behind by an install that ran before AC-504, or by
+/// <see cref="DepotPlugin.Initialize"/>'s own reclaim missing a rename that happened after the app started — never
+/// to add a new one. A connection removed or renamed here also has its old memory-source scheme reclaimed the same
+/// save, so neither a stale MCP entry nor a stale picker row lingers until a restart.
 /// </summary>
 internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 {
@@ -54,7 +56,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             Children =
             {
                 _Label("Depot connections"),
-                _Hint("Each connection is contributed to the cockpit's MCP servers as \"Depot: <name>\", using Depot's own OAuth sign-in — the plugin never holds a token. Sign in below once a connection is saved."),
+                _Hint("Each connection is offered to a session on the project whose memory it holds, as \"Depot: <name>\", using Depot's own OAuth sign-in — the plugin never holds a token. Sign in below once a connection is saved."),
                 _connectionsPanel,
                 addConnection,
             },
@@ -91,9 +93,9 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             .Where(registration => !string.IsNullOrWhiteSpace(registration.Name) && !string.IsNullOrWhiteSpace(registration.Url))
             .ToList();
 
-        // Two rows saved under the same name would upsert the very same registry entry from two racing calls
-        // below — keep the first and drop the rest rather than let whichever AddMcpServer call happens to finish
-        // last silently decide which row's URL wins.
+        // Two rows saved under the same name would collide on the same "Depot: <name>" identity once
+        // GetMcpServers/BuildRegistrationPairs derive from this list — keep the first and drop the rest rather than
+        // let whichever row happens to sort last silently decide which URL that name resolves to.
         var registrations = new List<DepotConnectionRegistration>();
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var candidate in candidates)
@@ -108,7 +110,8 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
         // A connection removed, or renamed (which changes McpServerName), leaves its old MCP-registry entry behind
         // unless reclaimed here — the same orphan-cleanup KubernetesSettingsControl.Save does for a cluster's
-        // secret, applied to a registry entry instead.
+        // secret, applied to a registry entry instead. Only reclaiming, never adding: since AC-504 a connection's
+        // server is offered per-project by DepotPlugin.GetMcpServers, not pushed into this registry.
         var orphanedNames = _originalConnections
             .Select(connection => connection.McpServerName)
             .Where(name => !keptNames.Contains(name))
@@ -122,13 +125,10 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
         _settings.Connections = registrations;
 
-        // AddMcpServer/RemoveMcpServer each do their own load-modify-save round trip against the shared store with
-        // no locking across separate calls — firing several at once (a rename is a Remove and an Add together)
-        // races two calls into reading the same stale snapshot, and whichever SaveAsync finishes last silently
-        // overwrites the other's write. Chaining them into one sequential fire-and-forget task keeps Save()
-        // synchronous (the IPluginSettingsView contract) while making sure each call sees the previous one's
-        // result before it reads.
-        _ = _SyncMcpRegistryAsync(orphanedNames, registrations);
+        // Fire-and-forget keeps Save() synchronous (the IPluginSettingsView contract); RemoveMcpServer's own
+        // load-modify-save round trip against the shared store is the only I/O left here now that Save no longer
+        // adds anything to that store.
+        _ = _ReclaimOrphanedMcpRegistryEntriesAsync(orphanedNames);
 
         return true;
     }
@@ -182,21 +182,11 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         }
     }
 
-    private async Task _SyncMcpRegistryAsync(IReadOnlyList<string> orphanedNames, IReadOnlyList<DepotConnectionRegistration> registrations)
+    private async Task _ReclaimOrphanedMcpRegistryEntriesAsync(IReadOnlyList<string> orphanedNames)
     {
         foreach (var orphanedName in orphanedNames)
         {
             await _host.RemoveMcpServer(orphanedName).ConfigureAwait(false);
-        }
-
-        foreach (var registration in registrations)
-        {
-            await _host.AddMcpServer(new McpServerContribution(
-                Name: registration.McpServerName,
-                Url: $"{registration.Url}/mcp")
-            {
-                OAuthAuthority = registration.Url,
-            }).ConfigureAwait(false);
         }
     }
 
