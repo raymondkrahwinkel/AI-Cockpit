@@ -1067,6 +1067,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an OAuth-protected MCP server (Depot, for example) used to need a fresh browser sign-in about once an
+  hour, even at the start of a brand-new session — the server never handed out a refresh token, so there was
+  nothing to renew with once the access token expired. The cockpit now asks for a refresh token whenever the
+  server supports one, and one sign-in lasts until you sign out yourself. A server that never advertises the
+  richer scope keeps working exactly as before. An optional per-server "OAuth scopes" field (next to the OAuth
+  authority/client id fields) lets you override what gets requested for a server with its own requirements.
 - fixed: two cockpit instances running at once (a development build alongside a packaged one, for example) no
   longer silently fight over the same global hotkey. Before this, both could report their push-to-talk or
   screenshot key as "armed" while only one of them — or neither, on some desktops — actually reacted to it, and

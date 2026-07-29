@@ -37,6 +37,14 @@ public sealed record McpServerConfig
     public string? OAuthClientId { get; init; }
 
     /// <summary>
+    /// Explicit OAuth scopes (space-separated) when <see cref="Auth"/> is <see cref="McpServerAuth.OAuth"/> — the
+    /// escape hatch for a server with its own requirements (AC-505). Set, this overrides the scope the SDK would
+    /// otherwise derive on its own (WWW-Authenticate challenge → protected-resource metadata → offline_access when
+    /// the authorization server advertises it); left unset, that derivation runs unchanged.
+    /// </summary>
+    public string? OAuthScopes { get; init; }
+
+    /// <summary>
     /// Extra headers sent to an HTTP server alongside whatever <see cref="Auth"/> arranges (AC-354), for a server
     /// that wants <c>X-Api-Key</c> or another scheme <see cref="McpServerAuth.ApiKey"/> cannot express. An addition
     /// rather than a replacement: the ordinary bearer case stays a single field the operator does not have to spell
@@ -89,6 +97,7 @@ public sealed record McpServerConfig
         + $"{nameof(Command)} = {Command}, {nameof(Url)} = {Url}, {nameof(Auth)} = {Auth}, "
         + $"{nameof(ApiKey)} = {(string.IsNullOrEmpty(ApiKey) ? "null" : "***")}, "
         + $"{nameof(OAuthAuthority)} = {OAuthAuthority}, {nameof(OAuthClientId)} = {OAuthClientId}, "
+        + $"{nameof(OAuthScopes)} = {OAuthScopes}, "
         + $"{nameof(Headers)} = [{string.Join(", ", Headers)}], "
         + $"{nameof(Enabled)} = {Enabled}, {nameof(CockpitHosted)} = {CockpitHosted}, "
         + $"{nameof(Internal)} = {Internal}, {nameof(AlwaysMounted)} = {AlwaysMounted} }}";
