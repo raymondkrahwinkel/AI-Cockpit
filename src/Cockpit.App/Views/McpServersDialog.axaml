@@ -148,8 +148,8 @@
                         <TextBox Text="{Binding OAuthClientId}"/>
                     </StackPanel>
                     <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
-                        <TextBlock Text="OAuth scopes (optional — space-separated, overrides what is derived automatically)"
-                                   FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="OAuth scopes (optional — space-separated, replaces what is derived automatically; include offline_access yourself if you want a refresh token)"
+                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding OAuthScopes}" FontFamily="{StaticResource CockpitMonoFont}"
                                  PlaceholderText="openid offline_access depot"/>
                     </StackPanel>

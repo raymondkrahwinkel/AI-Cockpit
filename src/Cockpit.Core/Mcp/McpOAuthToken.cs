@@ -30,6 +30,34 @@ public sealed record McpOAuthToken
     public string? ResourceUrl { get; init; }
 
     /// <summary>
+    /// The OAuth client ID these tokens were issued to (AC-505). Without this, a refresh token is unusable beyond
+    /// the connection that obtained it: the SDK builds a fresh <c>ClientOAuthProvider</c> per connect attempt (a new
+    /// session, a renewal, a restart), which starts with no client identity of its own, and it will only try a
+    /// refresh grant once it has one to present. Persisting it here is what <c>ClientOAuthProvider</c>'s own
+    /// <c>RestoreCachedClientCredentials</c> is built to read back — the mechanism the SDK's own doc comments
+    /// describe as letting "a persisted refresh token be used after a restart without re-running dynamic client
+    /// registration".
+    /// </summary>
+    public string? ClientId { get; init; }
+
+    /// <summary>
+    /// The OAuth client secret paired with <see cref="ClientId"/>, when dynamic client registration issued one.
+    /// A credential in its own right (Iron Law #8) — masked in <see cref="ToString"/> exactly like
+    /// <see cref="AccessToken"/> and <see cref="RefreshToken"/>.
+    /// </summary>
+    public string? ClientSecret { get; init; }
+
+    /// <summary>The token endpoint authentication method negotiated for <see cref="ClientId"/> (e.g. <c>client_secret_post</c>).</summary>
+    public string? TokenEndpointAuthMethod { get; init; }
+
+    /// <summary>
+    /// The authorization server issuer <see cref="ClientId"/> was registered with. The SDK will not restore a
+    /// cached client identity for a different authorization server than the one it is currently talking to — the
+    /// same origin discipline <see cref="IsForResource"/> applies to the resource itself.
+    /// </summary>
+    public string? AuthorizationServer { get; init; }
+
+    /// <summary>
     /// Whether this token may be presented to <paramref name="url"/>. A stored token is found by the server's name,
     /// and a name is not an identity: a project can replace a registry server with its own entry under the same name
     /// and a different address, and the operator can rename or duplicate one. Without this check the credential
@@ -55,7 +83,9 @@ public sealed record McpOAuthToken
     public override string ToString() =>
         $"{nameof(McpOAuthToken)} {{ {nameof(Scheme)} = {Scheme}, {nameof(AccessToken)} = ***, "
         + $"{nameof(RefreshToken)} = {(string.IsNullOrEmpty(RefreshToken) ? "null" : "***")}, "
-        + $"{nameof(ExpiresAt)} = {ExpiresAt}, {nameof(Scope)} = {Scope}, {nameof(ResourceUrl)} = {ResourceUrl} }}";
+        + $"{nameof(ExpiresAt)} = {ExpiresAt}, {nameof(Scope)} = {Scope}, {nameof(ResourceUrl)} = {ResourceUrl}, "
+        + $"{nameof(ClientId)} = {ClientId}, {nameof(ClientSecret)} = {(string.IsNullOrEmpty(ClientSecret) ? "null" : "***")}, "
+        + $"{nameof(TokenEndpointAuthMethod)} = {TokenEndpointAuthMethod}, {nameof(AuthorizationServer)} = {AuthorizationServer} }}";
 
     /// <summary>
     /// Whether this token can still be handed to an agent at <paramref name="moment"/>, keeping <paramref name="margin"/>

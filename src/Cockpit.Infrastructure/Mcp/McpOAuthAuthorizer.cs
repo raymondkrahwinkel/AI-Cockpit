@@ -79,7 +79,12 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         // the candidate list via ScopeSelector, which runs after that derivation, is what actually overrides it.
         if (!string.IsNullOrWhiteSpace(server.OAuthScopes))
         {
-            var configuredScopes = server.OAuthScopes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Split on whitespace or comma: the field is free text, and a scope list pasted from a server's own
+            // docs is at least as often comma-separated as space-separated. The authorization request itself
+            // always joins back with a plain space (OAuth's own separator), regardless of what was typed.
+            var configuredScopes = server.OAuthScopes.Split(
+                [' ', ',', '\t', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries);
             options.ScopeSelector = _ => configuredScopes;
         }
 

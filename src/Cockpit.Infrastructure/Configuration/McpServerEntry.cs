@@ -25,6 +25,8 @@ internal sealed class McpServerEntry
 
     public string? OAuthClientId { get; set; }
 
+    public string? OAuthScopes { get; set; }
+
     /// <summary>
     /// Nullable and left out when there are none, the way <c>ProjectEntry.AdditionalInfo</c> is: most servers carry no
     /// custom headers, and writing <c>"Headers": []</c> into every entry is noise in a file the operator reads and
@@ -46,6 +48,7 @@ internal sealed class McpServerEntry
         ApiKey = server.ApiKey,
         OAuthAuthority = server.OAuthAuthority,
         OAuthClientId = server.OAuthClientId,
+        OAuthScopes = server.OAuthScopes,
         Headers = server.Headers.Count == 0 ? null : [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
         Enabled = server.Enabled,
     };
@@ -62,6 +65,7 @@ internal sealed class McpServerEntry
         ApiKey = ApiKey,
         OAuthAuthority = OAuthAuthority,
         OAuthClientId = OAuthClientId,
+        OAuthScopes = OAuthScopes,
         // A hand-edited config can leave a row half-written; an incomplete header is dropped rather than sent as a
         // blank field name, which some servers answer with a protocol error rather than a useful message.
         Headers = [.. (Headers ?? []).Select(entry => entry.ToDomain()).Where(header => header.IsComplete)],

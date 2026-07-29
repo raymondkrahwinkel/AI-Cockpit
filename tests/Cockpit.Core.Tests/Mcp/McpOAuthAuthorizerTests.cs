@@ -186,6 +186,19 @@ public class McpOAuthAuthorizerTests
     }
 
     [Fact]
+    public void CreateOptions_WithCommaSeparatedOAuthScopes_SplitsThemAnyway()
+    {
+        // The field is free text; a scope list pasted from a server's own docs is at least as often
+        // comma-separated as space-separated.
+        var server = Server with { OAuthScopes = "openid, offline_access,\tdepot" };
+
+        var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(server);
+
+        Assert.NotNull(options.ScopeSelector);
+        Assert.Equal(["openid", "offline_access", "depot"], options.ScopeSelector([]));
+    }
+
+    [Fact]
     public void CreateOptions_WithoutConfiguredOAuthScopes_LeavesTheDerivationUntouched()
     {
         var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(Server);

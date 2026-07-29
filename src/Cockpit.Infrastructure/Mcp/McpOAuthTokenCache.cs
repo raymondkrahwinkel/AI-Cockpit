@@ -43,6 +43,14 @@ internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl,
                 ExpiresAt = _ExpiresAt(token),
                 Scope = token.Scope,
                 ResourceUrl = resourceUrl,
+                // Without these, the refresh token above is unusable beyond this one connection: the SDK only
+                // attempts a refresh grant once it has a client identity to present, and a fresh connect attempt
+                // (a new session, a renewal, a restart) starts a brand-new provider with none — it has to be
+                // restored from here (AC-505).
+                ClientId = token.ClientId,
+                ClientSecret = token.ClientSecret,
+                TokenEndpointAuthMethod = token.TokenEndpointAuthMethod,
+                AuthorizationServer = token.AuthorizationServer,
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -74,6 +82,13 @@ internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl,
             ExpiresIn = remaining,
             Scope = stored.Scope,
             ObtainedAt = obtainedAt,
+            // Restores the client identity the refresh token above was issued under (AC-505) — without this, a
+            // fresh provider instance (every connect attempt builds one) has no client ID to present, never
+            // attempts the refresh grant at all, and falls straight back to a full interactive sign-in.
+            ClientId = stored.ClientId,
+            ClientSecret = stored.ClientSecret,
+            TokenEndpointAuthMethod = stored.TokenEndpointAuthMethod,
+            AuthorizationServer = stored.AuthorizationServer,
         };
     }
 
