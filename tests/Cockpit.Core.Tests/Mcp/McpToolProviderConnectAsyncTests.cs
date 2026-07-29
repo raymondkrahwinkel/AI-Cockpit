@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions.Tty;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -111,10 +113,75 @@ public class McpToolProviderConnectAsyncTests
         await catalog.Received().GetServersForProjectAsync("project-1", Arg.Any<CancellationToken>());
     }
 
-    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry)
+    // AC-143: McpToolProvider is the other remaining mint site the SessionMcpKeyring class doc used to flag as "not
+    // yet covered". The mutation-style guard is the LivePaneCount assertion after DisposeAsync — it fails red if the
+    // Revoke call is deleted from McpToolSession.DisposeAsync, unlike a bare "no exception" check.
+    [Fact]
+    public async Task ConnectAsync_WithAPaneId_MintsAKeyringTokenThatIsRevokedWhenTheSessionIsDisposed()
+    {
+        var keyring = new SessionMcpKeyring();
+        var provider = _ProviderFor(_DisableBuiltIns(), keyring);
+
+        var session = await provider.ConnectAsync(paneId: "local-model-pane-under-test");
+
+        keyring.LivePaneCount.Should().Be(1, "connecting minted this pane's token");
+
+        await session.DisposeAsync();
+
+        keyring.LivePaneCount.Should().Be(0, "the token must not outlive the tool loop it was minted for");
+        keyring.LiveTokenCount.Should().Be(0);
+    }
+
+    // A connect with no pane id (no session to name) never touches the keyring — nothing was minted, so disposing
+    // must not throw trying to revoke something that was never there.
+    [Fact]
+    public async Task ConnectAsync_WithoutAPaneId_NeverTouchesTheKeyring()
+    {
+        var keyring = new SessionMcpKeyring();
+        var provider = _ProviderFor(_DisableBuiltIns(), keyring);
+
+        var session = await provider.ConnectAsync();
+        await session.DisposeAsync();
+
+        keyring.LivePaneCount.Should().Be(0);
+        keyring.LiveTokenCount.Should().Be(0);
+    }
+
+    // AC-143 full lifecycle (acceptance criterion 2): both remaining mint sites — the TTY route and this in-process
+    // loop — share one keyring in a long-lived cockpit session; once every session they minted for has closed, the
+    // keyring holds nothing at all, proven on the same ledger both routes actually write to rather than reasoned
+    // about from each Revoke call in isolation.
+    [Fact]
+    public async Task ConnectAsync_AlongsideATtySession_BothRevokeAndLeaveTheSharedKeyringEmpty()
+    {
+        var keyring = new SessionMcpKeyring();
+        var provider = _ProviderFor(_DisableBuiltIns(), keyring);
+        var ptyHostFactory = Substitute.For<IPtyHostFactory>();
+        ptyHostFactory
+            .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
+            .Returns(Substitute.For<IConPtyProcess>());
+        var ttyLauncher = new TtyLauncher(ptyHostFactory, new McpAuthKey(), keyring, NullLogger<TtyLauncher>.Instance);
+        var ttyProvider = Substitute.For<ITtySessionProvider>();
+        ttyProvider.ProviderId.Returns("test-provider");
+        ttyProvider.BuildLaunch(Arg.Any<TtyLaunchContext>())
+            .Returns(new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []));
+
+        var ttyProcess = ttyLauncher.Launch(ttyProvider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane");
+        var toolSession = await provider.ConnectAsync(paneId: "local-model-pane");
+
+        keyring.LivePaneCount.Should().Be(2, "both routes minted their own pane's token");
+
+        ttyProcess.Dispose();
+        await toolSession.DisposeAsync();
+
+        keyring.LivePaneCount.Should().Be(0);
+        keyring.LiveTokenCount.Should().Be(0);
+    }
+
+    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
-        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
+        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), keyring ?? new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
     }
 }

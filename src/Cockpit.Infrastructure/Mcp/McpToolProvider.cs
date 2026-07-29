@@ -85,7 +85,10 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             }
         }
 
-        return new McpToolSession(clients, tools, connectedNames, toolClasses);
+        // AC-143: hand the session the pane/token it minted above so its own DisposeAsync can revoke exactly that
+        // token when this tool loop ends — the same mint site owns the teardown, rather than a shared cross-
+        // component path that could revoke a live sibling's token.
+        return new McpToolSession(clients, tools, connectedNames, toolClasses, keyring, paneId, sessionToken);
     }
 
     public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default)
@@ -280,7 +283,17 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return headers;
     }
 
-    private sealed class McpToolSession(IReadOnlyList<McpClient> clients, IReadOnlyList<AIFunction> tools, IReadOnlyList<string> names, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
+    // AC-143: keyring/paneId/token are the mint this session made in ConnectAsync (null when there was no pane id
+    // to mint for), carried through so DisposeAsync can revoke exactly that token at this route's own teardown —
+    // the in-process tool loop ending is the only signal this component has that the pane is done with it.
+    private sealed class McpToolSession(
+        IReadOnlyList<McpClient> clients,
+        IReadOnlyList<AIFunction> tools,
+        IReadOnlyList<string> names,
+        IReadOnlyDictionary<string, ToolPermissionClass> toolClasses,
+        SessionMcpKeyring? keyring = null,
+        string? paneId = null,
+        string? token = null)
         : IMcpToolSession
     {
         public IReadOnlyList<AIFunction> Tools => tools;
@@ -301,6 +314,13 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
                 {
                     // Best-effort teardown — a client that already died on its own is fine.
                 }
+            }
+
+            // AC-143: this pane's bearer must not survive the tool loop that owned it — dropped by the minter,
+            // never logged (the value is the secret).
+            if (keyring is not null && paneId is not null && token is not null)
+            {
+                keyring.Revoke(paneId, token);
             }
         }
     }

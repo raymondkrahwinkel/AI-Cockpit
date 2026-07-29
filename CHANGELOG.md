@@ -1006,6 +1006,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a progress bar's groove — the plugin store's install/update bars and the voice overlay's model-download
   bar — now sits on the cockpit's own sunken-inset colour instead of a translucent white left over from the
   framework's default theme.
+- fixed: a terminal session's and a local model's own tool loop now drop their per-session MCP credential when they
+  end, the same way every other session already did. Left running for a long time without this, a cockpit would keep
+  a growing pile of dead credentials in memory for panes that had long since closed.
 - fixed: a plugin section's chevron, title and header border now fall back to the cockpit's own faint-text,
   primary-text and hairline colours if the theme lookup ever misses, instead of a plain grey or white that
   was never part of the palette.

@@ -36,12 +36,19 @@ public class TtyLauncherTests
 
     private static (TtyLauncher Launcher, IPtyHostFactory PtyHostFactory, McpAuthKey AuthKey) CreateLauncherWithKey(ILogger<TtyLauncher>? logger = null)
     {
+        var (launcher, ptyHostFactory, authKey, _) = CreateLauncherWithKeyring(logger);
+        return (launcher, ptyHostFactory, authKey);
+    }
+
+    private static (TtyLauncher Launcher, IPtyHostFactory PtyHostFactory, McpAuthKey AuthKey, SessionMcpKeyring Keyring) CreateLauncherWithKeyring(ILogger<TtyLauncher>? logger = null)
+    {
         var ptyHostFactory = Substitute.For<IPtyHostFactory>();
         ptyHostFactory
             .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
             .Returns(Substitute.For<IConPtyProcess>());
         var authKey = new McpAuthKey();
-        return (new TtyLauncher(ptyHostFactory, authKey, new SessionMcpKeyring(), logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey);
+        var keyring = new SessionMcpKeyring();
+        return (new TtyLauncher(ptyHostFactory, authKey, keyring, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey, keyring);
     }
 
     [Fact]
@@ -456,5 +463,83 @@ public class TtyLauncherTests
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // AC-143: TtyLauncher is one of the two remaining mint sites the SessionMcpKeyring class doc used to flag as
+    // "not yet covered" — the pty's own end is invisible to the app layer that could otherwise call Revoke, so the
+    // returned process itself has to carry the teardown. This is the mutation-style guard: it asserts the keyring's
+    // own live-entry count went from minted to revoked, not just that Dispose ran without throwing, so deleting the
+    // Revoke call in TtyProcessOwningSessionFiles.Dispose turns this red.
+    [Fact]
+    public void Launch_WithAPaneId_MintsAKeyringTokenThatIsRevokedWhenTheReturnedProcessIsDisposed()
+    {
+        var (launcher, _, _, keyring) = CreateLauncherWithKeyring();
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+
+        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
+
+        keyring.LivePaneCount.Should().Be(1, "the launch minted this pane's token");
+
+        process.Dispose();
+
+        keyring.LivePaneCount.Should().Be(0, "the token must not outlive the TTY session it was minted for");
+        keyring.LiveTokenCount.Should().Be(0);
+    }
+
+    // A TTY session launched with no pane id (no session to name) never touches the keyring at all — nothing was
+    // minted, so disposing must not throw trying to revoke something that was never there.
+    [Fact]
+    public void Launch_WithoutAPaneId_NeverTouchesTheKeyring()
+    {
+        var (launcher, _, _, keyring) = CreateLauncherWithKeyring();
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+
+        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+        process.Dispose();
+
+        keyring.LivePaneCount.Should().Be(0);
+        keyring.LiveTokenCount.Should().Be(0);
+    }
+
+    // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the
+    // minted bearer token itself must never appear in a log line anywhere on this teardown path.
+    [Fact]
+    public void Launch_WithAPaneId_TheMintedTokenNeverAppearsInALogMessage()
+    {
+        var logger = Substitute.For<ILogger<TtyLauncher>>();
+        var (launcher, _, _, _) = CreateLauncherWithKeyring(logger);
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+
+        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
+        process.Dispose();
+
+        // The keyring mints a 64-character hex string (32 random bytes); no log call's rendered message anywhere
+        // in this path may contain a substring shaped like one.
+        logger.ReceivedCalls().Should().NotContain(call =>
+            call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
+    }
+
+    /// <summary>Whether <paramref name="text"/> contains a run of 64 hex characters — the shape of a minted keyring token.</summary>
+    private static bool _ContainsAHexToken(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        var run = 0;
+        foreach (var character in text)
+        {
+            run = Uri.IsHexDigit(character) ? run + 1 : 0;
+            if (run >= 64)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

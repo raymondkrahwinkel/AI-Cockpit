@@ -16,12 +16,12 @@ namespace Cockpit.Infrastructure.Mcp;
 /// restarted pane never carries a stale identity.
 /// </para>
 /// <para>
-/// Revocation is by the minter: a driver that minted a token drops it when its session ends
-/// (<c>PluginSessionDriverAdapter.DisposeAsync</c>), which covers plugin-backed, embedded and delegated sessions.
-/// <b>Not yet covered:</b> a TTY session's token (<c>TtyLauncher</c> mints, and the pty's end is handled in the app
-/// layer, which cannot reach this class) and the local-model tool loop's (<c>McpToolProvider</c> mints per connect).
-/// Those survive until the pane is reused or the app restarts — the same window the shared app key has anyway, so it
-/// is a hygiene gap rather than a hole, but it is a gap and this says so rather than claiming otherwise (AC-89).
+/// Revocation is by the minter: whichever component minted a token drops it at its own teardown, never a shared
+/// cross-component path — a session can flow through more than one of these, so revoking too early would take a
+/// live sibling's token with it. <c>PluginSessionDriverAdapter.DisposeAsync</c> covers plugin-backed, embedded and
+/// delegated sessions; a TTY session's returned process revokes on its own <c>Dispose</c> (<c>TtyLauncher</c>
+/// mints, its <c>TtyProcessOwningSessionFiles</c> wrapper revokes); the local-model tool loop's session revokes on
+/// its own <c>DisposeAsync</c> (<c>McpToolProvider.ConnectAsync</c> mints, its <c>McpToolSession</c> revokes).
 /// </para>
 /// </summary>
 internal sealed class SessionMcpKeyring : ISingletonService
@@ -67,4 +67,11 @@ internal sealed class SessionMcpKeyring : ISingletonService
 
         _tokenToPane.TryRemove(token, out _);
     }
+
+    /// <summary>Test seam (AC-143): the live entry count, so a full-lifecycle test can prove both maps are empty
+    /// after every session closed rather than reasoning about it from the individual <see cref="Revoke"/> calls.</summary>
+    internal int LiveTokenCount => _tokenToPane.Count;
+
+    /// <summary>Test seam (AC-143): see <see cref="LiveTokenCount"/>.</summary>
+    internal int LivePaneCount => _paneToToken.Count;
 }
