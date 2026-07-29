@@ -17,6 +17,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.Core.Worktrees;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -1310,7 +1311,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // Resolved at Start rather than read off the project directly, so what the session actually launches with is
         // the same precedence every other surface applies (AC-142/AC-163): the profile's identity, the project's
         // instructions appended under it.
-        var startDefaults = SessionStartDefaults.Resolve(SelectedProject, SelectedProfile, memorySources: _memorySources);
+        // The probe is I/O, which Resolve deliberately never does itself (see its own remarks) — Start is an actual
+        // launch, not a preview, so this is the one call site in this dialog worth paying a filesystem check for.
+        var unresolvedReferences = ProjectResourceProbe.FindUnresolved(SelectedProject?.Resources ?? []);
+        var startDefaults = SessionStartDefaults.Resolve(
+            SelectedProject, SelectedProfile, memorySources: _memorySources, unresolvedReferences: unresolvedReferences);
 
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
