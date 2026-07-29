@@ -30,7 +30,7 @@ public sealed class MarkdownView : ContentControl
     private static IBrush CodeBlockBackground => ThemeBrush.Resolve("CockpitSecondaryBgBrush", "#0c0e12");
     private static IBrush Hairline => ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39");
     private static IBrush TableHeaderBackground => ThemeBrush.Resolve("CockpitInsetBgBrush", "#202430");
-    private static IBrush Accent => ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6");
+    private static IBrush Accent => ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb");
     private static IBrush TextPrimary => ThemeBrush.Resolve("CockpitTextPrimaryBrush", "#e8eaef");
     private static IBrush TextSecondary => ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#949aa5");
     private static IBrush TextFaint => ThemeBrush.Resolve("CockpitTextFaintBrush", "#656c78");

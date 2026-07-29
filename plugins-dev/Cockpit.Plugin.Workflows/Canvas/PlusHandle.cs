@@ -42,7 +42,7 @@ internal sealed class PlusHandle : Border
 
         ToolTip.SetTip(this, "Click to add the next step — or drag from here onto a step to connect them");
 
-        PointerEntered += (_, _) => BorderBrush = _Brush("CockpitAccentBrush", "#3b82f6");
+        PointerEntered += (_, _) => BorderBrush = _Brush("CockpitAccentBrush", "#2563eb");
         PointerExited += (_, _) => BorderBrush = _Brush("CockpitHairlineBrush", "#2a2f39");
         PointerPressed += (_, e) =>
         {

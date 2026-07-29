@@ -58,7 +58,7 @@ internal sealed class PromptQuickPickControl : UserControl
             FontWeight = FontWeight.Bold,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(2, 0, 12, 0),
-            Foreground = _Brush("CockpitAccentBrush", "#3b82f6"),
+            Foreground = _Brush("CockpitAccentBrush", "#2563eb"),
         };
         var searchInner = new DockPanel();
         DockPanel.SetDock(_icon, Dock.Left);

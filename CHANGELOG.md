@@ -1004,6 +1004,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: several widgets (a markdown link, the mic level meter, a handful of plugin loading bars and canvas
+  controls) had kept the accent's old, lighter shade in their own fallback colour instead of picking up the
+  darker one the theme moved to — so they now draw the same accent as the rest of the cockpit again.
 - fixed: an unticked checkbox now sits on the cockpit's own dark surface with its own hairline border, instead
   of a barely-there transparent box outlined in the operating system's default translucent white.
 - fixed: a progress bar's groove — the plugin store's install/update bars and the voice overlay's model-download
