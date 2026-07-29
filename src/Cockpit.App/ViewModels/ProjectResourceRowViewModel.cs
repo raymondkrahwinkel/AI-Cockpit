@@ -27,6 +27,7 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(MemoryHint))]
     [NotifyPropertyChangedFor(nameof(ReferencePlaceholder))]
     [NotifyPropertyChangedFor(nameof(CanBrowse))]
+    [NotifyPropertyChangedFor(nameof(ShowsSendsContentOption))]
     private ProjectResourceRole _role;
 
     [ObservableProperty]
@@ -44,6 +45,18 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private bool _reachesSessions;
+
+    /// <summary>
+    /// Whether this row's contents travel with a starting session rather than only its location (AC-486) — see
+    /// <see cref="ProjectResource.SendsContent"/>'s own doc comment for why this defaults off and is offered for
+    /// <see cref="ProjectResourceRole.Instructions"/> alone. Reset to false whenever <see cref="Role"/> changes away
+    /// from Instructions (see <see cref="OnRoleChanged"/>) — the same "a role switch cannot leave a control quietly
+    /// meaning something on a row it no longer applies to" rule <see cref="ShowsMemorySourcePicker"/>'s own reset
+    /// already follows, just the other direction: nothing here needs folding into <see cref="Reference"/> first,
+    /// since this flag never changed what the box shows, only what a session is given alongside it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _sendsContent;
 
     /// <summary>
     /// The picker's current choice for this row's memory source (AC-166), or null when this row is not a Memory row,
@@ -98,13 +111,15 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         ProjectResourceRole role = ProjectResourceRole.Memory,
         string reference = "",
         string label = "",
-        bool reachesSessions = true)
+        bool reachesSessions = true,
+        bool sendsContent = false)
     {
         MemorySourceChoices = memorySourceChoices;
         _role = role;
         _reference = reference;
         _label = label;
         _reachesSessions = reachesSessions;
+        _sendsContent = sendsContent;
     }
 
     /// <summary>
@@ -138,6 +153,23 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// </summary>
     partial void OnRoleChanged(ProjectResourceRole oldValue, ProjectResourceRole newValue)
     {
+        // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
+        // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
+        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
+        // simply switching it back off is the whole fix.
+        // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
+        // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
+        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
+        // simply switching it back off is the whole fix.
+        // AC-486: leaving Instructions must not leave "Send along" quietly ticked on a row where it now means
+        // nothing — the checkbox is about to disappear (see ShowsSendsContentOption below), and nothing reads this
+        // flag for any other role, so there is nothing to fold anywhere the way a Memory row's picked scheme is;
+        // simply switching it back off is the whole fix.
+        if (oldValue == ProjectResourceRole.Instructions && newValue != ProjectResourceRole.Instructions)
+        {
+            SendsContent = false;
+        }
+
         if (oldValue == ProjectResourceRole.Memory && newValue != ProjectResourceRole.Memory)
         {
             if (SelectedMemorySourceChoice is { Scheme.Length: > 0 } choice)
@@ -172,6 +204,15 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// registered a source (AC-166's <c>HasMemorySources</c>, answered per row instead of once for the dialog).
     /// </summary>
     public bool ShowsMemorySourcePicker => Role == ProjectResourceRole.Memory && MemorySourceChoices.Count > 0;
+
+    /// <summary>
+    /// Whether "Send along" is offered for this row at all (AC-486) — <see cref="ProjectResourceRole.Instructions"/>
+    /// alone, the same per-role gating idiom <see cref="ShowsMemorySourcePicker"/> already uses. See
+    /// <see cref="ProjectResource.SendsContent"/>'s own doc comment for why the other two roles never offer it: a
+    /// memory row is read and written back to all session long and far too large to inline, and a reference row
+    /// exists to be looked up, not read up front.
+    /// </summary>
+    public bool ShowsSendsContentOption => Role == ProjectResourceRole.Instructions;
 
     /// <summary>Whether <see cref="Reference"/> holds a folder path rather than a source's bare value — gates "Choose…" for a Memory row the same way the single Memory row used to.</summary>
     public bool IsMemoryFolderMode => SelectedMemorySourceChoice?.Scheme is null;
@@ -222,6 +263,7 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         {
             Label = string.IsNullOrWhiteSpace(Label) ? null : Label.Trim(),
             ReachesSessions = ReachesSessions,
+            SendsContent = SendsContent,
         };
     }
 }

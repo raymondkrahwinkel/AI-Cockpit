@@ -33,6 +33,12 @@ public class ProjectDialogResourceRowTests
         window.GetVisualDescendants().OfType<TextBlock>()
             .FirstOrDefault(block => block.IsEffectivelyVisible && block.Text is { } value && value.Contains(text, StringComparison.Ordinal));
 
+    // Distinguished by its own Content text — every scene in this file has at most one resource row, the same
+    // simplifying assumption VisibleTextContaining already relies on.
+    private static CheckBox? VisibleSendAlongCheckBox(Window window) =>
+        window.GetVisualDescendants().OfType<CheckBox>()
+            .FirstOrDefault(box => box.IsEffectivelyVisible && Equals(box.Content, "Send along"));
+
     // Found via the row's own "Choose…" button rather than any property of the TextBox itself — Reference starts
     // out blank for every row, so nothing about the box's own state can tell one row's apart from another's, but
     // each row's "Choose…" button carries that row as its CommandParameter (the same trick AddRowButton/RemoveRowButton
@@ -60,6 +66,7 @@ public class ProjectDialogResourceRowTests
         window.Close();
 
         Assert.Single(viewModel.ResourceRows);
+        // A freshly added row defaults to Memory, the role the old standalone row always was.
         Assert.Equal(ProjectResourceRole.Memory, roleBox.SelectedItem);
     });
 
@@ -109,6 +116,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "could not be found");
         window.Close();
 
+        // A reference the probe could not resolve must be visible in the editor itself.
         Assert.NotNull(hint);
     });
 
@@ -140,6 +148,7 @@ public class ProjectDialogResourceRowTests
         var hint = VisibleTextContaining(window, "specific to this machine");
         window.Close();
 
+        // An absolute, unshared path must be visible as such rather than only failing silently on another machine.
         Assert.NotNull(hint);
     });
 
@@ -190,9 +199,11 @@ public class ProjectDialogResourceRowTests
         window.UpdateLayout();
         window.Close();
 
+        // What is on screen is what the row holds, here as everywhere else in this app.
         Assert.Equal(typed, row.Reference);
-        Assert.False(row.IsBroken,
-            "a half-typed path is a path that does not exist — judging it while the operator is still writing it is how the row turns red under their hands");
+        // A half-typed path is a path that does not exist — judging it while the operator is still writing it is
+        // how the row turns red under their hands.
+        Assert.False(row.IsBroken);
     });
 
     /// <summary>
@@ -231,6 +242,7 @@ public class ProjectDialogResourceRowTests
         window.Close();
 
         var resource = Assert.Single(saved.Resources);
+        // A reference typed and saved without leaving the box must not be dropped.
         Assert.Equal("docs/handbook.md", resource.Reference);
     });
 
@@ -255,8 +267,91 @@ public class ProjectDialogResourceRowTests
         window.Close();
 
         Assert.Equal(3, dividers.Count);
+        // A divider must still separate this row from the next.
         Assert.Equal(1, dividers[0].BorderThickness.Bottom);
         Assert.Equal(1, dividers[1].BorderThickness.Bottom);
+        // The last row must not draw a trailing hairline with nothing below it but the Add row button.
         Assert.Equal(0, dividers[2].BorderThickness.Bottom);
+    });
+
+    // --- AC-486: "Send along" only appears, and only means anything, for an Instructions row ---------------------------
+
+    [Fact]
+    public void ARoleOtherThanInstructions_NeverShowsTheSendAlongCheckbox() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var checkbox = VisibleSendAlongCheckBox(window);
+        window.Close();
+
+        // A freshly added row defaults to Memory, where "Send along" means nothing.
+        Assert.Null(checkbox);
+    });
+
+    [Fact]
+    public void AnInstructionsRow_ShowsTheSendAlongCheckboxAndItsHint() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        viewModel.ResourceRows.Single().Role = ProjectResourceRole.Instructions;
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var checkbox = VisibleSendAlongCheckBox(window);
+        var hint = VisibleTextContaining(window, "leave it off for anything sensitive");
+        window.Close();
+
+        // Instructions is the one role this opt-in applies to.
+        Assert.NotNull(checkbox);
+        // The sensitivity and snapshot-timing consequences of ticking the box must be readable in the row itself,
+        // not only on hover.
+        Assert.NotNull(hint);
+    });
+
+    [Fact]
+    public void CheckingSendAlong_ReachesTheRow() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Instructions;
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        VisibleSendAlongCheckBox(window)!.IsChecked = true;
+        window.UpdateLayout();
+        window.Close();
+
+        Assert.True(row.SendsContent);
+    });
+
+    [Fact]
+    public void SwitchingRoleAwayFromInstructions_HidesTheSendAlongCheckboxAndTurnsItOff() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new ProjectDialogViewModel();
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows.Single();
+        row.Role = ProjectResourceRole.Instructions;
+        row.SendsContent = true;
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        RoleComboBox(window).SelectedItem = ProjectResourceRole.Reference;
+        window.UpdateLayout();
+
+        var checkbox = VisibleSendAlongCheckBox(window);
+        window.Close();
+
+        // The row no longer means Instructions, so the checkbox must not linger visible.
+        Assert.Null(checkbox);
+        // Switching roles reset it, and that reset must actually reach the real markup, not only the view model.
+        Assert.False(row.SendsContent);
     });
 }

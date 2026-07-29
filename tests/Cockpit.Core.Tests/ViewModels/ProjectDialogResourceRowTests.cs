@@ -82,6 +82,7 @@ public class ProjectDialogResourceRowTests
         viewModel.Name = "Cockpit";
         viewModel.AddResourceRowCommand.Execute(null);
 
+        // A row the operator added and left alone names nothing.
         Assert.Empty(viewModel.ToProject().Resources);
     }
 
@@ -93,6 +94,7 @@ public class ProjectDialogResourceRowTests
         viewModel.AddResourceRowCommand.Execute(null);
         viewModel.ResourceRows[0].Label = "Handbook";
 
+        // A label with no reference names nothing a session could go read.
         Assert.Empty(viewModel.ToProject().Resources);
     }
 
@@ -117,6 +119,7 @@ public class ProjectDialogResourceRowTests
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
+        // The resource section starts exactly as empty as the old dialog's Memory box did when nothing was set.
         Assert.Empty(viewModel.ResourceRows);
     }
 
@@ -186,8 +189,8 @@ public class ProjectDialogResourceRowTests
 
         var saved = viewModel.ToProject();
 
-        // AC-485 review (FIX 9): order matters for a list the operator arranges themselves — .Equal pins the whole
-        // sequence, not merely that memory and reference each still appear somewhere in it.
+        // AC-485 review (FIX 9): order matters for a list the operator arranges themselves — comparing the whole
+        // sequence pins the whole order, not merely that memory and reference each still appear somewhere in it.
         Assert.Equal(new[] { memory, instructions with { Label = "House conventions" }, reference }, saved.Resources);
     }
 
@@ -246,7 +249,8 @@ public class ProjectDialogResourceRowTests
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
         Assert.True(viewModel.ResourceRows[0].IsBroken, "this row reaches sessions and the probe found its path missing");
-        Assert.False(viewModel.ResourceRows[1].IsBroken,
+        Assert.False(
+            viewModel.ResourceRows[1].IsBroken,
             "this row never reaches sessions, so the probe never judged it — even though its text matches the row the probe did find missing");
     }
 
@@ -294,6 +298,7 @@ public class ProjectDialogResourceRowTests
 
         var exception = await Record.ExceptionAsync(() => ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog()));
 
+        // A hand-edited cockpit.json with one bad row must cost that row, not the dialog itself.
         Assert.Null(exception);
     }
 
@@ -306,12 +311,16 @@ public class ProjectDialogResourceRowTests
         var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
         var row = viewModel.ResourceRows.Single();
+        // The row must actually have the Depot source selected before this test means anything.
         Assert.Equal("depot", row.SelectedMemorySourceChoice!.Scheme);
 
         row.Role = ProjectResourceRole.Reference;
 
+        // The picker is about to disappear, so what it folded away must land in the box the operator can still see.
         Assert.Equal("depot:cockpit", row.Reference);
+        // The picker's own selection must not keep pointing at a source the box no longer names.
         Assert.Equal(viewModel.MemorySourceChoices[0], row.SelectedMemorySourceChoice);
+        // Saving now must not silently write a bare value that resolves to nothing.
         Assert.Equal("depot:cockpit", viewModel.ToProject().Resources.Single().Reference);
     }
 
@@ -326,6 +335,7 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Reference;
 
+        // A Folder-mode row never had a scheme hidden behind it, so switching away from Memory has nothing to fold.
         Assert.Equal("/home/raymond/Notes/Cockpit", row.Reference);
     }
 
@@ -342,7 +352,10 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Memory;
 
+        // Switching a row onto Memory must select the source its typed reference already names, the same as
+        // loading one from disk.
         Assert.Equal("depot", row.SelectedMemorySourceChoice?.Scheme);
+        // The box shows what the plugin queries with, not the scheme prefix, mirroring CreateAsync's own load-time unfold.
         Assert.Equal("cockpit", row.Reference);
     }
 
@@ -359,6 +372,7 @@ public class ProjectDialogResourceRowTests
 
         row.Role = ProjectResourceRole.Memory;
 
+        // A plain path names no registered source, so Folder is selected — the same fallback CreateAsync applies.
         Assert.Equal(viewModel.MemorySourceChoices[0], row.SelectedMemorySourceChoice);
         Assert.Equal("/home/raymond/Notes/Cockpit", row.Reference);
     }
@@ -424,5 +438,108 @@ public class ProjectDialogResourceRowTests
         await viewModel.ResourceDiagnosticsRefreshCompleted;
 
         Assert.False(viewModel.ResourceRows[0].IsMachineBound, "the folder now contains the reference");
+    }
+
+    // --- AC-486: "Send along" is Instructions-only, off by default, round-trips, and cannot survive a role switch ----
+
+    [Fact]
+    public async Task AddResourceRow_DefaultsSendsContentToFalse()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.AddResourceRowCommand.Execute(null);
+
+        // Opening and reading a file is an opt-in, not a default.
+        Assert.False(viewModel.ResourceRows.Single().SendsContent);
+    }
+
+    [Fact]
+    public async Task RoundTrip_AnInstructionsRowWithSendsContentTicked_SurvivesOpenAndSaveUnchanged()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook", SendsContent = true }],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+
+        // CreateAsync must read the stored opt-in back onto the row.
+        Assert.True(viewModel.ResourceRows.Single().SendsContent);
+        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
+    }
+
+    [Fact]
+    public async Task RoundTrip_AnInstructionsRowWithSendsContentLeftOff_SurvivesOpenAndSaveUnchanged()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" }],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+
+        Assert.False(viewModel.ResourceRows.Single().SendsContent);
+        Assert.Equal(project.Resources, viewModel.ToProject().Resources);
+    }
+
+    [Theory]
+    [InlineData(ProjectResourceRole.Memory)]
+    [InlineData(ProjectResourceRole.Reference)]
+    public async Task ShowsSendsContentOption_IsFalseForRolesOtherThanInstructions(ProjectResourceRole role)
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows[0];
+
+        row.Role = role;
+
+        Assert.False(row.ShowsSendsContentOption);
+    }
+
+    [Fact]
+    public async Task ShowsSendsContentOption_IsTrueForInstructions()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows[0];
+
+        row.Role = ProjectResourceRole.Instructions;
+
+        Assert.True(row.ShowsSendsContentOption);
+    }
+
+    [Fact]
+    public async Task SwitchingARowsRoleAwayFromInstructions_TurnsSendsContentBackOff()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { SendsContent = true }],
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+        var row = viewModel.ResourceRows.Single();
+        Assert.True(row.SendsContent, "must actually start ticked before this test means anything");
+
+        row.Role = ProjectResourceRole.Reference;
+
+        Assert.False(
+            row.SendsContent,
+            "the checkbox is about to disappear for this role, so it must not stay silently ticked on a row where it now means nothing");
+        Assert.False(
+            viewModel.ToProject().Resources.Single().SendsContent,
+            "saving now must not carry an opt-in to open a file the operator can no longer even see a box for");
+    }
+
+    [Fact]
+    public async Task SwitchingARowOntoInstructions_LeavesSendsContentOff()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project: null, ProfileStore(), Catalog());
+        viewModel.Name = "Cockpit";
+        viewModel.AddResourceRowCommand.Execute(null);
+        var row = viewModel.ResourceRows[0];
+        row.Role = ProjectResourceRole.Reference;
+
+        row.Role = ProjectResourceRole.Instructions;
+
+        // Switching a row onto Instructions must not silently opt it into having its file read and sent.
+        Assert.False(row.SendsContent);
     }
 }

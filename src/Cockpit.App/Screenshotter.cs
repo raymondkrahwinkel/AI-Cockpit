@@ -80,6 +80,10 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // A row's "Send along" checkbox (AC-486) — its own scene rather than a third row in the one above; see
+        // _ProjectEditorWithInstructionsSendAlong's own remarks on why combining the two cost the resources scene
+        // a hint it had already proved visible.
+        ["project-editor-instructions-send-along"] = (_, _) => _ProjectEditorWithInstructionsSendAlong(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // The store's two busy states (AC-420) — otherwise only reachable while a real download is in flight.
@@ -258,6 +262,17 @@ internal static class Screenshotter
     /// broken/machine-bound flags are set directly rather than produced by running the real probe against real
     /// paths, so this scene paints the same way on every platform this repo builds on, regardless of what OS drew
     /// the screenshot.
+    /// <para>
+    /// AC-486 review: an earlier version of this scene changed this second row's own Role to Instructions and
+    /// ticked "Send along" on it too, on the theory that neither probe looks at Role so nothing here would cost
+    /// anything. Rendered, that combined row's own two extra lines (the checkbox column plus its hint text) pushed
+    /// the machine-bound hint below this scene's own fold — the exact same <see cref="Controls.DialogScreenClamp"/>
+    /// ceiling this doc comment already warns about, just reached one row sooner. That silently broke the very thing
+    /// this scene's own AC-485 review already confirmed visible, without a single test noticing (a palette baseline
+    /// permits a screen to paint fewer colours than it lists, and no test here asserts on vertical position). "Send
+    /// along" gets <see cref="_ProjectEditorWithInstructionsSendAlong"/> instead, its own scene, precisely so it
+    /// never has to compete with this one for the same limited fold.
+    /// </para>
     /// </summary>
     private static ProjectDialog _ProjectEditorWithResources()
     {
@@ -285,6 +300,30 @@ internal static class Screenshotter
         // Taller than the dialog opens, the way the memory-source scene already is — clamped by DialogScreenClamp
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>
+    /// A single Instructions row with "Send along" ticked (AC-486): its own scene rather than a third row folded
+    /// into <see cref="_ProjectEditorWithResources"/> above — see that method's own remarks on why combining the two
+    /// pushed a hint <em>that</em> scene already had to prove visible below this dialog's fold. One row is enough to
+    /// show what matters here: the checkbox sits beside "Tell sessions" without crowding it, and the hint underneath
+    /// explaining what ticking it does is actually on screen, not merely present in the tree.
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithInstructionsSendAlong()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Instructions, "docs/handbook.md", "House conventions")
+        {
+            SendsContent = true,
+        });
+
+        // 1500 rather than a value nearer this scene's own resting height: DialogScreenClamp clamps down to 90% of
+        // the (headless) screen regardless, and _ProjectEditorWithResources found that ceiling comfortably fits
+        // every section above the resource list plus two full rows — a single row's own checkbox and hint fit with
+        // room to spare. A smaller value here was tried first and clipped this scene's own hint text mid-sentence,
+        // exactly what this scene exists to rule out.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
