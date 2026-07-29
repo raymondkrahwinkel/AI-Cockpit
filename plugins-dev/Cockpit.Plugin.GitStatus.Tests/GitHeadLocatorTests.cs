@@ -1,5 +1,4 @@
 using Cockpit.TestSupport;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitStatus.Tests;
 
@@ -32,9 +31,9 @@ public class GitHeadLocatorTests : IDisposable
     {
         var head = await GitHeadLocator.ResolveHeadFileAsync(_repo, CancellationToken.None);
 
-        head.Should().NotBeNull();
-        File.Exists(head).Should().BeTrue();
-        Path.GetFileName(head).Should().Be("HEAD");
+        Assert.NotNull(head);
+        Assert.True(File.Exists(head));
+        Assert.Equal("HEAD", Path.GetFileName(head));
     }
 
     [Fact]
@@ -46,8 +45,8 @@ public class GitHeadLocatorTests : IDisposable
         var fromRoot = await GitHeadLocator.ResolveHeadFileAsync(_repo, CancellationToken.None);
         var fromSubdirectory = await GitHeadLocator.ResolveHeadFileAsync(nested, CancellationToken.None);
 
-        fromRoot.Should().NotBeNull();
-        fromSubdirectory.Should().Be(fromRoot);
+        Assert.NotNull(fromRoot);
+        Assert.Equal(fromRoot, fromSubdirectory);
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class GitHeadLocatorTests : IDisposable
         {
             var head = await GitHeadLocator.ResolveHeadFileAsync(plain, CancellationToken.None);
 
-            head.Should().BeNull();
+            Assert.Null(head);
         }
         finally
         {

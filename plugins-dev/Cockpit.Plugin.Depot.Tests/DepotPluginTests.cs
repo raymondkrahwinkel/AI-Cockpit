@@ -23,8 +23,8 @@ public class DepotPluginTests
         using var plugin = new DepotPlugin();
         plugin.Initialize(host);
 
-        registered.Should().NotBeNull();
-        registered!.Scheme.Should().Be("depot");
+        Assert.NotNull(registered);
+        Assert.Equal("depot", registered!.Scheme);
         registered.Instruction.Should().Contain("Depot MCP")
             .And.Contain("say so rather than working from memory you cannot see");
     }
@@ -32,6 +32,6 @@ public class DepotPluginTests
     [Fact]
     public void Metadata_Always_MatchesTheManifestTheHostLoadsBy()
     {
-        new DepotPlugin().Metadata.Id.Should().Be("depot");
+        Assert.Equal("depot", new DepotPlugin().Metadata.Id);
     }
 }
