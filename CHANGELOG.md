@@ -51,6 +51,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   something you want dropped on you by default. A sub-agent's own narration never reaches read-aloud — only the
   session's own reply does. Requires a recent enough `claude` CLI to forward the extra detail; an older one simply
   starts the session without it, same as before.
+- added: the update banner and the Options → Updates tab can now download and install a new build for you, on a
+  copy the installer set up (a Windows install, or a Linux AppImage) — "Update now" downloads with a progress bar,
+  confirms before restarting (naming any sessions still running, so nothing is cut off unannounced), and restarts
+  straight into the new version; "Install on next start" downloads the same build but applies it quietly the next
+  time you close the cockpit, so a running session is never interrupted. A copy that wasn't installed by the
+  updater — a checkout, a tarball, a distribution's own package — keeps the plain "Open the release" link it always
+  had; nothing is ever applied without an explicit click.
 - added: the YouTrack plugin's "attach message images to an issue" tool can now attach an image file directly by
   path, not only images sent with the current message — so a screenshot pasted straight into a terminal pane, or
   an image an agent produced itself, can be attached even though it never rode along on a message. The path must

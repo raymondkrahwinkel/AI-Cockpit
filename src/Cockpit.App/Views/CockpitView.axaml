@@ -133,9 +133,23 @@
                 Padding="16,9">
             <DockPanel LastChildFill="False">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <!-- Self-updating build (AC-385, AC-388): download-and-restart lives here instead of the plain
+                         "Open release" link, which stays for a copy the updater did not install. -->
+                    <Button Classes="Accent" Padding="12,5"
+                            Content="Update now"
+                            Command="{Binding UpdateNowCommand}"
+                            IsVisible="{Binding ShowSelfUpdateButtons}"
+                            IsEnabled="{Binding !IsUpdateDownloading}"/>
+                    <Button Classes="Subtle" Padding="12,5"
+                            Content="Install on next start"
+                            Command="{Binding InstallUpdateOnNextStartCommand}"
+                            IsVisible="{Binding ShowSelfUpdateButtons}"
+                            IsEnabled="{Binding !IsUpdateDownloading}"
+                            ToolTip.Tip="Downloads now and applies the next time the cockpit starts, without restarting it now"/>
                     <Button Classes="Accent" Padding="12,5"
                             Content="Open release"
                             Command="{Binding OpenUpdateCommand}"
+                            IsVisible="{Binding ShowOpenReleaseButton}"
                             ToolTip.Tip="{Binding UpdateUrl}"/>
                     <Button Classes="Subtle" Padding="6,4"
                             Command="{Binding DismissUpdateCommand}"
@@ -156,6 +170,15 @@
                     <TextBlock VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                Text="{Binding CurrentBuild, StringFormat='· you’re on {0}'}"/>
+                    <!-- Download progress (AC-388): only costs space while a download is actually in flight. -->
+                    <ProgressBar VerticalAlignment="Center" Width="120" Height="6" Margin="8,0,0,0"
+                                 Minimum="0" Maximum="100"
+                                 Value="{Binding UpdateDownloadProgress}"
+                                 IsVisible="{Binding IsUpdateDownloading}"/>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               IsVisible="{Binding IsUpdateDownloading}"
+                               Text="{Binding UpdateDownloadProgress, StringFormat='{}{0}%'}"/>
                 </StackPanel>
             </DockPanel>
         </Border>
