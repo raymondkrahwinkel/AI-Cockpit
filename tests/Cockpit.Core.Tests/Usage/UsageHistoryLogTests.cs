@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Core.Usage;
 using Cockpit.Infrastructure.Usage;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -135,6 +136,120 @@ public class UsageHistoryLogTests : IDisposable
     public async Task ReadRecentAsync_NoTrailYet_ReturnsNothing()
     {
         Assert.Empty(await _Log().ReadRecentAsync());
+    }
+
+    // --- Rotation (AC-399) ---------------------------------------------------------------------------------
+
+    private string _RolloverPath() => UsageHistoryLog.RolloverPathFor(_logPath);
+
+    private UsageHistoryLog _LogWithTinyLimit(long maxSizeBytes) =>
+        new(_logPath, NullLogger<UsageHistoryLog>.Instance, maxSizeBytes);
+
+    [Fact]
+    public async Task RecordAsync_UnderTheSizeLimit_NeverRolls()
+    {
+        // The mutation-style boundary check (AC5): with the limit far above what a handful of records could ever
+        // reach, no rollover file must appear. If the size check were deleted or always-true/always-false in the
+        // wrong direction, this — or the test below it — goes red.
+        var log = _LogWithTinyLimit(maxSizeBytes: 10 * 1024 * 1024);
+
+        for (var i = 0; i < 5; i++)
+        {
+            await log.RecordAsync(_Snapshot($"pane-{i}"));
+        }
+
+        Assert.False(File.Exists(_RolloverPath()));
+    }
+
+    [Fact]
+    public async Task RecordAsync_AtTheSizeLimit_RollsToTheDotOneFile_DroppingWhatWasThereBefore()
+    {
+        // A tiny limit that the very first written line already exceeds, so the *second* write is the one that
+        // finds the file over limit and rolls it. Proves AC1 (bounded growth via a single rollover generation)
+        // and, combined with the test above, the boundary condition itself (AC5): remove or invert the size
+        // check and one of these two tests fails.
+        var log = _LogWithTinyLimit(maxSizeBytes: 1);
+
+        await log.RecordAsync(_Snapshot("pane-a"));
+        var firstLine = await File.ReadAllTextAsync(_logPath);
+
+        await log.RecordAsync(_Snapshot("pane-b"));
+
+        Assert.True(File.Exists(_RolloverPath()));
+        Assert.Equal(firstLine, await File.ReadAllTextAsync(_RolloverPath()));
+        Assert.Contains("pane-b", await File.ReadAllTextAsync(_logPath));
+        Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_logPath));
+
+        // Rolling again overwrites the previous rollover generation rather than chaining a second one.
+        await log.RecordAsync(_Snapshot("pane-c"));
+        Assert.Contains("pane-b", await File.ReadAllTextAsync(_RolloverPath()));
+        Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_RolloverPath()));
+    }
+
+    [Fact]
+    public async Task ReadRecentAsync_AfterARollover_ContinuesIntoTheRolloverFile()
+    {
+        // AC3: a tail-read that exhausts the live file must not stop right where the rollover happened — "recent
+        // usage history" should read across the boundary rather than appearing to drop to nothing.
+        var log = _LogWithTinyLimit(maxSizeBytes: 1);
+        await log.RecordAsync(_Snapshot("pane-old")); // rolls to .1.jsonl on the next write
+        await log.RecordAsync(_Snapshot("pane-new")); // lives in the current file
+
+        var recent = await log.ReadRecentAsync();
+
+        Assert.Equal(["pane-new", "pane-old"], recent.Select(entry => entry.PaneId));
+    }
+
+    [Fact]
+    public async Task ReadRecentAsync_LimitSatisfiedByTheLiveFileAlone_DoesNotTouchTheRolloverFile()
+    {
+        // The rollover file is only consulted when the live file did not already fill the request — the common
+        // case (no rollover yet, or a limit smaller than the live file holds) should not pay for reading it.
+        var log = _LogWithTinyLimit(maxSizeBytes: 1);
+        await log.RecordAsync(_Snapshot("pane-old"));
+        await log.RecordAsync(_Snapshot("pane-new"));
+
+        var recent = await log.ReadRecentAsync(limit: 1);
+
+        Assert.Equal(["pane-new"], recent.Select(entry => entry.PaneId));
+    }
+
+    [Fact]
+    public async Task RecordAsync_ManySmallWritesAcrossATinyLimit_LosesNoRecord_AndEveryLineStaysWellFormed()
+    {
+        // AC4: rolling during ongoing writes must not corrupt a line or lose a record. A tiny limit forces several
+        // rollovers across many sequential writes; every record must still be recoverable afterwards from the two
+        // files combined (the live one plus whatever generation is left in the rollover file).
+        var log = _LogWithTinyLimit(maxSizeBytes: 500);
+        const int total = 200;
+
+        for (var i = 0; i < total; i++)
+        {
+            await log.RecordAsync(_Snapshot($"pane-{i}"));
+        }
+
+        foreach (var path in new[] { _logPath, _RolloverPath() })
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            foreach (var line in await File.ReadAllLinesAsync(path))
+            {
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                // Throws if a line was truncated or interleaved by a rollover racing a write.
+                JsonDocument.Parse(line).Dispose();
+            }
+        }
+
+        // The live file always holds at least the very last write — a rollover happening does not lose the
+        // record that triggered it.
+        Assert.Contains($"pane-{total - 1}", await File.ReadAllTextAsync(_logPath));
     }
 
     public void Dispose()

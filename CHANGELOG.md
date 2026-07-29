@@ -763,6 +763,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the usage-history trail no longer grows without bound. Once it reaches 8 MB it rolls over to a single
+  backup file, so a long-lived install no longer accumulates hundreds of MB of usage records over time. Recent-usage
+  views still read seamlessly across a rollover; the consent and delegation trails are unaffected and keep every
+  record forever, as before.
 - changed: a text field or dropdown you just clicked into no longer draws the same bright accent ring as one you
   tabbed to with the keyboard. The full ring is now reserved for keyboard focus, so it marks where the keyboard
   actually is rather than the last thing the pointer touched; a clicked field still gets its own quieter edge so
