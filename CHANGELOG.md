@@ -725,6 +725,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   two plugins can title different windows the same — YouTrack and GitHub Issues both call theirs "Track an issue
   in this session" while meaning different sessions. Plugin authors: `ShowDialogAsync` takes a
   `singleInstanceKey` overload, and a plugin using it needs a cockpit of 0.9.0 or newer.
+- added: a scheduled resume whose session has since closed can now bring it back instead of only reporting it
+  undelivered. If a crash restart brought the pane back as a restore offer that nobody had accepted yet, the
+  resume that comes due reopens that earlier conversation itself and sends its prompt — silently, because a
+  resume is scheduled precisely to run while you are away, and a toast says so when it happens. When there is
+  nothing to reopen — the pane was closed on purpose, the provider keeps no resumable conversation, or nothing
+  was ever brought back this run — the resume reports itself undelivered exactly as it always has. Terminal
+  sessions are not covered yet: a terminal's connection comes up too late for this to trust safely, so a due
+  resume against a terminal pane still reports undelivered rather than risk starting one for nothing.
 
 ### Changed
 
