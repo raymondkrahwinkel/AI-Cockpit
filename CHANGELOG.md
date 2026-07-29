@@ -1563,3 +1563,5 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - removed: the collapsible "Thinking…" step is no longer shown in the chat transcript. The pulsing indicator
   above the message box already shows the model is working, so a separate reasoning line in the transcript
   added little.
+- removed: two dropdown-picker theme rules that never painted anything — measured to have no effect in any
+  state, so there is nothing to notice; pickers still look and behave exactly as before.
