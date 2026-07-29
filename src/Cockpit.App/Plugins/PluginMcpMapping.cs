@@ -12,18 +12,36 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 internal static class PluginMcpMapping
 {
-    public static McpServerConfig ToServerConfig(McpServerContribution contribution) => new()
+    public static McpServerConfig ToServerConfig(McpServerContribution contribution)
     {
-        Name = contribution.Name,
-        Transport = McpTransport.Http,
-        Scope = ToServerScope(contribution.Scope),
-        Url = contribution.Url,
-        Auth = ToAuth(contribution.BearerToken),
-        ApiKey = contribution.BearerToken,
-    };
+        var auth = ToAuth(contribution);
+        return new McpServerConfig
+        {
+            Name = contribution.Name,
+            Transport = McpTransport.Http,
+            Scope = ToServerScope(contribution.Scope),
+            Url = contribution.Url,
+            Auth = auth,
+            // Only the field the resolved auth actually uses is kept — the same rule the MCP-servers dialog's own
+            // ToConfig() applies — so a contribution that (wrongly) set both a token and an authority never leaves
+            // a dead, unused secret sitting in the registry beside the OAuth config that is actually in effect.
+            ApiKey = auth == McpServerAuth.ApiKey ? contribution.BearerToken : null,
+            OAuthAuthority = auth == McpServerAuth.OAuth ? contribution.OAuthAuthority!.Trim() : null,
+            OAuthClientId = auth == McpServerAuth.OAuth ? contribution.OAuthClientId : null,
+        };
+    }
 
-    public static McpServerAuth ToAuth(string? bearerToken) =>
-        string.IsNullOrEmpty(bearerToken) ? McpServerAuth.None : McpServerAuth.ApiKey;
+    // A non-empty (non-whitespace) OAuthAuthority is the contribution's only way to say "this is OAuth" (AC-500) —
+    // the DTO has no Cockpit.Core McpServerAuth to set directly, by the same isolation rule ToServerConfig's doc
+    // comment names. Checked ahead of BearerToken so a contribution that (wrongly) sets both is still treated as
+    // OAuth rather than silently degraded to a static token that will never satisfy the server's real auth
+    // requirement. Whitespace-only is treated the same as empty (not OAuth) — the dialog's own ToConfig() applies
+    // the identical IsNullOrWhiteSpace rule to what it keeps, and an authority nobody could reach would otherwise
+    // leave the server marked OAuth with nothing to negotiate against, stuck forever in ServersNeedingSignIn.
+    public static McpServerAuth ToAuth(McpServerContribution contribution) =>
+        !string.IsNullOrWhiteSpace(contribution.OAuthAuthority) ? McpServerAuth.OAuth
+        : !string.IsNullOrEmpty(contribution.BearerToken) ? McpServerAuth.ApiKey
+        : McpServerAuth.None;
 
     // Mapped by name, not ordinal — McpContributionScope and McpServerScope are declared independently (isolation,
     // see the ICockpitHost doc comment) and are free to diverge in order.

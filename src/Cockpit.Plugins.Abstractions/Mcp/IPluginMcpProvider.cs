@@ -17,4 +17,14 @@ public interface IPluginMcpProvider
 {
     /// <summary>The MCP servers this plugin currently provides, or an empty list when it has none configured.</summary>
     IReadOnlyList<McpServerContribution> GetMcpServers();
+
+    /// <summary>
+    /// The MCP servers this plugin provides for the session belonging to <paramref name="projectId"/> (AC-500), or
+    /// <see langword="null"/> for a session with no project. Default forwards to the project-agnostic
+    /// <see cref="GetMcpServers()"/>, so an existing implementation (test fakes, older plugin builds) keeps
+    /// contributing the same global set to every session, unaware this overload exists. A plugin whose servers
+    /// differ per project (a Depot connection scoped to one project's own space, say) overrides this instead, and
+    /// still has to stay a cheap, synchronous read for the same reason <see cref="GetMcpServers()"/> does.
+    /// </summary>
+    IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId) => GetMcpServers();
 }

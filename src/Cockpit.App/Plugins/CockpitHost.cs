@@ -427,13 +427,18 @@ internal sealed class CockpitHost(
             else
             {
                 // Refresh only the connection fields; the entry's Scope and Enabled are the operator's and are left as
-                // they are (a server they disabled or rescoped in the dialog stays that way).
+                // they are (a server they disabled or rescoped in the dialog stays that way). Reuses ToServerConfig
+                // rather than restating its auth-field-clearing rule (AC-500) — the one place that sees both DTOs is
+                // exactly where that rule should live, per this file's own doc comment on PluginMcpMapping.
+                var refreshed = PluginMcpMapping.ToServerConfig(contribution);
                 servers[existingIndex] = servers[existingIndex] with
                 {
-                    Transport = McpTransport.Http,
-                    Url = contribution.Url,
-                    Auth = PluginMcpMapping.ToAuth(contribution.BearerToken),
-                    ApiKey = contribution.BearerToken,
+                    Transport = refreshed.Transport,
+                    Url = refreshed.Url,
+                    Auth = refreshed.Auth,
+                    ApiKey = refreshed.ApiKey,
+                    OAuthAuthority = refreshed.OAuthAuthority,
+                    OAuthClientId = refreshed.OAuthClientId,
                 };
             }
 
