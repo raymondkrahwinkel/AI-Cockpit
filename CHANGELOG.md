@@ -767,6 +767,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   tabbed to with the keyboard. The full ring is now reserved for keyboard focus, so it marks where the keyboard
   actually is rather than the last thing the pointer touched; a clicked field still gets its own quieter edge so
   it doesn't look untouched, just not as loud as the keyboard signal.
+- changed: the accent colour is a darker blue. The white button label it carries measured under the accessibility
+  floor for readable text against the previous shade; the new one, and its hover and pressed tints, all clear it.
+  This is a deliberate move away from the accent shown in the app's earlier mockups, made for readability.
 
 - changed: Autopilot now plans its review gates to spend verification where the verdict is. A gate reviews, its
   findings get fixed, and it reviews again until a round finds nothing — the rounds in between are asked to build

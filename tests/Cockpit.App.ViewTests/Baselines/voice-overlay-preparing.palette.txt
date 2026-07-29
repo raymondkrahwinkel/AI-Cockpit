@@ -6,7 +6,7 @@
 #1AFFFFFF  off-palette
 #F01A1D24  off-palette
 #FF202430  CockpitInsetBgColor
-#FF3B82F6  CockpitAccentColor
+#FF2563EB  CockpitAccentColor
 #FFE8EAEF  CockpitTextPrimaryColor
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0

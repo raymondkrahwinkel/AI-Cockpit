@@ -59,8 +59,10 @@
 
             <!-- Accent at 16% (#29 alpha) — the fill behind a selected row in an open dropdown. A solid accent
                  there would make the list read as one loud band; tinted, the row is picked out without the
-                 text on it having to fight the fill. -->
-            <Color x:Key="CockpitAccentSelectionColor">#293b82f6</Color>
+                 text on it having to fight the fill. Kept as an alpha echo of CockpitAccentColor below (AC-381) —
+                 it drifted from the base accent once before (AC-406/AC-337) by keeping the old hex after a
+                 re-tint, so this stays the same RGB as the base, only the alpha differs. -->
+            <Color x:Key="CockpitAccentSelectionColor">#292563eb</Color>
             <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{StaticResource CockpitAccentSelectionColor}"/>
 
             <!-- Accent at 25% (#40 alpha) — the quiet edge a TextBox/ComboBox gets from a click (AC-438).
@@ -109,10 +111,16 @@
             <SolidColorBrush x:Key="CockpitIsolatedBadgeBgBrush" Color="{StaticResource CockpitIsolatedBadgeBgColor}"/>
             <SolidColorBrush x:Key="CockpitIsolatedBadgeTextBrush" Color="{StaticResource CockpitIsolatedBadgeTextColor}"/>
 
-            <!-- Accent + status -->
-            <Color x:Key="CockpitAccentColor">#3b82f6</Color>
-            <Color x:Key="CockpitAccentHoverColor">#4a8bf7</Color>
-            <Color x:Key="CockpitAccentPressedColor">#2563eb</Color>
+            <!-- Accent + status. CockpitAccentColor was #3b82f6 with CockpitTextOnAccentColor (white) on it:
+                 3.68:1, short of the 4.5:1 AA floor the 12.5px SemiBold button label needs (AC-381). Darkened
+                 to #2563eb (5.17:1) to fix it. The old ladder answered "hover" with a *lighter* tint
+                 (#4a8bf7); repeating that pattern here would have landed hover back on ~#3b82f6 — exactly the
+                 3.68:1 this ticket removes. Contrast with white only improves as the colour gets darker, so
+                 hover and pressed are chosen further down the same blue instead, each measured against white:
+                 base #2563eb 5.17:1, hover #1d4ed8 6.70:1, pressed #1e40af 8.72:1. -->
+            <Color x:Key="CockpitAccentColor">#2563eb</Color>
+            <Color x:Key="CockpitAccentHoverColor">#1d4ed8</Color>
+            <Color x:Key="CockpitAccentPressedColor">#1e40af</Color>
             <!-- Cyan rather than a second blue: the accent moved onto blue (AC-334), and a blue "busy" dot next to a
                  blue accent border would stop reading as its own signal. Raymond's call, 2026-07-27. -->
             <Color x:Key="CockpitStatusBusyColor">#22D3EE</Color>
