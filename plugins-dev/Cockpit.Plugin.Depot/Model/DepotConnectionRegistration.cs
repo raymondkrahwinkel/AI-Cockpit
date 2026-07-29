@@ -15,8 +15,12 @@ public sealed record DepotConnectionRegistration(string Id, string Name, string 
 {
     /// <summary>
     /// The name this connection is contributed under (AC-243) — a fixed <c>"Depot: "</c> prefix so a Depot
-    /// connection managed here can never silently collide with (and overwrite, since <c>AddMcpServer</c> is an
-    /// upsert-by-name) an unrelated server an operator configured by hand in the MCP-servers dialog.
+    /// connection managed here can never silently collide with an unrelated server an operator configured by hand
+    /// in the MCP-servers dialog. Since AC-504 that collision would show up differently than a plain overwrite: a
+    /// hand-configured registry entry under the same name is shadowed for a session by <c>McpServerCatalog.Merge</c>
+    /// (this plugin's own live answer wins over a same-named registry row), and reclaimed outright — deleted, not
+    /// merely refreshed — by <c>DepotPlugin.Initialize</c>'s startup cleanup of whatever an older, push-based
+    /// install (pre-AC-504) left behind.
     /// </summary>
     public string McpServerName => $"Depot: {Name}";
 }

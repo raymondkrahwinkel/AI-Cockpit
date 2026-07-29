@@ -480,9 +480,11 @@ internal sealed class CockpitHost(
     }
 
     /// <summary>
-    /// Looks up the OAuth server this plugin contributed under <paramref name="name"/> and asks the shared
-    /// <see cref="IMcpOAuthCoordinator"/> non-interactively (AC-243) — the same read the host's own MCP-servers
-    /// dialog does per row. A name the store has no OAuth entry for (never contributed, contributed as a static
+    /// Looks up the OAuth server contributed under <paramref name="name"/> — the shared registry first, then (AC-504)
+    /// every registered <see cref="IPluginMcpProvider"/>'s own <see cref="_ResolveOAuthServerAsync"/> fallback, for a
+    /// plugin (Depot) whose servers are delivered to sessions per-project rather than pushed into that registry — and
+    /// asks the shared <see cref="IMcpOAuthCoordinator"/> non-interactively (AC-243), the same read the host's own
+    /// MCP-servers dialog does per row. A name nothing resolves to (never contributed, contributed as a static
     /// token, or removed), or a coordinator that is not registered, answers <see cref="PluginMcpAuthState.Unknown"/>
     /// rather than throwing — a status read is informational only.
     /// </summary>
@@ -493,13 +495,9 @@ internal sealed class CockpitHost(
             return PluginMcpAuthState.Unknown;
         }
 
-        var store = services.GetRequiredService<IMcpServerStore>();
-
         try
         {
-            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
-
+            var server = await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false);
             if (server is null)
             {
                 return PluginMcpAuthState.Unknown;
@@ -533,13 +531,9 @@ internal sealed class CockpitHost(
             return PluginMcpSignInOutcome.Unavailable;
         }
 
-        var store = services.GetRequiredService<IMcpServerStore>();
-
         try
         {
-            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
-
+            var server = await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false);
             if (server is null)
             {
                 return PluginMcpSignInOutcome.Unavailable;
@@ -552,6 +546,46 @@ internal sealed class CockpitHost(
         {
             diagnostics.Record(pluginId, pluginName, "mcp-sign-in", exception.Message);
             return PluginMcpSignInOutcome.Unreachable;
+        }
+    }
+
+    /// <summary>
+    /// The OAuth server named <paramref name="name"/>, wherever it lives: the shared registry first (a
+    /// registry-configured server, or a plugin still on the AC-243 push model), then, if nothing there matches
+    /// (AC-504), every <see cref="IPluginMcpProvider"/>'s own project-agnostic <see cref="IPluginMcpProvider.GetMcpServers()"/>
+    /// — a plugin whose servers are delivered to sessions per-project (Depot, one server per connection) still has
+    /// no project to scope by here: signing in happens from that plugin's own settings view, not from inside a
+    /// session. A plugin that throws while listing its servers is treated the same way <see cref="McpServerCatalog"/>
+    /// treats it — logged and skipped, not fatal to the lookup.
+    /// </summary>
+    private async Task<McpServerConfig?> _ResolveOAuthServerAsync(string name, CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var fromRegistry = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+
+        if (fromRegistry is not null)
+        {
+            return fromRegistry;
+        }
+
+        return services.GetServices<IPluginMcpProvider>()
+            .SelectMany(_SafeContributionsOf)
+            .Select(PluginMcpMapping.ToServerConfig)
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+    }
+
+    private IReadOnlyList<McpServerContribution> _SafeContributionsOf(IPluginMcpProvider provider)
+    {
+        try
+        {
+            return provider.GetMcpServers();
+        }
+        catch (Exception exception)
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                exception, "A plugin failed to list its MCP servers while resolving an OAuth sign-in; leaving them out of the lookup.");
+            return [];
         }
     }
 
