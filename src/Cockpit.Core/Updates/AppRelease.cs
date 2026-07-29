@@ -34,3 +34,19 @@ public sealed record UpdateCheckResult(AppRelease? Release, string? Failure)
 
     public static UpdateCheckResult Failed(string why) => new(null, why);
 }
+
+/// <summary>
+/// What a download attempt did (AC-388). Its own type rather than reusing <see cref="UpdateCheckResult"/>: a check
+/// finding nothing is an ordinary "up to date", but a download finding nothing to fetch — or losing the network
+/// partway through — must never look like the success a check's null <see cref="UpdateCheckResult.Release"/> does.
+/// An aborted or failed download is expected to leave the app exactly as it found it; this is what says so happened,
+/// so the caller neither applies a build that never arrived nor clears the offer that is still good.
+/// </summary>
+/// <param name="Succeeded">Whether the build now on offer finished downloading intact.</param>
+/// <param name="Failure">Why it did not, or null on success. Never "up to date"/"installed" wording — this call was never asking that question.</param>
+public sealed record UpdateDownloadResult(bool Succeeded, string? Failure)
+{
+    public static UpdateDownloadResult Ok() => new(true, null);
+
+    public static UpdateDownloadResult Failed(string why) => new(false, why);
+}

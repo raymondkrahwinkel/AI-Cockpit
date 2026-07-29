@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Updates;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -197,6 +199,102 @@ public class VelopackUpdateServiceTests : IDisposable
     public void TheFeedIsReadAnonymously_WhichIsWhatKeepsDraftReleasesOutOfIt() =>
         Assert.Null(VelopackUpdateService.AccessToken);
 
+    /// <summary>A newer build downloads intact, and progress is reported all the way to completion (AC-388).</summary>
+    [Fact]
+    public async Task ANewerBuildOnOffer_DownloadsIntact_AndReportsProgressToCompletion()
+    {
+        var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
+        var reported = new List<int>();
+
+        var result = await service.DownloadAsync(
+            UpdateChannel.Stable,
+            source: _ => new Feed(Package("0.9.0")),
+            new TestVelopackLocator("AI-Cockpit", "0.8.0", _packages),
+            NullLogger.Instance,
+            TimeSpan.FromSeconds(5),
+            reported.Add,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Failure);
+        Assert.Contains(100, reported);
+    }
+
+    /// <summary>Nothing newer to fetch is a failure, not a silent no-op — "up to date" is a check's answer, not a download's.</summary>
+    [Fact]
+    public async Task NothingNewerToFetch_IsAFailureNotASilentNoOp()
+    {
+        var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
+
+        var result = await service.DownloadAsync(
+            UpdateChannel.Stable,
+            source: _ => new Feed(Package("0.8.0")),
+            new TestVelopackLocator("AI-Cockpit", "0.8.0", _packages),
+            NullLogger.Instance,
+            TimeSpan.FromSeconds(5),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Failure);
+    }
+
+    /// <summary>
+    /// A transfer that breaks partway leaves the app exactly as it found it: a failure with a reason, and — this is
+    /// the assertion that matters — nothing recorded as "ready to apply", so a stray "Update now" click afterwards
+    /// cannot restart into a half-fetched build.
+    /// </summary>
+    [Fact]
+    public async Task ATransferThatBreaksPartway_LeavesNothingReadyToApply()
+    {
+        var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
+
+        var result = await service.DownloadAsync(
+            UpdateChannel.Stable,
+            source: _ => new Feed(Package("0.9.0")) { DownloadFails = true },
+            new TestVelopackLocator("AI-Cockpit", "0.8.0", _packages),
+            NullLogger.Instance,
+            TimeSpan.FromSeconds(5),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Failure);
+
+        // Nothing was fetched, so applying must be a no-op rather than throw or restart into a bad build.
+        service.ApplyDownloadedUpdateAndRestart();
+        service.ApplyDownloadedUpdateSilentlyOnNextStart();
+    }
+
+    /// <summary>A copy nobody installed cannot download an update either — the same reading <see cref="CheckAsync"/> gives, and for the same reason.</summary>
+    [Fact]
+    public async Task ACopyTheInstallerNeverPlaced_IsToldItCannotDownloadEither()
+    {
+        var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
+
+        var result = await service.DownloadAsync(
+            UpdateChannel.Stable,
+            source: _ => new Feed(),
+            locator: null,
+            NullLogger.Instance,
+            TimeSpan.FromSeconds(5),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("cannot download an update", result.Failure);
+    }
+
+    /// <summary>Neither apply call does anything before a download has ever succeeded — no build to apply means no restart to make.</summary>
+    [Fact]
+    public void ApplyCalls_BeforeAnyDownload_AreNoOps()
+    {
+        var service = new VelopackUpdateService(NullLogger<VelopackUpdateService>.Instance);
+
+        service.ApplyDownloadedUpdateAndRestart();
+        service.ApplyDownloadedUpdateSilentlyOnNextStart();
+    }
+
     private Task<UpdateCheckResult> Check(
         UpdateChannel channel,
         Feed feed,
@@ -210,14 +308,28 @@ public class VelopackUpdateServiceTests : IDisposable
             patience ?? TimeSpan.FromSeconds(5),
             CancellationToken.None);
 
-    private static VelopackAsset Package(string version, string notes = "") => new()
+    private static VelopackAsset Package(string version, string notes = "")
     {
-        PackageId = "AI-Cockpit",
-        Version = SemanticVersion.Parse(version),
-        Type = VelopackAssetType.Full,
-        FileName = $"AI-Cockpit-{version}-full.nupkg",
-        NotesMarkdown = notes,
-    };
+        var fileName = $"AI-Cockpit-{version}-full.nupkg";
+        var bytes = PackageBytes(fileName);
+
+        return new VelopackAsset
+        {
+            PackageId = "AI-Cockpit",
+            Version = SemanticVersion.Parse(version),
+            Type = VelopackAssetType.Full,
+            FileName = fileName,
+            NotesMarkdown = notes,
+            // Velopack verifies what it downloads against these before calling it done, so a fixture whose bytes do
+            // not match its own advertised hash/size would fail for a reason that has nothing to do with the test —
+            // weakening that verification in production code to dodge it was the one thing not on the table (AC-388).
+            SHA1 = Convert.ToHexString(SHA1.HashData(bytes)),
+            Size = bytes.Length,
+        };
+    }
+
+    /// <summary>Deterministic fixture bytes for a package, keyed by the file name a <see cref="Package"/> was given — so <see cref="Feed.DownloadReleaseEntry"/> can hand back exactly what <see cref="Package"/> promised.</summary>
+    private static byte[] PackageBytes(string fileName) => Encoding.UTF8.GetBytes($"contents of {fileName}");
 
     /// <summary>Stands in for the release feed, and remembers what it was asked for — which is the assertion.</summary>
     private sealed class Feed(params VelopackAsset[] assets) : IUpdateSource
@@ -227,6 +339,9 @@ public class VelopackUpdateServiceTests : IDisposable
         public bool Fails { get; init; }
 
         public bool Hangs { get; init; }
+
+        /// <summary>Makes the download itself fail partway (AC-388), distinct from <see cref="Fails"/>, which fails the feed lookup that happens before any download starts.</summary>
+        public bool DownloadFails { get; init; }
 
         public async Task<VelopackAssetFeed> GetReleaseFeed(
             IVelopackLogger logger,
@@ -247,12 +362,38 @@ public class VelopackUpdateServiceTests : IDisposable
                 : new VelopackAssetFeed { Assets = assets };
         }
 
-        public Task DownloadReleaseEntry(
+        /// <summary>
+        /// The download itself (AC-388): writes the fixture bytes a <see cref="Package"/> promised, through the same
+        /// <see cref="IUpdateSource"/> seam <see cref="VelopackUpdateService.DownloadAsync"/> drives a real
+        /// <see cref="UpdateManager"/> through, so what is exercised is the manager's own size/checksum verification
+        /// rather than a re-implementation of it.
+        /// </summary>
+        public async Task DownloadReleaseEntry(
             IVelopackLogger logger,
             VelopackAsset releaseEntry,
             string localFile,
             Action<int> progress,
-            CancellationToken cancelToken = default) =>
-            throw new NotSupportedException("a check never downloads — applying an update is AC-388's half.");
+            CancellationToken cancelToken = default)
+        {
+            if (DownloadFails)
+            {
+                throw new HttpRequestException("the download was interrupted");
+            }
+
+            if (Hangs)
+            {
+                await Task.Delay(Timeout.Infinite, cancelToken);
+            }
+
+            foreach (var percent in new[] { 0, 25, 50, 75 })
+            {
+                cancelToken.ThrowIfCancellationRequested();
+                progress(percent);
+                await Task.Yield();
+            }
+
+            await File.WriteAllBytesAsync(localFile, PackageBytes(releaseEntry.FileName), cancelToken);
+            progress(100);
+        }
     }
 }

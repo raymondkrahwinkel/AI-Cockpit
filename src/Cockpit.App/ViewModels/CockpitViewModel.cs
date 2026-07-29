@@ -850,6 +850,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _updateBannerVisible;
 
+    /// <summary>
+    /// Whether a download for "Update now"/"Install on next start" is in flight (AC-388). Drives the banner's/Options'
+    /// progress indicator directly (AC-379: a rendered-view test asserts the control itself, not this field) and
+    /// disables both buttons, so a second click cannot start a second transfer over the first.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isUpdateDownloading;
+
+    /// <summary>
+    /// 0-100 progress for the download <see cref="IsUpdateDownloading"/> is tracking (AC-388). Velopack's progress
+    /// callback fires from whatever thread it runs its transfer on, not the UI thread (AC-368) — every write to this
+    /// property from that callback goes through <c>Dispatcher.UIThread</c>, the same discipline
+    /// <see cref="_periodicUpdateTimer"/>'s tick already follows.
+    /// </summary>
+    [ObservableProperty]
+    private int _updateDownloadProgress;
+
     /// <summary>The version of the release now on offer, and of the one the operator last dismissed from the banner.
     /// A version identifies a build on its own: a nightly is packed as <c>-nightly.&lt;run&gt;</c>, so the rolling tag
     /// it is published under repeats but the version does not.</summary>
@@ -902,6 +919,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool CanUpdateItself { get; }
 
     public bool HasUpdate => UpdateUrl.Length > 0;
+
+    /// <summary>
+    /// Whether "Update now"/"Install on next start" show, in the banner and in Options (AC-388): a build must be on
+    /// offer, and this copy must be one the updater can replace. A rendered-view test asserts the actual
+    /// <c>Button.IsVisible</c> against this, not <see cref="CanUpdateItself"/>/<see cref="HasUpdate"/> separately —
+    /// AC-379's lesson, that a button hung off a container's own condition or an internal field a test cannot see is
+    /// not the same as the button being visible for the right reason.
+    /// </summary>
+    public bool ShowSelfUpdateButtons => CanUpdateItself && HasUpdate;
+
+    /// <summary>The pre-AC-388 fallback: a build is on offer but this copy cannot fetch it, so the release page is the whole offer.</summary>
+    public bool ShowOpenReleaseButton => !CanUpdateItself && HasUpdate;
 
     /// <summary>
     /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
@@ -3510,6 +3539,126 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
+    /// Downloads the build on offer and, once the operator confirms, applies it and restarts (AC-388). Only reachable
+    /// when <see cref="CanUpdateItself"/> — the view gates the button on it, the NotPackaged copy keeps its
+    /// "Open release" link unchanged. A failed or aborted download leaves <see cref="UpdateUrl"/>/the banner/the
+    /// offered release exactly as they were (criterion 4): only <see cref="UpdateStatus"/> changes, the same
+    /// discipline <see cref="CheckForUpdatesAsync"/> already holds for its own failures.
+    /// <para>
+    /// Restarting is never automatic (criterion 6): a successful download only asks, through
+    /// <see cref="ISessionDialogService.ShowConfirmationDialogAsync"/>, naming how many sessions are still running
+    /// (criterion 7) rather than a generic "are you sure?" — a running agent session should not vanish without the
+    /// operator being told what is about to take it down. Declining leaves the build downloaded and ready; nothing
+    /// is applied until they click again or use <see cref="InstallUpdateOnNextStartAsync"/> instead.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    public async Task UpdateNowAsync()
+    {
+        if (_updates is not { } updates || !CanUpdateItself || UpdateUrl.Length == 0 || IsUpdateDownloading)
+        {
+            return;
+        }
+
+        if (!await _DownloadUpdateAsync(updates))
+        {
+            return;
+        }
+
+        if (!await _ConfirmRestartAsync())
+        {
+            UpdateStatus = "Downloaded. Restart when you are ready, from \"Update now\" or \"Install on next start\".";
+            return;
+        }
+
+        UpdateStatus = "Restarting…";
+        updates.ApplyDownloadedUpdateAndRestart();
+    }
+
+    /// <summary>
+    /// Downloads the build on offer and applies it the next time the cockpit starts, without touching this session
+    /// (criterion 3, criterion 7's conservative alternative to restarting now): <c>WaitExitThenApplyUpdates(silent:
+    /// true, restart: false)</c> underneath. Never restarts on its own — that would be exactly the silent apply
+    /// criterion 6 rules out.
+    /// </summary>
+    [RelayCommand]
+    public async Task InstallUpdateOnNextStartAsync()
+    {
+        if (_updates is not { } updates || !CanUpdateItself || UpdateUrl.Length == 0 || IsUpdateDownloading)
+        {
+            return;
+        }
+
+        if (!await _DownloadUpdateAsync(updates))
+        {
+            return;
+        }
+
+        updates.ApplyDownloadedUpdateSilentlyOnNextStart();
+        UpdateStatus = $"Downloaded {UpdateName}. It will be installed the next time the cockpit starts.";
+    }
+
+    /// <summary>
+    /// The download half shared by <see cref="UpdateNowAsync"/> and <see cref="InstallUpdateOnNextStartAsync"/>.
+    /// Returns whether it succeeded; a failure already left <see cref="UpdateStatus"/> saying why and touched
+    /// nothing else (criterion 4) — the caller has nothing left to do but stop.
+    /// </summary>
+    private async Task<bool> _DownloadUpdateAsync(IUpdateService updates)
+    {
+        IsUpdateDownloading = true;
+        UpdateDownloadProgress = 0;
+        UpdateStatus = "Downloading…";
+
+        try
+        {
+            // Velopack's progress callback runs on whatever thread its own transfer uses, not necessarily the UI
+            // thread (AC-368) — marshalled here the same way _periodicUpdateTimer's tick already is.
+            var result = await updates.DownloadAsync(
+                _Stream,
+                percent => Dispatcher.UIThread.Post(() => UpdateDownloadProgress = percent));
+
+            if (!result.Succeeded)
+            {
+                UpdateStatus = result.Failure ?? "The download failed.";
+                return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            IsUpdateDownloading = false;
+        }
+    }
+
+    /// <summary>
+    /// Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
+    /// sure?". <see cref="SessionPanelViewModel.RequiresCloseConfirmation"/> is the same reading the close-confirm
+    /// prompt already uses for "is this session doing something a restart would cut off".
+    /// </summary>
+    private Task<bool> _ConfirmRestartAsync()
+    {
+        if (_dialogService is not { } dialogs)
+        {
+            return Task.FromResult(false);
+        }
+
+        // _AllSessions(), not Sessions: an embedded agent (an Autopilot step, a plugin-run) is a full session the
+        // grid deliberately never lists (AC-391), and restarting kills it exactly as it would a grid session — so
+        // counting only Sessions here would tell the operator "nothing running" while one is mid-turn underneath.
+        var running = _AllSessions().Where(session => session.RequiresCloseConfirmation).ToList();
+
+        var message = running.Count switch
+        {
+            0 => $"The cockpit will close and reopen on {UpdateName}.",
+            1 => $"1 session is still running ({running[0].Title}) and will be cut off: the cockpit will close and reopen on {UpdateName}.",
+            _ => $"{running.Count} sessions are still running ({string.Join(", ", running.Select(session => session.Title))}) and will be cut off: the cockpit will close and reopen on {UpdateName}.",
+        };
+
+        return dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now");
+    }
+
+    /// <summary>
     /// Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying
     /// "not this one", so a later check that finds a newer build shows the banner again — see <see cref="_Announce"/>.
     /// </summary>
@@ -3526,6 +3675,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateName = release.Version;
         UpdateStatus = $"{release.Version} is available.";
         OnPropertyChanged(nameof(HasUpdate));
+        OnPropertyChanged(nameof(ShowSelfUpdateButtons));
+        OnPropertyChanged(nameof(ShowOpenReleaseButton));
 
         // The banner shows unless the operator already dismissed this exact build; a newer build always has a
         // different key (see _ReleaseKey) and so returns on its own.

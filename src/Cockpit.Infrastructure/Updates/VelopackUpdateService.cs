@@ -34,6 +34,16 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
 
     public (string Version, string Commit) Current { get; } = _Read(typeof(VelopackUpdateService).Assembly);
 
+    /// <summary>
+    /// The build a successful <see cref="DownloadAsync"/> fetched, and the manager that fetched it — the only two
+    /// things <see cref="ApplyDownloadedUpdateAndRestart"/>/<see cref="ApplyDownloadedUpdateSilentlyOnNextStart"/>
+    /// need. This instance is registered as an <see cref="ISingletonService"/>, so the pair survives from the
+    /// download to whichever apply call the operator eventually clicks; there is deliberately no way to apply
+    /// anything else, because there is only ever one build worth applying: the one just fetched.
+    /// </summary>
+    private UpdateManager? _pendingManager;
+    private VelopackAsset? _pendingRelease;
+
     public Task<UpdateCheckResult> CheckAsync(UpdateChannel channel, CancellationToken cancellationToken = default) =>
         CheckAsync(channel, Source, locator: null, logger, Patience, cancellationToken);
 
@@ -101,6 +111,113 @@ internal sealed class VelopackUpdateService(ILogger<VelopackUpdateService> logge
 
             return UpdateCheckResult.Failed($"The update check failed: {exception.Message}");
         }
+    }
+
+    public Task<UpdateDownloadResult> DownloadAsync(UpdateChannel channel, Action<int>? progress = null, CancellationToken cancellationToken = default) =>
+        DownloadAsync(channel, Source, locator: null, logger, Patience, progress, cancellationToken);
+
+    /// <summary>
+    /// The download, with the feed and the installation handed in — same seam as <see cref="CheckAsync"/>, and for
+    /// the same reason: a test reaches Velopack's own verification (size, checksum) through a real
+    /// <see cref="UpdateManager"/> rather than re-implementing it. Unlike the check, this one has somewhere to put
+    /// its result: a successful fetch is kept on the instance for a later apply call to use, because the operator
+    /// applies whatever was just downloaded, never a release named separately.
+    /// </summary>
+    internal async Task<UpdateDownloadResult> DownloadAsync(
+        UpdateChannel channel,
+        Func<UpdateChannel, IUpdateSource> source,
+        IVelopackLocator? locator,
+        ILogger logger,
+        TimeSpan patience,
+        Action<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        if ((locator ?? (VelopackLocator.IsCurrentSet ? VelopackLocator.Current : null))?.CurrentlyInstalledVersion is null)
+        {
+            return UpdateDownloadResult.Failed(
+                "This copy was not installed by the cockpit's installer, so it cannot download an update.");
+        }
+
+        try
+        {
+            var manager = new UpdateManager(
+                source(channel),
+                new UpdateOptions { ExplicitChannel = UpdateChannelName.For(channel) },
+                locator);
+
+            var check = manager.CheckForUpdatesAsync();
+
+            using var waited = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            waited.CancelAfter(patience);
+
+            if (await Task.WhenAny(check, Task.Delay(Timeout.Infinite, waited.Token)) != check)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return UpdateDownloadResult.Failed("The update feed did not answer in time.");
+            }
+
+            if (await check is not { TargetFullRelease: { } release } info)
+            {
+                return UpdateDownloadResult.Failed("There is no newer build to download.");
+            }
+
+            await manager.DownloadUpdatesAsync(info, progress, cancellationToken);
+
+            // Kept only once the transfer actually finished — a failed or cancelled download below must leave
+            // whatever was fetched by an earlier, successful call untouched rather than half-overwrite it.
+            _pendingManager = manager;
+            _pendingRelease = release;
+
+            return UpdateDownloadResult.Ok();
+        }
+        catch (OperationCanceledException)
+        {
+            return UpdateDownloadResult.Failed("The download was cancelled.");
+        }
+        catch (NotInstalledException)
+        {
+            return UpdateDownloadResult.Failed(
+                "This copy was not installed by the cockpit's installer, so it cannot download an update.");
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "The update download failed.");
+
+            return UpdateDownloadResult.Failed($"The update download failed: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// <c>UpdateManager.ApplyUpdatesAndRestart</c> rather than this project's own <c>AppRestartService</c> (AC-388):
+    /// that service relaunches <see cref="Environment.ProcessPath"/>, which on an AppImage is a FUSE mount Velopack
+    /// has just discarded in favour of the new one — the relaunch would target a path that no longer exists.
+    /// Velopack's own restart tracks <c>$APPIMAGE</c> internally and does not have that problem. A no-op when
+    /// nothing has been downloaded, so a stray call before a successful <see cref="DownloadAsync"/> does nothing
+    /// rather than restart into whatever the installer last left on disk.
+    /// </summary>
+    public void ApplyDownloadedUpdateAndRestart()
+    {
+        if (_pendingManager is null || _pendingRelease is null)
+        {
+            return;
+        }
+
+        _pendingManager.ApplyUpdatesAndRestart(_pendingRelease);
+    }
+
+    /// <summary>
+    /// <c>silent: true, restart: false</c> (AC-388): the update lands next launch and this session is left running
+    /// untouched, which is the whole point of offering it as the alternative to restarting now.
+    /// </summary>
+    public void ApplyDownloadedUpdateSilentlyOnNextStart()
+    {
+        if (_pendingManager is null || _pendingRelease is null)
+        {
+            return;
+        }
+
+        _pendingManager.WaitExitThenApplyUpdates(_pendingRelease, silent: true, restart: false);
     }
 
     /// <summary>
