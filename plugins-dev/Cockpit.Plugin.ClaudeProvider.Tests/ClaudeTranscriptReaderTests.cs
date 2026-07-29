@@ -243,7 +243,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
             """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}""" + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        usage.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
+        Assert.Equal(new PluginTokenUsage(10, 20, 0, 0), usage);
     }
 
     [Fact]
@@ -287,8 +287,9 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, repeatedLine + "\n" + repeatedLine + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        usageReadings.Should().ContainSingle().Which.Should().BeEquivalentTo(new PluginTokenUsage(10, 20, 0, 0));
-        turnCompletions.Should().Be(1);
+        var singleReading = Assert.Single(usageReadings);
+        Assert.Equal(new PluginTokenUsage(10, 20, 0, 0), singleReading);
+        Assert.Equal(1, turnCompletions);
     }
 
     [Fact]
@@ -314,7 +315,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        received!.Usage.Should().BeNull();
+        Assert.Null(received!.Usage);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)
