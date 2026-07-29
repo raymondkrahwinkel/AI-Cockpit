@@ -15,7 +15,13 @@ namespace Cockpit.Infrastructure.Mcp;
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(
+    IMcpServerCatalog catalog,
+    IMcpOAuthAuthorizer oauthAuthorizer,
+    IMcpOAuthCoordinator oauthCoordinator,
+    McpAuthKey authKey,
+    SessionMcpKeyring keyring,
+    ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default)
@@ -135,7 +141,14 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
     {
         try
         {
-            var client = await McpClient.CreateAsync(_BuildTransport(server, sessionToken), cancellationToken: cancellationToken).ConfigureAwait(false);
+            // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually have to
+            // run — GetStateAsync is a local read (no network, no browser; see its own doc comment), so a server
+            // with an already-usable token still connects on the fast default and a merely slow (not down) OAuth
+            // server cannot stall the whole session-connect Task.WhenAll for the widened window on every start.
+            var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
+                && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
+            var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Value : null;
+            var client = await McpClient.CreateAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed
