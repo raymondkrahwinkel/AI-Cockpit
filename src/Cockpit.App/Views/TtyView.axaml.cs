@@ -937,8 +937,43 @@ public partial class TtyView : UserControl
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             _FlushOutput();
-            _viewModel?.OnProcessExited();
+            _viewModel?.OnProcessExited(_LastVisibleLines());
         });
+    }
+
+    /// <summary>
+    /// The last few non-blank lines on screen, newest last — what a restored pane's degraded offer shows as why
+    /// (AC-410) when the process exits before doing anything, e.g. <c>claude --resume</c> printing "No conversation
+    /// found" and quitting. Read straight off the render buffer rather than kept separately: <c>_FlushOutput</c>
+    /// above already wrote everything pending into it before this runs, so it holds exactly what the operator would
+    /// have seen.
+    /// </summary>
+    private string? _LastVisibleLines(int maxLines = 6)
+    {
+        var buffer = Terminal.Buffer;
+        var lines = new List<string>();
+
+        for (var row = buffer.Rows - 1; row >= 0 && lines.Count < maxLines; row--)
+        {
+            if (buffer.GetRowForRender(row) is not { } cells)
+            {
+                continue;
+            }
+
+            var text = RowText.Build(cells, out _).TrimEnd();
+            if (text.Length > 0)
+            {
+                lines.Add(text);
+            }
+        }
+
+        if (lines.Count == 0)
+        {
+            return null;
+        }
+
+        lines.Reverse();
+        return string.Join('\n', lines);
     }
 
     // Writes everything the pty reader has accumulated in one Terminal.Write, on the UI thread. Driven by the

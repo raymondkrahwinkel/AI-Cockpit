@@ -83,6 +83,13 @@ internal static class Screenshotter
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
         // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
         ["terminal"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
+        // The restore offer a pane comes back with after a crash (AC-410), in both the states that paint
+        // differently and on both views that carry the banner. Two scenes because the resumable case hides the
+        // degraded reason and the degraded case hides the Resume button, so neither renders the other's surface;
+        // two views because SessionView and TtyView each spell the banner out separately, and a banner added to
+        // only one of them is exactly the kind of half-landed change a single scene would attest to as finished.
+        ["restore-offer"] = (width, height) => _RestorePane(width, height, degraded: false),
+        ["restore-offer-degraded"] = (width, height) => _RestorePane(width, height, degraded: true),
         ["mcp-servers"] = (_, _) => _McpServers(),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
@@ -258,6 +265,39 @@ internal static class Screenshotter
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // A pane as it comes back after a crash: materialised, nothing started, and carrying its restore offer. The
+    // degraded variant is the one worth looking at hardest — it drops the Resume button and gains a second line of
+    // reason, so the banner has to stay readable while its widest element disappears and its tallest appears.
+    private static Window _RestorePane(int width, int height, bool degraded)
+    {
+        var pane = new Cockpit.Core.Workspaces.WorkspacePane("pane-restored", Cockpit.Core.Workspaces.PaneKind.AiSession)
+        {
+            ProfileId = "personal",
+            WorkingDirectory = "/home/raymond/dev/webshop",
+            Title = "personal - 3",
+        };
+
+        var plan = new Services.SessionRestorePlan(
+            pane,
+            Profile: null,
+            degraded ? Services.SessionRestoreAvailability.Gone : Services.SessionRestoreAvailability.Known,
+            degraded ? "Claude no longer has this conversation: No conversation found with session ID: 9f2c1b40." : string.Empty);
+
+        // SessionView for the resumable case and TtyView for the degraded one, so the two scenes between them
+        // render the banner out of both files rather than twice out of the same one.
+        var viewModel = new SessionViewModel { Title = pane.Title, ActiveProfileLabel = "personal", RestoreOffer = plan };
+        var ttyViewModel = new TtyViewModel { Title = pane.Title, ActiveProfileLabel = "personal", RestoreOffer = plan };
+
+        return new Window
+        {
+            Width = width,
+            Height = height,
+            Content = degraded
+                ? new TtyView { DataContext = ttyViewModel }
+                : new SessionView { DataContext = viewModel },
+        };
     }
 
     // Renders the MCP-servers dialog in the state that had no way of being looked at (AC-427): an OAuth server, so

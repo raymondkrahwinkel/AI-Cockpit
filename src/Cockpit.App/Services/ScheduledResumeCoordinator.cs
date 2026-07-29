@@ -220,17 +220,24 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         {
             _pending.Remove(resume);
 
-            if (ResolveSession?.Invoke(resume.PaneId) is { } session && await session.SendPromptAsync(resume.Prompt))
+            // AC-410: pane-id continuity means ResolveSession can now find a pane that was only just restored and
+            // never started — its runtime is not there to send into. CanTakeAPrompt is the one place that already
+            // answers "would a send actually reach the agent" (SessionPanelViewModel's own doc on the property), so
+            // it is checked before SendPromptAsync is even called rather than trusted to fail safely on its own:
+            // a session kind whose SendPromptAsync does not re-check its own readiness would otherwise report a
+            // resume as delivered when it went nowhere.
+            if (ResolveSession?.Invoke(resume.PaneId) is { CanTakeAPrompt: true } session && await session.SendPromptAsync(resume.Prompt))
             {
                 _logger.LogInformation("Resume for session {Pane}, due {DueAt:u}, was sent.", resume.PaneId, resume.DueAt);
                 continue;
             }
 
-            // The session is gone, or could not take the prompt. Never send it into a fresh one: "continue" with
-            // no history behind it is meaningless, and worse than doing nothing because it looks like it worked.
+            // The session is gone, not yet started, or could not take the prompt. Never send it into a fresh one:
+            // "continue" with no history behind it is meaningless, and worse than doing nothing because it looks
+            // like it worked.
             _toast?.Show("A resume could not be delivered — its session is no longer open.", ToastSeverity.Warning);
             _logger.LogWarning(
-                "Resume for session {Pane}, due {DueAt:u}, could not be delivered — that session is gone or would not take it.",
+                "Resume for session {Pane}, due {DueAt:u}, could not be delivered — that session is gone, not started, or would not take it.",
                 resume.PaneId,
                 resume.DueAt);
         }

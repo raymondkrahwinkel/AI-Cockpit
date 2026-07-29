@@ -854,6 +854,42 @@ public class SessionViewModelTests
         vm.SessionStatus.Should().Be(SessionStatus.Done);
     }
 
+    /// <summary>
+    /// AC-410: the SDK route for a restored pane whose resume failed — mirrors what the real CLI does for an
+    /// unresolvable --resume id (verified 2026-07-29): an error_during_execution result with no Result and the
+    /// reason only in errors[]. Asserted with xunit's own Assert (AC-372) rather than this file's FluentAssertions,
+    /// per the newer test-file convention.
+    /// </summary>
+    [Fact]
+    public async Task RestoredPane_FirstTurnFailsWithNoResult_DegradesTheOfferWithTheProvidersReason()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        var pane = new Cockpit.Core.Workspaces.WorkspacePane("p1", Cockpit.Core.Workspaces.PaneKind.AiSession) { ProfileId = "default" };
+        // Set before StartConfiguredAsync, which snapshots it — CockpitViewModel would already have cleared
+        // RestoreOffer itself by the time a real turn completes (see _restoredOfferSnapshot's own doc).
+        vm.RestoreOffer = new Cockpit.App.Services.SessionRestorePlan(pane, Profile, Cockpit.App.Services.SessionRestoreAvailability.Known, string.Empty);
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1",
+            Subtype = "error_during_execution",
+            Result = null,
+            IsError = true,
+            Errors = ["No conversation found with session ID: 00000000-dead-beef-0000-000000000000"],
+        });
+
+        Assert.True(vm.HasRestoreOffer, "a failed resume must come back as an offer, not a silently dead session");
+        Assert.False(vm.CanResumeConversation, "the conversation it just failed to resume must not be offered again as if nothing happened");
+        Assert.Contains("No conversation found with session ID", vm.RestoreDegradedReason);
+
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public async Task SendAsync_WhileTurnInFlight_SetsStatusToBusy()
     {

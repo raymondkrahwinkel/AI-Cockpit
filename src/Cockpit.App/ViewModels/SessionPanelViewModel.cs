@@ -25,8 +25,41 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// other three on screen" (exposed as <c>IPluginSessionContext.PaneId</c> / <c>ICockpitSessionObserver.ActivePaneId</c>).
     /// Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the
     /// window, and two panes can even resume the same conversation.
+    /// <para>
+    /// A fresh guid until <see cref="AdoptPaneId"/> overrides it (AC-410): a pane restored from a saved
+    /// <c>WorkspacePane</c> after a restart keeps the id it was persisted under, so the worktree it owned, its
+    /// audit-log entries and its scheduled resumes all still find it by the same identity.
+    /// </para>
     /// </summary>
-    public string PaneId { get; } = Guid.NewGuid().ToString("n");
+    public string PaneId { get; private set; } = Guid.NewGuid().ToString("n");
+
+    // Whether AdoptPaneId has already run — guards the one-time-before-attach contract; a second call is a
+    // programming error (a pane being restored twice), not something to silently allow.
+    private bool _paneIdAdopted;
+
+    /// <summary>
+    /// Overrides <see cref="PaneId"/> with the id a saved pane was persisted under (AC-410), so a restored session
+    /// keeps its earlier identity instead of minting a new one. Callable exactly once, and only before the pane is
+    /// added to <c>CockpitViewModel.Sessions</c> — nothing has looked this pane up by id yet at that point, so
+    /// there is nothing left holding the old one.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Called a second time on the same panel.</exception>
+    /// <exception cref="ArgumentException"><paramref name="paneId"/> is null or blank.</exception>
+    internal void AdoptPaneId(string paneId)
+    {
+        if (_paneIdAdopted)
+        {
+            throw new InvalidOperationException($"PaneId was already adopted once (as '{PaneId}'); a pane's identity cannot be reassigned a second time.");
+        }
+
+        if (string.IsNullOrWhiteSpace(paneId))
+        {
+            throw new ArgumentException("A restored pane's id cannot be null or blank.", nameof(paneId));
+        }
+
+        PaneId = paneId;
+        _paneIdAdopted = true;
+    }
 
     /// <summary>
     /// Whether messages other agents address to this pane reach it on their own, carried by its next outgoing turn
@@ -131,6 +164,93 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <see cref="CockpitViewModel"/> so the context-menu Duplicate can start another just like it.
     /// </summary>
     public NewSessionResult? LaunchResult { get; set; }
+
+    /// <summary>
+    /// Whether this pane has a persisted <c>WorkspacePane</c> record in <c>cockpit.json</c> (AC-410) — true for an
+    /// AI session (written when it starts, or already there when it is restored), false for a plain terminal pane,
+    /// which is out of scope for this feature. Set by <see cref="CockpitViewModel"/>; gates whether closing this
+    /// session also removes that record, so a plain terminal's close never writes a no-op workspace change.
+    /// </summary>
+    internal bool HasPersistedPane { get; set; }
+
+    /// <summary>
+    /// The restore plan this pane was brought back with (AC-410), or null for a session that was never restored —
+    /// which is what keeps the banner below off every ordinary, freshly started session. Set once by
+    /// <see cref="CockpitViewModel.RestoreSessionPanesAsync"/> right after the pane is attached, and cleared the
+    /// moment the operator's choice actually starts the session, so the banner disappears exactly when the pane it
+    /// describes stops being merely offered and starts running.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRestoreOffer))]
+    [NotifyPropertyChangedFor(nameof(CanResumeConversation))]
+    [NotifyPropertyChangedFor(nameof(RestoreOfferText))]
+    [NotifyPropertyChangedFor(nameof(RestoreDegradedReason))]
+    private SessionRestorePlan? _restoreOffer;
+
+    /// <summary>Whether the restore-offer banner shows at all.</summary>
+    public bool HasRestoreOffer => RestoreOffer is not null;
+
+    /// <summary>Whether "Resume conversation" should be offered — only when the plan is confident the earlier conversation is still there.</summary>
+    public bool CanResumeConversation => RestoreOffer?.Availability == SessionRestoreAvailability.Known;
+
+    /// <summary>The banner's headline: what was open and where, before anything has been started again.</summary>
+    public string RestoreOfferText
+    {
+        get
+        {
+            if (RestoreOffer is not { } offer)
+            {
+                return string.Empty;
+            }
+
+            var where = string.IsNullOrWhiteSpace(offer.Pane.WorkingDirectory)
+                ? string.Empty
+                : $" in {offer.Pane.WorkingDirectory}";
+
+            return $"This session was open when the cockpit closed{where}. Nothing has started yet.";
+        }
+    }
+
+    /// <summary>Why the earlier conversation cannot be resumed, for the banner's second line; empty when it can (<see cref="CanResumeConversation"/>).</summary>
+    public string RestoreDegradedReason =>
+        RestoreOffer is { Availability: not SessionRestoreAvailability.Known } offer ? offer.Explanation : string.Empty;
+
+    /// <summary>
+    /// Raised when the operator resolves a restore offer by picking a start (AC-410) — <see cref="CockpitViewModel"/>
+    /// starts the session accordingly and clears <see cref="RestoreOffer"/> once it lands. Closing the offer is not
+    /// raised here: the banner's Close button goes through <see cref="RaiseCloseRequested"/> directly, the same
+    /// self-close path a TTY's "exit" already uses.
+    /// </summary>
+    public event EventHandler<SessionRestoreChoice>? RestoreDecided;
+
+    /// <summary>"Resume conversation" — picks the earlier conversation back up.</summary>
+    [RelayCommand]
+    private void ResumeConversation()
+    {
+        if (RestoreOffer is not null)
+        {
+            RestoreDecided?.Invoke(this, SessionRestoreChoice.Resume);
+        }
+    }
+
+    /// <summary>"Start fresh" — starts a new conversation in this pane instead.</summary>
+    [RelayCommand]
+    private void StartFresh()
+    {
+        if (RestoreOffer is not null)
+        {
+            RestoreDecided?.Invoke(this, SessionRestoreChoice.StartFresh);
+        }
+    }
+
+    /// <summary>
+    /// "Close" on the restore-offer banner: the pane was never started, so there is no busy turn to interrupt and
+    /// no confirmation to ask for — the same reasoning a TTY's own "exit" close already relies on. Routes through
+    /// the ordinary self-close path (<see cref="CloseRequested"/>), which is what makes this "the existing close
+    /// path, worktree release included" rather than a bespoke discard.
+    /// </summary>
+    [RelayCommand]
+    private void CloseRestoredPane() => RaiseCloseRequested();
 
     /// <summary>
     /// Takes a name a plugin proposed — the ticket it just linked to this session (#AC-310) — unless the session
@@ -601,8 +721,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <summary>
     /// Reads the pending line off the scheduler — the one place that decides what it says, so a resume that fired,
     /// lapsed or was cancelled cannot leave its banner behind, and a session handed a scheduler that already knows
-    /// about it shows the banner without waiting for an event. Note what that is not: a resume does not survive
-    /// closing the cockpit, because a pane id is a fresh guid each run and no session is reopened (AC-290).
+    /// about it shows the banner without waiting for an event. A restored pane keeps the id it was saved under
+    /// (<see cref="AdoptPaneId"/>, AC-410), so a resume whose moment falls within
+    /// <c>ScheduledResumeCoordinator</c>'s restart grace can find this pane again — but only once the operator has
+    /// actually started it: <see cref="CanTakeAPrompt"/> is what <c>RunDueAsync</c> checks before sending, so a
+    /// pane still only showing its restore offer never receives one silently.
     /// </summary>
     private void _SyncPendingResumeLabel() =>
         PendingResumeLabel = _resumes?.PendingFor(PaneId) is { } waiting

@@ -177,10 +177,12 @@ public partial class App : Application
         _mainWindow.Show();
         _SetUpTrayIcon();
 
-        // Adopt the saved workspaces. Fire-and-forget: the view model already holds the default single
-        // Sessions workspace, so the window renders today's cockpit immediately and the saved set swaps in
-        // when the read completes, rather than the window waiting on file IO to appear.
-        _ = cockpitViewModel.Workspaces.InitializeAsync();
+        // Adopt the saved workspaces, then bring back the AI-session panes they name (AC-410). Fire-and-forget:
+        // the view model already holds the default single Sessions workspace, so the window renders today's
+        // cockpit immediately and the saved set — panes included — swaps in as the reads complete, rather than
+        // the window waiting on file IO to appear. Chained rather than two separate fire-and-forgets: restoring
+        // panes reads Workspaces.Settings, so it must not run until that load has actually landed.
+        _ = _RestoreCockpitAsync(cockpitViewModel);
 
         // The feature coordinators are resolved for their constructors: each subscribes to the hotkey
         // coordinator there, and a singleton nobody asks for is never built — so an unresolved one would
@@ -422,6 +424,18 @@ public partial class App : Application
         tray.Clicked += (_, _) => ShowMainWindow();
 
         TrayIcon.SetIcons(this, [tray]);
+    }
+
+    /// <summary>
+    /// Loads the saved workspaces and then brings back the AI-session panes they name (AC-410), in that order:
+    /// <see cref="WorkspacesViewModel.InitializeAsync"/> never throws (its own doc says so), so this continuation
+    /// always runs — including after a failed load, where <c>Settings</c> stays the in-memory default and there is
+    /// simply nothing saved to restore.
+    /// </summary>
+    private static async Task _RestoreCockpitAsync(CockpitViewModel cockpit)
+    {
+        await cockpit.Workspaces.InitializeAsync();
+        await cockpit.RestoreSessionPanesAsync();
     }
 
     /// <summary>

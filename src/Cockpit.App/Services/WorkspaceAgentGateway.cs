@@ -15,13 +15,14 @@ namespace Cockpit.App.Services;
 /// including an embedded one (<see cref="CockpitViewModel.Embed"/>), which is a full agent session with its own MCP
 /// token even though the grid never lists it.
 /// <para>
-/// A Sessions workspace does not keep its AI panes in <see cref="Workspace.Panes"/> the way a Dashboard keeps its
-/// widgets — a session is placed by <see cref="SessionPanelViewModel.WorkspaceId"/> instead, arranged automatically
-/// rather than at an explicit cell. So membership here is read the same way <c>CockpitViewModel</c> itself decides
-/// which sessions belong to the active workspace: an empty <c>WorkspaceId</c> (a session started before workspaces
-/// existed, or in the design-time graph) falls back to the first Sessions workspace, rather than being read as
-/// belonging to none — but when there is no Sessions workspace to fall back to either, the pane resolves to no
-/// workspace at all, and is refused rather than handed an invented empty one.
+/// A Sessions workspace does persist its AI panes in <see cref="Workspace.Panes"/> now (AC-410), the same as a
+/// Dashboard's widgets — but that record is the operator's saved <em>intention</em>, read back only to restore a
+/// pane after a restart. Which live panel is on which desk right now is still read off the running
+/// <see cref="SessionPanelViewModel.WorkspaceId"/> instead, the same live source <c>CockpitViewModel</c> itself
+/// decides against: an empty <c>WorkspaceId</c> (a session started before workspaces existed, or in the
+/// design-time graph) falls back to the first Sessions workspace, rather than being read as belonging to none —
+/// but when there is no Sessions workspace to fall back to either, the pane resolves to no workspace at all, and
+/// is refused rather than handed an invented empty one.
 /// </para>
 /// <para>
 /// <see cref="CockpitViewModel.Sessions"/> is an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>

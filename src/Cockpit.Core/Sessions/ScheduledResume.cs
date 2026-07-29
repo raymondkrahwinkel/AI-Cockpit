@@ -9,9 +9,12 @@ namespace Cockpit.Core.Sessions;
 /// </para>
 /// </summary>
 /// <param name="PaneId">
-/// The session pane this was scheduled on, and where the prompt goes. A resume aims at an open pane and nothing
-/// else: reopening a closed conversation to send into it needs the session's whole launch behind it, which this
-/// does not carry — so a resume whose pane is gone lapses and says so (AC-290).
+/// The session pane this was scheduled on, and where the prompt goes. A resume aims at an already-running pane and
+/// nothing else: reopening a closed conversation to send into it needs the session's whole launch behind it, which
+/// this does not carry. A restored pane can keep this same id across a restart (AC-410's pane-id continuity), but
+/// that alone is not enough — <c>ScheduledResumeCoordinator.RunDueAsync</c> also requires the pane to already be
+/// startable-into (<c>SessionPanelViewModel.CanTakeAPrompt</c>) before it sends, so a resume whose pane is gone, or
+/// merely restored and not yet started, is reported as undelivered rather than sent nowhere.
 /// </param>
 /// <param name="DueAt">When to send. For an allowance this is its reset moment; for a hand-scheduled resume, whatever the operator picked.</param>
 /// <param name="Prompt">What to send — the provider's default ("continue") unless the operator wrote something else before scheduling.</param>

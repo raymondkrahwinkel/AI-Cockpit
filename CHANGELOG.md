@@ -32,6 +32,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: your sessions come back after a crash. A cockpit that closed with agent sessions open — whether you
+  closed it or it went down under you — starts again with those panes where you left them, on the right desk,
+  under the right profile, in the right folder and worktree, each one carrying an offer to pick its conversation
+  back up. **Nothing starts by itself.** A pane comes back idle and says so, with three buttons: resume the
+  conversation, start a fresh one in the same place, or close the pane. That is deliberate — half a dozen agents
+  quietly resuming the moment you open the cockpit would burn through tokens before you had looked at the screen,
+  and would redo work you may already have merged. A restore is offered, never performed.
+  When an earlier conversation cannot be picked up, the pane says which of the reasons it is instead of quietly
+  starting something else: the provider keeps no conversation you can return to, the profile it ran under has
+  been renamed or removed, its worktree is gone, or the provider was asked and no longer has that conversation —
+  in which case it shows you what the provider actually said. A pane that fails to resume stays on screen with
+  the reason instead of vanishing, which is what it used to do. Terminal panes are not restored yet.
 - added: the cockpit now keeps a note of what each session pane was doing — its profile, its conversation, the
   folder and worktree it ran in, the permission mode it was on — in a `session-state.jsonl` next to your
   `cockpit.json`. Nothing reads it back yet, so nothing looks different; this is the record that makes bringing a

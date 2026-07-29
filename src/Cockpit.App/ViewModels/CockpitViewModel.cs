@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
@@ -97,6 +98,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
     private readonly SessionStateRecorder? _sessionStateRecorder;
+    private readonly ISessionStateStore? _sessionStateStore;
+    private readonly SessionRestorePlanner? _sessionRestorePlanner;
+    private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
+    private readonly ILogger<CockpitViewModel>? _logger;
 
     /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -312,20 +317,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var loses = workspace.Type == WorkspaceType.Dashboard
-            ? _Count(workspace.Panes.Count, "widget")
-            // A plugin workspace's sessions are embedded, so they are not in Sessions — count them too, or the
-            // prompt undercounts what closing the desk is about to stop (an agent left running is the one you most
-            // want the warning for).
-            : _Count(Sessions.Count(session => session.WorkspaceId == workspace.Id) + _EmbeddedSessionCount(workspace.Id), "session");
+        string? message;
+        if (workspace.Type == WorkspaceType.Dashboard)
+        {
+            var loses = _Count(workspace.Panes.Count, "widget");
+            message = loses is null
+                ? $"Close “{workspace.Name}”?"
+                : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone.";
+        }
+        else
+        {
+            // AC-410: a restored pane still showing its offer (HasRestoreOffer) has no runtime behind it — nothing
+            // this close would actually stop. Counted apart rather than folded into "sessions", which is the
+            // drift this method used to warn about in its own comment: "3 sessions, which will be stopped" reads
+            // as a lie the moment one of the three never started.
+            var onDesk = Sessions.Where(session => session.WorkspaceId == workspace.Id).ToList();
+            var started = onDesk.Count(session => !session.HasRestoreOffer)
+                // A plugin workspace's sessions are embedded, so they are not in Sessions — count them too, or the
+                // prompt undercounts what closing the desk is about to stop (an agent left running is the one you
+                // most want the warning for). Embedded sessions are never restored-but-unstarted (AC-410's "Niet"
+                // list), so they always belong on the started side.
+                + _EmbeddedSessionCount(workspace.Id);
+            var notStarted = onDesk.Count(session => session.HasRestoreOffer);
 
-        var message = loses is null
-            ? $"Close “{workspace.Name}”?"
-            : workspace.Type == WorkspaceType.Dashboard
-                ? $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone."
-                // Sessions are stopped, not just forgotten — so the prompt says so rather than letting the
-                // operator find out afterwards.
-                : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}, which will be stopped. This cannot be undone.";
+            message = (started, notStarted) switch
+            {
+                (0, 0) => $"Close “{workspace.Name}”?",
+                (_, 0) => $"Close “{workspace.Name}” and everything on it?\n\nIt holds {_Count(started, "session")}, which will be stopped. This cannot be undone.",
+                (0, _) => $"Close “{workspace.Name}” and everything on it?\n\nIt holds {_Count(notStarted, "restored session")} that never started — there is nothing to stop. This cannot be undone.",
+                _ => $"Close “{workspace.Name}” and everything on it?\n\nIt holds {_Count(started, "session")}, which will be stopped, and {_Count(notStarted, "restored session")} that never started. This cannot be undone.",
+            };
+        }
 
         if (await ConfirmAsync("Close workspace", message, confirmLabel: "Close"))
         {
@@ -2442,7 +2464,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
-        SessionStateRecorder? sessionStateRecorder = null)
+        SessionStateRecorder? sessionStateRecorder = null,
+        ISessionStateStore? sessionStateStore = null,
+        SessionRestorePlanner? sessionRestorePlanner = null,
+        IWorktreeReconcileGate? worktreeReconcileGate = null,
+        ILogger<CockpitViewModel>? logger = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2480,6 +2506,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
+        _sessionStateStore = sessionStateStore;
+        _sessionRestorePlanner = sessionRestorePlanner;
+        _worktreeReconcileGate = worktreeReconcileGate;
+        _logger = logger;
 
         // One subscription rather than a call after each of the three creation paths: the branch can move on any of
         // them, and on the plugin-run path the start can still be cancelled afterwards, which would take the news
@@ -4603,50 +4633,64 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return null;
         }
 
+        SessionPanelViewModel session = result.Kind == SessionKind.Sdk ? _sessionFactory() : _ttySessionFactory();
+        session.LaunchResult = result;
+        AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
+
+        // AC-410: written now, before the session actually starts — see _PersistNewSessionPane for why this order
+        // is the crash-safe one.
+        _PersistNewSessionPane(session, result);
+
+        return await _StartSessionAsync(session, result);
+    }
+
+    /// <summary>
+    /// The starting half of a session launch (AC-410): worktree/working-directory resolution through to
+    /// <see cref="ProjectsViewModel.MarkOpenedAsync"/> — everything <see cref="_LaunchSessionFromResultAsync"/>
+    /// used to do after minting and attaching the panel. Split out so a restore (which only ever attaches,
+    /// never starts) does not carry this half, and reused as-is by the fresh-launch path above.
+    /// </summary>
+    private async Task<string?> _StartSessionAsync(SessionPanelViewModel session, NewSessionResult result)
+    {
         string paneId;
-        SessionPanelViewModel startedSession;
         string? startedWorkingDirectory;
         string? startedPermissionMode;
-        if (result.Kind == SessionKind.Sdk)
+        if (session is SessionViewModel sdkSession)
         {
-            var session = _sessionFactory();
-            session.LaunchResult = result;
-            AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
             string? workingDirectory;
             try
             {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(sdkSession, result);
             }
             catch (OperationCanceledException)
             {
-                // Isolation failed and running unisolated was declined — undo the half-added session rather than
-                // starting it in the operator's real working tree.
-                await CloseSessionAsync(session);
+                // Isolation failed and running unisolated was declined — undo the half-added session (which also
+                // removes its just-written pane record, via CloseSessionAsync) rather than starting it in the
+                // operator's real working tree.
+                await CloseSessionAsync(sdkSession);
                 return null;
             }
 
-            session.ProjectId = result.ProjectId;
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
-            paneId = session.PaneId;
-            startedSession = session;
+            sdkSession.ProjectId = result.ProjectId;
+            await sdkSession.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
+            paneId = sdkSession.PaneId;
             startedWorkingDirectory = workingDirectory;
             startedPermissionMode = result.Mode.Value;
         }
         else
         {
-            var session = _ttySessionFactory();
-            session.LaunchResult = result;
-            AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
+            var ttySession = (TtyViewModel)session;
             string? workingDirectory;
             try
             {
-                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(ttySession, result);
             }
             catch (OperationCanceledException)
             {
-                // Isolation failed and running unisolated was declined — undo the half-added session rather than
-                // starting it in the operator's real working tree.
-                await CloseSessionAsync(session);
+                // Isolation failed and running unisolated was declined — undo the half-added session (which also
+                // removes its just-written pane record, via CloseSessionAsync) rather than starting it in the
+                // operator's real working tree.
+                await CloseSessionAsync(ttySession);
                 return null;
             }
 
@@ -4654,15 +4698,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
             // both for the same launch (see NewSessionResult.PluginTtyOptions).
             var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
-            session.ProjectId = result.ProjectId;
+            ttySession.ProjectId = result.ProjectId;
 
             // AC-165: what the plugins give this session, resolved from the pane now that it has a project — the
             // same contribution the SDK route folds in at start, so a TTY session gets the same answer.
             var contributed = _sessionResourceResolver is null
                 ? SessionResources.Empty
-                : await _sessionResourceResolver.ResolveAsync(session.PaneId);
+                : await _sessionResourceResolver.ResolveAsync(ttySession.PaneId);
 
-            session.LaunchConfigured(
+            ttySession.LaunchConfigured(
                 result.Profile,
                 isClaudeProfile ? result.Mode.Value : null,
                 isClaudeProfile ? result.Model.Value : null,
@@ -4674,8 +4718,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
                 result.EnabledMcpServerNames,
                 contributed);
-            paneId = session.PaneId;
-            startedSession = session;
+            paneId = ttySession.PaneId;
             startedWorkingDirectory = workingDirectory;
             startedPermissionMode = isClaudeProfile ? result.Mode.Value : null;
         }
@@ -4692,8 +4735,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             paneId,
             result.Profile,
             startedWorkingDirectory,
-            worktreePath: startedSession.WorktreeBranch is not null ? startedWorkingDirectory : null,
-            worktreeBranch: startedSession.WorktreeBranch,
+            worktreePath: session.WorktreeBranch is not null ? startedWorkingDirectory : null,
+            worktreeBranch: session.WorktreeBranch,
             startedPermissionMode);
 
         // Record that this project was worked on, whichever door the session came through, so the overview can
@@ -5184,22 +5227,283 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionCounter++;
         // A session always lives on a Sessions workspace (Raymond): the one showing, else the first there is,
         // else a new one. Started while only a dashboard exists, it would otherwise run on a desk that cannot
-        // show it — invisible rather than absent, which is the worse of the two.
+        // show it — invisible rather than absent, which is the worse of the two. Deliberately not used on the
+        // restore path (see _AttachRestoredSession): bringing a saved pane back must not activate the desk it
+        // was on, which EnsureSessionWorkspace would do for a Dashboard/Projects workspace currently on screen.
         session.WorkspaceId = Workspaces.EnsureSessionWorkspace();
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
         // shows which profile — and therefore which provider — each session runs under. Whether that name is one
         // somebody meant is not worked out here: NewSessionResult.NameIsChosen says so, and this applies it (#AC-324).
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
         session.HasGeneratedName = !nameIsChosen;
+        _AttachSession(session);
+        SelectedSession = session;
+    }
+
+    /// <summary>
+    /// The wiring every session panel needs once it is going to be shown, regardless of how it got here: preference
+    /// seeding, the close/property-changed subscriptions, and joining <see cref="Sessions"/>. Shared by a freshly
+    /// started session (<see cref="AddSession"/>) and one brought back after a restart
+    /// (<see cref="_AttachRestoredSession"/>) — the two differ only in how <see cref="SessionPanelViewModel.WorkspaceId"/>,
+    /// the title and selection are decided, which is why those stay in the callers.
+    /// </summary>
+    private void _AttachSession(SessionPanelViewModel session)
+    {
         _SeedSessionPreferences(session);
 
         session.CloseRequested += OnSessionCloseRequested;
+        // AC-410: harmless for a freshly started session — RestoreOffer stays null, so nothing on the banner can
+        // ever raise this — and is what lets a restored one's "Resume"/"Start fresh" reach the cockpit.
+        session.RestoreDecided += OnSessionRestoreDecided;
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
 
         Sessions.Add(session);
-        SelectedSession = session;
+    }
+
+    /// <summary>
+    /// Attaches a session pane rebuilt from a saved <see cref="WorkspacePane"/> (AC-410): shown, but nothing
+    /// started — <see cref="RestoreSessionPanesAsync"/> mints the panel and adopts its saved id before calling
+    /// this. <paramref name="workspaceId"/> is set directly rather than through <see cref="Workspaces"/>'
+    /// <c>EnsureSessionWorkspace</c>, which would switch the operator to that desk; restoring a pane on a
+    /// workspace must not activate it. Deliberately does not set <see cref="SelectedSession"/> — the restore loop
+    /// picks at most one session for that, once, across every pane it restores.
+    /// </summary>
+    private void _AttachRestoredSession(SessionPanelViewModel session, string workspaceId, WorkspacePane pane)
+    {
+        session.WorkspaceId = workspaceId;
+        session.Title = string.IsNullOrWhiteSpace(pane.Title) ? "Session" : pane.Title;
+        session.HasGeneratedName = !pane.NameIsChosen;
+        session.ProjectId = pane.ProjectId;
+        session.HasPersistedPane = true;
+        _AttachSession(session);
+    }
+
+    /// <summary>
+    /// The <see cref="WorkspacePane"/> record for a just-started AI session (AC-410) — the operator's
+    /// <em>intention</em>: which profile and kind it runs under, and the folder it was asked to run in, before
+    /// isolation may have moved it into a worktree. Written by <see cref="_PersistNewSessionPane"/> right after
+    /// <see cref="AddSession"/>, before the session actually starts.
+    /// </summary>
+    private static WorkspacePane _BuildSessionPane(SessionPanelViewModel session, NewSessionResult result) =>
+        new(session.PaneId, PaneKind.AiSession)
+        {
+            ProfileId = result.Profile.Label,
+            SessionKind = result.Kind == SessionKind.Sdk ? PaneSessionKind.Sdk : PaneSessionKind.Tty,
+            WorkingDirectory = result.WorkingDirectory,
+            Title = session.Title,
+            NameIsChosen = result.NameIsChosen,
+            ProjectId = result.ProjectId,
+        };
+
+    /// <summary>
+    /// Persists <paramref name="session"/>'s pane record right after <see cref="AddSession"/> — deliberately before
+    /// <see cref="_StartSessionAsync"/> runs, not after: a crash in between leaves at most one config write, so the
+    /// worst case is a pane that never comes back, not one that comes back describing a session that never
+    /// actually started this way (AC-410). Fire-and-forget, the same as every other workspace-settings write.
+    /// </summary>
+    private void _PersistNewSessionPane(SessionPanelViewModel session, NewSessionResult result)
+    {
+        session.HasPersistedPane = true;
+        _ = Workspaces.AddPaneAsync(session.WorkspaceId, _BuildSessionPane(session, result));
+    }
+
+    // AC-410: the restore plan composed for each pane brought back this run, kept by pane id — read by the banner
+    // (SessionPanelViewModel.RestoreOffer, set from here) and again by _StartRestoredSessionAsync once the
+    // operator picks a start, so the plan is composed exactly once per pane per run.
+    private readonly Dictionary<string, SessionRestorePlan> _restorePlans = new(StringComparer.Ordinal);
+
+    // AC-410: the working directory a restored pane actually starts in, resolved once here from the worktree
+    // registry rather than left to the start path — the restore path runs with IsolateInWorktree: false (see
+    // _BuildRestoreLaunchResult), so _ResolveIsolatedWorkingDirectoryAsync never gets a chance to look this up
+    // itself. Null is a legitimate value (no working directory was ever known), so this is keyed by presence,
+    // not by a non-null value.
+    private readonly Dictionary<string, string?> _restoreWorkingDirectories = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Brings back every AI-session pane saved on a Sessions workspace (AC-410), once <see cref="Workspaces"/> has
+    /// loaded <c>cockpit.json</c>: for each, composes a restore plan, resolves its worktree (if any) from the
+    /// registry, mints the matching panel through the factory its saved <see cref="PaneSessionKind"/> names, adopts
+    /// the pane's saved id, and attaches it — shown, but nothing started. Chained after
+    /// <c>Workspaces.InitializeAsync</c> in <c>App.axaml.cs</c>'s startup fire-and-forget.
+    /// <para>
+    /// Waits on <see cref="IWorktreeReconcileGate"/> first: <c>Program.cs</c> starts the startup worktree reconcile
+    /// fire-and-forget so it never delays the window, and without this wait an operator who accepts a restore offer
+    /// within about a second of launch could race the reconcile into removing the very worktree the offer is about
+    /// to reattach.
+    /// </para>
+    /// <para>
+    /// Never throws — the same contract <c>InitializeAsync</c> keeps, so a continuation chained after both always
+    /// runs. A pane this run cannot make sense of (an id already restored, in the unlikely event of a
+    /// hand-duplicated <c>cockpit.json</c>) is skipped rather than aborting every other pane's restore; the skip is
+    /// logged so it leaves a trail instead of a pane that silently never comes back.
+    /// </para>
+    /// </summary>
+    public async Task RestoreSessionPanesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_sessionFactory is null || _ttySessionFactory is null || _sessionStateStore is null)
+        {
+            return;
+        }
+
+        if (_worktreeReconcileGate is not null)
+        {
+            await _worktreeReconcileGate.WaitAsync(cancellationToken);
+        }
+
+        IReadOnlyList<SessionStateRecord> states;
+        try
+        {
+            states = await _sessionStateStore.LoadAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // ISessionStateStore.LoadAsync's own contract says it never throws, but a restore that somehow still
+            // fails here must not take the rest of startup down with it — nothing restores this run, same as an
+            // empty state file. Logged so "no panes came back" leaves a trail rather than silence.
+            _logger?.LogWarning(exception, "Could not load session state; no AI-session panes will be restored this run.");
+            return;
+        }
+
+        var activeWorkspaceId = Workspaces.Active?.Id;
+        var selected = false;
+
+        foreach (var (workspace, pane) in SessionRestoreRoster.Panes(Workspaces.Settings))
+        {
+            if (Sessions.Any(existing => existing.PaneId == pane.Id))
+            {
+                // A hand-duplicated pane id in cockpit.json must not produce two panels sharing one identity —
+                // refused here, before a factory even mints one, rather than crashing the whole restore.
+                continue;
+            }
+
+            try
+            {
+                var state = states.FirstOrDefault(record => record.PaneId == pane.Id);
+
+                SessionRestorePlan? plan = null;
+                if (_sessionRestorePlanner is not null)
+                {
+                    plan = await _sessionRestorePlanner.ComposeAsync(pane, state, cancellationToken);
+                    _restorePlans[pane.Id] = plan;
+                }
+
+                SessionPanelViewModel session = pane.SessionKind == PaneSessionKind.Tty ? _ttySessionFactory() : _sessionFactory();
+                session.AdoptPaneId(pane.Id);
+                _AttachRestoredSession(session, workspace.Id, pane);
+                session.RestoreOffer = plan;
+
+                // AC-410: pane-id continuity (AdoptPaneId, above) means a restored pane's own id is the worktree's
+                // owner id, so this is the same registry lookup a live session's own worktree would be found
+                // under — not a probe of "does one exist", but "which one is already this pane's".
+                var workingDirectory = state?.WorkingDirectory ?? pane.WorkingDirectory;
+                if (_worktreeManager is not null
+                    && (await _worktreeManager.ListAsync(cancellationToken)).FirstOrDefault(
+                        record => string.Equals(record.SessionId, pane.Id, StringComparison.Ordinal)) is { } worktree)
+                {
+                    session.WorktreeBranch = worktree.Branch;
+                    workingDirectory = worktree.Path;
+                }
+
+                _restoreWorkingDirectories[pane.Id] = workingDirectory;
+
+                if (!selected && workspace.Id == activeWorkspaceId)
+                {
+                    SelectedSession = session;
+                    selected = true;
+                }
+            }
+            catch (Exception exception)
+            {
+                // One pane's restore failing (a planner it cannot compose against, a factory that throws) must
+                // not cost every other pane its restore — the conservative outcome here is a pane that does not
+                // come back, not a half-attached one or a startup that never finishes. Logged so this reads as a
+                // warning in the log instead of a pane that silently never returns.
+                _logger?.LogWarning(exception, "Could not restore the AI-session pane {PaneId}; it will not come back this run.", pane.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// What a restored pane starts with once the operator accepts the offer (AC-410) — mirrors
+    /// <see cref="ProjectQuickStart.ComposeAsync"/>'s use of app-default mode/model/effort (the typed Claude
+    /// vocabulary is migration-only; there is no dialog here to have overridden them). Null when
+    /// <see cref="SessionRestorePlan.Profile"/> is null (<see cref="SessionRestoreAvailability.ProfileGone"/> or an
+    /// <see cref="SessionRestoreAvailability.Unknown"/> plan with no profile at all) — there is nothing to start a
+    /// session under, so the caller leaves the offer standing rather than starting the wrong thing.
+    /// </summary>
+    private NewSessionResult? _BuildRestoreLaunchResult(SessionRestorePlan plan, SessionResume resume)
+    {
+        if (plan.Profile is not { } profile)
+        {
+            return null;
+        }
+
+        var pane = plan.Pane;
+        var isSdk = pane.SessionKind != PaneSessionKind.Tty;
+
+        return new NewSessionResult(
+            isSdk ? SessionKind.Sdk : SessionKind.Tty,
+            profile,
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
+            pane.Title,
+            WorkingDirectory: _restoreWorkingDirectories.GetValueOrDefault(pane.Id, pane.WorkingDirectory),
+            Resume: resume,
+            PluginTtyOptions: isSdk ? null : profile.Defaults?.OptionDefaults,
+            SdkLaunchOptions: isSdk ? profile.Defaults?.OptionDefaults : null,
+            // Never true here (AC-410's documented pitfall): the working directory above and session.WorktreeBranch
+            // were already resolved from the worktree registry at materialization time, in RestoreSessionPanesAsync.
+            // Isolating again would either re-detect the same worktree through a redundant lookup or, worse, mint a
+            // second one for a pane that already owns one.
+            IsolateInWorktree: false,
+            ReadingLevel: isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
+            ProjectId: pane.ProjectId)
+        {
+            NameIsComposed = !pane.NameIsChosen,
+        };
+    }
+
+    /// <summary>
+    /// Starts a restored pane once the operator has decided (AC-410) — <see cref="SessionPanelViewModel.RestoreDecided"/>'s
+    /// handler. "Resume" resolves to <see cref="SessionResume.BySessionId"/> when the plan's saved state actually
+    /// names a conversation id, and to <see cref="SessionResume.New"/> otherwise (and always for "Start fresh") —
+    /// the same fall-back <c>_BuildRestoreLaunchResult</c> would otherwise silently need twice. Clears
+    /// <see cref="SessionPanelViewModel.RestoreOffer"/> only once the start actually returns a pane id: a cancelled
+    /// isolation prompt (see <c>_StartSessionAsync</c>) closes the session outright, and a plan with no profile to
+    /// start under leaves the offer standing rather than pretending a start happened.
+    /// </summary>
+    private async Task _StartRestoredSessionAsync(SessionPanelViewModel session, SessionRestoreChoice choice)
+    {
+        if (!_restorePlans.TryGetValue(session.PaneId, out var plan))
+        {
+            return;
+        }
+
+        var resume = choice == SessionRestoreChoice.Resume && plan.State?.ConversationId is { Length: > 0 } conversationId
+            ? SessionResume.BySessionId(conversationId)
+            : SessionResume.New;
+
+        if (_BuildRestoreLaunchResult(plan, resume) is not { } result)
+        {
+            return;
+        }
+
+        if (await _StartSessionAsync(session, result) is not null)
+        {
+            session.RestoreOffer = null;
+        }
+    }
+
+    /// <summary>A restore offer was resolved into a start (AC-410) — run the matching launch through the normal start path.</summary>
+    private void OnSessionRestoreDecided(object? sender, SessionRestoreChoice choice)
+    {
+        if (sender is SessionPanelViewModel session)
+        {
+            _ = _StartRestoredSessionAsync(session, choice);
+        }
     }
 
     /// <summary>
@@ -5471,9 +5775,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnSessionCloseRequested;
+        session.RestoreDecided -= OnSessionRestoreDecided;
         _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
+
+        // AC-410: a pane persisted at AddSession time (an AI session, started or merely restored) must stop
+        // offering to come back once it is deliberately closed. A plain terminal never set HasPersistedPane, so
+        // this is a no-op for it rather than a workspace write nothing asked for.
+        if (session.HasPersistedPane)
+        {
+            _ = Workspaces.RemovePaneAsync(session.WorkspaceId, session.PaneId);
+        }
+
+        // AC-410: the plan and the resolved working directory are only ever read again by _StartRestoredSessionAsync
+        // for this pane's own RestoreDecided — a closed pane raises neither again, so holding these past close
+        // would only grow the two dictionaries for the life of the app.
+        _restorePlans.Remove(session.PaneId);
+        _restoreWorkingDirectories.Remove(session.PaneId);
 
         // Best-effort, for the same reason the worktree release below is: the panel is already out of the collection,
         // so a dispose that throws must not take the host-side teardown with it. The terminal couplings, the roster

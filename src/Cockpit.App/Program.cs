@@ -10,6 +10,7 @@ using Cockpit.App.Views;
 using Cockpit.Core;
 using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure;
@@ -224,23 +225,24 @@ sealed class Program
         var hostedServices = Services.GetServices<IHostedService>().ToArray();
         StartHostedServices(hostedServices);
 
-        // Reconcile the worktree registry against a fresh start (AC-85): no session is alive yet, so any worktree a
-        // previous run left is orphaned — a clean one is removed with its branch, one that holds work is kept and
-        // marked retained, and git's stale admin entries are pruned. Fire-and-forget so it never delays the window;
-        // it is the background net for a crash or a hard exit that missed a session's own teardown.
-        _ = Services.GetRequiredService<IWorktreeManager>().ReconcileAsync([]);
+        // Reconcile the worktree registry against a fresh start (AC-85/AC-410), and fold duplicate session-state
+        // records left by earlier runs (AC-409) — both against the same roster of AI-session panes cockpit.json
+        // still names, so a worktree or a state record belonging to a pane a restore may yet bring back is never
+        // treated as orphaned just because nothing has rebuilt it into a live session yet. One fire-and-forget task
+        // for both, handed to IWorktreeReconcileGate before its own body starts running (see the method) so a
+        // restore that reaches the gate finds this task waiting rather than a stale "already complete" placeholder.
+        var reconcileGate = Services.GetRequiredService<IWorktreeReconcileGate>();
+        var reconcileWorktreesAndCompactState = ReconcileWorktreesAndCompactStateAsync(
+            Services.GetRequiredService<IWorktreeManager>(),
+            Services.GetRequiredService<ISessionStateStore>(),
+            Services.GetRequiredService<IWorkspaceSettingsStore>());
+        reconcileGate.SignalStarted(reconcileWorktreesAndCompactState);
+        _ = reconcileWorktreesAndCompactState;
 
         // Reconcile the repository-clone registry too (AC-90): forget any clone whose folder disappeared since last
         // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
-
-        // Fold duplicate session-state records left by earlier runs (AC-409), so the log holds one line per pane
-        // rather than one per change for the life of the install. Fire-and-forget like the two reconciles above.
-        // No pane roster is passed, so nothing is dropped: unlike a worktree, an AI session's pane is not persisted
-        // anywhere yet to enumerate, and a compaction that guesses at "still exists" would delete the state this
-        // whole ticket is about. Once panes are persisted, that roster belongs here.
-        _ = Services.GetRequiredService<ISessionStateStore>().CompactAsync();
 
         // Global UI-thread safety net: a plugin body — or any dispatcher work — that throws while rendering must never
         // take the whole cockpit down with it (a render exception in one workspace was tearing the process down). Log it
@@ -322,6 +324,29 @@ sealed class Program
         {
             service.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
+    }
+
+    // AC-410: the worktree reconcile and the session-state compaction both need "which AI-session panes will this
+    // start offer back" — SessionRestoreRoster.PaneIdsAsync reads that once from cockpit.json, so the two cannot
+    // each derive a different answer (and, unlike before panes were persisted, compaction can now safely drop a
+    // pane's state instead of never dropping any).
+    private static async Task ReconcileWorktreesAndCompactStateAsync(
+        IWorktreeManager worktreeManager,
+        ISessionStateStore sessionStateStore,
+        IWorkspaceSettingsStore workspaceSettingsStore)
+    {
+        var restorablePaneIds = await SessionRestoreRoster.PaneIdsAsync(workspaceSettingsStore).ConfigureAwait(false);
+
+        // Reconcile the worktree registry against a fresh start (AC-85): no session is alive yet, so a worktree
+        // outside this roster is orphaned — a clean one is removed with its branch, one that holds work is kept
+        // and marked retained, and git's stale admin entries are pruned. A worktree the roster does name survives
+        // even though nothing has rebuilt its pane into a live session yet — a restore may still reattach it.
+        await worktreeManager.ReconcileAsync(restorablePaneIds).ConfigureAwait(false);
+
+        // Fold duplicate session-state records left by earlier runs (AC-409), now against the same roster: a pane
+        // no longer named in cockpit.json has its state dropped instead of kept forever. Run after the reconcile
+        // above so a worktree it just kept for a restorable pane is never the one compaction treats as gone.
+        await sessionStateStore.CompactAsync(restorablePaneIds).ConfigureAwait(false);
     }
 
     // Belt-and-suspenders against a wedged shutdown: a background thread that hard-exits after a
