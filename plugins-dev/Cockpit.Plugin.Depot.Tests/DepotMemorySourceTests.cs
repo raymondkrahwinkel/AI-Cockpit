@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Depot.Tests;
 

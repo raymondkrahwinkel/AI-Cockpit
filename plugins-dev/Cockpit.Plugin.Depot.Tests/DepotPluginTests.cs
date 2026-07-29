@@ -1,6 +1,5 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
@@ -25,8 +24,8 @@ public class DepotPluginTests
 
         Assert.NotNull(registered);
         Assert.Equal("depot", registered!.Scheme);
-        registered.Instruction.Should().Contain("Depot MCP")
-            .And.Contain("say so rather than working from memory you cannot see");
+        Assert.Contains("Depot MCP", registered.Instruction);
+        Assert.Contains("say so rather than working from memory you cannot see", registered.Instruction);
     }
 
     [Fact]
