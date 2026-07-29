@@ -59,6 +59,22 @@ public class DepotConnectionRowControlTests
         _ = host.DidNotReceive().GetMcpServerAuthStateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    // The guard's URL half: signing in with an edited-but-unsaved URL would authorize against an issuer the
+    // connection is not (yet) saved as pointing at, under a name that — once saved — points somewhere else.
+    [Fact]
+    public async Task RefreshAuthStateAsync_RowsUrlEditedButNotYetSaved_NeverAsksTheHost()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var existing = new DepotConnectionRegistration("conn-1", "Work", "https://old.example.com");
+        var row = new DepotConnectionRowControl(host, existing);
+        _Show(row);
+        row.GetVisualDescendants().OfType<TextBox>().ElementAt(1).Text = "https://new.example.com";
+
+        await row.RefreshAuthStateAsync();
+
+        _ = host.DidNotReceive().GetMcpServerAuthStateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public void IsBlank_NewRowWithNothingEntered_IsTrue()
     {

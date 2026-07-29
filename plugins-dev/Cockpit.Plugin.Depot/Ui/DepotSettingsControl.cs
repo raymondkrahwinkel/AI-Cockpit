@@ -82,35 +82,65 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
     public bool Save()
     {
-        var registrations = _rows
+        var candidates = _rows
             .Where(row => !row.IsBlank)
             .Select(row => row.ToRegistration())
             .Where(registration => !string.IsNullOrWhiteSpace(registration.Name) && !string.IsNullOrWhiteSpace(registration.Url))
             .ToList();
 
+        // Two rows saved under the same name would upsert the very same registry entry from two racing calls
+        // below — keep the first and drop the rest rather than let whichever AddMcpServer call happens to finish
+        // last silently decide which row's URL wins.
+        var registrations = new List<DepotConnectionRegistration>();
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidate in candidates)
+        {
+            if (seenNames.Add(candidate.McpServerName))
+            {
+                registrations.Add(candidate);
+            }
+        }
+
         var keptNames = registrations.Select(registration => registration.McpServerName).ToHashSet(StringComparer.Ordinal);
 
         // A connection removed, or renamed (which changes McpServerName), leaves its old MCP-registry entry behind
         // unless reclaimed here — the same orphan-cleanup KubernetesSettingsControl.Save does for a cluster's
-        // secret, applied to a registry entry instead. Fire-and-forget per ICockpitHost.RemoveMcpServer's own
-        // contract for a synchronous callback.
-        foreach (var gone in _originalConnections.Where(connection => !keptNames.Contains(connection.McpServerName)))
+        // secret, applied to a registry entry instead.
+        var orphanedNames = _originalConnections
+            .Select(connection => connection.McpServerName)
+            .Where(name => !keptNames.Contains(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        _settings.Connections = registrations;
+
+        // AddMcpServer/RemoveMcpServer each do their own load-modify-save round trip against the shared store with
+        // no locking across separate calls — firing several at once (a rename is a Remove and an Add together)
+        // races two calls into reading the same stale snapshot, and whichever SaveAsync finishes last silently
+        // overwrites the other's write. Chaining them into one sequential fire-and-forget task keeps Save()
+        // synchronous (the IPluginSettingsView contract) while making sure each call sees the previous one's
+        // result before it reads.
+        _ = _SyncMcpRegistryAsync(orphanedNames, registrations);
+
+        return true;
+    }
+
+    private async Task _SyncMcpRegistryAsync(IReadOnlyList<string> orphanedNames, IReadOnlyList<DepotConnectionRegistration> registrations)
+    {
+        foreach (var orphanedName in orphanedNames)
         {
-            _ = _host.RemoveMcpServer(gone.McpServerName);
+            await _host.RemoveMcpServer(orphanedName).ConfigureAwait(false);
         }
 
         foreach (var registration in registrations)
         {
-            _ = _host.AddMcpServer(new McpServerContribution(
+            await _host.AddMcpServer(new McpServerContribution(
                 Name: registration.McpServerName,
                 Url: $"{registration.Url}/mcp")
             {
                 OAuthAuthority = registration.Url,
-            });
+            }).ConfigureAwait(false);
         }
-
-        _settings.Connections = registrations;
-        return true;
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Avalonia.Thickness(0, 6, 0, 0) };

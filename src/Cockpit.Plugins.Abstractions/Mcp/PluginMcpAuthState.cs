@@ -24,6 +24,13 @@ public enum PluginMcpAuthState
 /// </summary>
 public enum PluginMcpSignInOutcome
 {
+    // Unavailable is deliberately the zero value: default(PluginMcpSignInOutcome) — an unstubbed fake, a missed
+    // switch arm, a deserialization gap — must never read as "signed in". Authorized used to be 0, which made
+    // Substitute.For<ICockpitHost>() (and any other unconfigured Task<T> fake) report success for free.
+
+    /// <summary>This host predates <see cref="ICockpitHost.SignInMcpServerAsync"/>, or the named contribution is not (or no longer) an OAuth server.</summary>
+    Unavailable,
+
     /// <summary>The sign-in produced a usable access token.</summary>
     Authorized,
 
@@ -32,7 +39,4 @@ public enum PluginMcpSignInOutcome
 
     /// <summary>The sign-in could not even be attempted — a network/store failure, not the operator declining.</summary>
     Unreachable,
-
-    /// <summary>This host predates <see cref="ICockpitHost.SignInMcpServerAsync"/>, or the named contribution is not (or no longer) an OAuth server.</summary>
-    Unavailable,
 }

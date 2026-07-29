@@ -490,9 +490,10 @@ internal sealed class CockpitHost(
             return PluginMcpAuthState.Unknown;
         }
 
+        var store = services.GetRequiredService<IMcpServerStore>();
+
         try
         {
-            var store = services.GetRequiredService<IMcpServerStore>();
             var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
 
@@ -529,9 +530,10 @@ internal sealed class CockpitHost(
             return PluginMcpSignInOutcome.Unavailable;
         }
 
+        var store = services.GetRequiredService<IMcpServerStore>();
+
         try
         {
-            var store = services.GetRequiredService<IMcpServerStore>();
             var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
 

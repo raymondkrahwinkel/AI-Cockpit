@@ -36,14 +36,23 @@ public sealed class DepotPlugin : ICockpitPlugin
 
         // AC-500's upsert-by-name is idempotent: re-contributing every saved connection on each start refreshes the
         // shared MCP registry entry without waiting for a settings save, same as every other AddMcpServer caller.
-        foreach (var connection in settings.Connections)
+        // Sequential, not one fire-and-forget call per connection: AddMcpServer does its own load-modify-save round
+        // trip against the shared store with no locking across calls, so firing several at once for two different
+        // connections would race — each reads the same stale snapshot and the last SaveAsync to finish silently
+        // drops whichever connection lost the race.
+        _ = _AddMcpServersSequentiallyAsync(host, settings.Connections);
+    }
+
+    private static async Task _AddMcpServersSequentiallyAsync(ICockpitHost host, IReadOnlyList<Model.DepotConnectionRegistration> connections)
+    {
+        foreach (var connection in connections)
         {
-            _ = host.AddMcpServer(new McpServerContribution(
+            await host.AddMcpServer(new McpServerContribution(
                 Name: connection.McpServerName,
                 Url: $"{connection.Url}/mcp")
             {
                 OAuthAuthority = connection.Url,
-            });
+            }).ConfigureAwait(false);
         }
     }
 

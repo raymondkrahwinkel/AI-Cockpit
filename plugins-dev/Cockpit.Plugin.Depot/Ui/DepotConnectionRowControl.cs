@@ -14,10 +14,11 @@ namespace Cockpit.Plugin.Depot.Ui;
 /// auth path (OpenIddict OAuth 2.1 + PKCE) and the plugin never holds a credential; see
 /// <see cref="DepotConnectionRegistration"/>.
 /// <para>
-/// Sign-in is only offered once the row's current name matches what is actually registered under
-/// (<see cref="_storedName"/>) — the same rule <c>EditableMcpServerViewModel.IsSignInAvailable</c> enforces for the
-/// host's own MCP-servers dialog, for the same reason: a token is filed under a server's registered name, and
-/// signing in under a name that has not been saved yet would file it under a name the store does not have.
+/// Sign-in is only offered once the row's current name <em>and</em> URL both match what is actually registered
+/// (<see cref="_storedName"/>/<see cref="_storedUrl"/>) — the same rule <c>EditableMcpServerViewModel.IsSignInAvailable</c>
+/// enforces for the host's own MCP-servers dialog, for the same reason: a token is filed under the server's
+/// registered name against the URL/authority as saved, and signing in against a URL edited but not yet saved would
+/// authorize a different issuer than the one the connection is about to be saved as pointing at.
 /// </para>
 /// </summary>
 internal sealed class DepotConnectionRowControl : UserControl
@@ -25,6 +26,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly ICockpitHost _host;
     private readonly string _id;
     private readonly string? _storedName;
+    private readonly string? _storedUrl;
     private readonly TextBox _name;
     private readonly TextBox _url;
     private readonly TextBlock _authStatus;
@@ -38,12 +40,14 @@ internal sealed class DepotConnectionRowControl : UserControl
         _host = host;
         _id = existing?.Id ?? Guid.NewGuid().ToString("n");
         _storedName = existing?.McpServerName;
+        _storedUrl = existing?.Url;
 
         _name = new TextBox { Text = existing?.Name ?? string.Empty, PlaceholderText = "Name (e.g. Work, Personal)" };
         _url = new TextBox { Text = existing?.Url ?? string.Empty, PlaceholderText = "https://depot.example.com" };
         _authStatus = new TextBlock { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap };
 
-        _name.TextChanged += (_, _) => _RefreshSignInAvailability();
+        _name.TextChanged += (_, _) => _OnFieldsChanged();
+        _url.TextChanged += (_, _) => _OnFieldsChanged();
 
         _signIn = new Button { Content = "Sign in" };
         _signIn.Click += async (_, _) => await _SignInAsync().ConfigureAwait(true);
@@ -65,7 +69,7 @@ internal sealed class DepotConnectionRowControl : UserControl
 
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
 
-        _RefreshSignInAvailability();
+        _OnFieldsChanged();
     }
 
     public string Id => _id;
@@ -138,11 +142,14 @@ internal sealed class DepotConnectionRowControl : UserControl
         finally
         {
             _isBusy = false;
-            _RefreshSignInAvailability();
+            // Only the button's enabled state, never the status text: a field the operator edited during the
+            // sign-in round trip must not let this overwrite the outcome that round trip just produced (the
+            // Declined/Unreachable/Authorized text set above) with an "unavailable" message.
+            _signIn.IsEnabled = _IsSignInAvailable() && !_isBusy;
         }
     }
 
-    private void _RefreshSignInAvailability()
+    private void _OnFieldsChanged()
     {
         var available = _IsSignInAvailable();
         _signIn.IsEnabled = available && !_isBusy;
@@ -150,17 +157,23 @@ internal sealed class DepotConnectionRowControl : UserControl
         {
             _authStatus.Text = _storedName is null
                 ? "Save this connection first — signing in files the token under its name."
-                : "Save the new name first — the sign-in is filed under the name this connection is stored as.";
+                : "Save the connection first — the sign-in is filed under the name and URL it's stored as.";
         }
     }
 
     /// <summary>
-    /// Whether this row still stands for the connection the store knows by <see cref="_storedName"/> — the same
-    /// name-drift guard <c>EditableMcpServerViewModel.IsSignInAvailable</c> uses, so a sign-in never files a token
-    /// under a name that turns out, once saved, to belong to a different (renamed) contribution.
+    /// Whether this row still stands for the connection the store knows by <see cref="_storedName"/> and
+    /// <see cref="_storedUrl"/> — the same name-drift guard <c>EditableMcpServerViewModel.IsSignInAvailable</c>
+    /// uses, extended to the URL: a token is filed under the server's registered name against the authority it was
+    /// saved with, so an edited-but-unsaved name <em>or</em> URL must block sign-in, not just the name — otherwise
+    /// a sign-in against a changed URL would authorize an issuer the connection is not (yet, or any longer) saved
+    /// as pointing at, filed under a name that, once saved, points somewhere else.
     /// </summary>
     private bool _IsSignInAvailable() =>
-        _storedName is not null && string.Equals($"Depot: {(_name.Text ?? string.Empty).Trim()}", _storedName, StringComparison.Ordinal);
+        _storedName is not null
+        && _storedUrl is not null
+        && string.Equals($"Depot: {(_name.Text ?? string.Empty).Trim()}", _storedName, StringComparison.Ordinal)
+        && string.Equals((_url.Text ?? string.Empty).Trim().TrimEnd('/'), _storedUrl, StringComparison.Ordinal);
 
     private static TextBlock _Hint(string text) => new() { Text = text, FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 }
