@@ -69,6 +69,53 @@ public class ClaudeMcpConfigTests
         }
     }
 
+    [Fact]
+    public void Write_WithNoServers_ReturnsNull_ByDefault()
+    {
+        // The TTY route's existing behaviour (unchanged by AC-378): nothing to add means the flag is dropped
+        // entirely, so the operator's own connectors add on top of a config that was never written at all.
+        ClaudeMcpConfig.Write([]).Should().BeNull();
+    }
+
+    [Fact]
+    public void Write_WithNoServers_WriteEmptyExplicit_WritesAnActualEmptyConfig_InsteadOfNull()
+    {
+        // AC-378, criterion 4 — the empty-resolution trap: the headless/strict route must be able to say "zero
+        // servers" as an explicit, on-disk {"mcpServers":{}}, not as a dropped flag that lets the CLI fall back to
+        // its own user/project config.
+        var path = ClaudeMcpConfig.Write([], writeEmptyExplicit: true);
+
+        try
+        {
+            path.Should().NotBeNull();
+            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!.AsObject().Count.Should().Be(0);
+        }
+        finally
+        {
+            if (path is not null)
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void Write_WriteEmptyExplicit_StillWritesTheServersItWasGiven()
+    {
+        // writeEmptyExplicit only changes what happens at zero servers — it must not suppress the servers that
+        // were actually resolved.
+        var path = ClaudeMcpConfig.Write([new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }], writeEmptyExplicit: true);
+
+        try
+        {
+            JsonNode.Parse(File.ReadAllText(path!))!["mcpServers"]!["youtrack"]!["url"]!.GetValue<string>().Should().Be("http://example/mcp");
+        }
+        finally
+        {
+            File.Delete(path!);
+        }
+    }
+
     private static string _Authorization(string path, string serverName) =>
         JsonNode.Parse(File.ReadAllText(path))!["mcpServers"]![serverName]!["headers"]!["Authorization"]!.GetValue<string>();
 }

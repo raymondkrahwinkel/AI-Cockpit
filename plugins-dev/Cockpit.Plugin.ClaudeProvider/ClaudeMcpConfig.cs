@@ -8,17 +8,23 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// and returns its path — the TTY mirror of what the host's <c>ClaudeTtySessionProvider._WriteRegistryMcpConfig</c>
 /// did, now that the servers cross the plugin boundary on <see cref="PluginTtyLaunchContext.McpServers"/> (weg A).
 /// No cockpit permission server here — the interactive TUI prompts for permission itself. Returns
-/// <see langword="null"/> when there is nothing to add.
+/// <see langword="null"/> when there is nothing to add, unless <paramref name="writeEmptyExplicit"/> says otherwise.
 /// </summary>
 internal static class ClaudeMcpConfig
 {
-    public static string? Write(IReadOnlyList<PluginMcpServer> servers)
-    {
-        if (servers.Count == 0)
-        {
-            return null;
-        }
+    public static string? Write(IReadOnlyList<PluginMcpServer> servers) => Write(servers, writeEmptyExplicit: false);
 
+    /// <summary>
+    /// <paramref name="writeEmptyExplicit"/> (AC-378) exists for the headless/strict route: there, "nothing
+    /// resolved" must produce an actual empty <c>{"mcpServers":{}}</c> file rather than <see langword="null"/>, so
+    /// the caller can still pass <c>--mcp-config &lt;file&gt; --strict-mcp-config</c> and get a session with truly
+    /// zero servers. Returning <see langword="null"/> here — the TTY route's behaviour, and this method's default —
+    /// would drop <c>--mcp-config</c> from the command line entirely, and on the headless route that means the CLI
+    /// falls back to its own user/project config instead of the empty set the resolution actually produced: the
+    /// "narrowing to nothing looks like no narrowing at all" trap this ticket exists to close.
+    /// </summary>
+    public static string? Write(IReadOnlyList<PluginMcpServer> servers, bool writeEmptyExplicit)
+    {
         var mcpServers = new JsonObject();
         foreach (var server in servers)
         {
@@ -28,7 +34,7 @@ internal static class ClaudeMcpConfig
             }
         }
 
-        if (mcpServers.Count == 0)
+        if (!writeEmptyExplicit && mcpServers.Count == 0)
         {
             return null;
         }

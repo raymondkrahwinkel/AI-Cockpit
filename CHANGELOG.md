@@ -1041,6 +1041,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a delegated (headless) Claude session could end up with more MCP servers than intended — narrowing the
+  request to fewer servers, or to one the profile advertised but could not actually mount, used to drop the
+  `--mcp-config` flag entirely, and the `claude` CLI then fell back to its own full user/project configuration
+  (including any claude.ai account connectors you have signed into, like mail or other write-capable services)
+  instead of the empty set the narrowing actually produced. A headless session now always gets exactly the
+  servers it resolved to, never more — an interactive session you drive yourself is unaffected and keeps
+  layering the cockpit's servers on top of your own configuration as before. A profile that advertises a server
+  it cannot actually reach now says so in the log instead of silently handing you fewer tools than promised.
 - fixed: the window-picker test suite no longer fails depending on which windows happen to be open on the
   machine it runs on — it stopped asserting that no window is ever reported larger than the screen, which
   Windows never guaranteed in the first place (a window dragged partly off-screen legitimately has bounds

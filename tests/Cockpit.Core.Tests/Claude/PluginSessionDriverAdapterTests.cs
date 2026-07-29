@@ -8,6 +8,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -634,6 +635,63 @@ public class PluginSessionDriverAdapterTests
         await adapter.StartAsync();
 
         inner.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("cockpit-orchestrator");
+    }
+
+    // AC-378, criterion 6: the registry can advertise a server as agent-eligible (enabled, in scope) that this
+    // driver still cannot mount — an Http entry with no Url is the concrete shape a misconfigured "SQL Explorer"
+    // takes. That must be logged, not silently dropped, so "why does my session have fewer tools than the profile
+    // listing promised" is a log line rather than a bisect.
+    [Fact]
+    public async Task StartAsync_AnAdvertisedServerWithNoTransportTarget_LogsAWarningNamingIt()
+    {
+        var inner = new FakePluginSessionDriver();
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "SQL Explorer", Transport = McpTransport.Http, Url = null },
+        });
+        var logger = Substitute.For<ILogger<PluginSessionDriverAdapter>>();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog, logger);
+
+        await adapter.StartAsync();
+
+        inner.LastMcpServers.Should().BeEmpty();
+        logger.Received(1).Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(state => state!.ToString()!.Contains("SQL Explorer")),
+            null,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // AC-378, criterion 3 — the finding this ticket exists for: narrowing a delegated task DOWN to a server the
+    // profile advertises but cannot actually mount must never resolve to MORE servers than not narrowing at all.
+    // Proven here at the resolution layer (the empty-resolution trap is closed one layer up, in the strict
+    // --mcp-config wiring the SDK route now always writes explicitly).
+    [Fact]
+    public async Task StartAsync_NarrowingToAnAdvertisedButUnmountableServer_NeverResolvesMoreServersThanUnnarrowed()
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "youtrack", Transport = McpTransport.Http, Url = "http://example/mcp" },
+            new() { Name = "SQL Explorer", Transport = McpTransport.Http, Url = null },
+        });
+
+        var unnarrowedInner = new FakePluginSessionDriver();
+        var unnarrowedAdapter = new PluginSessionDriverAdapter(unnarrowedInner, unnarrowedInner.Capabilities, _authKey, catalog);
+        await unnarrowedAdapter.StartAsync();
+
+        var narrowedInner = new FakePluginSessionDriver();
+        var narrowedAdapter = new PluginSessionDriverAdapter(narrowedInner, narrowedInner.Capabilities, _authKey, catalog);
+        await narrowedAdapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "SQL Explorer" });
+
+        // Narrowing to only the unmountable server resolves to nothing at this layer — never to more than the
+        // unnarrowed baseline's one real server, and the strict headless wiring (ClaudeSdkArguments/
+        // ClaudeSdkSessionDriver) is what keeps an empty resolution from then being read by the CLI as "no
+        // restriction, use your own config" and silently inheriting more than the baseline.
+        narrowedInner.LastMcpServers.Should().BeEmpty();
+        narrowedInner.LastMcpServers!.Count.Should().BeLessThanOrEqualTo(unnarrowedInner.LastMcpServers!.Count);
     }
 
     // AC-218: the fan-out asks for the servers as the session's project sees them. Asking the unscoped catalog is
