@@ -1,5 +1,4 @@
 using System.Text.Json;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -24,9 +23,9 @@ public class CodexModelCatalogTests
         var listing = await listTask;
 
         // Hidden models are dropped; the default is the one flagged isDefault.
-        listing.Ids.Should().Equal("gpt-5.6-terra", "gpt-5.6-luna");
-        listing.DefaultId.Should().Be("gpt-5.6-terra");
-        fake.WrittenLines.Should().NotContain(line => line.Contains("\"method\":\"thread/start\""));
+        Assert.Equal(new[] { "gpt-5.6-terra", "gpt-5.6-luna" }, listing.Ids);
+        Assert.Equal("gpt-5.6-terra", listing.DefaultId);
+        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"thread/start\""));
     }
 
     [Fact]
@@ -39,8 +38,8 @@ public class CodexModelCatalogTests
         await _RespondAsync(fake, "model/list", """{"data":[{"model":"gpt-5.6-luna"}]}""");
         var listing = await listTask;
 
-        listing.Ids.Should().Equal("gpt-5.6-luna");
-        listing.DefaultId.Should().BeNull();
+        Assert.Equal(new[] { "gpt-5.6-luna" }, listing.Ids);
+        Assert.Null(listing.DefaultId);
     }
 
     [Fact]
@@ -53,7 +52,7 @@ public class CodexModelCatalogTests
         await _RespondAsync(fake, "model/list", "{}");
         var listing = await listTask;
 
-        listing.Should().BeSameAs(CodexModelListing.Empty);
+        Assert.Same(CodexModelListing.Empty, listing);
     }
 
     private static async Task _RespondAsync(FakeCliSubprocess fake, string method, string resultJson)

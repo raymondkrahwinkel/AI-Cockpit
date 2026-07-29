@@ -1,6 +1,5 @@
 using System.Text;
 using Cockpit.TestSupport;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
@@ -31,11 +30,12 @@ public class YouTrackClientAttachTests : IAsyncLifetime
 
         await client.AttachFileAsync($"{_prefix}api", "perm-token", "AC-14", "pasted-image-1.png", bytes, "image/png", CancellationToken.None);
 
-        _method.Should().Be("POST");
-        _path.Should().Be("/api/issues/AC-14/attachments");
-        _authorization.Should().Be("Bearer perm-token");
-        _contentType.Should().StartWith("multipart/form-data");
-        _body.Should().Contain("pasted-image-1.png").And.Contain("the-image-bytes");
+        Assert.Equal("POST", _method);
+        Assert.Equal("/api/issues/AC-14/attachments", _path);
+        Assert.Equal("Bearer perm-token", _authorization);
+        Assert.StartsWith("multipart/form-data", _contentType);
+        Assert.Contains("pasted-image-1.png", _body);
+        Assert.Contains("the-image-bytes", _body);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class YouTrackClientAttachTests : IAsyncLifetime
 
         var act = () => client.AttachFileAsync($"{abandonedUrl}api", "t", "AC-1", "x.png", [1, 2, 3], "image/png", CancellationToken.None);
 
-        await act.Should().ThrowAsync<Exception>();
+        await Assert.ThrowsAnyAsync<Exception>(act);
     }
 
     private async Task _RecordAndAnswerAsync(HttpContext context)

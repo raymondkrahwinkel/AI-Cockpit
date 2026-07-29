@@ -1,7 +1,6 @@
 using System.Text;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.TestSupport;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
@@ -31,9 +30,9 @@ public class YouTrackAttachUploadTests : IAsyncLifetime
 
         var outcome = await YouTrackAttach.UploadAsync(new YouTrackClient(), instance, "AC-9", images, CancellationToken.None);
 
-        outcome.Attached.Should().Be(2);
-        outcome.Errors.Should().BeEmpty();
-        _requests.Should().Be(2);
+        Assert.Equal(2, outcome.Attached);
+        Assert.Empty(outcome.Errors);
+        Assert.Equal(2, _requests);
     }
 
     [Fact]
@@ -48,8 +47,8 @@ public class YouTrackAttachUploadTests : IAsyncLifetime
 
         var outcome = await YouTrackAttach.UploadAsync(new YouTrackClient(), instance, "AC-9", images, CancellationToken.None);
 
-        outcome.Attached.Should().Be(1);
-        outcome.Errors.Should().ContainSingle();
+        Assert.Equal(1, outcome.Attached);
+        Assert.Single(outcome.Errors);
     }
 
     private async Task _CountAndAnswerAsync(HttpContext context)

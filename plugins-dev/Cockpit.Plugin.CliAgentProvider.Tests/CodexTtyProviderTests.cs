@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -18,8 +17,8 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
 
-        arguments.Should().NotContain("exec");
-        arguments.Should().NotContain("--json");
+        Assert.DoesNotContain("exec", arguments);
+        Assert.DoesNotContain("--json", arguments);
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
 
-        arguments.Should().NotContain("resume");
+        Assert.DoesNotContain("resume", arguments);
     }
 
     [Fact]
@@ -35,7 +34,7 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: null));
 
-        arguments.Should().StartWith(["resume", "--last"]);
+        Assert.Equal(new[] { "resume", "--last" }, arguments.Take(2));
     }
 
     [Fact]
@@ -43,7 +42,7 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: "thread-123"));
 
-        arguments.Should().StartWith(["resume", "thread-123"]);
+        Assert.Equal(new[] { "resume", "thread-123" }, arguments.Take(2));
     }
 
     [Fact]
@@ -51,7 +50,8 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
 
-        arguments.Should().Contain(["--sandbox", "read-only"]);
+        Assert.Contains("--sandbox", arguments);
+        Assert.Contains("read-only", arguments);
     }
 
     [Fact]
@@ -62,8 +62,9 @@ public class CodexTtyProviderTests
 
         var arguments = CodexTtyProvider.BuildArguments(config, options, resume: null);
 
-        arguments.Should().Contain(["--sandbox", "workspace-write"]);
-        arguments.Should().NotContain("read-only");
+        Assert.Contains("--sandbox", arguments);
+        Assert.Contains("workspace-write", arguments);
+        Assert.DoesNotContain("read-only", arguments);
     }
 
     [Fact]
@@ -71,7 +72,7 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(Model: null), NoOptions, resume: null);
 
-        arguments.Should().NotContain("--model");
+        Assert.DoesNotContain("--model", arguments);
     }
 
     [Fact]
@@ -81,7 +82,8 @@ public class CodexTtyProviderTests
 
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), options, resume: null);
 
-        arguments.Should().Contain(["--model", "o3"]);
+        Assert.Contains("--model", arguments);
+        Assert.Contains("o3", arguments);
     }
 
     [Fact]
@@ -89,7 +91,7 @@ public class CodexTtyProviderTests
     {
         var overlay = CodexTtyProvider.BuildEnvironmentOverlay(new CliAgentConfig(ConfigDir: "/home/raymond/.codex-work"));
 
-        overlay.Should().ContainKey("CODEX_HOME").WhoseValue.Should().Be("/home/raymond/.codex-work");
+        Assert.Equal("/home/raymond/.codex-work", overlay["CODEX_HOME"]);
     }
 
     [Fact]
@@ -97,7 +99,7 @@ public class CodexTtyProviderTests
     {
         var overlay = CodexTtyProvider.BuildEnvironmentOverlay(new CliAgentConfig(ConfigDir: null));
 
-        overlay.Should().BeEmpty();
+        Assert.Empty(overlay);
     }
 
     [Fact]
@@ -113,10 +115,11 @@ public class CodexTtyProviderTests
 
         var spec = new CodexTtyProvider().BuildLaunch(context);
 
-        spec.ExecutablePath.Should().Be("/usr/local/bin/codex");
-        spec.WorkingDirectory.Should().Be("/home/raymond/repo");
-        spec.EnvironmentOverlay.Should().ContainKey("CODEX_HOME").WhoseValue.Should().Be("/home/raymond/.codex-work");
-        spec.SessionScopedFiles.Should().BeEmpty();
+        Assert.Equal("/usr/local/bin/codex", spec.ExecutablePath);
+        Assert.Equal("/home/raymond/repo", spec.WorkingDirectory);
+        var overlay = spec.EnvironmentOverlay;
+        Assert.Equal("/home/raymond/.codex-work", overlay["CODEX_HOME"]);
+        Assert.Empty(spec.SessionScopedFiles);
     }
 
     [Fact]
@@ -134,7 +137,7 @@ public class CodexTtyProviderTests
         // Bare "codex" on a machine that has it installed resolves to the absolute path, and on one that does not
         // it stays bare for the OS to resolve at spawn time. Asserting either literal would be asserting the state
         // of the machine the test runs on — which is how this test failed the moment codex was installed here.
-        Path.GetFileNameWithoutExtension(spec.ExecutablePath).Should().Be("codex");
+        Assert.Equal("codex", Path.GetFileNameWithoutExtension(spec.ExecutablePath));
     }
 
     // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*` overrides,
@@ -149,7 +152,7 @@ public class CodexTtyProviderTests
 
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null, mcpConfigArgs);
 
-        arguments.Should().StartWith(mcpConfigArgs);
+        Assert.Equal(mcpConfigArgs, arguments.Take(mcpConfigArgs.Length));
     }
 
     [Fact]
@@ -160,8 +163,8 @@ public class CodexTtyProviderTests
 
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: "thread-123"), mcpConfigArgs);
 
-        arguments.Should().StartWith(mcpConfigArgs);
-        arguments.IndexOf("-c").Should().BeLessThan(arguments.IndexOf("resume"));
+        Assert.Equal(mcpConfigArgs, arguments.Take(mcpConfigArgs.Length));
+        Assert.True(arguments.IndexOf("-c") < arguments.IndexOf("resume"));
     }
 
     [Fact]
@@ -169,7 +172,7 @@ public class CodexTtyProviderTests
     {
         var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
 
-        arguments.Should().NotContain("-c");
+        Assert.DoesNotContain("-c", arguments);
     }
 
     [Fact]
@@ -179,10 +182,12 @@ public class CodexTtyProviderTests
 
         var spec = new CodexTtyProvider().BuildLaunch(context);
 
-        spec.Arguments.Should().StartWith(["-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }"""]);
+        Assert.Equal(
+            new[] { "-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }""" },
+            spec.Arguments.Take(2));
         // The secret is in the environment, never in the command line.
-        spec.Arguments.Should().NotContain(arg => arg.Contains("yt-pat"));
-        spec.EnvironmentOverlay.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "yt-pat"));
+        Assert.DoesNotContain(spec.Arguments, arg => arg.Contains("yt-pat"));
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "yt-pat"), spec.EnvironmentOverlay);
     }
 
     [Fact]
@@ -194,8 +199,8 @@ public class CodexTtyProviderTests
 
         var spec = new CodexTtyProvider().BuildLaunch(context);
 
-        spec.Arguments.Should().Contain("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""");
-        spec.EnvironmentOverlay.Should().NotContainKey("COCKPIT_MCP_KEY");
+        Assert.Contains("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""", spec.Arguments);
+        Assert.DoesNotContain("COCKPIT_MCP_KEY", spec.EnvironmentOverlay);
     }
 
     [Fact]
@@ -205,7 +210,7 @@ public class CodexTtyProviderTests
 
         var spec = new CodexTtyProvider().BuildLaunch(context);
 
-        spec.Arguments.Should().NotContain("-c");
+        Assert.DoesNotContain("-c", spec.Arguments);
     }
 
     private static PluginTtyLaunchContext _ContextWithServers(params PluginMcpServer[] servers) =>

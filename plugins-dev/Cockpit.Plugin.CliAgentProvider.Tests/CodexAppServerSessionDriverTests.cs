@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -37,8 +37,8 @@ public class CodexAppServerSessionDriverTests
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"));
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CODEX_HOME", "/home/raymond/.codex-profile"));
+        Assert.Contains(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"), fake.EnvironmentVariables!);
+        Assert.Contains(new KeyValuePair<string, string?>("CODEX_HOME", "/home/raymond/.codex-profile"), fake.EnvironmentVariables!);
     }
 
     [Fact]
@@ -53,13 +53,13 @@ public class CodexAppServerSessionDriverTests
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        threadStart.GetProperty("params").GetProperty("cwd").GetString().Should().Be("/work/here");
-        threadStart.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5-codex");
-        fake.WrittenLines.Should().Contain(line => line.Contains("\"method\":\"initialized\""));
+        Assert.Equal("/work/here", threadStart.GetProperty("params").GetProperty("cwd").GetString());
+        Assert.Equal("gpt-5-codex", threadStart.GetProperty("params").GetProperty("model").GetString());
+        Assert.Contains(fake.WrittenLines, line => line.Contains("\"method\":\"initialized\""));
 
         var initialized = await _NextEventAsync(driver);
-        initialized.Should().BeOfType<PluginSessionInitialized>();
-        driver.SessionId.Should().Be("thread-1");
+        Assert.IsType<PluginSessionInitialized>(initialized);
+        Assert.Equal("thread-1", driver.SessionId);
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public class CodexAppServerSessionDriverTests
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        threadStart.GetProperty("params").GetProperty("sandbox").GetString().Should().Be("workspace-write");
-        threadStart.GetProperty("params").GetProperty("model").GetString().Should().Be("o3");
+        Assert.Equal("workspace-write", threadStart.GetProperty("params").GetProperty("sandbox").GetString());
+        Assert.Equal("o3", threadStart.GetProperty("params").GetProperty("model").GetString());
     }
 
     [Fact]
@@ -100,13 +100,13 @@ public class CodexAppServerSessionDriverTests
         await startTask;
 
         // The MCP servers ride -c overrides placed before the subcommand, which stays last.
-        fake.Arguments.Should().ContainInOrder("-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }""");
-        fake.Arguments!.Last().Should().Be("app-server");
+        Assert.True(SequenceAssert.ContainsInOrder(fake.Arguments!, "-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }"""));
+        Assert.Equal("app-server", fake.Arguments!.Last());
 
         // The bearer token is never on the command line (that would leak it in /proc/<pid>/cmdline) — only its
         // env-var name is, and the token itself reaches the child through the process environment.
-        fake.Arguments.Should().NotContain(argument => argument.Contains(token));
-        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", token));
+        Assert.DoesNotContain(fake.Arguments!, argument => argument.Contains(token));
+        Assert.Contains(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", token), fake.EnvironmentVariables!);
     }
 
     [Fact]
@@ -121,8 +121,8 @@ public class CodexAppServerSessionDriverTests
         var resume = await _RespondAsync(fake, "thread/resume", """{"threadId":"thread-99"}""");
         await startTask;
 
-        resume.GetProperty("params").GetProperty("threadId").GetString().Should().Be("thread-99");
-        driver.SessionId.Should().Be("thread-99");
+        Assert.Equal("thread-99", resume.GetProperty("params").GetProperty("threadId").GetString());
+        Assert.Equal("thread-99", driver.SessionId);
     }
 
     [Fact]
@@ -141,8 +141,8 @@ public class CodexAppServerSessionDriverTests
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)).Should().Be("Hello, world!");
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        Assert.Equal("Hello, world!", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -157,14 +157,14 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"id":55,"method":"item/commandExecution/requestApproval","params":{"itemId":"cmd-1","command":"ls -la","threadId":"thread-1","turnId":"turn-1"}}""");
 
         var permission = await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
-        permission.ToolUseId.Should().Be("cmd-1");
-        permission.ToolName.Should().Be("shell");
+        Assert.Equal("cmd-1", permission.ToolUseId);
+        Assert.Equal("shell", permission.ToolName);
 
         await driver.RespondToPermissionAsync("cmd-1", allow: true);
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":55");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("decision").GetString().Should().Be("accept");
+        Assert.Equal("accept", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class CodexAppServerSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":57");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("decision").GetString().Should().Be("decline");
+        Assert.Equal("decline", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public class CodexAppServerSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":56");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.GetProperty("result").GetProperty("decision").GetString().Should().Be("acceptForSession");
+        Assert.Equal("acceptForSession", document.RootElement.GetProperty("result").GetProperty("decision").GetString());
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class CodexAppServerSessionDriverTests
         await _StartAsync(driver, fake);
 
         // D10: the resource meter measures the codex app-server process this session runs in.
-        driver.ProcessId.Should().Be(9999);
+        Assert.Equal(9999, driver.ProcessId);
     }
 
     [Fact]
@@ -230,9 +230,9 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}}}""");
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
-        var completed = events.OfType<PluginTurnCompleted>().Should().ContainSingle().Subject;
-        completed.IsError.Should().BeFalse();
-        completed.StopReason.Should().Be("interrupt");
+        var completed = Assert.Single(events.OfType<PluginTurnCompleted>());
+        Assert.False(completed.IsError);
+        Assert.Equal("interrupt", completed.StopReason);
     }
 
     [Fact]
@@ -248,8 +248,8 @@ public class CodexAppServerSessionDriverTests
 
         var answer = await _WaitForWrittenLineAsync(fake, "\"id\":88");
         using var document = JsonDocument.Parse(answer);
-        document.RootElement.TryGetProperty("error", out _).Should().BeTrue();
-        document.RootElement.TryGetProperty("result", out _).Should().BeFalse();
+        Assert.True(document.RootElement.TryGetProperty("error", out _));
+        Assert.False(document.RootElement.TryGetProperty("result", out _));
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":40000,"outputTokens":10000,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":50000},"total":{"inputTokens":100000,"outputTokens":20000,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":120000},"modelContextWindow":200000}}}""");
 
         var status = await _WaitForStatusAsync(driver, current => current.ContextUsedPercent is not null);
-        status.ContextUsedPercent.Should().Be(25);
+        Assert.Equal(25, status.ContextUsedPercent);
     }
 
     [Fact]
@@ -280,7 +280,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"totalTokens":50000},"modelContextWindow":200000}}}""");
 
         var status = await _WaitForStatusAsync(driver, current => current.ContextUsedPercent is not null);
-        status.ContextUsedPercent.Should().Be(25);
+        Assert.Equal(25, status.ContextUsedPercent);
     }
 
     [Fact]
@@ -295,9 +295,11 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":{"usedPercent":60,"resetsAt":1800000000,"windowDurationMins":300},"secondary":{"usedPercent":80,"resetsAt":1800600000,"windowDurationMins":10080}}}}""");
 
         var status = await _WaitForStatusAsync(driver, current => current.RateLimits.Count > 0);
-        status.RateLimits.Should().Equal(
+        Assert.Equal(new[]
+        {
             new PluginRateLimitWindow("5h", 60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300),
-            new PluginRateLimitWindow("7d", 80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080));
+            new PluginRateLimitWindow("7d", 80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080),
+        }, status.RateLimits);
     }
 
     [Fact]
@@ -314,7 +316,7 @@ public class CodexAppServerSessionDriverTests
 
         // D3: the session reports its cwd so the host's git-status header and active-cwd observer follow it.
         var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
-        initialized.Cwd.Should().Be("/work/here");
+        Assert.Equal("/work/here", initialized.Cwd);
     }
 
     [Fact]
@@ -330,7 +332,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"item/reasoning/textDelta","params":{"delta":"Let me consider","itemId":"r1","threadId":"thread-1","turnId":"turn-1"}}""");
 
         var thinking = await _NextEventOfTypeAsync<PluginAssistantThinkingDelta>(driver);
-        thinking.Thinking.Should().Be("Let me consider");
+        Assert.Equal("Let me consider", thinking.Thinking);
     }
 
     [Fact]
@@ -348,8 +350,7 @@ public class CodexAppServerSessionDriverTests
         // D3: the turn's usage feeds the host token meter — reasoning output (30) folds into output (200), cached
         // input (50) maps to cache-read, and Codex reports no cache-creation count.
         var events = await _CollectUntilTurnCompletedAsync(driver);
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle()
-            .Which.Usage.Should().Be(new PluginTokenUsage(1000, 230, 50, 0));
+        Assert.Equal(new PluginTokenUsage(1000, 230, 50, 0), Assert.Single(events.OfType<PluginTurnCompleted>()).Usage);
     }
 
     [Fact]
@@ -375,7 +376,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-2","status":"completed"}}}""");
 
         var events = await _CollectUntilTurnCompletedAsync(driver);
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.Usage.Should().BeNull();
+        Assert.Null(Assert.Single(events.OfType<PluginTurnCompleted>()).Usage);
     }
 
     [Fact]
@@ -392,13 +393,13 @@ public class CodexAppServerSessionDriverTests
 
         // D4: the live controls the header renders — the model list read on this connection, opened on the model the
         // session started with, plus the fixed effort levels which open unset (Codex runs its own default).
-        var model = driver.LiveOptions.Should().ContainSingle(option => option.Key == "model").Subject;
-        model.Choices.Should().Equal("gpt-5-codex", "gpt-5");
-        model.DefaultValue.Should().Be("gpt-5-codex");
+        var model = Assert.Single(driver.LiveOptions, option => option.Key == "model");
+        Assert.Equal(new[] { "gpt-5-codex", "gpt-5" }, model.Choices);
+        Assert.Equal("gpt-5-codex", model.DefaultValue);
 
-        var effort = driver.LiveOptions.Should().ContainSingle(option => option.Key == "effort").Subject;
-        effort.Choices.Should().Equal("low", "medium", "high");
-        effort.DefaultValue.Should().BeNull();
+        var effort = Assert.Single(driver.LiveOptions, option => option.Key == "effort");
+        Assert.Equal(new[] { "low", "medium", "high" }, effort.Choices);
+        Assert.Null(effort.DefaultValue);
     }
 
     [Fact]
@@ -415,9 +416,9 @@ public class CodexAppServerSessionDriverTests
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
-        var model = driver.LiveOptions.Should().ContainSingle(option => option.Key == "model").Subject;
-        model.Choices.Should().Contain("my-pinned-model");
-        model.DefaultValue.Should().Be("my-pinned-model");
+        var model = Assert.Single(driver.LiveOptions, option => option.Key == "model");
+        Assert.Contains("my-pinned-model", model.Choices);
+        Assert.Equal("my-pinned-model", model.DefaultValue);
     }
 
     [Fact]
@@ -433,8 +434,8 @@ public class CodexAppServerSessionDriverTests
         await driver.SendUserMessageAsync("go");
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5");
-        turn.GetProperty("params").GetProperty("effort").GetString().Should().Be("high");
+        Assert.Equal("gpt-5", turn.GetProperty("params").GetProperty("model").GetString());
+        Assert.Equal("high", turn.GetProperty("params").GetProperty("effort").GetString());
     }
 
     [Fact]
@@ -446,9 +447,9 @@ public class CodexAppServerSessionDriverTests
 
         // D4 inc2: Codex's approval policy is a live control — the simple AskForApproval enum — opening unset so
         // Codex keeps its own default until the operator picks one.
-        var approval = driver.LiveOptions.Should().ContainSingle(option => option.Key == "approvalPolicy").Subject;
-        approval.Choices.Should().Equal("untrusted", "on-request", "never");
-        approval.DefaultValue.Should().BeNull();
+        var approval = Assert.Single(driver.LiveOptions, option => option.Key == "approvalPolicy");
+        Assert.Equal(new[] { "untrusted", "on-request", "never" }, approval.Choices);
+        Assert.Null(approval.DefaultValue);
     }
 
     [Fact]
@@ -463,7 +464,7 @@ public class CodexAppServerSessionDriverTests
         await driver.SendUserMessageAsync("go");
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").GetProperty("approvalPolicy").GetString().Should().Be("never");
+        Assert.Equal("never", turn.GetProperty("params").GetProperty("approvalPolicy").GetString());
     }
 
     [Fact]
@@ -481,9 +482,9 @@ public class CodexAppServerSessionDriverTests
 
         // D4 inc2b: sandbox is a live control offering the same kebab choices as the dialog, opened on the sandbox the
         // session actually launched with (there is always one), unlike effort/approval which open unset.
-        var sandbox = driver.LiveOptions.Should().ContainSingle(option => option.Key == "sandbox").Subject;
-        sandbox.Choices.Should().Equal("read-only", "workspace-write", "danger-full-access");
-        sandbox.DefaultValue.Should().Be("workspace-write");
+        var sandbox = Assert.Single(driver.LiveOptions, option => option.Key == "sandbox");
+        Assert.Equal(new[] { "read-only", "workspace-write", "danger-full-access" }, sandbox.Choices);
+        Assert.Equal("workspace-write", sandbox.DefaultValue);
     }
 
     [Fact]
@@ -499,7 +500,7 @@ public class CodexAppServerSessionDriverTests
         await driver.SendUserMessageAsync("go");
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString().Should().Be("dangerFullAccess");
+        Assert.Equal("dangerFullAccess", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -520,7 +521,7 @@ public class CodexAppServerSessionDriverTests
         // The launch sandbox is re-asserted on every turn as its policy object (like the model), so a turn the
         // operator never touched still runs under the sandbox the session launched with.
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString().Should().Be("workspaceWrite");
+        Assert.Equal("workspaceWrite", turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -536,7 +537,7 @@ public class CodexAppServerSessionDriverTests
         await driver.SendUserMessageAsync("go");
 
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").TryGetProperty("sandboxPolicy", out _).Should().BeFalse();
+        Assert.False(turn.GetProperty("params").TryGetProperty("sandboxPolicy", out _));
     }
 
     [Fact]
@@ -556,9 +557,9 @@ public class CodexAppServerSessionDriverTests
         // A turn the operator never touched carries the model the session started on and no effort or approval at all
         // (a null override is dropped from the wire), so Codex keeps its own defaults rather than ones this driver invented.
         var turn = await _WaitForRequestAsync(fake, "turn/start");
-        turn.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5-codex");
-        turn.GetProperty("params").TryGetProperty("effort", out _).Should().BeFalse();
-        turn.GetProperty("params").TryGetProperty("approvalPolicy", out _).Should().BeFalse();
+        Assert.Equal("gpt-5-codex", turn.GetProperty("params").GetProperty("model").GetString());
+        Assert.False(turn.GetProperty("params").TryGetProperty("effort", out _));
+        Assert.False(turn.GetProperty("params").TryGetProperty("approvalPolicy", out _));
     }
 
     // --- helpers -----------------------------------------------------------------------------------------

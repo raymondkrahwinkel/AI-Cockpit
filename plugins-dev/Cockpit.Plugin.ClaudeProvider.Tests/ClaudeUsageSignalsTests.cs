@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -28,11 +27,11 @@ public class ClaudeUsageSignalsTests
     {
         var readings = ClaudeUsageSignals.Read(FullBlob);
 
-        readings.Should().HaveCount(3);
-        _Percent(readings, ClaudeUsageSignals.ContextKey).Should().Be(42.5);
-        _Percent(readings, ClaudeUsageSignals.FiveHourKey).Should().Be(18.2);
-        _Percent(readings, ClaudeUsageSignals.WeeklyKey).Should().Be(7.4);
-        _Reading(readings, ClaudeUsageSignals.FiveHourKey).ResetsAt.Should().Be(DateTimeOffset.Parse("2026-07-14T22:00:00Z"));
+        Assert.Equal(3, System.Linq.Enumerable.Count(readings));
+        Assert.Equal(42.5, _Percent(readings, ClaudeUsageSignals.ContextKey));
+        Assert.Equal(18.2, _Percent(readings, ClaudeUsageSignals.FiveHourKey));
+        Assert.Equal(7.4, _Percent(readings, ClaudeUsageSignals.WeeklyKey));
+        Assert.Equal(DateTimeOffset.Parse("2026-07-14T22:00:00Z"), _Reading(readings, ClaudeUsageSignals.FiveHourKey).ResetsAt);
     }
 
     [Fact]
@@ -53,8 +52,8 @@ public class ClaudeUsageSignalsTests
             }
             """);
 
-        _Reading(readings, ClaudeUsageSignals.FiveHourKey).ResetsAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(fiveHourEpoch));
-        _Reading(readings, ClaudeUsageSignals.WeeklyKey).ResetsAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(sevenDayEpoch));
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(fiveHourEpoch), _Reading(readings, ClaudeUsageSignals.FiveHourKey).ResetsAt);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(sevenDayEpoch), _Reading(readings, ClaudeUsageSignals.WeeklyKey).ResetsAt);
     }
 
     [Fact]
@@ -67,8 +66,8 @@ public class ClaudeUsageSignalsTests
             """);
 
         var reading = _Reading(readings, ClaudeUsageSignals.FiveHourKey);
-        reading.UsedPercent.Should().Be(55);
-        reading.ResetsAt.Should().BeNull();
+        Assert.Equal(55, reading.UsedPercent);
+        Assert.Null(reading.ResetsAt);
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class ClaudeUsageSignalsTests
         // allowance. A reading of "0%" would be inventing a number, so there is simply no reading.
         var readings = ClaudeUsageSignals.Read("""{ "session_id": "abc", "model": { "display_name": "Opus 4.8" } }""");
 
-        readings.Should().BeEmpty();
+        Assert.Empty(readings);
     }
 
     [Fact]
@@ -86,8 +85,8 @@ public class ClaudeUsageSignalsTests
     {
         var readings = ClaudeUsageSignals.Read("""{ "context_window": { "used_percentage": 61.2 } }""");
 
-        readings.Should().ContainSingle();
-        _Percent(readings, ClaudeUsageSignals.ContextKey).Should().Be(61.2);
+        Assert.Single(readings);
+        Assert.Equal(61.2, _Percent(readings, ClaudeUsageSignals.ContextKey));
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public class ClaudeUsageSignalsTests
     {
         // The script writes whole and renames, but a truncated read is still possible on some filesystems — and a
         // status bar must never be the reason a session falls over.
-        ClaudeUsageSignals.Read("""{ "context_window": { "used_per""").Should().BeEmpty();
+        Assert.Empty(ClaudeUsageSignals.Read("""{ "context_window": { "used_per"""));
     }
 
     [Fact]
@@ -104,11 +103,11 @@ public class ClaudeUsageSignalsTests
         // A context window empties on a compaction, not at a moment, so there is nothing to schedule against.
         var declarations = ClaudeUsageSignals.Declarations;
 
-        _Signal(declarations, ClaudeUsageSignals.ContextKey).Kind.Should().Be(PluginUsageSignalKind.Fill);
-        _Signal(declarations, ClaudeUsageSignals.ContextKey).SupportsResume.Should().BeFalse();
-        _Signal(declarations, ClaudeUsageSignals.FiveHourKey).Kind.Should().Be(PluginUsageSignalKind.Allowance);
-        _Signal(declarations, ClaudeUsageSignals.FiveHourKey).SupportsResume.Should().BeTrue();
-        _Signal(declarations, ClaudeUsageSignals.WeeklyKey).SupportsResume.Should().BeTrue();
+        Assert.Equal(PluginUsageSignalKind.Fill, _Signal(declarations, ClaudeUsageSignals.ContextKey).Kind);
+        Assert.False(_Signal(declarations, ClaudeUsageSignals.ContextKey).SupportsResume);
+        Assert.Equal(PluginUsageSignalKind.Allowance, _Signal(declarations, ClaudeUsageSignals.FiveHourKey).Kind);
+        Assert.True(_Signal(declarations, ClaudeUsageSignals.FiveHourKey).SupportsResume);
+        Assert.True(_Signal(declarations, ClaudeUsageSignals.WeeklyKey).SupportsResume);
     }
 
     [Fact]
@@ -116,9 +115,12 @@ public class ClaudeUsageSignalsTests
     {
         // A reading whose key matches no declaration is dropped by the host, so a typo here would silently cost a
         // bar rather than fail anywhere.
-        var keys = ClaudeUsageSignals.Declarations.Select(signal => signal.Key);
+        var keys = ClaudeUsageSignals.Declarations.Select(signal => signal.Key).ToList();
 
-        ClaudeUsageSignals.Read(FullBlob).Select(reading => reading.SignalKey).Should().BeSubsetOf(keys);
+        foreach (var signalKey in ClaudeUsageSignals.Read(FullBlob).Select(reading => reading.SignalKey))
+        {
+            Assert.Contains(signalKey, keys);
+        }
     }
 
     private static PluginUsageReading _Reading(IReadOnlyList<PluginUsageReading> readings, string key) =>

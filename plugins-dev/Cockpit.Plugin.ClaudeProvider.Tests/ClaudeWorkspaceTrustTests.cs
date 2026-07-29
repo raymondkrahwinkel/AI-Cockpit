@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -31,7 +30,7 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
         var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -49,10 +48,10 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
         var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        root["numStartups"]!.GetValue<int>().Should().Be(42);
-        root["oauthAccount"]!["emailAddress"]!.GetValue<string>().Should().Be("keep@me.test");
-        root["projects"]![@"D:\Other"]!["history"]!.AsArray().Should().HaveCount(1);
-        root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>().Should().BeTrue();
+        Assert.Equal(42, root["numStartups"]!.GetValue<int>());
+        Assert.Equal("keep@me.test", root["oauthAccount"]!["emailAddress"]!.GetValue<string>());
+        Assert.Single(root["projects"]![@"D:\Other"]!["history"]!.AsArray());
+        Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -67,8 +66,8 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
-        File.GetLastWriteTimeUtc(ClaudeJson).Should().Be(firstWrite, "an already-trusted directory must not trigger a rewrite");
-        File.ReadAllBytes(ClaudeJson).Should().Equal(firstBytes);
+        Assert.Equal(firstWrite, File.GetLastWriteTimeUtc(ClaudeJson));
+        Assert.Equal(firstBytes, File.ReadAllBytes(ClaudeJson));
     }
 
     [Fact]
@@ -76,9 +75,8 @@ public class ClaudeWorkspaceTrustTests : IDisposable
     {
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
-        Directory.EnumerateFiles(_configDir)
-            .Select(Path.GetFileName)
-            .Should().ContainSingle().Which.Should().Be(".claude.json");
+        Assert.Equal(".claude.json", Assert.Single(Directory.EnumerateFiles(_configDir)
+            .Select(Path.GetFileName)));
     }
 
     [Fact]
@@ -89,8 +87,7 @@ public class ClaudeWorkspaceTrustTests : IDisposable
 
         // No JsonException means every write landed as a complete document — the property the truncate-in-place path
         // could not guarantee under a concurrent reader.
-        var act = () => JsonSerializer.Deserialize<JsonObject>(File.ReadAllText(ClaudeJson));
-        act.Should().NotThrow();
+        JsonSerializer.Deserialize<JsonObject>(File.ReadAllText(ClaudeJson));
     }
 
     [Fact]
@@ -102,7 +99,7 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
         var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>().Should().BeTrue();
+        Assert.True(root["projects"]![@"D:\Projects\Cockpit"]!["hasTrustDialogAccepted"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -116,7 +113,7 @@ public class ClaudeWorkspaceTrustTests : IDisposable
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\X");
 
         var root = JsonNode.Parse(File.ReadAllText(ClaudeJson))!.AsObject();
-        root["projects"]![@"D:\X"]!["hasTrustDialogAccepted"]!.GetValueKind().Should().Be(JsonValueKind.True);
+        Assert.Equal(JsonValueKind.True, root["projects"]![@"D:\X"]!["hasTrustDialogAccepted"]!.GetValueKind());
     }
 
     [Fact]
@@ -129,7 +126,7 @@ public class ClaudeWorkspaceTrustTests : IDisposable
 
         var act = () => ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(_configDir, @"D:\Projects\Cockpit");
 
-        act.Should().Throw<IOException>();
-        File.ReadAllText(ClaudeJson).Should().Be("[1, 2, 3]", "a file that could not be read must not be overwritten");
+        Assert.Throws<IOException>(act);
+        Assert.Equal("[1, 2, 3]", File.ReadAllText(ClaudeJson));
     }
 }

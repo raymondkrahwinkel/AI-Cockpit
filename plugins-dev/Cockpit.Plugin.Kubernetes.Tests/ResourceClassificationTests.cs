@@ -1,5 +1,4 @@
 using Cockpit.Plugin.Kubernetes.Mcp;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
@@ -17,8 +16,8 @@ public class ResourceClassificationTests
     public void ApiVersionRef_Parse_SplitsGroupAndVersion(string apiVersion, string group, string version)
     {
         var reference = ApiVersionRef.Parse(apiVersion);
-        reference.Group.Should().Be(group);
-        reference.Version.Should().Be(version);
+        Assert.Equal(group, reference.Group);
+        Assert.Equal(version, reference.Version);
     }
 
     [Theory]
@@ -28,7 +27,7 @@ public class ResourceClassificationTests
     [InlineData("rbac.authorization.k8s.io", "clusterroles")]
     [InlineData("storage.k8s.io", "storageclasses")]
     public void ResourceScope_ClusterScopedKinds_AreClusterScoped(string group, string plural) =>
-        ResourceScope.IsClusterScoped(group, plural).Should().BeTrue();
+        Assert.True(ResourceScope.IsClusterScoped(group, plural));
 
     [Theory]
     [InlineData("", "pods")]
@@ -36,16 +35,16 @@ public class ResourceClassificationTests
     [InlineData("", "configmaps")]
     [InlineData("apps", "deployments")]
     public void ResourceScope_NamespacedKinds_AreNotClusterScoped(string group, string plural) =>
-        ResourceScope.IsClusterScoped(group, plural).Should().BeFalse();
+        Assert.False(ResourceScope.IsClusterScoped(group, plural));
 
     [Fact]
     public void ResourceScope_Secrets_AreSensitive()
     {
-        ResourceScope.IsSensitive("", "secrets").Should().BeTrue();
-        ResourceScope.IsSensitive("", "configmaps").Should().BeFalse();
+        Assert.True(ResourceScope.IsSensitive("", "secrets"));
+        Assert.False(ResourceScope.IsSensitive("", "configmaps"));
     }
 
     [Fact]
     public void ResourceScope_IsCaseInsensitive() =>
-        ResourceScope.IsClusterScoped("", "Nodes").Should().BeTrue();
+        Assert.True(ResourceScope.IsClusterScoped("", "Nodes"));
 }

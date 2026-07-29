@@ -1,7 +1,6 @@
 using Cockpit.Plugin.Kubernetes.Cluster;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Settings;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
 
@@ -23,11 +22,11 @@ public class ClusterConnectionFactoryTests
 
         var (client, error) = factory.Connect(cluster);
 
-        client.Should().BeNull();
-        error.Should().NotBeNull();
-        error.Should().Contain("prod");
-        error.Should().NotContain(path, "the absolute kubeconfig path must not leak to the agent");
-        error.Should().NotContain("somebody");
+        Assert.Null(client);
+        Assert.NotNull(error);
+        Assert.Contains("prod", error);
+        Assert.DoesNotContain(path, error);
+        Assert.DoesNotContain("somebody", error);
     }
 
     [Fact]
@@ -40,8 +39,8 @@ public class ClusterConnectionFactoryTests
 
         var (client, error) = factory.Connect(cluster);
 
-        client.Should().BeNull();
-        error.Should().Contain("prod");
+        Assert.Null(client);
+        Assert.Contains("prod", error);
     }
 
     // H1: a port-forward tunnel must hold a client the cache never references, so a settings-save InvalidateAll
@@ -60,11 +59,12 @@ public class ClusterConnectionFactoryTests
         var (dedicatedA, errorA) = factory.ConnectDedicated(cluster);
         var (dedicatedB, _) = factory.ConnectDedicated(cluster);
 
-        errorA.Should().BeNull();
-        cached1.Should().NotBeNull();
-        cached2.Should().BeSameAs(cached1, "Connect caches one client per cluster");
-        dedicatedA.Should().NotBeNull().And.NotBeSameAs(cached1, "a dedicated client is not the cached one InvalidateAll disposes");
-        dedicatedB.Should().NotBeSameAs(dedicatedA, "each dedicated client is built fresh");
+        Assert.Null(errorA);
+        Assert.NotNull(cached1);
+        Assert.Same(cached1, cached2);
+        Assert.NotNull(dedicatedA);
+        Assert.NotSame(cached1, dedicatedA);
+        Assert.NotSame(dedicatedA, dedicatedB);
 
         dedicatedA!.Dispose();
         dedicatedB!.Dispose();

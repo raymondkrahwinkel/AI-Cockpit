@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -13,27 +12,23 @@ public class ClaudeTranscriptClassifyTests
 {
     [Fact]
     public void UserLine_IsBusy_TheModelOwesAResponse() =>
-        ClaudeTranscriptReader.ClassifyLine("""{"type":"user","message":{"role":"user"}}""")
-            .Should().Be(PluginSessionActivity.Busy);
+        Assert.Equal(PluginSessionActivity.Busy, ClaudeTranscriptReader.ClassifyLine("""{"type":"user","message":{"role":"user"}}"""));
 
     [Fact]
     public void AssistantToolUse_IsBusy_ItWillLoop() =>
-        ClaudeTranscriptReader.ClassifyLine("""{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use"}}""")
-            .Should().Be(PluginSessionActivity.Busy);
+        Assert.Equal(PluginSessionActivity.Busy, ClaudeTranscriptReader.ClassifyLine("""{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use"}}"""));
 
     [Fact]
     public void AssistantStillStreaming_IsBusy() =>
-        ClaudeTranscriptReader.ClassifyLine("""{"type":"assistant","message":{"role":"assistant","stop_reason":null}}""")
-            .Should().Be(PluginSessionActivity.Busy);
+        Assert.Equal(PluginSessionActivity.Busy, ClaudeTranscriptReader.ClassifyLine("""{"type":"assistant","message":{"role":"assistant","stop_reason":null}}"""));
 
     [Theory]
     [InlineData("end_turn")]
     [InlineData("stop_sequence")]
     [InlineData("max_tokens")]
     public void AssistantTerminalStop_IsTurnComplete(string stopReason) =>
-        ClaudeTranscriptReader.ClassifyLine(
-                "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"" + stopReason + "\"}}")
-            .Should().Be(PluginSessionActivity.TurnComplete);
+        Assert.Equal(PluginSessionActivity.TurnComplete, ClaudeTranscriptReader.ClassifyLine(
+                "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"" + stopReason + "\"}}"));
 
     [Theory]
     [InlineData("")]
@@ -42,5 +37,5 @@ public class ClaudeTranscriptClassifyTests
     [InlineData("""{"type":"system","subtype":"init"}""")]
     [InlineData("""{"type":"summary"}""")]
     public void MetadataOrUnparseable_IsNone(string line) =>
-        ClaudeTranscriptReader.ClassifyLine(line).Should().Be(PluginSessionActivity.None);
+        Assert.Equal(PluginSessionActivity.None, ClaudeTranscriptReader.ClassifyLine(line));
 }

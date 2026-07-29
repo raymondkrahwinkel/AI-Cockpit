@@ -1,5 +1,5 @@
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -15,9 +15,9 @@ public class ClaudeTtyProviderTests
     {
         var arguments = ClaudeTtyProvider.BuildArguments("plan", "opus", "high", mcpConfigPath: null, appendSystemPrompt: null, resume: null, settingsJson: null);
 
-        arguments.Should().ContainInOrder("--permission-mode", "plan");
-        arguments.Should().ContainInOrder("--model", "opus");
-        arguments.Should().ContainInOrder("--effort", "high");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "plan"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--model", "opus"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--effort", "high"));
     }
 
     [Fact]
@@ -25,18 +25,18 @@ public class ClaudeTtyProviderTests
     {
         var arguments = ClaudeTtyProvider.BuildArguments("bypassPermissions", null, null, null, null, null, null);
 
-        arguments.Should().Contain("--dangerously-skip-permissions");
-        arguments.Should().NotContain("--permission-mode");
+        Assert.Contains("--dangerously-skip-permissions", arguments);
+        Assert.DoesNotContain("--permission-mode", arguments);
     }
 
     [Fact]
     public void BuildArguments_ResumeMostRecent_IsContinue_BySessionId_IsResume()
     {
-        ClaudeTtyProvider.BuildArguments(null, null, null, null, null, new PluginTtyResume(null), null)
-            .Should().Contain("--continue");
+        Assert.Contains("--continue", ClaudeTtyProvider.BuildArguments(null, null, null, null, null, new PluginTtyResume(null), null));
 
-        ClaudeTtyProvider.BuildArguments(null, null, null, null, null, new PluginTtyResume("sess-1"), null)
-            .Should().ContainInOrder("--resume", "sess-1");
+        Assert.True(SequenceAssert.ContainsInOrder(
+            ClaudeTtyProvider.BuildArguments(null, null, null, null, null, new PluginTtyResume("sess-1"), null),
+            "--resume", "sess-1"));
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public class ClaudeTtyProviderTests
     {
         var arguments = ClaudeTtyProvider.BuildArguments(null, null, null, "/tmp/mcp.json", "delegate-prompt", null, "{\"statusLine\":{}}");
 
-        arguments.Should().ContainInOrder("--settings", "{\"statusLine\":{}}");
-        arguments.Should().ContainInOrder("--mcp-config", "/tmp/mcp.json");
-        arguments.Should().ContainInOrder("--append-system-prompt", "delegate-prompt");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--settings", "{\"statusLine\":{}}"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/mcp.json"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--append-system-prompt", "delegate-prompt"));
     }
 
     // AC-378: the strict flag is a deliberate divergence on the headless/SDK route only (ClaudeSdkArguments) — the
@@ -63,7 +63,7 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void BuildArguments_WithNothingSet_IsEmpty()
     {
-        ClaudeTtyProvider.BuildArguments(null, null, null, null, null, null, null).Should().BeEmpty();
+        Assert.Empty(ClaudeTtyProvider.BuildArguments(null, null, null, null, null, null, null));
     }
 
     /// <summary>
@@ -74,11 +74,10 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void AppendedInstructions_CarryTheSessionsOwnInstructionsAheadOfTheOrchestratorNudge()
     {
-        ClaudeTtyProvider._AppendedInstructions("You are Olaf.", "delegate-prompt")
-            .Should().Be("You are Olaf.\n\ndelegate-prompt");
+        Assert.Equal("You are Olaf.\n\ndelegate-prompt", ClaudeTtyProvider._AppendedInstructions("You are Olaf.", "delegate-prompt"));
 
-        ClaudeTtyProvider._AppendedInstructions("You are Olaf.", null).Should().Be("You are Olaf.");
-        ClaudeTtyProvider._AppendedInstructions(null, "delegate-prompt").Should().Be("delegate-prompt");
-        ClaudeTtyProvider._AppendedInstructions("   ", null).Should().BeNull();
+        Assert.Equal("You are Olaf.", ClaudeTtyProvider._AppendedInstructions("You are Olaf.", null));
+        Assert.Equal("delegate-prompt", ClaudeTtyProvider._AppendedInstructions(null, "delegate-prompt"));
+        Assert.Null(ClaudeTtyProvider._AppendedInstructions("   ", null));
     }
 }

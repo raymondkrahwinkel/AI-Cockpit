@@ -1,6 +1,5 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Tracking;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
@@ -17,7 +16,7 @@ public class YouTrackTrackerStageMappingTests
     [InlineData(TrackerWorkStage.InReview, "Review")]
     [InlineData(TrackerWorkStage.Done, "Done")]
     public void SuggestStageName_MapsEachStage_ToTheBoardsOwnVocabulary(TrackerWorkStage stage, string expected) =>
-        _Provider().SuggestStageName(stage).Should().Be(expected);
+        Assert.Equal(expected, _Provider().SuggestStageName(stage));
 
     private static YouTrackTrackerProvider _Provider() => new(new YouTrackSettings(Substitute.For<IPluginStorage>()));
 }

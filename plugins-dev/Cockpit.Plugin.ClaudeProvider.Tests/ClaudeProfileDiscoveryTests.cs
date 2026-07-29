@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 /// <summary>
@@ -22,13 +20,13 @@ public class ClaudeProfileDiscoveryTests
 
         var profiles = ClaudeProfileDiscovery.Detect([defaultDir, workDir], _ => true);
 
-        profiles.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(profiles));
 
         var @default = profiles.Single(p => p.Label == "default");
-        ClaudeProviderConfig.Parse(@default.ConfigJson).ConfigDir.Should().BeNull();
+        Assert.Null(ClaudeProviderConfig.Parse(@default.ConfigJson).ConfigDir);
 
         var work = profiles.Single(p => p.Label == "work");
-        ClaudeProviderConfig.Parse(work.ConfigJson).ConfigDir.Should().Be(workDir);
+        Assert.Equal(workDir, ClaudeProviderConfig.Parse(work.ConfigJson).ConfigDir);
     }
 
     [Fact]
@@ -38,13 +36,13 @@ public class ClaudeProfileDiscoveryTests
             [Path.Combine("fake-home", ".claude"), Path.Combine("fake-home", ".claude-work")],
             dir => dir.EndsWith(".claude-work"));
 
-        profiles.Should().ContainSingle().Which.Label.Should().Be("work");
+        Assert.Equal("work", Assert.Single(profiles).Label);
     }
 
     [Fact]
     public void Detect_NoCandidatesExist_ReturnsEmpty()
     {
-        ClaudeProfileDiscovery.Detect([Path.Combine("fake-home", ".claude")], _ => false).Should().BeEmpty();
+        Assert.Empty(ClaudeProfileDiscovery.Detect([Path.Combine("fake-home", ".claude")], _ => false));
     }
 
     [Fact]
@@ -57,10 +55,10 @@ public class ClaudeProfileDiscoveryTests
             var configJson = System.Text.Json.JsonSerializer.Serialize(
                 new ClaudeProviderConfig(ConfigDir: dir), ClaudeProviderConfig.JsonOptions);
 
-            ClaudeProfileDiscovery.IsLoggedIn(configJson).Should().BeFalse("no credentials file yet");
+            Assert.False(ClaudeProfileDiscovery.IsLoggedIn(configJson), "no credentials file yet");
 
             File.WriteAllText(Path.Combine(dir, ".credentials.json"), "{}");
-            ClaudeProfileDiscovery.IsLoggedIn(configJson).Should().BeTrue("the credentials file now exists");
+            Assert.True(ClaudeProfileDiscovery.IsLoggedIn(configJson), "the credentials file now exists");
         }
         finally
         {

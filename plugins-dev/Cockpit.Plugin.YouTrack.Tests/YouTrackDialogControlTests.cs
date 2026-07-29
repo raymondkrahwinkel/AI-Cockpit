@@ -4,7 +4,6 @@ using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using FluentAssertions;
 using Xunit.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
@@ -46,7 +45,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"selected after filter: {selectedId ?? "<null>"}");
         harness.Close();
 
-        selectedId.Should().Be(First.IdReadable, "a keystroke in the filter is not a request to lose your place");
+        Assert.Equal(First.IdReadable, selectedId);
     });
 
     [Fact]
@@ -67,8 +66,8 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"reported={reported ?? "<none>"} afterRebuild={afterRebuild ?? "<none>"}");
         harness.Close();
 
-        reported.Should().Contain("AT-1", "the action has to report something for this to mean anything");
-        afterRebuild.Should().Be(reported, "the result belongs to the issue, not to the selection event that redrew it");
+        Assert.Contains("AT-1", reported);
+        Assert.Equal(reported, afterRebuild);
     });
 
     [Fact]
@@ -86,7 +85,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"afterMove={afterMove ?? "<none>"}");
         harness.Close();
 
-        afterMove.Should().BeNullOrEmpty("what happened to AT-1 says nothing about AT-2");
+        Assert.True(string.IsNullOrEmpty(afterMove), "what happened to AT-1 says nothing about AT-2");
     });
 
     [Fact]
@@ -103,8 +102,8 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"enabled={isEnabled} tip={ToolTip.GetTip(inject)} showOnDisabled={showsWhileDisabled}");
         harness.Close();
 
-        isEnabled.Should().BeFalse();
-        showsWhileDisabled.Should().BeTrue("Avalonia shows no tooltip on a disabled control, so the explanation never reaches the operator without this");
+        Assert.False(isEnabled);
+        Assert.True(showsWhileDisabled, "Avalonia shows no tooltip on a disabled control, so the explanation never reaches the operator without this");
     });
 
     [Fact]
@@ -123,7 +122,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"enabled after onStarted={isEnabled}");
         harness.Close();
 
-        isEnabled.Should().BeTrue("the session the operator just started is the session Add to prompt injects into");
+        Assert.True(isEnabled, "the session the operator just started is the session Add to prompt injects into");
     });
 
     [Fact]
@@ -143,9 +142,8 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"linked={linkedIssue ?? "<none>"} directory={directory ?? "<null>"}");
         harness.Close();
 
-        linkedIssue.Should().Be(First.IdReadable);
-        directory.Should().Be("/home/operator/repo",
-            "a flow that cuts a branch when a ticket is picked needs the path, and an empty one sends it nowhere");
+        Assert.Equal(First.IdReadable, linkedIssue);
+        Assert.Equal("/home/operator/repo", directory);
     });
 
     [Fact]
@@ -163,8 +161,8 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"dialogs opened={opened} button still armed={stillArmed}");
         harness.Close();
 
-        opened.Should().Be(1);
-        stillArmed.Should().BeFalse("a second press while the first dialog is up would start a second session");
+        Assert.Equal(1, opened);
+        Assert.False(stillArmed, "a second press while the first dialog is up would start a second session");
     });
 
     [Fact]
@@ -188,8 +186,8 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"link={fieldKey ?? "<null>"}={value ?? "<null>"}");
         harness.Close();
 
-        fieldKey.Should().Be("youtrack.project", "that is the key the project editor stores the link under");
-        value.Should().Be("OTHER", "the issue being started decides — not the first row, and not the project filter");
+        Assert.Equal("youtrack.project", fieldKey);
+        Assert.Equal("OTHER", value);
     });
 
     [Fact]
@@ -208,7 +206,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"link={link?.Value ?? "<null>"}");
         harness.Close();
 
-        link.Should().BeNull();
+        Assert.Null(link);
     });
 
     [Fact]
@@ -224,7 +222,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"enabled after close={isEnabled}");
         harness.Close();
 
-        isEnabled.Should().BeTrue("guarding against a second dialog must not cost the operator the button for good");
+        Assert.True(isEnabled, "guarding against a second dialog must not cost the operator the button for good");
     });
 
     [Fact]
@@ -242,8 +240,7 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"reported={reported ?? "<none>"}");
         harness.Close();
 
-        reported.Should().Contain("ftp://tracker.example/issue/AT-1",
-            "an operator who clicks a link and sees nothing happen has no way to tell that from a slow browser");
+        Assert.Contains("ftp://tracker.example/issue/AT-1", reported);
     });
 
     [Fact]
@@ -267,9 +264,9 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"description height={descriptionHeight:0.#} viewport={previewViewport:0.#} extent={previewExtent:0.#}");
         harness.Close();
 
-        descriptionHeight.Should().BeGreaterThan(200, "the description is the panel's main content, not what is left over");
-        previewViewport.Should().BeGreaterThan(0, "the preview has to scroll inside its own box rather than grow past it");
-        (previewExtent - previewViewport).Should().BeGreaterThan(0, "a preview taller than its box without a scroller is a clipped preview");
+        Assert.True(descriptionHeight > 200, "the description is the panel's main content, not what is left over");
+        Assert.True(previewViewport > 0, "the preview has to scroll inside its own box rather than grow past it");
+        Assert.True(previewExtent - previewViewport > 0, "a preview taller than its box without a scroller is a clipped preview");
     });
 
     [Fact]
@@ -290,9 +287,9 @@ public class YouTrackDialogControlTests
         _out.WriteLine($"description={description} preview starts={preview?[..Math.Min(40, preview.Length)]}");
         harness.Close();
 
-        description.Should().Contain(Second.Description, "the operator selected AT-2, so this is AT-2's panel");
-        description.Should().NotContain(First.Description);
-        preview.Should().Contain(Second.IdReadable, "the button beside this preview injects it into an agent");
+        Assert.Contains(Second.Description!, description);
+        Assert.DoesNotContain(First.Description!, description);
+        Assert.Contains(Second.IdReadable, preview);
     });
 
     [Fact]
@@ -309,14 +306,14 @@ public class YouTrackDialogControlTests
         harness.Host.MarkdownFailure = new InvalidOperationException("rendering failed for some other reason");
         var selectSecond = () => harness.Select(Second);
 
-        selectSecond.Should().Throw<InvalidOperationException>("an unknown failure is not this dialog's to swallow");
+        Assert.Throws<InvalidOperationException>(selectSecond);
         var showsAnIssue = harness.DetailIsVisible();
         var preview = harness.PromptPreviewText();
         _out.WriteLine($"detail visible={showsAnIssue} preview={preview ?? "<null>"}");
         harness.Close();
 
-        showsAnIssue.Should().BeFalse("a panel that could not be built for AT-2 must not keep standing as AT-1");
-        preview.Should().BeNullOrEmpty("whatever is in the preview is what Add to prompt injects");
+        Assert.False(showsAnIssue, "a panel that could not be built for AT-2 must not keep standing as AT-1");
+        Assert.True(string.IsNullOrEmpty(preview), "whatever is in the preview is what Add to prompt injects");
     });
 
     /// <summary>
@@ -399,7 +396,7 @@ public class YouTrackDialogControlTests
         public void Click(string label)
         {
             var button = Button(label);
-            button.IsEnabled.Should().BeTrue($"\"{label}\" has to be clickable for this test to mean anything");
+            Assert.True(button.IsEnabled, $"\"{label}\" has to be clickable for this test to mean anything");
             Press(button);
         }
 

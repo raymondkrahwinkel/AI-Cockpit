@@ -1,7 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.TestSupport;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using NSubstitute;
 
@@ -40,7 +39,7 @@ public class YouTrackAttachToolsTests
 
         var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1");
 
-        result.Should().Be("The current message carried no images to attach.");
+        Assert.Equal("The current message carried no images to attach.", result);
     }
 }
 
@@ -88,9 +87,9 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
 
-            result.Should().Be("Attached 1 image to AC-1.");
-            _requests.Should().Be(1);
-            host.Toasts.Should().BeEmpty();
+            Assert.Equal("Attached 1 image to AC-1.", result);
+            Assert.Equal(1, _requests);
+            Assert.Empty(host.Toasts);
         }
         finally
         {
@@ -109,9 +108,9 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
 
-            result.Should().Be("Attached 1 image to AC-1.");
-            _requests.Should().Be(1);
-            host.Toasts.Should().BeEmpty();
+            Assert.Equal("Attached 1 image to AC-1.", result);
+            Assert.Equal(1, _requests);
+            Assert.Empty(host.Toasts);
         }
         finally
         {
@@ -131,8 +130,8 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
 
-            result.Should().Contain("outside the folders this tool may attach from");
-            _requests.Should().Be(0);
+            Assert.Contains("outside the folders this tool may attach from", result);
+            Assert.Equal(0, _requests);
         }
         finally
         {
@@ -157,8 +156,8 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: escapingPath);
 
-            result.Should().Contain("outside the folders this tool may attach from");
-            _requests.Should().Be(0);
+            Assert.Contains("outside the folders this tool may attach from", result);
+            Assert.Equal(0, _requests);
         }
         finally
         {
@@ -178,8 +177,8 @@ public class YouTrackAttachToolsPathTests : IAsyncLifetime
         {
             var result = await tools.AttachMessageImagesToIssue("AC-1", session: "pane-1", path: file);
 
-            result.Should().Contain("not a recognized image file");
-            _requests.Should().Be(0);
+            Assert.Contains("not a recognized image file", result);
+            Assert.Equal(0, _requests);
         }
         finally
         {

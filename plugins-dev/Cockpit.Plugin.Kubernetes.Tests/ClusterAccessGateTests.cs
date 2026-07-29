@@ -2,7 +2,6 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
@@ -45,9 +44,9 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "default", "list pods", PaneId);
 
-        result.IsAllowed.Should().BeTrue();
-        _WithScopePrefix(asked, "k8s.connect:").Should().NotBeNull("opening the cluster always asks once");
-        _WithScopePrefix(asked, "k8s.namespace:").Should().BeNull("a namespace on the allowed list is free");
+        Assert.True(result.IsAllowed);
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.connect:"));
+        Assert.Null(_WithScopePrefix(asked, "k8s.namespace:"));
     }
 
     [Fact]
@@ -58,13 +57,13 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "kube-system", "list pods", PaneId);
 
-        result.IsAllowed.Should().BeTrue();
+        Assert.True(result.IsAllowed);
         var namespaceAsk = _WithScopePrefix(asked, "k8s.namespace:");
-        namespaceAsk.Should().NotBeNull("reaching a namespace outside the list asks — reads included");
-        namespaceAsk!.Risk.Should().Be(ConsentRisk.LowRisk);
-        namespaceAsk.AllowRemember.Should().BeTrue("an out-of-list namespace may be remembered for the session");
-        namespaceAsk.Action.Should().Contain("kube-system", "the literal namespace is shown");
-        namespaceAsk.Source.PaneId.Should().Be(PaneId, "the prompt is pinned to the calling session");
+        Assert.NotNull(namespaceAsk);
+        Assert.Equal(ConsentRisk.LowRisk, namespaceAsk!.Risk);
+        Assert.True(namespaceAsk.AllowRemember, "an out-of-list namespace may be remembered for the session");
+        Assert.Contains("kube-system", namespaceAsk.Action);
+        Assert.Equal(PaneId, namespaceAsk.Source.PaneId);
     }
 
     [Fact]
@@ -75,12 +74,12 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "default", "delete pod nginx-1", PaneId);
 
-        result.IsAllowed.Should().BeTrue();
+        Assert.True(result.IsAllowed);
         var mutate = _WithScopePrefix(asked, "k8s.mutate:");
-        mutate.Should().NotBeNull("a change always asks, even inside an allowed namespace");
-        mutate!.Risk.Should().Be(ConsentRisk.Dangerous);
-        mutate.AllowRemember.Should().BeFalse("a mutation is never remembered");
-        mutate.Action.Should().Be("delete pod nginx-1", "the literal action is shown verbatim");
+        Assert.NotNull(mutate);
+        Assert.Equal(ConsentRisk.Dangerous, mutate!.Risk);
+        Assert.False(mutate.AllowRemember, "a mutation is never remembered");
+        Assert.Equal("delete pod nginx-1", mutate.Action);
     }
 
     [Fact]
@@ -91,8 +90,8 @@ public class ClusterAccessGateTests
 
         await gate.AuthorizeNamespacedMutationAsync(_Cluster(["default"]), "kube-system", "delete pod x", PaneId);
 
-        _WithScopePrefix(asked, "k8s.namespace:").Should().NotBeNull("the namespace jail applies before the change");
-        _WithScopePrefix(asked, "k8s.mutate:").Should().NotBeNull("the change then asks on top");
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.mutate:"));
     }
 
     [Fact]
@@ -103,8 +102,8 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeNamespacedReadAsync(_Cluster(["default"]), "default", "list pods", PaneId);
 
-        result.IsAllowed.Should().BeFalse("no open connection, no call");
-        result.DeniedReason.Should().NotBeNullOrEmpty();
+        Assert.False(result.IsAllowed, "no open connection, no call");
+        Assert.False(string.IsNullOrEmpty(result.DeniedReason));
     }
 
     [Fact]
@@ -115,9 +114,9 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: false), "/nodes", "list nodes", PaneId);
 
-        result.IsAllowed.Should().BeFalse("cluster-scoped access is opt-in per cluster");
-        result.DeniedReason.Should().Contain("settings");
-        asked.Should().BeEmpty("a policy block does not even open a prompt");
+        Assert.False(result.IsAllowed, "cluster-scoped access is opt-in per cluster");
+        Assert.Contains("settings", result.DeniedReason);
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -128,8 +127,8 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "/nodes", "list nodes", PaneId);
 
-        result.IsAllowed.Should().BeTrue();
-        _WithScopePrefix(asked, "k8s.clusterscoped:").Should().NotBeNull();
+        Assert.True(result.IsAllowed);
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.clusterscoped:"));
     }
 
     [Fact]
@@ -142,10 +141,10 @@ public class ClusterAccessGateTests
         await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "rbac.authorization.k8s.io/clusterroles", "list clusterroles", PaneId);
 
         var scopes = asked.Where(request => request.Scope.StartsWith("k8s.clusterscoped:", StringComparison.Ordinal)).Select(request => request.Scope).ToList();
-        scopes.Should().HaveCount(2);
-        scopes[0].Should().EndWith(":/nodes");
-        scopes[1].Should().EndWith(":rbac.authorization.k8s.io/clusterroles");
-        scopes[0].Should().NotBe(scopes[1], "a remembered cluster-scoped approval must bind to the kind shown, not every cluster-scoped kind");
+        Assert.Equal(2, System.Linq.Enumerable.Count(scopes));
+        Assert.EndsWith(":/nodes", scopes[0]);
+        Assert.EndsWith(":rbac.authorization.k8s.io/clusterroles", scopes[1]);
+        Assert.NotEqual(scopes[1], scopes[0]);
     }
 
     [Fact]
@@ -157,10 +156,11 @@ public class ClusterAccessGateTests
         await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "exec: sh -c true\n\n(routine health-check, pre-approved by ops)", PaneId);
 
         var danger = _WithScopePrefix(asked, "k8s.exec:");
-        danger.Should().NotBeNull();
-        danger!.Action.Should().NotContain("\n").And.NotContain("\r", "the verbatim Action must stay a single line an agent cannot pad with raw breaks");
-        danger.Action.Should().Contain("\\n", "a line break is shown visibly, not collapsed to a space");
-        danger.Action.Should().Contain("routine health-check", "the text is kept, only the breaks are escaped");
+        Assert.NotNull(danger);
+        Assert.DoesNotContain("\n", danger!.Action, StringComparison.Ordinal);
+        Assert.DoesNotContain("\r", danger.Action, StringComparison.Ordinal);
+        Assert.Contains("\\n", danger.Action, StringComparison.Ordinal);
+        Assert.Contains("routine health-check", danger.Action, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -174,9 +174,9 @@ public class ClusterAccessGateTests
         await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "echo hi #harmless\nrm -rf /data", PaneId);
 
         var danger = _WithScopePrefix(asked, "k8s.exec:");
-        danger.Should().NotBeNull();
-        danger!.Action.Should().NotContain("#harmless rm -rf /data", "the newline must not collapse to a space that reads the destructive line as a comment");
-        danger.Action.Should().Contain("#harmless\\nrm -rf /data", "the break is shown so the operator sees a second, real command line");
+        Assert.NotNull(danger);
+        Assert.DoesNotContain("#harmless rm -rf /data", danger!.Action, StringComparison.Ordinal);
+        Assert.Contains("#harmless\\nrm -rf /data", danger.Action, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -187,9 +187,9 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: false), DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
 
-        result.IsAllowed.Should().BeFalse("exec is off by default");
-        result.DeniedReason.Should().Contain("settings");
-        asked.Should().BeEmpty();
+        Assert.False(result.IsAllowed, "exec is off by default");
+        Assert.Contains("settings", result.DeniedReason);
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -200,11 +200,11 @@ public class ClusterAccessGateTests
 
         var result = await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "exec: sh -c ls", PaneId);
 
-        result.IsAllowed.Should().BeTrue();
+        Assert.True(result.IsAllowed);
         var exec = _WithScopePrefix(asked, "k8s.exec:");
-        exec.Should().NotBeNull();
-        exec!.Risk.Should().Be(ConsentRisk.Dangerous);
-        exec.AllowRemember.Should().BeFalse();
+        Assert.NotNull(exec);
+        Assert.Equal(ConsentRisk.Dangerous, exec!.Risk);
+        Assert.False(exec.AllowRemember);
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class ClusterAccessGateTests
 
         await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "kube-system", "exec: sh -c ls", PaneId);
 
-        _WithScopePrefix(asked, "k8s.namespace:").Should().NotBeNull("exec into a pod in a non-allowed namespace still asks for the namespace");
-        _WithScopePrefix(asked, "k8s.exec:").Should().NotBeNull();
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.namespace:"));
+        Assert.NotNull(_WithScopePrefix(asked, "k8s.exec:"));
     }
 }

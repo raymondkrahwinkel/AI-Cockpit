@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.YouTrack.Tests;
 
 /// <summary>
@@ -17,11 +15,11 @@ public class IssueStateChangesTests
 
         changes.Moved(Instance, Issue, previousState: "In Progress", newState: "Review", workingDirectory: "/repo");
 
-        heard.Should().NotBeNull();
-        heard!.Issue.IdReadable.Should().Be("WEB-14");
-        heard.PreviousState.Should().Be("In Progress");
-        heard.NewState.Should().Be("Review");
-        heard.WorkingDirectory.Should().Be("/repo");
+        Assert.NotNull(heard);
+        Assert.Equal("WEB-14", heard!.Issue.IdReadable);
+        Assert.Equal("In Progress", heard.PreviousState);
+        Assert.Equal("Review", heard.NewState);
+        Assert.Equal("/repo", heard.WorkingDirectory);
     }
 
     // Nothing is listening until a flow starts with this trigger, and a move made then must not fall over.
@@ -32,7 +30,7 @@ public class IssueStateChangesTests
 
         var move = () => changes.Moved(Instance, Issue, "In Progress", "Review");
 
-        move.Should().NotThrow();
+        move();
     }
 
     private static YouTrackInstance Instance => new("Work", "https://youtrack.example.com", "token", "EVE");

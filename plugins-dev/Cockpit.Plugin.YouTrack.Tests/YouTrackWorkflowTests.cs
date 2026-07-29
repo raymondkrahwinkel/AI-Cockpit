@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -14,7 +13,7 @@ public class YouTrackWorkflowTests
     {
         var field = new YouTrackStateField("1", "State", "StateIssueCustomField", "Open", ["Open", "In Progress", "In Review"], []);
 
-        YouTrackWorkflow.FindStartTarget(field).Should().Be("In Progress");
+        Assert.Equal("In Progress", YouTrackWorkflow.FindStartTarget(field));
     }
 
     [Fact]
@@ -28,7 +27,7 @@ public class YouTrackWorkflowTests
             [],
             [new YouTrackStateEvent("e1", "reject"), new YouTrackStateEvent("e2", "start progress")]);
 
-        YouTrackWorkflow.FindStartTarget(field).Should().Be("start progress");
+        Assert.Equal("start progress", YouTrackWorkflow.FindStartTarget(field));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public class YouTrackWorkflowTests
     {
         var field = new YouTrackStateField("3", "State", "StateIssueCustomField", "In Progress", ["Open", "In Progress"], []);
 
-        YouTrackWorkflow.FindStartTarget(field).Should().BeNull();
+        Assert.Null(YouTrackWorkflow.FindStartTarget(field));
     }
 
     [Fact]
@@ -44,6 +43,6 @@ public class YouTrackWorkflowTests
     {
         var field = new YouTrackStateField("4", "Stage", "StateIssueCustomField", "Backlog", ["Backlog", "Done"], []);
 
-        YouTrackWorkflow.FindStartTarget(field).Should().BeNull();
+        Assert.Null(YouTrackWorkflow.FindStartTarget(field));
     }
 }

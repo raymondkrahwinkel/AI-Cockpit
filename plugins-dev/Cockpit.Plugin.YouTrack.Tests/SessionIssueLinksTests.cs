@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.YouTrack.Tests;
 
@@ -20,7 +19,7 @@ public class SessionIssueLinksTests
 
         links.Link("pane-1", LinkTo(Issue));
 
-        host.Statuslines["pane-1"].Should().Be("AC-310 — Link to session leaves the name alone");
+        Assert.Equal("AC-310 — Link to session leaves the name alone", host.Statuslines["pane-1"]);
     }
 
     [Fact]
@@ -33,7 +32,7 @@ public class SessionIssueLinksTests
         // and the host is the only party that can tell the two apart.
         links.Link("pane-1", LinkTo(Issue));
 
-        host.SuggestedNames["pane-1"].Should().Be("AC-310");
+        Assert.Equal("AC-310", host.SuggestedNames["pane-1"]);
     }
 
     [Fact]
@@ -44,8 +43,8 @@ public class SessionIssueLinksTests
 
         links.Link(string.Empty, LinkTo(Issue));
 
-        host.Statuslines.Should().BeEmpty();
-        host.SuggestedNames.Should().BeEmpty();
+        Assert.Empty(host.Statuslines);
+        Assert.Empty(host.SuggestedNames);
     }
 
     [Fact]
@@ -59,7 +58,7 @@ public class SessionIssueLinksTests
 
         // The statusline is shared with the agent and with flows, and there is no way to read it back to tell whose
         // text is on it now. Unlinking therefore writes nothing rather than risking wiping live progress.
-        host.Statuslines["pane-1"].Should().Be("AC-310 — Link to session leaves the name alone");
+        Assert.Equal("AC-310 — Link to session leaves the name alone", host.Statuslines["pane-1"]);
     }
 
     private static LinkedIssue LinkTo(YouTrackIssue issue) =>

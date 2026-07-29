@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
 /// <summary>
@@ -14,13 +12,13 @@ public class CliExecutableLocatorTests
     {
         var absolutePath = Path.Combine(Path.GetTempPath(), "codex.exe");
 
-        CliExecutableLocator.Resolve(absolutePath).Should().Be(absolutePath);
+        Assert.Equal(absolutePath, CliExecutableLocator.Resolve(absolutePath));
     }
 
     [Fact]
     public void Resolve_ABareCommandNotFoundOnPath_IsReturnedUnchanged_SoProcessStartStillGetsARealAttempt()
     {
-        CliExecutableLocator.Resolve("definitely-not-a-real-cli-tool-12345").Should().Be("definitely-not-a-real-cli-tool-12345");
+        Assert.Equal("definitely-not-a-real-cli-tool-12345", CliExecutableLocator.Resolve("definitely-not-a-real-cli-tool-12345"));
     }
 
     [Fact]
@@ -36,7 +34,7 @@ public class CliExecutableLocatorTests
             Environment.SetEnvironmentVariable("PATH", $"{directory.FullName}{Path.PathSeparator}{originalPath}");
             try
             {
-                CliExecutableLocator.Resolve("fake-codex-tool").Should().Be(executable);
+                Assert.Equal(executable, CliExecutableLocator.Resolve("fake-codex-tool"));
             }
             finally
             {

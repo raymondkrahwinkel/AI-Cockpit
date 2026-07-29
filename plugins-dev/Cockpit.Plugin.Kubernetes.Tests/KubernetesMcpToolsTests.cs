@@ -6,7 +6,6 @@ using Cockpit.Plugin.Kubernetes.Mcp;
 using Cockpit.Plugin.Kubernetes.Model;
 using Cockpit.Plugin.Kubernetes.Security;
 using Cockpit.Plugin.Kubernetes.Settings;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Kubernetes.Tests;
@@ -54,8 +53,8 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(tools.ListClusters());
 
-        json!["clusters"]!.AsArray().Should().ContainSingle();
-        json["clusters"]![0]!["label"]!.GetValue<string>().Should().Be("prod");
+        Assert.Single(json!["clusters"]!.AsArray());
+        Assert.Equal("prod", json["clusters"]![0]!["label"]!.GetValue<string>());
     }
 
     [Fact]
@@ -65,9 +64,9 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ListResources("does-not-exist", Session, "v1", "pods", "default"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("list_clusters");
-        asked.Should().BeEmpty("an unknown cluster never reaches the consent gate");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("list_clusters", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -77,8 +76,8 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ListResources("prod", Session, "v1", "pods", "kube-system"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("did not approve", "a denied consent is the error, not a cluster failure");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
     }
 
     [Fact]
@@ -88,9 +87,9 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.Exec("prod", Session, "default", "nginx", "ls"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("settings");
-        asked.Should().BeEmpty("a capability that is off is a policy block — no prompt");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("settings", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -102,9 +101,9 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.ListResources("prod", Session, "v1", "secrets", @namespace: null));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("namespace is required");
-        asked.Should().BeEmpty("it is refused before any consent — never routed to the cluster-scoped gate");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("namespace is required", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -116,9 +115,9 @@ public class KubernetesMcpToolsTests
         await tools.GetResource("prod", Session, "v1", "secrets", "db-password", "default");
 
         var secretAsk = _WithScopePrefix(asked, "k8s.secret:");
-        secretAsk.Should().NotBeNull("a secret is not \"free to read\" just because its namespace is allowed");
-        secretAsk!.Risk.Should().Be(ConsentRisk.Dangerous);
-        secretAsk.AllowRemember.Should().BeFalse();
+        Assert.NotNull(secretAsk);
+        Assert.Equal(ConsentRisk.Dangerous, secretAsk!.Risk);
+        Assert.False(secretAsk.AllowRemember);
     }
 
     [Fact]
@@ -128,9 +127,9 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.PortForward("prod", Session, "default", "nginx", 80));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("settings");
-        asked.Should().BeEmpty("a capability that is off is a policy block — no prompt");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("settings", json["error"]!.GetValue<string>());
+        Assert.Empty(asked);
     }
 
     [Fact]
@@ -142,7 +141,7 @@ public class KubernetesMcpToolsTests
 
         var json = JsonNode.Parse(await tools.DeleteResource("prod", Session, "v1", "pods", "nginx", "default"));
 
-        json!["ok"]!.GetValue<bool>().Should().BeFalse();
-        json["error"]!.GetValue<string>().Should().Contain("kubeconfig", "it passed the gate and stopped at the missing kubeconfig");
+        Assert.False(json!["ok"]!.GetValue<bool>());
+        Assert.Contains("kubeconfig", json["error"]!.GetValue<string>());
     }
 }

@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <!-- Full refs (unlike the plugin's compile-only ones): the tests build GitHubIssuesDialogControl for real, so
          the Avalonia stack, the DataGrid and MaterialIconKind all need a runtime copy present, which the host
          would otherwise supply. Avalonia.Headless is the platform those controls ask for a cursor and a font

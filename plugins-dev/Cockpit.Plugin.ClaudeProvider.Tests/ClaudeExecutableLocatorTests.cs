@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -15,7 +14,7 @@ public class ClaudeExecutableLocatorTests
     {
         var rooted = Path.Combine(Path.GetTempPath(), "claude-does-not-need-lookup");
 
-        ClaudeExecutableLocator.Resolve(rooted).Should().Be(rooted);
+        Assert.Equal(rooted, ClaudeExecutableLocator.Resolve(rooted));
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class ClaudeExecutableLocatorTests
     {
         // A name PATH cannot resolve is returned as-is, so Process.Start makes a real attempt and yields a diagnosable
         // "file not found" rather than this resolver swallowing it.
-        ClaudeExecutableLocator.Resolve("claude-provider-definitely-not-installed-xyz").Should().Be("claude-provider-definitely-not-installed-xyz");
+        Assert.Equal("claude-provider-definitely-not-installed-xyz", ClaudeExecutableLocator.Resolve("claude-provider-definitely-not-installed-xyz"));
     }
 
     [Theory]
@@ -31,7 +30,7 @@ public class ClaudeExecutableLocatorTests
     [InlineData("   ")]
     public void Resolve_BlankCommand_PassesThroughUnchanged(string command)
     {
-        ClaudeExecutableLocator.Resolve(command).Should().Be(command);
+        Assert.Equal(command, ClaudeExecutableLocator.Resolve(command));
     }
 
     [Fact]
@@ -39,7 +38,7 @@ public class ClaudeExecutableLocatorTests
     {
         var absent = Path.Combine(Path.GetTempPath(), $"claude-code-{Guid.NewGuid():N}");
 
-        ClaudeExecutableLocator.PickNewestClaudeExe(absent).Should().BeNull();
+        Assert.Null(ClaudeExecutableLocator.PickNewestClaudeExe(absent));
     }
 
     [Fact]
@@ -51,7 +50,7 @@ public class ClaudeExecutableLocatorTests
 
         var picked = ClaudeExecutableLocator.PickNewestClaudeExe(root.Path);
 
-        picked.Should().Be(Path.Combine(root.Path, "2.1.209", "claude.exe"));
+        Assert.Equal(Path.Combine(root.Path, "2.1.209", "claude.exe"), picked);
     }
 
     [Fact]
@@ -63,7 +62,7 @@ public class ClaudeExecutableLocatorTests
 
         var picked = ClaudeExecutableLocator.PickNewestClaudeExe(root.Path);
 
-        picked.Should().Be(Path.Combine(root.Path, "2.1.209", "claude.exe"));
+        Assert.Equal(Path.Combine(root.Path, "2.1.209", "claude.exe"), picked);
     }
 
     [Fact]
@@ -71,7 +70,7 @@ public class ClaudeExecutableLocatorTests
     {
         var absent = Path.Combine(Path.GetTempPath(), $"claude-versions-{Guid.NewGuid():N}");
 
-        ClaudeExecutableLocator.PickNewestClaudeBinary(absent).Should().BeNull();
+        Assert.Null(ClaudeExecutableLocator.PickNewestClaudeBinary(absent));
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class ClaudeExecutableLocatorTests
 
         var picked = ClaudeExecutableLocator.PickNewestClaudeBinary(versions.Path);
 
-        picked.Should().Be(Path.Combine(versions.Path, "2.1.209"));
+        Assert.Equal(Path.Combine(versions.Path, "2.1.209"), picked);
     }
 
     [Fact]
@@ -95,7 +94,7 @@ public class ClaudeExecutableLocatorTests
 
         var picked = ClaudeExecutableLocator.PickNewestClaudeBinary(versions.Path);
 
-        picked.Should().Be(Path.Combine(versions.Path, "2.1.209"));
+        Assert.Equal(Path.Combine(versions.Path, "2.1.209"), picked);
     }
 
     private sealed class _TempVersionsDir : IDisposable

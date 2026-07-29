@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
 /// <summary>
@@ -17,10 +15,10 @@ public class CliAgentConfigTests
 
         var text = config.ToString();
 
-        text.Should().NotContain("super-secret-key");
-        text.Should().Contain("***");
-        text.Should().Contain("gpt-5-codex");
-        text.Should().Contain(@"C:\work");
+        Assert.DoesNotContain("super-secret-key", text);
+        Assert.Contains("***", text);
+        Assert.Contains("gpt-5-codex", text);
+        Assert.Contains(@"C:\work", text);
     }
 
     [Fact]
@@ -28,7 +26,7 @@ public class CliAgentConfigTests
     {
         var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
 
-        config.ToString().Should().Contain("ApiKey = null");
+        Assert.Contains("ApiKey = null", config.ToString());
     }
 
     [Fact]
@@ -36,7 +34,7 @@ public class CliAgentConfigTests
     {
         var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
 
-        config.EffectiveOutputFormatArgs.Should().Equal("--json");
+        Assert.Equal(new[] { "--json" }, config.EffectiveOutputFormatArgs);
     }
 
     [Fact]
@@ -44,7 +42,7 @@ public class CliAgentConfigTests
     {
         var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
 
-        config.EffectiveExtraArgs.Should().BeEmpty();
+        Assert.Empty(config.EffectiveExtraArgs);
     }
 
     [Fact]
@@ -52,7 +50,7 @@ public class CliAgentConfigTests
     {
         var config = new CliAgentConfig(WorkingDirectory: @"C:\work");
 
-        config.IsStdinPromptMode.Should().BeFalse();
+        Assert.False(config.IsStdinPromptMode);
     }
 
     [Fact]
@@ -60,6 +58,6 @@ public class CliAgentConfigTests
     {
         var config = new CliAgentConfig(WorkingDirectory: @"C:\work", PromptMode: "stdin");
 
-        config.IsStdinPromptMode.Should().BeTrue();
+        Assert.True(config.IsStdinPromptMode);
     }
 }

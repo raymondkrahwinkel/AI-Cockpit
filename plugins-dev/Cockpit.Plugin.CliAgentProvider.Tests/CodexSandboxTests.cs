@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
 /// <summary>
@@ -13,7 +11,7 @@ public class CodexSandboxTests
     [InlineData("workspace-write", "workspaceWrite")]
     [InlineData("danger-full-access", "dangerFullAccess")]
     public void ToPolicyType_MapsEachKebabChoice_ToItsCamelCaseDiscriminator(string mode, string expected) =>
-        CodexSandbox.ToPolicyType(mode).Should().Be(expected);
+        Assert.Equal(expected, CodexSandbox.ToPolicyType(mode));
 
     // "readOnly" is the already-camelCase form — passing it back in is not a kebab choice, so it maps to null: the
     // mapper only accepts the operator-facing kebab vocabulary, and anything else drops the override rather than
@@ -24,11 +22,11 @@ public class CodexSandboxTests
     [InlineData("")]
     [InlineData(null)]
     public void ToPolicyType_ReturnsNull_ForAnUnknownOrBlankMode(string? mode) =>
-        CodexSandbox.ToPolicyType(mode).Should().BeNull();
+        Assert.Null(CodexSandbox.ToPolicyType(mode));
 
     [Fact]
     public void Choices_AreTheThreeKebabSandboxModes() =>
-        CodexSandbox.Choices.Should().Equal("read-only", "workspace-write", "danger-full-access");
+        Assert.Equal(new[] { "read-only", "workspace-write", "danger-full-access" }, CodexSandbox.Choices);
 
     // ForCeiling (AC-112): a delegated Codex task's sandbox derived from its permission ceiling. A ceiling that
     // allows edits becomes workspace-write so the task can actually write; anything less stays null so the
@@ -37,7 +35,7 @@ public class CodexSandboxTests
     [InlineData("acceptEdits")]
     [InlineData("bypassPermissions")]
     public void ForCeiling_ACeilingThatAllowsEdits_IsWorkspaceWrite(string ceiling) =>
-        CodexSandbox.ForCeiling(ceiling).Should().Be("workspace-write");
+        Assert.Equal("workspace-write", CodexSandbox.ForCeiling(ceiling));
 
     [Theory]
     [InlineData("plan")]
@@ -46,12 +44,12 @@ public class CodexSandboxTests
     [InlineData(null)]
     [InlineData("something-invented")]
     public void ForCeiling_AReadOnlyOrUnknownCeiling_IsNull_SoTheConfigDefaultHolds(string? ceiling) =>
-        CodexSandbox.ForCeiling(ceiling).Should().BeNull();
+        Assert.Null(CodexSandbox.ForCeiling(ceiling));
 
     [Fact]
     public void ForCeiling_NeverDerivesDangerFullAccess()
     {
-        CodexSandbox.ForCeiling("acceptEdits").Should().NotBe("danger-full-access");
-        CodexSandbox.ForCeiling("bypassPermissions").Should().NotBe("danger-full-access");
+        Assert.NotEqual("danger-full-access", CodexSandbox.ForCeiling("acceptEdits"));
+        Assert.NotEqual("danger-full-access", CodexSandbox.ForCeiling("bypassPermissions"));
     }
 }

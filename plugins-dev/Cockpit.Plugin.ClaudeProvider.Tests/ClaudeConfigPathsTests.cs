@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
@@ -14,23 +13,23 @@ public class ClaudeConfigPathsTests
     [Fact]
     public void SpawnOverride_IsNull_ForADefaultOrAbsentConfigDir()
     {
-        ClaudeConfigPaths.ResolveSpawnOverride(null, Home).Should().BeNull();
-        ClaudeConfigPaths.ResolveSpawnOverride(Path.Combine(Home, ".claude"), Home).Should().BeNull();
+        Assert.Null(ClaudeConfigPaths.ResolveSpawnOverride(null, Home));
+        Assert.Null(ClaudeConfigPaths.ResolveSpawnOverride(Path.Combine(Home, ".claude"), Home));
     }
 
     [Fact]
     public void SpawnOverride_IsTheDirectory_ForANonDefaultConfigDir()
     {
         var dir = Path.Combine(Home, "work-profile");
-        ClaudeConfigPaths.ResolveSpawnOverride(dir, Home).Should().Be(dir);
+        Assert.Equal(dir, ClaudeConfigPaths.ResolveSpawnOverride(dir, Home));
     }
 
     [Fact]
     public void ConfigJsonDirectory_IsHome_ForDefault_AndTheDir_ForNonDefault()
     {
-        ClaudeConfigPaths.ResolveConfigJsonDirectory(null, Home).Should().Be(Home);
+        Assert.Equal(Home, ClaudeConfigPaths.ResolveConfigJsonDirectory(null, Home));
 
         var dir = Path.Combine(Home, "work-profile");
-        ClaudeConfigPaths.ResolveConfigJsonDirectory(dir, Home).Should().Be(dir);
+        Assert.Equal(dir, ClaudeConfigPaths.ResolveConfigJsonDirectory(dir, Home));
     }
 }

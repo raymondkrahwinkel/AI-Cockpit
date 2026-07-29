@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
 /// <summary>
@@ -11,38 +9,40 @@ public class GitHubBranchNameTests
 {
     [Fact]
     public void ANumberAndATitle_BecomeALowercaseSlug() =>
-        GitHubBranchName.From(42, "Fix the login redirect").Should().Be("42-fix-the-login-redirect");
+        Assert.Equal("42-fix-the-login-redirect", GitHubBranchName.From(42, "Fix the login redirect"));
 
     [Theory]
     [InlineData("Fix: the login/redirect!", "42-fix-the-login-redirect")]
     [InlineData("  Spaces   everywhere  ", "42-spaces-everywhere")]
     [InlineData("Emoji 🎉 and ümlauts", "42-emoji-and-umlauts")]
     public void PunctuationAndPadding_NeverReachTheRef(string title, string expected) =>
-        GitHubBranchName.From(42, title).Should().Be(expected);
+        Assert.Equal(expected, GitHubBranchName.From(42, title));
 
     [Fact]
-    public void ATitleThatIsAnEssay_IsCut_AndDoesNotEndInADash() =>
-        GitHubBranchName.From(42, new string('a', 20) + " " + new string('b', 80))
-            .Should().HaveLength(63).And.NotEndWith("-");
+    public void ATitleThatIsAnEssay_IsCut_AndDoesNotEndInADash()
+    {
+        var branchName = GitHubBranchName.From(42, new string('a', 20) + " " + new string('b', 80));
+
+        Assert.Equal(63, branchName.Length);
+        Assert.False(branchName.EndsWith("-", StringComparison.Ordinal));
+    }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("!!!")]
     public void AnIssueWithNothingSayableInItsTitle_IsStillABranch(string? title) =>
-        GitHubBranchName.From(42, title).Should().Be("42");
+        Assert.Equal("42", GitHubBranchName.From(42, title));
 
     [Fact]
     public void APatternIsFollowed_BecauseTheConventionIsTheTeamsToChoose() =>
-        GitHubBranchName.From(42, "Fix the login redirect", "feature/{number}")
-            .Should().Be("feature/42");
+        Assert.Equal("feature/42", GitHubBranchName.From(42, "Fix the login redirect", "feature/{number}"));
 
     [Fact]
     public void AnIssueWithNothingSayable_LeavesNoDanglingSeparator() =>
-        GitHubBranchName.From(42, "!!!", "{number}-{title}").Should().Be("42");
+        Assert.Equal("42", GitHubBranchName.From(42, "!!!", "{number}-{title}"));
 
     [Fact]
     public void NoPattern_IsTheDefaultOne() =>
-        GitHubBranchName.From(42, "Fix the login redirect")
-            .Should().Be(GitHubBranchName.From(42, "Fix the login redirect", GitHubBranchName.DefaultPattern));
+        Assert.Equal(GitHubBranchName.From(42, "Fix the login redirect", GitHubBranchName.DefaultPattern), GitHubBranchName.From(42, "Fix the login redirect"));
 }
