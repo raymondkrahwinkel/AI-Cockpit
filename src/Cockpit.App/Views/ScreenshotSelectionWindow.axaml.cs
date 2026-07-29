@@ -164,7 +164,7 @@ public partial class ScreenshotSelectionWindow : Window
     /// whose one home is <c>Theme.axaml</c>.
     /// </summary>
     private static uint _AccentColour() =>
-        ThemeBrush.Resolve("CockpitAccentBrush", "#3b82f6") is ISolidColorBrush solid
+        ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb") is ISolidColorBrush solid
             ? solid.Color.ToUInt32()
             : throw new InvalidOperationException("The accent is not a solid colour, so a frame has nothing to be drawn in.");
 
