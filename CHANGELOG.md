@@ -1041,6 +1041,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: two cockpit instances running at once (a development build alongside a packaged one, for example) no
+  longer silently fight over the same global hotkey. Before this, both could report their push-to-talk or
+  screenshot key as "armed" while only one of them — or neither, on some desktops — actually reacted to it, and
+  closing the instance that did required restarting the other to get the key back. The cockpit now claims a
+  hotkey for itself before arming it; an instance that loses that claim shows a toast saying another cockpit
+  instance already has the key, rather than pretending it worked, and picks the key back up on its own the
+  moment the other instance releases it — no restart needed.
 - fixed: the window-picker test suite no longer fails depending on which windows happen to be open on the
   machine it runs on — it stopped asserting that no window is ever reported larger than the screen, which
   Windows never guaranteed in the first place (a window dragged partly off-screen legitimately has bounds
