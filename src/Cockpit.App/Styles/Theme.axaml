@@ -150,6 +150,21 @@
             <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{StaticResource CockpitInsetBgColor}"/>
             <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="{StaticResource CockpitInsetBgColor}"/>
 
+            <!-- ProgressBar's groove (AC-447). Its ControlTheme sets Background itself —
+                 `Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"` in Fluent's
+                 src/Avalonia.Themes.Fluent/Controls/ProgressBar.xaml — so, like the scroll-bar keys above, a plain
+                 `Style Selector="ProgressBar"` setter naming Background never reaches it: the ControlTheme's own
+                 Setter already resolved the property before ours would apply. Two routes were tried and measured
+                 dead before this one: a resource key named "ProgressBarBackground" (not the key Fluent's template
+                 actually reads) and a `/template/ Border#ProgressBarRoot` Background setter (also style-priority,
+                 same reason a bare style rule cannot win here). This redefines the key Fluent's ControlTheme
+                 genuinely looks up, confirmed by reading that theme's source at the app's pinned Avalonia version.
+                 Only ProgressBar's own template reads this key by DynamicResource; the many *BackgroundDisabled
+                 aliases Fluent derives from it elsewhere are wired with StaticResource inside Fluent's own
+                 dictionary, so they resolve there and do not see this override (measured — see
+                 ThemeControlStateTests.AProgressBar_DrawsItsGrooveInTheThemesInsetColour_NotFluentsTranslucentWhite). -->
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="{StaticResource CockpitInsetBgColor}"/>
+
         </ResourceDictionary>
     </Styles.Resources>
 

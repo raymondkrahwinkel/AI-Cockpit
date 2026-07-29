@@ -148,6 +148,37 @@ public class ThemeControlStateTests
     });
 
     [Fact]
+    public void AProgressBar_DrawsItsGrooveInTheThemesInsetColour_NotFluentsTranslucentWhite() => HeadlessAvalonia.Run(() =>
+    {
+        // Fluent's own ControlTheme sets Background itself — `{DynamicResource SystemControlBackgroundBaseLowBrush}`
+        // in its ProgressBar.xaml — which is white at 20% alpha (#33FFFFFF) and painted straight through by
+        // Border#ProgressBarRoot's TemplateBinding. Two routes were tried and measured dead before this one: a made-up
+        // resource key named "ProgressBarBackground" (Fluent's template never reads that name) and a
+        // `/template/ Border#ProgressBarRoot` style setter (Background there resolves at ControlTheme-Setter priority,
+        // which a plain Style rule cannot outrank — the same reason the ScrollBar groove above needed a resource key
+        // rather than a style rule, AC-405). Redefining the key Fluent's ControlTheme actually looks up is the one
+        // that reaches it (AC-447).
+        var bar = new ProgressBar { Value = 50 };
+        using var host = RenderedScene.Show(bar);
+
+        Assert.Equal(RenderedScene.Token("CockpitInsetBgColor"), _Fill(bar, "ProgressBarRoot"));
+    });
+
+    [Fact]
+    public void AProgressBar_ActuallyPaintsItsGrooveInThatColour() => HeadlessAvalonia.Run(() =>
+    {
+        // Same reason as the ScrollBar thumb's paired test above: a brush is what the control was told to paint
+        // with, and this is what reached the frame. Sampled to the right of the indicator, which stops well short
+        // of the bar's full width at Value=50/Maximum=100.
+        var bar = new ProgressBar { Value = 50, Width = 200, Height = 20 };
+        using var host = RenderedScene.Show(bar);
+
+        var groove = bar.TranslatePoint(new Point(190, 10), host.Window) ?? default;
+
+        Assert.Equal(RenderedScene.AsRendered(RenderedScene.TokenBrush("CockpitInsetBgBrush")), RenderedScene.PaintedAt(host.Window, groove));
+    });
+
+    [Fact]
     public void ADisabledComboBox_RecedesRatherThanStandingOut() => HeadlessAvalonia.Run(() =>
     {
         // Left to Fluent, a disabled picker is drawn *lighter* than its enabled neighbours: it steps forward on a
