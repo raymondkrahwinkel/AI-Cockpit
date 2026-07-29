@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -15,7 +14,7 @@ public class IgnoredPullRequestsTests
     {
         var settings = new GitHubPullRequestsSettings(new InMemoryStorage());
 
-        settings.IgnoredPullRequests.Should().BeEmpty();
+        Assert.Empty(settings.IgnoredPullRequests);
     }
 
     [Fact]
@@ -30,7 +29,7 @@ public class IgnoredPullRequestsTests
         // A fresh settings object over the same storage is what the next launch sees.
         var afterRestart = new GitHubPullRequestsSettings(storage);
 
-        afterRestart.IgnoredPullRequests.Should().Equal("https://github.com/o/r/pull/1");
+        Assert.Equal(["https://github.com/o/r/pull/1"], afterRestart.IgnoredPullRequests);
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public class IgnoredPullRequestsTests
             .Where(url => url != "https://github.com/o/r/pull/1")
             .ToHashSet(StringComparer.Ordinal);
 
-        new GitHubPullRequestsSettings(storage).IgnoredPullRequests.Should().Equal("https://github.com/o/r/pull/2");
+        Assert.Equal(["https://github.com/o/r/pull/2"], new GitHubPullRequestsSettings(storage).IgnoredPullRequests);
     }
 
     private sealed class InMemoryStorage : IPluginStorage

@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -14,7 +13,7 @@ public class GitHubPullRequestsWidgetConfigTests
     public void AFreshWidget_ShowsTen()
     {
         // The default is roomier than the side strip's five: a dashboard pane has the space for it.
-        GitHubPullRequestsWidgetConfig.Default.MaxItems.Should().Be(10);
+        Assert.Equal(10, GitHubPullRequestsWidgetConfig.Default.MaxItems);
     }
 
     [Theory]
@@ -24,7 +23,7 @@ public class GitHubPullRequestsWidgetConfigTests
     [InlineData(1000, 20)]
     public void AnOutOfRangeCount_IsClampedIntoOneToTwenty(int stored, int expected)
     {
-        new GitHubPullRequestsWidgetConfig { MaxItems = stored }.Sanitized().MaxItems.Should().Be(expected);
+        Assert.Equal(expected, new GitHubPullRequestsWidgetConfig { MaxItems = stored }.Sanitized().MaxItems);
     }
 
     [Theory]
@@ -33,7 +32,7 @@ public class GitHubPullRequestsWidgetConfigTests
     [InlineData(20)]
     public void ACountInRange_IsLeftAlone(int stored)
     {
-        new GitHubPullRequestsWidgetConfig { MaxItems = stored }.Sanitized().MaxItems.Should().Be(stored);
+        Assert.Equal(stored, new GitHubPullRequestsWidgetConfig { MaxItems = stored }.Sanitized().MaxItems);
     }
 
     [Fact]
@@ -44,7 +43,7 @@ public class GitHubPullRequestsWidgetConfigTests
 
         var afterRestart = storage.Get<GitHubPullRequestsWidgetConfig>(GitHubPullRequestsWidgetConfig.StorageKey);
 
-        afterRestart!.MaxItems.Should().Be(15);
+        Assert.Equal(15, afterRestart!.MaxItems);
     }
 
     private sealed class InMemoryStorage : IPluginStorage

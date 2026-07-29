@@ -1,4 +1,4 @@
-using FluentAssertions;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -13,11 +13,11 @@ public class GitHubPrGhClientTests
     {
         var arguments = GitHubPrGhClient.ReviewRequestedArguments;
 
-        arguments.Should().ContainInOrder("search", "prs");
-        arguments.Should().ContainInOrder("--review-requested", "@me");
-        arguments.Should().ContainInOrder("--state", "open");
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "search", "prs"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--review-requested", "@me"));
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--state", "open"));
         // updatedAt is asked for because the list is ordered by it: the pull request somebody just touched is the
         // one worth looking at first, and without the field there is nothing to sort on.
-        arguments.Should().Contain("number,title,url,body,repository,author,updatedAt");
+        Assert.Contains("number,title,url,body,repository,author,updatedAt", arguments);
     }
 }

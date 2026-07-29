@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
@@ -15,8 +14,8 @@ public class ReviewRequestInboxTests
 
         var inbox = ReviewRequestInbox.Reconcile(reviewRequested, new HashSet<string>());
 
-        inbox.Arrived.Should().BeEquivalentTo(reviewRequested);
-        inbox.Seen.Should().BeEquivalentTo(["acme/api#1", "acme/web#2"]);
+        Assert.Equivalent(reviewRequested, inbox.Arrived);
+        Assert.Equivalent(new object[] { "acme/api#1", "acme/web#2" }, inbox.Seen);
     }
 
     [Fact]
@@ -27,7 +26,7 @@ public class ReviewRequestInboxTests
 
         var inbox = ReviewRequestInbox.Reconcile([seenOne, newOne], new HashSet<string> { "acme/api#1" });
 
-        inbox.Arrived.Should().Equal(newOne);
+        Assert.Equal(new[] { newOne }, inbox.Arrived);
     }
 
     [Fact]
@@ -37,7 +36,7 @@ public class ReviewRequestInboxTests
 
         var inbox = ReviewRequestInbox.Reconcile([otherRepository], new HashSet<string> { "acme/api#1" });
 
-        inbox.Arrived.Should().Equal(otherRepository);
+        Assert.Equal(new[] { otherRepository }, inbox.Arrived);
     }
 
     [Fact]
@@ -45,8 +44,8 @@ public class ReviewRequestInboxTests
     {
         var inbox = ReviewRequestInbox.Reconcile([], new HashSet<string> { "acme/api#1" });
 
-        inbox.Arrived.Should().BeEmpty();
-        inbox.Seen.Should().BeEmpty();
+        Assert.Empty(inbox.Arrived);
+        Assert.Empty(inbox.Seen);
     }
 
     [Fact]
@@ -57,7 +56,7 @@ public class ReviewRequestInboxTests
         var afterItClosed = ReviewRequestInbox.Reconcile([], new HashSet<string> { "acme/api#1" });
         var afterItReturned = ReviewRequestInbox.Reconcile([pullRequest], afterItClosed.Seen);
 
-        afterItReturned.Arrived.Should().Equal(pullRequest);
+        Assert.Equal(new[] { pullRequest }, afterItReturned.Arrived);
     }
 
     private static GitHubPullRequest _PullRequest(int number, string repository) =>
