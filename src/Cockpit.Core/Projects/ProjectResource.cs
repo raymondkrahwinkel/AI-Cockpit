@@ -37,4 +37,23 @@ public sealed record ProjectResource(string Reference, ProjectResourceRole Role)
     /// </para>
     /// </summary>
     public bool ReachesSessions { get; init; } = true;
+
+    /// <summary>
+    /// Whether this row's <em>contents</em> travel with the session rather than only its location (AC-486). Applies
+    /// to <see cref="ProjectResourceRole.Instructions"/> alone: memory is read and written back to over the whole
+    /// session and is far too large to carry, and a reference exists to be looked up when it is wanted.
+    /// <para>
+    /// Defaults to false, and that default is the guard rather than a preference. The alternative — inline whatever
+    /// fits — would make the host decide whether a file is safe to hand over, and a rule that has to judge that will
+    /// eventually judge it wrong, in the direction that leaks. As an opt-in there is nothing to judge: a file the
+    /// operator did not tick is never opened, so "sensitive" is not a case to detect but a box left alone. (Raymond,
+    /// 2026-07-29: <em>"niet inlinen wat gevoelig is"</em>.)
+    /// </para>
+    /// <para>
+    /// Ticking it is a request, not a guarantee: the contents still have to fit what a project may contribute to a
+    /// prompt, and a session is always told which of the two it got — the file itself, or only where to find it.
+    /// Being told it holds instructions it was never given is worse than being told where they are.
+    /// </para>
+    /// </summary>
+    public bool SendsContent { get; init; }
 }

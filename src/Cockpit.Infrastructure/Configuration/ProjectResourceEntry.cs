@@ -31,18 +31,23 @@ internal sealed class ProjectResourceEntry
 
     public bool ReachesSessions { get; set; } = true;
 
+    /// <summary>Whether this row's contents travel with the session, not only its location (AC-486). Absent in a file written before that existed, which reads as false — the safe default, since it is the operator ticking a box that opens a file at all.</summary>
+    public bool SendsContent { get; set; }
+
     public static ProjectResourceEntry FromDomain(ProjectResource resource) => new()
     {
         Reference = resource.Reference,
         Role = resource.Role.ToString(),
         Label = resource.Label,
         ReachesSessions = resource.ReachesSessions,
+        SendsContent = resource.SendsContent,
     };
 
     public ProjectResource ToDomain() => new(Reference ?? string.Empty, _ParseRole(Role))
     {
         Label = Label,
         ReachesSessions = ReachesSessions,
+        SendsContent = SendsContent,
     };
 
     /// <summary>
