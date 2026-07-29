@@ -909,11 +909,16 @@ public partial class PluginManagerViewModel : ViewModelBase
         });
     }
 
-    /// <summary>True when at least one installed plugin has a newer version in a store — gates the "Update all" button.</summary>
-    public bool HasAvailableUpdates => AvailablePlugins.Any(row => row.UpdateAvailable);
+    /// <summary>
+    /// True when at least one installed plugin has a newer, installable version in a store — gates the "Update
+    /// all" button. Reads <see cref="StorePluginRowViewModel.CanUpdate"/>, not the raw version comparison
+    /// (AC-181): an update this host cannot run yet (a <c>minHostVersion</c>/contract mismatch) is not something
+    /// "Update all" should download and have the installer refuse — the row's own card already shows why.
+    /// </summary>
+    public bool HasAvailableUpdates => AvailablePlugins.Any(row => row.CanUpdate);
 
-    /// <summary>How many installed plugins have a newer version available — shown on the "Update all" button.</summary>
-    public int AvailableUpdateCount => AvailablePlugins.Count(row => row.UpdateAvailable);
+    /// <summary>How many installed plugins have a newer, installable version available — shown on the "Update all" button.</summary>
+    public int AvailableUpdateCount => AvailablePlugins.Count(row => row.CanUpdate);
 
     /// <summary>Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).</summary>
     public bool HasUpdateBadge => UpdateBadgeCount > 0;
@@ -1013,8 +1018,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         // Snapshot before installing: each install triggers a reload that rebuilds AvailablePlugins, which
-        // would otherwise mutate the collection we are iterating.
-        var updates = AvailablePlugins.Where(row => row.UpdateAvailable).ToList();
+        // would otherwise mutate the collection we are iterating. CanUpdate rather than the raw UpdateAvailable
+        // (AC-181): a batch must not download an update this host cannot run and have the installer refuse it.
+        var updates = AvailablePlugins.Where(row => row.CanUpdate).ToList();
         if (updates.Count == 0)
         {
             StatusMessage = "Everything is up to date.";

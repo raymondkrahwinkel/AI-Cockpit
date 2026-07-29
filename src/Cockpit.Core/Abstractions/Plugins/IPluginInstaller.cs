@@ -10,8 +10,16 @@ namespace Cockpit.Core.Abstractions.Plugins;
 /// </summary>
 public interface IPluginInstaller
 {
-    /// <summary>Validates and unpacks the archive into its own folder under the plugins root; returns the folder id on success or a reason it was rejected. Updating an existing install stages the new version and applies it at the next startup (see <see cref="SweepPendingUpdatesAsync"/>).</summary>
-    Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, int hostAbstractionsMajor, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Validates and unpacks the archive into its own folder under the plugins root; returns the folder id on
+    /// success or a reason it was rejected — including a <c>minHostVersion</c> newer than this cockpit (AC-181),
+    /// checked here rather than only at load so a too-new plugin never lands on disk pretending to be installed.
+    /// Updating an existing install stages the new version and applies it at the next startup (see
+    /// <see cref="SweepPendingUpdatesAsync"/>). <paramref name="hostVersion"/> defaults to the running cockpit's
+    /// own version (<see cref="HostVersionInfo"/>) when omitted; a caller only ever passes it explicitly in a test.
+    /// </summary>
+    Task<PluginInstallResult> InstallFromZipAsync(
+        string zipFilePath, int hostAbstractionsMajor, Version? hostVersion = null, CancellationToken cancellationToken = default);
 
     /// <summary>Marks an installed plugin folder for deletion at the next startup, since a currently-loaded assembly cannot be deleted while the app runs.</summary>
     Task MarkForRemovalAsync(string folderId, CancellationToken cancellationToken = default);

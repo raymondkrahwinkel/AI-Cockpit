@@ -412,7 +412,10 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         // catalogue meant the label and the list disagreed about a plugin no store offers: it appeared in the
         // list and not in the number, which is how an operator ends up counting rows to see who is lying.
         var installedCount = _manager.Plugins.Count;
-        var updatesCount = plugins.Count(row => row.UpdateAvailable);
+        // CanUpdate, not the raw UpdateAvailable (AC-181): an update this host cannot run must not inflate the
+        // count while the row list below (UpdatesAvailable filter) already excludes it — otherwise the sidebar
+        // says "Available updates (1)" for a plugin whose own card shows a disabled button.
+        var updatesCount = plugins.Count(row => row.CanUpdate);
 
         SidebarItems.Clear();
         SidebarItems.Add(PluginStoreSidebarItem.Discover);
@@ -509,7 +512,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         {
             PluginStoreFilterKind.Category => plugins.Where(row => string.Equals(row.Category, filter.Category, StringComparison.OrdinalIgnoreCase)),
             PluginStoreFilterKind.Installed => plugins.Where(row => row.IsInstalled),
-            PluginStoreFilterKind.UpdatesAvailable => plugins.Where(row => row.UpdateAvailable),
+            PluginStoreFilterKind.UpdatesAvailable => plugins.Where(row => row.CanUpdate),
             _ => plugins,
         };
 

@@ -36,6 +36,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
     private readonly IToastService _toastService;
     private readonly CockpitViewModel _cockpit;
     private readonly ILogger<PluginUpdateChecker> _logger;
+    private readonly Version _hostVersion;
 
     // (FolderId, LatestVersion) pairs already toasted this run — a later 15-minute pass only toasts a
     // version bump beyond what is already in here, never the same update twice.
@@ -65,7 +66,8 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         IToastService toastService,
         CockpitViewModel cockpit,
         ILogger<PluginUpdateChecker> logger,
-        Func<string, string, bool>? isUpdateStaged = null)
+        Func<string, string, bool>? isUpdateStaged = null,
+        Version? hostVersion = null)
     {
         _getInstalledPluginsAsync = getInstalledPluginsAsync;
         _isUpdateStaged = isUpdateStaged ?? ((entryId, latestVersion) => cockpit.Plugins.IsUpdateStaged(entryId, latestVersion));
@@ -74,6 +76,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         _toastService = toastService;
         _cockpit = cockpit;
         _logger = logger;
+        _hostVersion = hostVersion ?? HostVersionInfo.Current;
     }
 
     public async Task CheckNowAsync(CancellationToken cancellationToken = default)
@@ -126,9 +129,12 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
                 }
 
                 // A newer version than what is installed — unless the operator already staged it this session, in
-                // which case it is up to date until the restart and must not re-inflate the badge (AC-76).
+                // which case it is up to date until the restart and must not re-inflate the badge (AC-76) — and
+                // only when this host can actually run it (AC-181): an update it cannot meet must not toast/badge
+                // as available, the same reason PluginManagerViewModel.CanUpdate excludes it from "Update all".
                 if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
-                    && !_isUpdateStaged(entry.Id, entry.LatestVersion))
+                    && !_isUpdateStaged(entry.Id, entry.LatestVersion)
+                    && _HostCanRun(entry, _hostVersion))
                 {
                     updates.Add(new PluginUpdateInfo(folderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
                 }
@@ -136,6 +142,21 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         }
 
         return updates;
+    }
+
+    // Mirrors StorePluginRowViewModel's own compatibility check (AC-181) — the same PluginLoadPolicy gate the
+    // install- and load-time checks apply, so the background badge/toast can never disagree with what an actual
+    // install attempt on this host would do.
+    private static bool _HostCanRun(PluginStoreEntry entry, Version hostVersion)
+    {
+        var version = entry.Versions?.FirstOrDefault(v => v.Version == entry.LatestVersion) ?? entry.Versions?.FirstOrDefault();
+        if (version is null)
+        {
+            return true;
+        }
+
+        return (version.AbstractionsVersion is not { } abstractionsVersion || abstractionsVersion == AbstractionsContract.Version)
+            && PluginLoadPolicy.MeetsMinHostVersion(version.MinHostVersion, hostVersion);
     }
 
     private void _NotifyNewUpdates(IReadOnlyList<PluginUpdateInfo> updates)

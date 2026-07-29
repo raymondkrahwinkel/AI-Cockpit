@@ -52,6 +52,90 @@ public class PluginInstallerTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "x")));
     }
 
+    // --- minHostVersion (AC-181): the same gate PluginLoadPolicy applies at load time, checked here too so a
+    // too-new plugin is refused at install rather than sitting on disk reporting "installed" until the operator
+    // restarts and discovers otherwise. ----------------------------------------------------------------------
+
+    [Fact]
+    public async Task InstallFromZipAsync_HostTooOld_Rejected()
+    {
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "2.0.0"),
+            ["Plugin.dll"] = "MZ",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(1, 5, 0));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("2.0.0", result.Error);
+        Assert.False(Directory.Exists(Path.Combine(_pluginsRoot, "x")));
+    }
+
+    // Mutation guard: the boundary itself, not just "some too-new version is refused" — a `<` mistakenly
+    // written as `<=` (or vice versa) would flip exactly this case and nothing else would catch it.
+    [Fact]
+    public async Task InstallFromZipAsync_HostExactlyMeetsMinHostVersion_Installs()
+    {
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "1.5.0"),
+            ["Plugin.dll"] = "MZ",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(1, 5, 0));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task InstallFromZipAsync_BeforeHostReachesOnePointZero_ADeclaredOnePointZeroRequirement_DoesNotBite()
+    {
+        // Mirrors PluginLoadPolicy's own exemption for the stale 1.0.0 template-default value exactly, so the
+        // install gate can never refuse something the load gate would have let load fine.
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "1.0.0"),
+            ["Plugin.dll"] = "MZ",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(0, 13, 0));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    // AC-181 review: an honest sub-1.0 minHostVersion is a real, current requirement (21+ manifests already carry
+    // one) and must be enforced against a 0.x host exactly as against a 1.x one — only the stale 1.0.0 template
+    // default is exempt pre-1.0, not every sub-1.0 host comparison.
+    [Fact]
+    public async Task InstallFromZipAsync_HonestSubOnePointZeroMinHostVersion_IsEnforced_EvenOnASubOnePointZeroHost()
+    {
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "0.14.0"),
+            ["Plugin.dll"] = "MZ",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(0, 13, 0));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("0.14.0", result.Error);
+    }
+
+    [Fact]
+    public async Task InstallFromZipAsync_UnparsableMinHostVersion_NotRejectedOverIt()
+    {
+        var zip = _CreateZip(new()
+        {
+            ["plugin.json"] = _Manifest("x", "X", "Plugin.dll", abstractionsVersion: 1, minHostVersion: "not-a-version"),
+            ["Plugin.dll"] = "MZ",
+        });
+
+        var result = await _installer.InstallFromZipAsync(zip, HostMajor, hostVersion: new Version(1, 5, 0));
+
+        Assert.True(result.IsSuccess);
+    }
+
     [Fact]
     public async Task InstallFromZipAsync_MissingManifest_Rejected()
     {
@@ -157,8 +241,10 @@ public class PluginInstallerTests : IDisposable
         ["Plugin.dll"] = dll,
     });
 
-    private static string _Manifest(string id, string name, string entryAssembly, int abstractionsVersion) =>
-        $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}""";
+    private static string _Manifest(string id, string name, string entryAssembly, int abstractionsVersion, string? minHostVersion = null) =>
+        minHostVersion is null
+            ? $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}"""
+            : $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}},"minHostVersion":"{{minHostVersion}}"}""";
 
     private string _CreateZip(Dictionary<string, string> entries)
     {

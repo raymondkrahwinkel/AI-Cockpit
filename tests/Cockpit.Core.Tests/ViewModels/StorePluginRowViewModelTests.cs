@@ -18,13 +18,15 @@ public class StorePluginRowViewModelTests
         string? repository = null,
         bool featured = false,
         string? published = null,
-        string latestVersion = "1.0.0") => new(
+        string latestVersion = "1.0.0",
+        int? abstractionsVersion = 1,
+        string? minHostVersion = "1.0.0") => new(
         Id: "github-issues",
         Name: name,
         Description: "d",
         Author: "me",
         LatestVersion: latestVersion,
-        Versions: [new PluginStoreVersion(latestVersion, "github-issues/1.0.0.zip", 1, "1.0.0", "sha", null)],
+        Versions: [new PluginStoreVersion(latestVersion, "github-issues/1.0.0.zip", abstractionsVersion, minHostVersion, "sha", null)],
         Category: category,
         Icon: icon,
         Homepage: homepage,
@@ -142,5 +144,123 @@ public class StorePluginRowViewModelTests
 
         Assert.Equal("Installed", row.PrimaryActionLabel);
         Assert.False(row.CanTakePrimaryAction);
+    }
+
+    // --- Compatibility (AC-181): the store stays a catalogue that shows everything, but a plugin this host
+    // cannot run is visibly marked and its install action disabled — never wegfiltered, never a button that
+    // clicks and then fails. -------------------------------------------------------------------------------
+
+    [Fact]
+    public void IsIncompatible_AbstractionsMajorMismatch_IsFlagged()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(abstractionsVersion: 2), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.True(row.IsIncompatible);
+        Assert.Contains("contract version 2", row.IncompatibilityReason);
+        Assert.Contains("provides 1", row.IncompatibilityReason);
+        Assert.False(row.CanTakePrimaryAction);
+        Assert.Equal("Incompatible", row.PrimaryActionLabel);
+        Assert.True(row.HasStateBadge);
+        Assert.Equal("Incompatible", row.StateBadgeText);
+        Assert.Equal("CockpitStatusErrorBrush", row.StateBadgeBrushKey);
+    }
+
+    [Fact]
+    public void IsIncompatible_HostTooOldForMinHostVersion_IsFlagged()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(minHostVersion: "2.0.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.True(row.IsIncompatible);
+        Assert.Contains("2.0.0", row.IncompatibilityReason);
+        Assert.False(row.CanTakePrimaryAction);
+    }
+
+    // Mutation guard: the exact boundary, not just "some too-new version is flagged" — a `<` mistakenly written
+    // as `<=` (or vice versa) in the shared gate would flip exactly this case.
+    [Fact]
+    public void IsIncompatible_HostExactlyMeetsMinHostVersion_IsNotFlagged()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(minHostVersion: "1.5.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.False(row.IsIncompatible);
+        Assert.Null(row.IncompatibilityReason);
+        Assert.True(row.CanTakePrimaryAction);
+        Assert.Equal("Install", row.PrimaryActionLabel);
+    }
+
+    [Fact]
+    public void IsIncompatible_BeforeHostReachesOnePointZero_ADeclaredOnePointZeroRequirement_IsNotFlagged()
+    {
+        // Mirrors PluginLoadPolicy's own exemption for the stale 1.0.0 template-default value — the browse badge
+        // can never disagree with what an actual install attempt on this same host would do.
+        var row = new StorePluginRowViewModel(
+            _Entry(minHostVersion: "1.0.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(0, 13, 0));
+
+        Assert.False(row.IsIncompatible);
+    }
+
+    // AC-181 review: an honest sub-1.0 minHostVersion is enforced against a 0.x host exactly as against a 1.x
+    // one — only the stale 1.0.0 template default is exempt pre-1.0.
+    [Fact]
+    public void IsIncompatible_HonestSubOnePointZeroMinHostVersion_IsFlagged_EvenOnASubOnePointZeroHost()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(minHostVersion: "0.14.0"), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(0, 13, 0));
+
+        Assert.True(row.IsIncompatible);
+        Assert.Contains("0.14.0", row.IncompatibilityReason);
+    }
+
+    // --- Installed but the update is not (AC-181 review): an already-installed, working plugin must never be
+    // mislabelled "Incompatible" over a newer version it merely cannot take — only the offer, not the plugin
+    // itself, is out of reach. ------------------------------------------------------------------------------
+
+    [Fact]
+    public void InstalledPlugin_WhoseOnlyNewerVersionIsIncompatible_StaysLabelledInstalled_NotIncompatible()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(latestVersion: "2.0.0", minHostVersion: "2.0.0"), PluginStoreConfig.Remote("url"), installedVersion: "1.0.0",
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.False(row.IsIncompatible); // the installed copy runs fine — only the update is out of reach
+        Assert.False(row.CanUpdate);
+        Assert.False(row.CanTakePrimaryAction);
+        Assert.Equal("Installed", row.PrimaryActionLabel);
+        Assert.Equal("Installed", row.StateBadgeText);
+        Assert.Equal("CockpitStatusDoneBrush", row.StateBadgeBrushKey);
+        Assert.Null(row.StateBadgeTooltip); // the tooltip belongs to the red Incompatible state, not a plain Installed badge
+        // the status line, not the badge, carries the reason an update can't be taken
+        Assert.Contains("v1.0.0", row.StatusText);
+        Assert.Contains("v2.0.0", row.StatusText);
+        Assert.Contains("Requires", row.StatusText);
+    }
+
+    [Fact]
+    public void IsIncompatible_NoVersionsDeclared_IsNotFlagged()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(abstractionsVersion: null, minHostVersion: null), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.False(row.IsIncompatible);
+        Assert.Null(row.IncompatibilityReason);
+    }
+
+    [Fact]
+    public void StatusText_WhenIncompatible_ShowsTheReason_InsteadOfTheInstallState()
+    {
+        var row = new StorePluginRowViewModel(
+            _Entry(abstractionsVersion: 2), PluginStoreConfig.Remote("url"), installedVersion: null,
+            hostAbstractionsMajor: 1, hostVersion: new Version(1, 5, 0));
+
+        Assert.Equal(row.IncompatibilityReason, row.StatusText);
     }
 }

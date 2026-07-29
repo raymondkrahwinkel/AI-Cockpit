@@ -12,13 +12,6 @@ namespace Cockpit.Infrastructure.Plugins;
 /// </summary>
 internal sealed class PluginDiscovery : ISingletonService
 {
-    /// <summary>
-    /// This cockpit's version, which a plugin's <c>minHostVersion</c> is measured against. Read from the running
-    /// assembly rather than a constant, so it cannot drift from what the app actually is.
-    /// </summary>
-    private static Version HostVersion { get; } =
-        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(0, 0);
-
     public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverAsync(
         string pluginsRoot,
         IReadOnlyDictionary<string, PluginRegistration> saved,
@@ -75,7 +68,7 @@ internal sealed class PluginDiscovery : ISingletonService
             var hash = await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false);
             var folderId = Path.GetFileName(folder);
             saved.TryGetValue(folderId, out var registration);
-            var decision = PluginLoadPolicy.Decide(manifest, hostAbstractionsMajor, registration, hash, HostVersion);
+            var decision = PluginLoadPolicy.Decide(manifest, hostAbstractionsMajor, registration, hash, HostVersionInfo.Current);
 
             result.Add(new DiscoveredPlugin(folder, folderId, manifest, hash, decision));
         }
