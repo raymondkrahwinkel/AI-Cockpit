@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugins.Abstractions.Profiles;
 
 /// <summary>
@@ -25,8 +27,20 @@ public sealed record PluginProfileInfo(string Label, string Provider, string Con
     /// pins its own model (a local provider) or offers no static list, so a consumer shows no suggestions rather than a
     /// wrong provider's. The host fills it; a plugin cannot tell a Claude profile from a local one on the provider name
     /// alone (Claude runs as a provider plugin now), which is why this is host-supplied.
+    /// <para>
+    /// This is a <em>set</em>, not a ranking: its order is whatever the provider offers for a picker and carries no
+    /// promise about price or capability. Reading cost out of this order is what made Autopilot's roster claim the
+    /// opposite of the truth (AC-256) — use <see cref="ModelCostEstimatesCheapestFirst"/> for that.
+    /// </para>
     /// </summary>
     public IReadOnlyList<string> ModelSuggestions { get; init; } = [];
+
+    /// <summary>
+    /// What this profile's models cost as its own provider estimates them, cheapest first — passed through from the
+    /// provider's declaration, never worked out by the host. Empty when the provider ranks nothing (most do not), and
+    /// a consumer must then treat <see cref="ModelSuggestions"/> as unordered rather than assume a cheapest end.
+    /// </summary>
+    public IReadOnlyList<PluginModelCostEstimate> ModelCostEstimatesCheapestFirst { get; init; } = [];
 
     /// <summary>
     /// Whether this profile runs a model on local hardware (Ollama, LM Studio) rather than a paid hosted API — a cost

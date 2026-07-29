@@ -65,6 +65,8 @@ internal sealed record AutopilotRunRecord(
                 Reworks = step.Reworks,
                 Correction = AutopilotCorrection.Classify(step.Status, step.Attempts, step.Reworks),
                 CorrectionSource = AutopilotCorrectionSource.Automatic,
+                ProfileLabel = step.ProfileLabel,
+                Model = step.Model ?? string.Empty,
             })])
         {
             RunId = runId,

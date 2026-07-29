@@ -242,7 +242,14 @@
          why the resume actually failed instead of just that it did. Init-only, defaulting to null: an already-
          compiled driver keeps constructing this record the old way and simply reports no errors. Additions only —
          a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.36.0</Version>
+    <!-- 1.37.0 (AC-256): added PluginModelCostEstimate, plus PluginSessionLaunchOption.CostEstimatesCheapestFirst and
+         PluginProfileInfo.ModelCostEstimatesCheapestFirst carrying it — a provider states what its own models cost,
+         cheapest first, so a consumer routing work by price stops reading an order out of a list that never promised
+         one (Autopilot's roster described its models as cheapest-first while they ran the reverse). Prices are the
+         provider's estimate and say so in the property names, since a plugin with no priced feed carries a figure it
+         compiled in. Both properties are init-only, defaulting to empty: an already-compiled plugin keeps its
+         constructor and simply declares no estimates. Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.37.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

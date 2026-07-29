@@ -112,7 +112,10 @@ internal sealed class AutopilotRunCoordinator(
         // run, no git remote, no gh — is flagged up front, so the operator learns it now rather than at the silent end.
         await _PreflightPullRequestAsync(environment, runOnUi, cancellationToken);
 
-        var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
+        var driver = new AutopilotRunDriver(
+            plan,
+            settings.MaxSelfFixAttempts(),
+            async step => AutopilotModelTier.HoldToCeiling(step, await host.GetProfilesAsync().ConfigureAwait(false) ?? [], settings.CostStrategy()));
         await driver.RunAsync(
             step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);

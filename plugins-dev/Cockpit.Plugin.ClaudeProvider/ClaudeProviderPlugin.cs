@@ -89,7 +89,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", ClaudeOptionChoices.PermissionModes, "default")
                     { ChoiceLabels = ClaudeOptionChoices.PermissionModeLabels },
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.ModelOptionKey, "Model", ClaudeOptionChoices.ModelSuggestions)
-                    { ChoiceLabels = ClaudeOptionChoices.ModelLabels },
+                    { ChoiceLabels = ClaudeOptionChoices.ModelLabels, CostEstimatesCheapestFirst = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst },
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.EffortOptionKey, "Effort", ClaudeOptionChoices.EffortLevels, "medium")
                     { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
             ],

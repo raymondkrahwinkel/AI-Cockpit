@@ -100,6 +100,41 @@ public class AutopilotRunDriverReviewGroupTests
     }
 
     [Fact]
+    public async Task RunAsync_HoldsTheSynthesizedFixStepToTheCostCeiling_BeforeItIsInserted()
+    {
+        // AC-256: the fix step copies the gate's profile and model, and a review gate is exempt from the run's cost
+        // ceiling — so this is the one step that reaches the worktree without plan emission ever having checked its
+        // tier. The hook has to be applied, and applied before the step is inserted, or the plan carries the
+        // unchecked model even if the executed one was fine.
+        var controller = Approved(Gate("code-review"));
+        var driver = new AutopilotRunDriver(
+            controller,
+            maxAttempts: 3,
+            holdToCostCeiling: step => Task.FromResult(step.WithProfile(step.ProfileLabel, "haiku")));
+        var executedModels = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var gateRuns = 0;
+
+        await driver.RunAsync(step =>
+        {
+            lock (executedModels) { executedModels[step.Id] = step.Model; }
+
+            if (step.Id == "code-review")
+            {
+                controller.NoteStep(step.Id, "found a thing");
+                return Task.FromResult(++gateRuns == 1 ? AutopilotStepOutcome.Rejected : AutopilotStepOutcome.Passed);
+            }
+
+            return Task.FromResult(AutopilotStepOutcome.Passed);
+        });
+
+        var fixStep = Assert.Single(controller.Plan!.Steps, step => step.Id.StartsWith("review-fix-", StringComparison.Ordinal));
+        Assert.Equal("haiku", fixStep.Model);
+        Assert.Equal("haiku", executedModels[fixStep.Id]);
+        // The gate itself keeps the model it was planned with — the ceiling never touches a review gate.
+        Assert.Equal("Sonnet", executedModels["code-review"]);
+    }
+
+    [Fact]
     public async Task RunAsync_TheFixStepNeverLands_FailsTheStillOpenGates_AndBlocksTheRun()
     {
         // The fix pass is bounded by the same attempt cap as any step; if it never lands, the gates it was fixing for

@@ -27,4 +27,15 @@ public sealed record PluginSessionLaunchOption(
     /// constructing this the old way and simply reports no labels.
     /// </summary>
     public IReadOnlyDictionary<string, string>? ChoiceLabels { get; init; }
+
+    /// <summary>
+    /// What this option's <see cref="Choices"/> cost, as this provider estimates them, <strong>ordered cheapest
+    /// first</strong> — the order is the claim, so a consumer routing work by price never has to guess one from
+    /// <see cref="Choices"/>, which is ordered for the picker and promises nothing about cost. Only a provider knows
+    /// its own prices; the host neither supplies nor checks these. Empty (the default) means this provider ranks
+    /// nothing, and a consumer must then treat the choices as unordered rather than fall back to list position.
+    /// Entries name choices by value; a choice with no entry is simply unranked. Init-only, so an already-compiled
+    /// plugin keeps its constructor and declares no estimates.
+    /// </summary>
+    public IReadOnlyList<PluginModelCostEstimate> CostEstimatesCheapestFirst { get; init; } = [];
 }

@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugin.ClaudeProvider;
 
 /// <summary>
@@ -35,6 +37,20 @@ internal static class ClaudeOptionChoices
         ["sonnet"] = "Sonnet",
         ["haiku"] = "Haiku",
     };
+
+    // What those aliases cost, cheapest first — the ordering consumers route on, since ModelSuggestions above is
+    // ordered for the picker and says nothing about price. Estimates, and only ever that: Anthropic publishes prices
+    // on a page rather than through an API, an alias re-points at a new model without this list moving, and
+    // promotional rates (Sonnet's introductory tier) are deliberately not tracked here — a figure that quietly drifts
+    // is worse than one the reader knows is approximate. Whoever changes a number here changes only a claim; the real
+    // spend still arrives from the CLI as total_cost_usd.
+    public static readonly IReadOnlyList<PluginModelCostEstimate> ModelCostEstimatesCheapestFirst =
+    [
+        new("haiku") { EstimatedInputUsdPerMillionTokens = 1m, EstimatedOutputUsdPerMillionTokens = 5m },
+        new("sonnet") { EstimatedInputUsdPerMillionTokens = 3m, EstimatedOutputUsdPerMillionTokens = 15m },
+        new("opus") { EstimatedInputUsdPerMillionTokens = 5m, EstimatedOutputUsdPerMillionTokens = 25m },
+        new("fable") { EstimatedInputUsdPerMillionTokens = 10m, EstimatedOutputUsdPerMillionTokens = 50m },
+    ];
 
     public static readonly IReadOnlyList<string> EffortLevels = ["low", "medium", "high", "xhigh", "max"];
 

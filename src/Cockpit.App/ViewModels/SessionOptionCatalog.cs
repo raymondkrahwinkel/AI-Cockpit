@@ -29,7 +29,9 @@ public static class SessionOptionCatalog
         AllPermissionModes.Where(mode => mode.Value != BypassPermissionModeValue).ToArray();
 
     // A label names the family, never a release: the value is an alias the CLI re-points at will, so a label like
-    // "Opus 4.8" would keep claiming a release the field no longer launches (AC-418).
+    // "Opus 4.8" would keep claiming a release the field no longer launches (AC-418). Ordered most capable first for
+    // the picker; this order says nothing about price, and nothing may read cost out of it — a provider states what
+    // its own models cost (AC-256).
     public static IReadOnlyList<ModelOption> Models { get; } =
     [
         new("Fable", "fable"),

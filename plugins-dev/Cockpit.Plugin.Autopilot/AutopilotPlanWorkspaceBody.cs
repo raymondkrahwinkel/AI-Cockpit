@@ -467,6 +467,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // a step the operator reclassified by hand, a faint "set by you" line so a manually set figure never reads as if
     // the run itself had decided it. Right-click always offers the four classifications — reclassifying is valid for
     // any settled step regardless of its current one, so the menu is never a dead control.
+    // Reads like the live chip: the profile, and the model after it where the profile offers a choice. Empty when the
+    // record predates AC-256, so an old run shows no half-filled line.
+    internal static string _HistoryStepTier(AutopilotRunStepRecord step) => (step.ProfileLabel, step.Model) switch
+    {
+        ({ Length: > 0 } profile, { Length: > 0 } model) => $"· {profile} · {model}",
+        ({ Length: > 0 } profile, _) => $"· {profile}",
+        _ => string.Empty,
+    };
+
     private Control _BuildHistoryStepRow(AutopilotRunRecord record, int stepIndex, AutopilotRunStepRecord step)
     {
         var lines = new StackPanel { Spacing = 0 };
@@ -481,6 +490,20 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Margin = new Thickness(0, 2, 0, 0),
             Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
         });
+
+        // Which tier actually ran this step (AC-256). While the run is live this is the block's model chip; once it
+        // settles the chip is gone, and this line is the only place the mix of a finished run can still be read — the
+        // thing a before/after on model cost is measured from. Absent on history written before the fields existed.
+        if (_HistoryStepTier(step) is { Length: > 0 } tier)
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = tier,
+                FontSize = 10,
+                Margin = new Thickness(16, 0, 0, 0),
+                Foreground = _Brush("CockpitTextFaintBrush"),
+            });
+        }
 
         if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
         {

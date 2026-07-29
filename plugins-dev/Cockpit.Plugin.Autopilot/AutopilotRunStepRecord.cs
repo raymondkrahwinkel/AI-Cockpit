@@ -20,4 +20,14 @@ internal sealed record AutopilotRunStepRecord(string Title, AutopilotStepStatus 
 
     /// <summary>Whether <see cref="Correction"/> came from the automatic classifier or an operator override.</summary>
     public AutopilotCorrectionSource CorrectionSource { get; init; }
+
+    /// <summary>
+    /// The profile this step actually ran on (AC-256). Live it shows as a chip on the pipeline block, but nothing kept
+    /// it once the run settled, so the tier mix of a finished run could not be read back — which is what a before/after
+    /// on model cost needs. Empty for history written before this existed.
+    /// </summary>
+    public string ProfileLabel { get; init; } = string.Empty;
+
+    /// <summary>The model this step ran on, or empty for a profile that pins its own and for pre-AC-256 history.</summary>
+    public string Model { get; init; } = string.Empty;
 }
