@@ -57,6 +57,13 @@ public sealed record ProjectSettings
 
         var tidied = fields.SequenceEqual(project.AdditionalInfo) ? project : project with { AdditionalInfo = fields };
 
+        // Same reasoning as the information rows above, and the same reason this drops a blank Reference here
+        // rather than only in ProjectResourceEntry: Normalized() is what runs before every save and after every
+        // load (ProjectStore), so a row an operator cleared or a hand edit left half-written costs the operator
+        // that one row rather than silently persisting a reference nothing points at.
+        var resources = project.Resources.Where(resource => !string.IsNullOrWhiteSpace(resource.Reference)).ToList();
+        tidied = resources.SequenceEqual(project.Resources) ? tidied : tidied with { Resources = resources };
+
         return _TidyLinks(project.PluginFields) is { } links ? tidied with { PluginFields = links } : tidied;
     }
 

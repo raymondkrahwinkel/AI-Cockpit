@@ -62,6 +62,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
         MemoryRef = project.MemoryRef ?? string.Empty;
         _additionalServers = project.McpOverlay.AdditionalServers;
+        _carriedResources = project.Resources;
 
         foreach (var field in project.AdditionalInfo)
         {
@@ -164,6 +165,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     /// <summary>The project's own servers, carried through untouched: v1 edits which servers are on, not the servers themselves (see <see cref="ToProject"/>).</summary>
     private readonly IReadOnlyList<McpServerConfig> _additionalServers = [];
+
+    /// <summary>
+    /// The project's resources (AC-483) as they were opened, carried through untouched — this dialog edits only the
+    /// single memory value in <see cref="MemoryRef"/>, so an Instructions or Reference row (or a second Memory row
+    /// this v1 UI has no box for) must survive the round trip the same way <see cref="_additionalServers"/> and
+    /// <see cref="_carriedPluginFields"/> already do. <see cref="ToProject"/> sets this <em>before</em> folding
+    /// <see cref="MemoryRef"/> in, because <see cref="Project.MemoryRef"/>'s own doc comment warns that whichever of
+    /// the two an initializer sets last wins the same underlying list.
+    /// </summary>
+    private readonly IReadOnlyList<ProjectResource> _carriedResources = [];
 
     /// <summary>The names this project switched off that the checklist has no row for, carried through so saving cannot switch them back on.</summary>
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
@@ -308,6 +319,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
             LogoPath = _NullIfBlank(LogoSource),
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
+            // Resources first, MemoryRef second — deliberately, not stylistically (see Project.MemoryRef's own doc
+            // comment): the two write the same underlying list, and whichever is set last in this initializer wins.
+            // Carrying the project's other rows through and only then folding the edited memory value in is what
+            // keeps an Instructions or Reference row from being replaced by an empty list here.
+            Resources = _carriedResources,
             MemoryRef = _ToMemoryRef(),
             McpOverlay = new ProjectMcpOverlay
             {

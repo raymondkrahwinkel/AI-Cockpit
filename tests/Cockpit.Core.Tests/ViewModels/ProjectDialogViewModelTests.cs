@@ -167,6 +167,58 @@ public class ProjectDialogViewModelTests
         viewModel.ToProject().MemoryRef.Should().Be("depot:ai-cockpit");
     }
 
+    /// <summary>
+    /// AC-483: this dialog offers exactly one memory box, but a project can carry an Instructions row and a
+    /// Reference row too (and this v1 UI has no field for either). Opening the editor and saving without changing
+    /// anything must not drop them — the bug this pins built a fresh <c>Project(...)</c> in <c>ToProject</c> and
+    /// never set <c>Resources</c> at all, so only the folded-in memory value survived.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_Editing_KeepsEveryResourceRowUntouched()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" },
+                new ProjectResource("D:\\handbook", ProjectResourceRole.Reference) { Label = "Old handbook" },
+            ],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+
+        viewModel.ToProject().Resources.Should().Equal(project.Resources);
+    }
+
+    /// <summary>
+    /// The other half of the same fix: changing the one editable memory value must touch only the Memory row it
+    /// represents, leaving an Instructions row and a Reference row exactly as they were.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_ChangingTheMemoryValue_TouchesOnlyTheMemoryRow()
+    {
+        var instructions = new ProjectResource("docs:handbook", ProjectResourceRole.Instructions) { Label = "Handbook" };
+        var reference = new ProjectResource("D:\\handbook", ProjectResourceRole.Reference) { Label = "Old handbook" };
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                instructions,
+                reference,
+            ],
+        };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
+        viewModel.MemoryRef = "/home/raymond/Notes/CockpitV2";
+
+        var saved = viewModel.ToProject();
+
+        saved.MemoryRef.Should().Be("/home/raymond/Notes/CockpitV2");
+        saved.Resources.Should().Contain(instructions).And.Contain(reference);
+    }
+
     [Fact]
     public async Task ToProject_BlankOptionalFields_AreStoredAsAbsentRatherThanEmpty()
     {
