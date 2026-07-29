@@ -52,15 +52,44 @@ internal static class AutopilotModelTier
 
         var chosen = _IndexOf(ranked, step.Model);
         var allowed = AllowedCount(ranked.Count, strategy);
-        if (chosen < 0 || chosen < allowed)
+        if (chosen >= 0 && chosen < allowed)
         {
             return null;
         }
 
+        // A model the profile offers but did not price is not the same as an unrankable one, and must not be waved
+        // through: the allowed set is "the cheapest N of the ranking", so something outside the ranking is not in it.
+        // Passing it would let a provider that priced only its cheap models opt its dear ones out of the ceiling.
         var permitted = string.Join(", ", ranked.Take(allowed).Select(estimate => estimate.Model));
-        return $"Step \"{step.Id}\" is not a review gate, so under the {strategy} cost strategy it must run on one of "
-            + $"profile \"{profile.Label}\"'s cheaper models ({permitted}); it has \"{step.Model}\". Move it to one of "
-            + "those. Only the operator can lift this, by setting the cost strategy to QualityFirst.";
+        return chosen < 0
+            ? $"Step \"{step.Id}\" runs on \"{step.Model}\", which profile \"{profile.Label}\" offers but has not "
+              + $"priced, so it cannot be shown to sit within the cost ceiling. A step that is not a review gate must "
+              + $"run on one of ({permitted})."
+            : $"Step \"{step.Id}\" is not a review gate, so under the {strategy} cost strategy it must run on one of "
+              + $"profile \"{profile.Label}\"'s cheaper models ({permitted}); it has \"{step.Model}\". Move it to one of "
+              + "those. Only the operator can lift this, by setting the cost strategy to QualityFirst.";
+    }
+
+    /// <summary>
+    /// The same rule applied to a step nobody planned. <see cref="AutopilotRunDriver"/> synthesizes the shared fix step
+    /// that clears a review group's findings, and it inherits the gate's profile and model — but a gate is exempt from
+    /// the ceiling and a fix step is not: it writes code and runs the suite like any other step. Emitting a plan never
+    /// touches it, so without this the one step the CEO never planned is the one that escapes the ceiling. Over it, the
+    /// step moves to the dearest model still allowed rather than the cheapest, keeping as much capability as the
+    /// ceiling permits; within it, the step is returned untouched.
+    /// </summary>
+    internal static AutopilotStep HoldToCeiling(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles, AutopilotCostStrategy strategy)
+    {
+        if (Validate(step, profiles, strategy) is null)
+        {
+            return step;
+        }
+
+        // Validate only returns a refusal once it has found the profile and a non-empty ranking, so both hold here.
+        var ranked = profiles.First(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal))
+            .ModelCostEstimatesCheapestFirst;
+
+        return step.WithProfile(step.ProfileLabel, ranked[AllowedCount(ranked.Count, strategy) - 1].Model);
     }
 
     /// <summary>Every step against the ceiling, returning the first refusal so the CEO fixes one thing at a time.</summary>

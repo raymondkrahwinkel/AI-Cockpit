@@ -38,8 +38,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   to run on the cheaper end of what its profile offers, and a plan that ignores it comes straight back to the planner
   naming the models that step may use instead. Review gates keep the full range, because a missed finding costs more
   than the tokens it would have saved. Prices are the provider's own **estimate** and are labelled as such wherever
-  they appear: nobody publishes a price list a program can read, so these figures are compiled into the provider and
-  can quietly go out of date — read them as proportions between models, never as a quote. What a session actually
+  they appear: where a provider has no priced feed to read, the figures are compiled into it and can quietly go out of
+  date — read them as proportions between models, never as a quote. What a session actually
   cost still comes from the provider itself, exactly as before. If you would rather the planner kept its free hand,
   set the cost strategy to quality-first and no ceiling applies.
 - added: run history now shows which profile and model actually ran each step. While a run is live that sits on the

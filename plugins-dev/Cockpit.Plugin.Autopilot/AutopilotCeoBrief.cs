@@ -236,9 +236,9 @@ internal static class AutopilotCeoBrief
 
     // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is cost-aware.
     // Empty (or none supplied) yields nothing — the brief then leaves the roster out rather than showing an empty header.
-    // There is no per-model price/tier field to surface (see PluginProfileInfo: only RunsLocally and the model-alias list),
-    // so the roster gives the CEO the two signals that do exist — local-vs-paid and the model names — and tells it how to
-    // weigh them, rather than inventing a cost number that is not there.
+    // Beyond local-vs-paid there is now a per-model figure to surface where the provider declared one, and the roster
+    // passes it through as the estimate it is; a provider that declared nothing still gets only the two older signals,
+    // and the brief says so rather than inventing a number or an order it was never given.
     private static string _Roster(IReadOnlyList<PluginProfileInfo>? profiles, AutopilotCostStrategy strategy)
     {
         if (profiles is not { Count: > 0 })

@@ -10,7 +10,10 @@ namespace Cockpit.Plugin.Autopilot;
 /// settle) is a pure, testable loop and the session integration is a thin adapter around it.
 /// </para>
 /// </summary>
-internal sealed class AutopilotRunDriver(AutopilotPlanController controller, int maxAttempts)
+internal sealed class AutopilotRunDriver(
+    AutopilotPlanController controller,
+    int maxAttempts,
+    Func<AutopilotStep, Task<AutopilotStep>>? holdToCostCeiling = null)
 {
     /// <summary>
     /// Runs the plan: while the run is <see cref="AutopilotPlanPhase.Running"/> and a step is still pending, it starts
@@ -147,6 +150,16 @@ internal sealed class AutopilotRunDriver(AutopilotPlanController controller, int
 
             round++;
             var fixStep = AutopilotReviewFixStep.Build(lead, rejected, round);
+
+            // AC-256: this step inherits the gate's profile and model, and a review gate is exempt from the run's cost
+            // ceiling — so an expensive model legitimately assigned to a reviewer would otherwise carry straight into
+            // the one step that actually writes code, without ever passing the gate that plan emission applies. Null in
+            // a bare test graph, where there is no roster to hold anything to.
+            if (holdToCostCeiling is not null)
+            {
+                fixStep = await holdToCostCeiling(fixStep).ConfigureAwait(false);
+            }
+
             controller.InsertStep(fixStep);
             await _DriveStepToSettledAsync(fixStep, executeStep, cancellationToken).ConfigureAwait(false);
 

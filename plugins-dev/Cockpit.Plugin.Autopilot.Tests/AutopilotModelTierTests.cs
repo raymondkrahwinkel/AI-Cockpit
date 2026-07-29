@@ -81,10 +81,47 @@ public class AutopilotModelTierTests
     }
 
     [Fact]
-    public void Validate_ModelOutsideTheRanking_JudgesNothing() =>
-        // An operator can pin a specific snapshot; the provider ranked its aliases, not that. Guessing where an
-        // unranked model sits would refuse work on nothing.
-        Assert.Null(AutopilotModelTier.Validate(Step("claude-opus-5-some-snapshot"), Roster, AutopilotCostStrategy.CostFirst));
+    public void Validate_ModelTheProfileOffersButDidNotPrice_IsNotWavedThrough()
+    {
+        // The hole this closes: a provider that priced only its cheap models would otherwise opt its dear ones out of
+        // the ceiling entirely, since the profile gate accepts anything in ModelSuggestions and this one used to pass
+        // anything outside the ranking. The allowed set is "the cheapest N of the ranking", so outside it is outside.
+        IReadOnlyList<PluginProfileInfo> partlyPriced =
+        [
+            new PluginProfileInfo("Claude", "Plugin", string.Empty)
+            {
+                ModelSuggestions = ["fable", "sonnet", "haiku"],
+                ModelCostEstimatesCheapestFirst = [new PluginModelCostEstimate("haiku"), new PluginModelCostEstimate("sonnet")],
+            },
+        ];
+
+        var refusal = AutopilotModelTier.Validate(Step("fable"), partlyPriced, AutopilotCostStrategy.CostFirst);
+
+        Assert.NotNull(refusal);
+        Assert.Contains("has not", refusal);
+        Assert.Contains("haiku", refusal);
+    }
+
+    [Fact]
+    public void HoldToCeiling_MovesAnOverCeilingStepToTheDearestModelStillAllowed() =>
+        // Not the cheapest: the point is to stay within budget, not to strip the step of every capability it may need.
+        Assert.Equal("sonnet", AutopilotModelTier.HoldToCeiling(Step("fable"), Roster, AutopilotCostStrategy.Balanced).Model);
+
+    [Fact]
+    public void HoldToCeiling_LeavesAStepThatIsAlreadyWithinTheCeiling()
+    {
+        Assert.Equal("haiku", AutopilotModelTier.HoldToCeiling(Step("haiku"), Roster, AutopilotCostStrategy.Balanced).Model);
+        Assert.Equal("fable", AutopilotModelTier.HoldToCeiling(Step("fable"), Roster, AutopilotCostStrategy.QualityFirst).Model);
+    }
+
+    [Fact]
+    public void HoldToCeiling_LeavesAnythingItCannotJudge()
+    {
+        IReadOnlyList<PluginProfileInfo> unranked = [new PluginProfileInfo("Codex", "Plugin", string.Empty) { ModelSuggestions = ["dear"] }];
+
+        Assert.Equal("dear", AutopilotModelTier.HoldToCeiling(Step("dear", profile: "Codex"), unranked, AutopilotCostStrategy.CostFirst).Model);
+        Assert.Equal("fable", AutopilotModelTier.HoldToCeiling(Step("fable", reviewGate: true), Roster, AutopilotCostStrategy.CostFirst).Model);
+    }
 
     [Fact]
     public void Validate_StepWithoutAModel_JudgesNothing() =>
