@@ -275,8 +275,8 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("another cockpit instance already holds the key");
-        service.LastBindings.Should().BeEmpty("the conflicted binding must never reach the OS service");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "another cockpit instance already holds the key");
+        Assert.Empty(service.LastBindings);
         toasts.Received(1).Show(Arg.Is<string>(message => message.Contains("another cockpit instance")), ToastSeverity.Warning);
     }
 
@@ -289,8 +289,8 @@ public class GlobalHotkeyCoordinatorTests
 
         await coordinator.ApplyAsync();
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue();
-        service.LastBindings.Should().ContainSingle(binding => binding.Id == GlobalHotkeys.PushToTalk);
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk));
+        Assert.Single(service.LastBindings, binding => binding.Id == GlobalHotkeys.PushToTalk);
     }
 
     /// <summary>
@@ -311,11 +311,11 @@ public class GlobalHotkeyCoordinatorTests
             retryInterval: TimeSpan.FromMilliseconds(20));
 
         await coordinator.ApplyAsync();
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeFalse("the first attempt found the key held");
+        Assert.False(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the first attempt found the key held");
 
         await _WaitUntilAsync(() => coordinator.IsArmed(GlobalHotkeys.PushToTalk));
 
-        coordinator.IsArmed(GlobalHotkeys.PushToTalk).Should().BeTrue("the retry timer claimed it once it came free");
+        Assert.True(coordinator.IsArmed(GlobalHotkeys.PushToTalk), "the retry timer claimed it once it came free");
     }
 
     /// <summary>A retry that is still conflicted must not nag the operator again with the same news.</summary>
