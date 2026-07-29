@@ -74,7 +74,7 @@
                  of the accent in it to still read as its own colour rather than fade into the hairline grey —
                  checked against both CockpitHairlineColor and CockpitHairlineHoverColor in
                  ThemeControlStateTests (rendered pixels, not a hex comparison by eye). -->
-            <Color x:Key="CockpitFocusHairlineColor">#403b82f6</Color>
+            <Color x:Key="CockpitFocusHairlineColor">#402563eb</Color>
             <SolidColorBrush x:Key="CockpitFocusHairlineBrush" Color="{StaticResource CockpitFocusHairlineColor}"/>
 
             <!-- White at 4% (#0a alpha) — the wash under a chromeless button on hover. A token rather than a

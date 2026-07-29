@@ -16,7 +16,6 @@
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
 #FF2B2B2B  off-palette
-#FF3B82F6  CockpitAccentColor
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
 #FFE8EAEF  CockpitTextPrimaryColor
