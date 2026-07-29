@@ -42,6 +42,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   entry that couldn't say which instance it meant. Adding, renaming or removing a connection takes effect
   immediately in the picker, no restart needed. Your first connection keeps working exactly as before under its
   existing project link.
+- added: the project editor's "Choose…" button next to a Depot memory row now opens a picker of your Depot
+  projects by name, instead of staying disabled and asking you to type a slug you can't see anywhere. Not signed in
+  yet? One "Sign in" button, not an empty list. Couldn't reach Depot? It says so.
 - added: an incompatible plugin now says so before you install it, not after. The plugin store's browse card shows
   a red "Incompatible" badge with the reason — a contract version it was built for, or a cockpit version it needs —
   and its Install/Update button is disabled; nothing is hidden from the catalogue, but a click that would only fail
