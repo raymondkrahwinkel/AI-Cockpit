@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 
@@ -9,9 +10,11 @@ namespace Cockpit.Plugin.Depot.Ui;
 /// <summary>
 /// The plugin's settings view (opened from the gear in the plugin manager): a manageable list of Depot connection
 /// rows (AC-243). Implements <see cref="IPluginSettingsView"/>, so the host renders the Save/Close footer and
-/// <see cref="Save"/> persists on Save — the connection metadata to storage, and each connection as an OAuth
-/// <see cref="McpServerContribution"/> in the shared MCP registry. A connection removed or renamed here has its old
-/// MCP-registry entry reclaimed the same save, so a stale "Depot: &lt;old name&gt;" entry never lingers.
+/// <see cref="Save"/> persists on Save — the connection metadata to storage, each connection as an OAuth
+/// <see cref="McpServerContribution"/> in the shared MCP registry, and (AC-501) each connection's own memory-source
+/// registration. A connection removed or renamed here has its old MCP-registry entry and its old memory-source
+/// scheme both reclaimed the same save, so neither a stale "Depot: &lt;old name&gt;" MCP entry nor a stale picker
+/// row lingers until a restart.
 /// </summary>
 internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 {
@@ -112,6 +115,11 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
+        // Memory sources are in-memory registry entries, not disk-persisted like the MCP registry below, so the
+        // sync is a direct synchronous call rather than a fire-and-forget task — there is no store round trip here
+        // to race.
+        _SyncMemorySources(registrations);
+
         _settings.Connections = registrations;
 
         // AddMcpServer/RemoveMcpServer each do their own load-modify-save round trip against the shared store with
@@ -123,6 +131,55 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         _ = _SyncMcpRegistryAsync(orphanedNames, registrations);
 
         return true;
+    }
+
+    // The live-refresh half of AC-501: a connection's memory source used to be registered once at Initialize and
+    // never touched again, so an operator adding, renaming or removing a connection here saw no effect until an app
+    // restart. Diffed by connection Id (not by list position, which a removal ahead of a connection would shift out
+    // from under it) against the registrations BuildRegistrationPairs would have produced for the connections this
+    // view started from.
+    private void _SyncMemorySources(IReadOnlyList<DepotConnectionRegistration> registrations)
+    {
+        // A plain Dictionary from BuildRegistrationPairs' own Connection.Id would throw on a duplicate key if
+        // storage ever held two connections under the same id (corrupted or hand-edited settings) — building it by
+        // hand keeps a duplicate merely overwriting the earlier entry instead of crashing Save().
+        var before = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(_originalConnections))
+        {
+            before[pair.Connection.Id] = pair.Registration;
+        }
+
+        var after = DepotMemorySource.BuildRegistrationPairs(registrations);
+        var afterById = new Dictionary<string, ProjectMemorySourceRegistration>(StringComparer.Ordinal);
+        foreach (var pair in after)
+        {
+            afterById[pair.Connection.Id] = pair.Registration;
+        }
+
+        // Two full passes, not one interleaved remove-then-add per connection: two connections swapping names (or
+        // otherwise trading schemes) would let an Add below claim a scheme a later connection in this same save
+        // still held under its own before-registration, since that connection's own Remove had not run yet —
+        // Register would then refuse the Add and the operator would lose that source from the picker until a
+        // restart, with nothing surfacing why. Retiring every stale scheme first removes that ordering dependency.
+        foreach (var (id, oldRegistration) in before)
+        {
+            if (!afterById.TryGetValue(id, out var stillCurrent) || stillCurrent != oldRegistration)
+            {
+                _host.RemoveProjectMemorySource(oldRegistration.Scheme);
+            }
+        }
+
+        foreach (var (connection, newRegistration) in after)
+        {
+            if (before.TryGetValue(connection.Id, out var oldRegistration) && oldRegistration == newRegistration)
+            {
+                // Unchanged: re-adding it would only hit Register's "scheme already taken" refusal, since this very
+                // content is already the one registered.
+                continue;
+            }
+
+            _host.AddProjectMemorySource(newRegistration);
+        }
     }
 
     private async Task _SyncMcpRegistryAsync(IReadOnlyList<string> orphanedNames, IReadOnlyList<DepotConnectionRegistration> registrations)

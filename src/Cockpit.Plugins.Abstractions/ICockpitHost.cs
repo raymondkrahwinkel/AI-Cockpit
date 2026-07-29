@@ -647,6 +647,19 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>
+    /// Withdraws the memory source registered under <paramref name="scheme"/> (AC-501) — a plugin that can offer
+    /// more than one memory source (a Depot connection the operator later removes, say) uses this so a scheme that
+    /// no longer resolves to anything stops being offered in the project editor's picker, instead of lingering there
+    /// until the app restarts. A no-op when nothing is registered under this scheme. Does not touch any project's
+    /// own stored <c>MemoryRef</c> — see <see cref="AddProjectMemorySource"/>'s remark on why removing a source
+    /// never rewrites a project. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes,
+    /// older plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void RemoveProjectMemorySource(string scheme)
+    {
+    }
+
     /// <summary>The memory sources every plugin has contributed — what the project editor's picker and a session's standing instructions both read. Default empty.</summary>
     IReadOnlyList<Projects.ProjectMemorySourceRegistration> ProjectMemorySources => [];
 

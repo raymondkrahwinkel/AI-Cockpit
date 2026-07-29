@@ -186,6 +186,9 @@ internal sealed class CockpitHost(
         }
     }
 
+    public void RemoveProjectMemorySource(string scheme) =>
+        services.GetRequiredService<IProjectMemorySourceRegistry>().Remove(scheme);
+
     public IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources =>
         services.GetRequiredService<IProjectMemorySourceRegistry>().Sources;
 

@@ -113,6 +113,54 @@ public class ProjectMemorySourceRegistryTests
     }
 
     [Fact]
+    public void Remove_ARegisteredScheme_TakesItOutOfSources()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+        registry.Register(Source("depot", "Depot project"));
+
+        Assert.True(registry.Remove("depot"));
+
+        Assert.Empty(registry.Sources);
+    }
+
+    [Fact]
+    public void Remove_MatchesCaseInsensitively_LikeRegisterDoes()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+        registry.Register(Source("depot", "Depot project"));
+
+        Assert.True(registry.Remove("Depot"));
+
+        Assert.Empty(registry.Sources);
+    }
+
+    [Fact]
+    public void Remove_ASchemeNeverRegistered_IsANoOp()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+        registry.Register(Source("depot", "Depot project"));
+
+        Assert.False(registry.Remove("notes"));
+
+        Assert.Single(registry.Sources);
+    }
+
+    [Fact]
+    public void Remove_ThenRegisterTheSameSchemeAgain_Succeeds()
+    {
+        // AC-501's live-refresh path (a connection renamed, its old scheme reclaimed and the new content
+        // re-registered) leans on this: a scheme that was just freed must be immediately re-registrable, not stuck
+        // refused the way a still-taken scheme is.
+        var registry = new ProjectMemorySourceRegistry();
+        registry.Register(Source("depot", "Depot project"));
+        registry.Remove("depot");
+
+        Assert.True(registry.Register(Source("depot", "Depot project (renamed)")));
+
+        Assert.Equal("Depot project (renamed)", Assert.Single(registry.Sources).Title);
+    }
+
+    [Fact]
     public void TheAppsOwnScan_ResolvesTheRegistry()
     {
         var services = new ServiceCollection();
