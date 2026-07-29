@@ -10,6 +10,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App;
 
@@ -87,6 +88,10 @@ internal static class Screenshotter
         ["memory-source-location-picker"] = (_, _) => _MemorySourceLocationPicker(),
         ["memory-source-location-picker-sign-in"] = (_, _) => _MemorySourceLocationPickerSignIn(),
         ["memory-source-location-picker-error"] = (_, _) => _MemorySourceLocationPickerError(),
+        // AC-503: the three states a Memory row's own reachability check can land on — confirmed, not found, and
+        // not signed in/unreachable — staged directly (see _ProjectEditorWithMemorySourceReachability's own
+        // remarks on why this scene sets Reachability rather than going through a real check delegate).
+        ["project-editor-memory-source-reachability"] = (_, _) => _ProjectEditorWithMemorySourceReachability(),
         // A row's "Send along" checkbox (AC-486) — its own scene rather than a third row in the one above; see
         // _ProjectEditorWithInstructionsSendAlong's own remarks on why combining the two cost the resources scene
         // a hint it had already proved visible.
@@ -348,6 +353,58 @@ internal static class Screenshotter
                 "Couldn't reach the Depot server — check the connection's URL in Depot's settings.")));
         viewModel.LoadAsync().GetAwaiter().GetResult();
         return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
+    /// <summary>
+    /// AC-503, Iron Law #9: the three states a Memory row's own reachability check can land on, one row each —
+    /// confirmed, not found, and not signed in/unreachable — so all three are actually visible on screen rather
+    /// than only asserted in a test. <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly
+    /// rather than through a real <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a
+    /// live dialog run, the same shortcut <see cref="_ProjectEditorWithResources"/> already takes for
+    /// <c>IsBroken</c>/<c>IsMachineBound"</c>: what this scene exists to prove is the view's own three-state
+    /// rendering, not the plugin/host wiring behind it, which the ViewModel and Depot-plugin test suites already
+    /// cover on their own.
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithMemorySourceReachability()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel();
+        // The design-time constructor's own sample "Repository"/"Customer" rows are cleared: three memory rows
+        // each carrying their own picker and hint already push this scene's own fold further down than
+        // _ProjectEditorWithResources's two rows do, and DialogScreenClamp still caps the window at 90% of the
+        // headless screen no matter what Height this scene asks for (BuildTraps.md's own note on this) — every bit
+        // of chrome this scene does not need earns back room for the three states it exists to show.
+        viewModel.AdditionalInfo.Clear();
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
+
+        var confirmed = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "cockpit", "Team notes");
+        confirmed.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        confirmed.Reachability = ProjectMemorySourceReachability.Confirmed;
+        confirmed.ReachabilityDetail = "24 documents, last changed 2 hours ago";
+        viewModel.ResourceRows.Add(confirmed);
+
+        // Second, not third: DialogScreenClamp caps this dialog's own render at 90% of the headless screen no
+        // matter how tall this scene asks for (BuildTraps.md), so a screenshot of this scene alone cannot show all
+        // three states' full hint text below the fold either way. NotSignedIn (a colour — CockpitStatusWaitingBrush
+        // — this dialog has never shown before AC-503) is placed where it is guaranteed to render in full; NotFound
+        // reuses IsBroken's own established red/CockpitStatusErrorBrush treatment, which a render already proved
+        // legible for this dialog before this ticket existed.
+        var notSignedIn = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "wispslate", "Wispslate notes");
+        notSignedIn.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        notSignedIn.Reachability = ProjectMemorySourceReachability.NotSignedIn;
+        viewModel.ResourceRows.Add(notSignedIn);
+
+        var notFound = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "no-such-project", "Old project");
+        notFound.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1];
+        notFound.Reachability = ProjectMemorySourceReachability.NotFound;
+        viewModel.ResourceRows.Add(notFound);
+
+        // Taller than the dialog opens, the same reason _ProjectEditorWithResources already gives: three rows'
+        // worth of picker plus hint sit well below the fold of a default-sized editor.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
     /// <summary>

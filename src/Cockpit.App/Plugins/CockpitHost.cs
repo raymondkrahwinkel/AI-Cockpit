@@ -53,14 +53,6 @@ internal sealed class CockpitHost(
     PluginDiagnostics diagnostics,
     IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
 {
-    // AC-502 review: the set of names this exact plugin has itself registered via AddMcpServer — what
-    // CallMcpToolAsync checks against, so a plugin can only ever reach a server it contributed, never another
-    // plugin's, an operator-configured one, or a cockpit-internal endpoint (terminal, worktrees, orchestrator, …)
-    // it never contributed and has no consent/permission gate in front of. One CockpitHost instance lives for a
-    // whole plugin's lifetime (built once in App.axaml.cs's hostFor and closed over by everything that plugin
-    // does afterwards), so this set stays accurate across Initialize and any later settings save.
-    private readonly HashSet<string> _ownMcpServerNames = new(StringComparer.Ordinal);
-
     public IServiceProvider Services => services;
 
     public ICockpitActions Actions => actions;
@@ -454,7 +446,6 @@ internal sealed class CockpitHost(
             }
 
             await store.SaveAsync(servers).ConfigureAwait(false);
-            _ownMcpServerNames.Add(contribution.Name);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -479,8 +470,6 @@ internal sealed class CockpitHost(
             {
                 await store.SaveAsync(servers).ConfigureAwait(false);
             }
-
-            _ownMcpServerNames.Remove(name);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -491,9 +480,11 @@ internal sealed class CockpitHost(
     }
 
     /// <summary>
-    /// Looks up the OAuth server this plugin contributed under <paramref name="name"/> and asks the shared
-    /// <see cref="IMcpOAuthCoordinator"/> non-interactively (AC-243) — the same read the host's own MCP-servers
-    /// dialog does per row. A name the store has no OAuth entry for (never contributed, contributed as a static
+    /// Looks up the OAuth server contributed under <paramref name="name"/> — the shared registry first, then (AC-504)
+    /// every registered <see cref="IPluginMcpProvider"/>'s own <see cref="_ResolveOAuthServerAsync"/> fallback, for a
+    /// plugin (Depot) whose servers are delivered to sessions per-project rather than pushed into that registry — and
+    /// asks the shared <see cref="IMcpOAuthCoordinator"/> non-interactively (AC-243), the same read the host's own
+    /// MCP-servers dialog does per row. A name nothing resolves to (never contributed, contributed as a static
     /// token, or removed), or a coordinator that is not registered, answers <see cref="PluginMcpAuthState.Unknown"/>
     /// rather than throwing — a status read is informational only.
     /// </summary>
@@ -504,13 +495,9 @@ internal sealed class CockpitHost(
             return PluginMcpAuthState.Unknown;
         }
 
-        var store = services.GetRequiredService<IMcpServerStore>();
-
         try
         {
-            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
-
+            var server = await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false);
             if (server is null)
             {
                 return PluginMcpAuthState.Unknown;
@@ -544,13 +531,9 @@ internal sealed class CockpitHost(
             return PluginMcpSignInOutcome.Unavailable;
         }
 
-        var store = services.GetRequiredService<IMcpServerStore>();
-
         try
         {
-            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
-
+            var server = await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false);
             if (server is null)
             {
                 return PluginMcpSignInOutcome.Unavailable;
@@ -571,13 +554,14 @@ internal sealed class CockpitHost(
     /// tool-loop uses to reach it (AC-502) — on the app's behalf, never opening a browser and never handing the
     /// plugin the bearer token the invoker used to authenticate the call.
     /// <para>
-    /// Refuses <paramref name="name"/> unless it is one <em>this</em> plugin itself registered via
-    /// <see cref="AddMcpServer"/> (review fix): <see cref="IMcpToolInvoker.InvokeAsync"/> resolves against the
-    /// same merged catalog a session connects to, which also holds every other plugin's contributions, every
-    /// operator-configured registry server, and every cockpit-internal endpoint (terminal, worktrees, the
-    /// delegation orchestrator, …). None of those carry this plugin's own consent, and a session connecting to
-    /// them goes through permission machinery this bridge has none of — so it must never become a way to reach
-    /// anything but what this plugin put there itself.
+    /// Refuses any <paramref name="name"/> that resolves to neither the shared registry nor any plugin's own
+    /// <see cref="IPluginMcpProvider.GetMcpServers()"/> — the same <see cref="_ResolveOAuthServerAsync"/> lookup
+    /// <see cref="GetMcpServerAuthStateAsync"/>/<see cref="SignInMcpServerAsync"/> already use (AC-504), so a plugin
+    /// whose servers are delivered per-project (Depot, since AC-504) rather than pushed via <see cref="AddMcpServer"/>
+    /// is reachable here the same way its own sign-in already is. What this still excludes: a cockpit-internal
+    /// endpoint (terminal, worktrees, the delegation orchestrator, …) mounted via <see cref="AddMcpEndpoint"/> —
+    /// those carry no plugin's consent and go through no permission gate a session's own connect applies, and
+    /// neither the registry nor <see cref="IPluginMcpProvider"/> ever lists them.
     /// </para>
     /// </summary>
     public async Task<PluginMcpToolCallResult> CallMcpToolAsync(
@@ -587,7 +571,7 @@ internal sealed class CockpitHost(
         string? projectId = null,
         CancellationToken cancellationToken = default)
     {
-        if (!_ownMcpServerNames.Contains(name))
+        if (!await _IsKnownMcpServerNameAsync(name, cancellationToken).ConfigureAwait(false))
         {
             return PluginMcpToolCallResult.Unavailable;
         }
@@ -611,6 +595,109 @@ internal sealed class CockpitHost(
         {
             diagnostics.Record(pluginId, pluginName, "mcp-tool-call", exception.Message);
             return PluginMcpToolCallResult.Failed(exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// The OAuth server named <paramref name="name"/>, wherever it lives: the shared registry first (a
+    /// registry-configured server, or a plugin still on the AC-243 push model), then, if nothing there matches
+    /// (AC-504), every <see cref="IPluginMcpProvider"/>'s own project-agnostic <see cref="IPluginMcpProvider.GetMcpServers()"/>
+    /// — a plugin whose servers are delivered to sessions per-project (Depot, one server per connection) still has
+    /// no project to scope by here: signing in happens from that plugin's own settings view, not from inside a
+    /// session. A plugin that throws while listing its servers is treated the same way <see cref="McpServerCatalog"/>
+    /// treats it — logged and skipped, not fatal to the lookup.
+    /// </summary>
+    private async Task<McpServerConfig?> _ResolveOAuthServerAsync(string name, CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var fromRegistry = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+
+        if (fromRegistry is not null)
+        {
+            return fromRegistry;
+        }
+
+        return services.GetServices<IPluginMcpProvider>()
+            .SelectMany(_SafeContributionsOf)
+            .Select(PluginMcpMapping.ToServerConfig)
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> resolves to anything at all — the shared registry (any auth kind, not only
+    /// OAuth, unlike <see cref="_ResolveOAuthServerAsync"/>) or any plugin's own <see cref="IPluginMcpProvider.GetMcpServers()"/>
+    /// (AC-502 review). This is <see cref="CallMcpToolAsync"/>'s own scope check: it deliberately does not
+    /// distinguish "this calling plugin's own server" from "some other plugin's" — the same laxness
+    /// <see cref="_ResolveOAuthServerAsync"/> already accepts for a sign-in — because there is no way from inside a
+    /// shared-container-resolved <see cref="IPluginMcpProvider"/> list to tell whose instance is whose. What matters
+    /// is that a cockpit-internal endpoint (never in the registry, never behind <see cref="IPluginMcpProvider"/>)
+    /// can never pass this check.
+    /// </summary>
+    private async Task<bool> _IsKnownMcpServerNameAsync(string name, CancellationToken cancellationToken)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var inRegistry = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+
+        if (inRegistry)
+        {
+            return true;
+        }
+
+        return services.GetServices<IPluginMcpProvider>()
+            .SelectMany(_SafeContributionsOf)
+            .Any(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal));
+    }
+
+    private IReadOnlyList<McpServerContribution> _SafeContributionsOf(IPluginMcpProvider provider)
+    {
+        try
+        {
+            return provider.GetMcpServers();
+        }
+        catch (Exception exception)
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                exception, "A plugin failed to list its MCP servers while resolving an OAuth sign-in; leaving them out of the lookup.");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Delegates to <see cref="IMcpToolProbe"/> (AC-503) and maps its Core-level <see cref="McpToolProbeResult"/>
+    /// onto the plugin-facing <see cref="McpProbeResult"/> — the same isolation seam <see cref="GetMcpServerAuthStateAsync"/>
+    /// and <see cref="SignInMcpServerAsync"/> already keep between <c>Cockpit.Core</c>'s own vocabulary and the
+    /// plugin SDK's. A host with no probe registered (a test fake, an older host) answers <see cref="McpProbeResult.Failed"/>
+    /// without attempting anything.
+    /// </summary>
+    public async Task<McpProbeResult> ProbeMcpToolAsync(
+        string serverName,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpToolProbe>() is not { } probe)
+        {
+            return McpProbeResult.Failed;
+        }
+
+        try
+        {
+            var result = await probe.ProbeAsync(serverName, toolName, arguments, cancellationToken).ConfigureAwait(false);
+            return result.Outcome switch
+            {
+                McpToolProbeOutcome.NotSignedIn => McpProbeResult.NotSignedIn,
+                McpToolProbeOutcome.NotFound => McpProbeResult.NotFound,
+                McpToolProbeOutcome.Success => McpProbeResult.Success(result.Detail),
+                _ => McpProbeResult.Failed,
+            };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Never token/credential data here (Iron Law #8) — only the server/tool names, which are configuration.
+            diagnostics.Record(pluginId, pluginName, "mcp-probe", exception.Message);
+            return McpProbeResult.Failed;
         }
     }
 

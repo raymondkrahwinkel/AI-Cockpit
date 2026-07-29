@@ -8,15 +8,27 @@ namespace Cockpit.Plugin.Depot;
 
 /// <summary>
 /// Depot as a project memory source (AC-165/166) plus, since AC-243, a settings view where an operator connects one
-/// or more Depot instances. Each connection is contributed to the shared MCP registry as an OAuth
-/// <see cref="McpServerContribution"/> (AC-500) — Depot has a single auth path, so the plugin never holds a
-/// credential of its own; the host drives the sign-in and keeps the token. Reading and writing project memory still
-/// happens through the Depot MCP inside the session itself. Since AC-501, each connection also registers its own
-/// memory source (see <see cref="DepotMemorySource"/>) rather than one fixed registration shared by every instance;
-/// this plugin contributes the connection, not a tool.
+/// or more Depot instances. Since AC-501, each connection also registers its own memory source (see
+/// <see cref="DepotMemorySource"/>) rather than one fixed registration shared by every instance. Since AC-504, each
+/// connection's MCP server (an OAuth <see cref="McpServerContribution"/> — Depot has a single auth path, so the
+/// plugin never holds a credential of its own; the host drives the sign-in and keeps the token) is offered
+/// per-project (<see cref="GetMcpServers(string?, IReadOnlyList{string})"/>) rather than pushed into the shared
+/// registry for every session to see: a session on a project whose memory lives in one connection is offered that
+/// connection's server, not every configured instance. Reading and writing project memory still happens through the
+/// Depot MCP inside the session itself.
 /// </summary>
-public sealed class DepotPlugin : ICockpitPlugin
+public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 {
+    // Kept from Initialize so GetMcpServers can read the current connection list each time the host asks, rather
+    // than a snapshot taken once — the same reason YouTrackPlugin keeps its own settings reference.
+    private DepotSettings? _settings;
+
+    // Kept from Initialize (AC-503) so GetMcpServers(string?, IReadOnlyList<string>) below can hand
+    // BuildRegistrationPairs the host it needs to wire CheckReachability onto every registration it builds — even
+    // though this particular call site only reads Registration.Scheme back out, BuildRegistrationPairs itself always
+    // needs a host to build a registration at all.
+    private ICockpitHost? _host;
+
     public PluginMetadata Metadata { get; } = new(
         Id: "depot",
         DisplayName: "Depot",
@@ -25,12 +37,18 @@ public sealed class DepotPlugin : ICockpitPlugin
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // No services of its own — the registrations below need nothing built.
+        // Register this plugin as the source of its own MCP servers (AC-504): the host's McpServerCatalog injects
+        // every IPluginMcpProvider and asks each when it assembles a session, rather than this plugin pushing its
+        // servers into the shared registry. Same instance the host initializes, so GetMcpServers reads the settings
+        // this plugin later loads in Initialize.
+        services.AddSingleton<IPluginMcpProvider>(this);
     }
 
     public void Initialize(ICockpitHost host)
     {
         var settings = new DepotSettings(host.Storage);
+        _settings = settings;
+        _host = host;
         host.AddSettings(() => new DepotSettingsControl(host, settings));
 
         // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did
@@ -40,27 +58,60 @@ public sealed class DepotPlugin : ICockpitPlugin
             host.AddProjectMemorySource(registration);
         }
 
-        // AC-500's upsert-by-name is idempotent: re-contributing every saved connection on each start refreshes the
-        // shared MCP registry entry without waiting for a settings save, same as every other AddMcpServer caller.
-        // Sequential, not one fire-and-forget call per connection: AddMcpServer does its own load-modify-save round
-        // trip against the shared store with no locking across calls, so firing several at once for two different
-        // connections would race — each reads the same stale snapshot and the last SaveAsync to finish silently
-        // drops whichever connection lost the race.
-        _ = _AddMcpServersSequentiallyAsync(host, settings.Connections);
+        // AC-504: session delivery no longer pushes this plugin's servers into the shared registry — the host asks
+        // for them through GetMcpServers when a session is assembled. Reclaim what an earlier version (AC-243)
+        // pushed, the same move YouTrackPlugin made when it left the push path (AC-11), so those entries leave the
+        // MCP-servers manager and this plugin is their sole owner from here on. Sequential, not one fire-and-forget
+        // call per connection: RemoveMcpServer does its own load-modify-save round trip against the shared store
+        // with no locking across calls, so firing several at once for two different connections would race — each
+        // reads the same stale snapshot and the last SaveAsync to finish silently keeps whichever connection lost
+        // the race, exactly the leak this reclaim exists to close.
+        _ = _ReclaimPushedMcpServersSequentiallyAsync(host, settings.Connections);
     }
 
-    private static async Task _AddMcpServersSequentiallyAsync(ICockpitHost host, IReadOnlyList<Model.DepotConnectionRegistration> connections)
+    private static async Task _ReclaimPushedMcpServersSequentiallyAsync(ICockpitHost host, IReadOnlyList<Model.DepotConnectionRegistration> connections)
     {
         foreach (var connection in connections)
         {
-            await host.AddMcpServer(new McpServerContribution(
-                Name: connection.McpServerName,
-                Url: $"{connection.Url}/mcp")
-            {
-                OAuthAuthority = connection.Url,
-            }).ConfigureAwait(false);
+            await host.RemoveMcpServer(connection.McpServerName).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Every connection this plugin has configured (AC-504), unscoped by project. Session delivery itself never
+    /// reaches this overload — the catalog always calls <see cref="GetMcpServers(string?, IReadOnlyList{string})"/>,
+    /// which this plugin overrides directly — but the host falls back to it when resolving an OAuth sign-in for a
+    /// name the shared registry no longer carries: signing in happens from this plugin's own settings view, which
+    /// has no project of its own to scope a call to the overload below by.
+    /// </summary>
+    public IReadOnlyList<McpServerContribution> GetMcpServers() =>
+        _settings is null ? [] : _settings.Connections.Select(_ContributionFor).ToList();
+
+    /// <summary>
+    /// The connection whose own memory-source scheme is among <paramref name="projectMemorySchemes"/> (AC-504) —
+    /// zero, one, or (a project with more than one Memory row pointing at Depot) several. <paramref name="projectId"/>
+    /// itself is unused: the schemes already say everything this plugin needs to know about which of its own
+    /// connections the calling project actually points at.
+    /// </summary>
+    public IReadOnlyList<McpServerContribution> GetMcpServers(string? projectId, IReadOnlyList<string> projectMemorySchemes)
+    {
+        if (_settings is null || _host is null || projectMemorySchemes.Count == 0)
+        {
+            return [];
+        }
+
+        var schemes = new HashSet<string>(projectMemorySchemes, StringComparer.OrdinalIgnoreCase);
+        return DepotMemorySource.BuildRegistrationPairs(_settings.Connections, _host)
+            .Where(pair => schemes.Contains(pair.Registration.Scheme))
+            .Select(pair => _ContributionFor(pair.Connection))
+            .ToList();
+    }
+
+    private static McpServerContribution _ContributionFor(Model.DepotConnectionRegistration connection) =>
+        new(Name: connection.McpServerName, Url: $"{connection.Url}/mcp")
+        {
+            OAuthAuthority = connection.Url,
+        };
 
     public void Dispose()
     {

@@ -43,8 +43,18 @@ internal static class DepotMemorySource
     /// construction, so a connection is never silently dropped for want of a nameable scheme.
     /// </para>
     /// </summary>
+    /// <param name="connections">The configured connections.</param>
+    /// <param name="host">
+    /// Wires each registration's <see cref="ProjectMemorySourceRegistration.CheckReachability"/> to this connection's
+    /// own MCP server (AC-503) via <c>host.ProbeMcpToolAsync</c>. Null (the default, and what every existing test of
+    /// this method already passes) leaves <c>CheckReachability</c> unset — a row behaves exactly as it does today,
+    /// nothing shown under it. Optional rather than a second required parameter so this stays the same host-free type
+    /// the class remarks describe: a test can still build registrations and assert on them without standing up an
+    /// <c>ICockpitHost</c>.
+    /// </param>
     public static IReadOnlyList<(DepotConnectionRegistration Connection, ProjectMemorySourceRegistration Registration)> BuildRegistrationPairs(
-        IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host)
+        IReadOnlyList<DepotConnectionRegistration> connections,
+        ICockpitHost? host = null)
     {
         var schemesSoFar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pairs = new List<(DepotConnectionRegistration, ProjectMemorySourceRegistration)>(connections.Count);
@@ -61,10 +71,11 @@ internal static class DepotMemorySource
     }
 
     /// <summary>The registrations alone, in the same order — what <see cref="DepotPlugin.Initialize"/> hands the host at startup.</summary>
-    public static IReadOnlyList<ProjectMemorySourceRegistration> BuildRegistrations(IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost host) =>
+    public static IReadOnlyList<ProjectMemorySourceRegistration> BuildRegistrations(
+        IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost? host = null) =>
         BuildRegistrationPairs(connections, host).Select(pair => pair.Registration).ToList();
 
-    private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost host) =>
+    private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost? host) =>
         new(
             scheme,
             $"Depot project — {connection.Name}",
@@ -73,9 +84,10 @@ internal static class DepotMemorySource
                 + "you go. If the Depot MCP is not available in this session, say so rather than working from "
                 + "memory you cannot see.")
         {
-            ListLocationsAsync = cancellationToken => _ListLocationsAsync(connection, host, cancellationToken),
-            SignInAsync = async cancellationToken =>
+            ListLocationsAsync = host is null ? null : cancellationToken => _ListLocationsAsync(connection, host, cancellationToken),
+            SignInAsync = host is null ? null : async cancellationToken =>
                 await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
+            CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, value, cancellationToken),
         };
 
     /// <summary>
@@ -169,6 +181,45 @@ internal static class DepotMemorySource
     {
         public int DocumentCount { get; set; }
         public DateTimeOffset? LastModifiedAt { get; set; }
+    }
+
+    /// <summary>
+    /// The AC-503 reachability check for one Depot connection: confirms the slug the operator typed by asking this
+    /// connection's own MCP server, through the host's out-of-session probe, rather than opening a session-owned
+    /// connection this settings view has no business holding.
+    /// <para>
+    /// Tool name: <c>"outline"</c> — chosen without live access to a running Depot instance to verify it against
+    /// (this plugin has no test fixture that stands one up), so this is a plausible guess, not a confirmed fact.
+    /// <b>Verify the actual tool name/schema against a real Depot MCP server before this ships</b> — if it differs,
+    /// every call here answers <see cref="McpProbeOutcome.Failed"/> (an unrecognised tool name is exactly the kind
+    /// of ambiguous server error <see cref="McpProbeOutcome.Failed"/> exists for), which reads to the operator as
+    /// "not signed in / unreachable" rather than the wrong tool being called — safe, per AC-503 acceptance criterion
+    /// 4, but not informative until the name is confirmed. A single string argument named <c>"project"</c> carrying
+    /// the typed slug is this method's other guess, for the same reason.
+    /// </para>
+    /// </summary>
+    private const string ReachabilityToolName = "outline";
+
+    private static async Task<ProjectMemorySourceReachabilityResult> _CheckReachabilityAsync(
+        ICockpitHost host, DepotConnectionRegistration connection, string value, CancellationToken cancellationToken)
+    {
+        var probe = await host.ProbeMcpToolAsync(
+            connection.McpServerName,
+            ReachabilityToolName,
+            new Dictionary<string, object?> { ["project"] = value },
+            cancellationToken).ConfigureAwait(false);
+
+        // AC-503 acceptance criteria 3/4: NotSignedIn covers both "no sign-in" and "reaching it failed" (Failed) —
+        // a transient network hiccup must never read as "this project does not exist", which would name the wrong
+        // cause. NotFound is the one case the tool itself actually said so; DEP-136 (not yet built) is what would
+        // let "does not exist" and "exists but this token cannot see it" be told apart, so both share this one
+        // honest state until then — see ProjectMemorySourceReachability's own remarks.
+        return probe.Outcome switch
+        {
+            McpProbeOutcome.Success => ProjectMemorySourceReachabilityResult.Confirmed(probe.Detail),
+            McpProbeOutcome.NotFound => ProjectMemorySourceReachabilityResult.NotFound,
+            _ => ProjectMemorySourceReachabilityResult.NotSignedIn,
+        };
     }
 
     private static string _NamespacedScheme(DepotConnectionRegistration connection, ISet<string> taken)

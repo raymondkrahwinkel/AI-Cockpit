@@ -397,6 +397,43 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpToolCallResult.Unavailable);
 
     /// <summary>
+    /// Makes one tool call against an MCP server this plugin contributed under <paramref name="serverName"/> via
+    /// <see cref="AddMcpServer"/>, outside any running session (AC-503) — what a project editor's own reachability
+    /// check uses to confirm a value the operator just typed (a Depot project slug, say) actually resolves to
+    /// something, without needing a session to ask through.
+    /// <para>
+    /// Checks sign-in first, the same non-interactive read <see cref="GetMcpServerAuthStateAsync"/> does: a server
+    /// that is not signed in reports <see cref="Mcp.McpProbeOutcome.NotSignedIn"/> without attempting a connection at
+    /// all. Otherwise this opens a short-lived connection with a budget of a few seconds — nowhere near the
+    /// multi-minute allowance an interactive OAuth sign-in gets — calls <paramref name="toolName"/>, and disposes the
+    /// connection immediately after; nothing here is held open between calls. This never opens a browser: the same
+    /// restraint <see cref="GetMcpServerAuthStateAsync"/> and a session's own non-interactive renewal already take,
+    /// so a token that cannot be renewed silently is exactly the <see cref="Mcp.McpProbeOutcome.NotSignedIn"/> case
+    /// above, not a prompt this call could ever trigger.
+    /// </para>
+    /// <para>
+    /// A timeout, a network failure, or any other exception answers <see cref="Mcp.McpProbeOutcome.Failed"/> — never
+    /// <see cref="Mcp.McpProbeOutcome.NotFound"/>, which this only reports when the tool itself ran and said so in a
+    /// way the host can actually recognise. Confusing the two would tell an operator a value does not exist when the
+    /// truth is only that nothing could be confirmed either way (AC-503 acceptance criterion 4).
+    /// </para>
+    /// Iron Law #8: <see cref="Mcp.McpProbeResult.Detail"/> never carries the bearer token or any other credential
+    /// this call used to reach the server — only the tool's own response text, and only on
+    /// <see cref="Mcp.McpProbeOutcome.Success"/>. Default <see cref="Mcp.McpProbeOutcome.Failed"/> (no detail) so
+    /// existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host can actually reach an MCP server.
+    /// </summary>
+    /// <param name="serverName">The name this plugin registered the server under via <see cref="AddMcpServer"/> (<see cref="Mcp.McpServerContribution.Name"/>).</param>
+    /// <param name="toolName">The MCP tool to call.</param>
+    /// <param name="arguments">The tool's arguments, or null for none.</param>
+    Task<Mcp.McpProbeResult> ProbeMcpToolAsync(
+        string serverName,
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Mcp.McpProbeResult.Failed);
+
+    /// <summary>
     /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13) —
     /// what a workflow or plugin uses to say what that session is working on (a ticket it picked up from YouTrack or
     /// GitHub, a phase), or clears it with an empty string. The session is named by its <c>IPluginSessionContext.PaneId</c>

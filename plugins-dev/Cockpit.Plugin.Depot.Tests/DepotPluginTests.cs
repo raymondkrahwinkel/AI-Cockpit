@@ -1,14 +1,16 @@
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
 /// <summary>
-/// <see cref="DepotPlugin"/>'s <c>Initialize</c> — the only thing this plugin does at runtime. Asserts on the
-/// registration's content, not merely that <c>AddProjectMemorySource</c> was called: a call with the wrong scheme
-/// or a blank instruction would still "pass" a test that only checked the call happened.
+/// <see cref="DepotPlugin"/>'s <c>Initialize</c> plus its <see cref="IPluginMcpProvider"/> half (AC-504). Asserts on
+/// the registration's/contribution's content, not merely that a host method was called: a call with the wrong
+/// scheme, URL or a blank instruction would still "pass" a test that only checked the call happened.
 /// </summary>
 public class DepotPluginTests
 {
@@ -77,5 +79,171 @@ public class DepotPluginTests
     public void Metadata_Always_MatchesTheManifestTheHostLoadsBy()
     {
         Assert.Equal("depot", new DepotPlugin().Metadata.Id);
+    }
+
+    // AC-504: this plugin no longer pushes its servers into the shared registry — an earlier version (AC-243) did,
+    // so a connection surviving from that install needs its old entry reclaimed on every start, the same move
+    // YouTrackPlugin made when it left the push path (AC-11).
+    [Fact]
+    public void Initialize_ConnectionsConfigured_ReclaimsEachConnectionsOldMcpRegistryEntry()
+    {
+        var host = _HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        _ = host.Received(1).RemoveMcpServer("Depot: Synvolution");
+        _ = host.Received(1).RemoveMcpServer("Depot: Wispslate");
+    }
+
+    [Fact]
+    public void Initialize_NoConnectionsConfigured_ReclaimsNothing()
+    {
+        var host = _HostWithConnections();
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        _ = host.DidNotReceive().RemoveMcpServer(Arg.Any<string>());
+    }
+
+    // AC-504: session delivery never reaches this overload (McpServerCatalog always calls the two-argument one,
+    // which this plugin overrides directly) — it exists only so the host's OAuth sign-in fallback can find a
+    // connection's server by name when the shared registry no longer carries it.
+    [Fact]
+    public void GetMcpServers_NoArgOverload_ReturnsEveryConfiguredConnectionUnscoped()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
+
+        var servers = plugin.GetMcpServers();
+
+        Assert.Equal(2, servers.Count);
+        Assert.Contains(servers, server => server.Name == "Depot: Synvolution");
+        Assert.Contains(servers, server => server.Name == "Depot: Wispslate");
+    }
+
+    [Fact]
+    public void GetMcpServers_NoArgOverload_BeforeInitialize_ReturnsEmpty()
+    {
+        using var plugin = new DepotPlugin();
+
+        Assert.Empty(plugin.GetMcpServers());
+    }
+
+    [Fact]
+    public void GetMcpServers_BeforeInitialize_ReturnsEmpty()
+    {
+        using var plugin = new DepotPlugin();
+
+        Assert.Empty(plugin.GetMcpServers("project-a", ["depot"]));
+    }
+
+    [Fact]
+    public void GetMcpServers_NoMemorySchemes_ReturnsNothing()
+    {
+        // AC-504 criterion 2: a project without a Depot memory row gets no Depot server at all.
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com")));
+
+        Assert.Empty(plugin.GetMcpServers("project-a", []));
+    }
+
+    [Fact]
+    public void GetMcpServers_SchemeMatchesOneConnection_ReturnsOnlyThatConnectionsServer()
+    {
+        // AC-504 criterion 1: the connection the project's own memory row points at, not another configured one.
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
+
+        var servers = plugin.GetMcpServers("project-a", ["depot.wispslate"]);
+
+        var server = Assert.Single(servers);
+        Assert.Equal("Depot: Wispslate", server.Name);
+        Assert.Equal("https://wispslate.example.com/mcp", server.Url);
+        Assert.Equal("https://wispslate.example.com", server.OAuthAuthority);
+    }
+
+    [Fact]
+    public void GetMcpServers_TwoMemoryRowsForTwoConnections_ReturnsBoth()
+    {
+        // AC-504 criterion 2: a project with two Memory rows pointing at two Depot connections gets both.
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
+
+        var servers = plugin.GetMcpServers("project-a", ["depot", "depot.wispslate"]);
+
+        Assert.Equal(2, servers.Count);
+        Assert.Contains(servers, server => server.Name == "Depot: Synvolution");
+        Assert.Contains(servers, server => server.Name == "Depot: Wispslate");
+    }
+
+    // AC-504 criterion 7 (regression): a scheme belonging to a different memory source (a project's Folder row,
+    // whatever scheme string that happens to resolve to) matches none of this plugin's own connections.
+    [Fact]
+    public void GetMcpServers_SchemeBelongsToADifferentSource_ReturnsNothing()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com")));
+
+        Assert.Empty(plugin.GetMcpServers("project-a", ["folder"]));
+    }
+
+    // Without this wiring the host's McpServerCatalog would never see this plugin at all — every GetMcpServers
+    // test above would still pass in isolation while no session anywhere ever got a Depot server.
+    [Fact]
+    public void ConfigureServices_Always_RegistersItselfAsTheSameInstanceThatWasInitialized()
+    {
+        using var plugin = new DepotPlugin();
+        var services = new ServiceCollection();
+
+        plugin.ConfigureServices(services);
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IPluginMcpProvider));
+        Assert.Same(plugin, descriptor.ImplementationInstance);
+    }
+
+    // Regression: the earlier version of this reclaim fired one RemoveMcpServer call per connection without
+    // awaiting between them. RemoveMcpServer does its own unlocked load-modify-save round trip against the shared
+    // store, so two concurrent calls for two different connections can each load the same stale snapshot and the
+    // last SaveAsync to finish silently keeps whichever connection lost the race — exactly the stale registry entry
+    // this reclaim exists to remove. This pins that the second call is not even made until the first's task
+    // completes.
+    [Fact]
+    public async Task Initialize_TwoConnectionsConfigured_ReclaimsThemSequentially_NotConcurrently()
+    {
+        var host = _HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
+        var firstRemoval = new TaskCompletionSource();
+        host.RemoveMcpServer("Depot: Synvolution").Returns(_ => firstRemoval.Task);
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        _ = host.Received(1).RemoveMcpServer("Depot: Synvolution");
+        _ = host.DidNotReceive().RemoveMcpServer("Depot: Wispslate");
+
+        firstRemoval.SetResult();
+        await _WaitUntilAsync(() => host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.RemoveMcpServer)) == 2);
+
+        _ = host.Received(1).RemoveMcpServer("Depot: Wispslate");
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
     }
 }

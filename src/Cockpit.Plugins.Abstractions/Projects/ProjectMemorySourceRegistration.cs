@@ -27,7 +27,7 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// </param>
 public sealed record ProjectMemorySourceRegistration(string Scheme, string Title, string Instruction)
 {
-    // AC-502: two trailing optional members rather than widening the primary constructor further — a plugin
+    // AC-502/AC-503: trailing optional members rather than widening the primary constructor further — a plugin
     // prebuilt against an older Cockpit.Plugins.Abstractions.dll still calls this record's original 3-parameter
     // constructor by its exact IL signature, the same binary-compat reasoning McpServerContribution's own remark
     // gives for its init-only properties.
@@ -55,14 +55,29 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<CancellationToken, Task<bool>>? SignInAsync { get; init; }
 
     /// <summary>
+    /// Confirms whether a value the operator typed for this source actually resolves to something (AC-503) — the
+    /// plugin-resource half of the confirmation a <c>Reference</c> row already gets for a broken absolute path
+    /// (AC-485). Takes the row's typed value (the bare identifier, not <c>"{Scheme}:{value}"</c>) and a cancellation
+    /// token the project editor cancels the instant a newer edit supersedes this one, the same version-guard its own
+    /// <c>Reference</c>-probe diagnostics already use.
+    /// <para>
+    /// <see langword="null"/> (the default) means "no check available" — a row whose source did not set this
+    /// behaves exactly as it always has: nothing shown under the row, the same as a plugin that predates AC-503, or
+    /// one whose author decided the value cannot be cheaply confirmed at all.
+    /// </para>
+    /// </summary>
+    public Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>>? CheckReachability { get; init; }
+
+    /// <summary>
     /// Compares only <see cref="Scheme"/>, <see cref="Title"/> and <see cref="Instruction"/> — never
-    /// <see cref="ListLocationsAsync"/>/<see cref="SignInAsync"/> — deliberately overriding the record-generated
-    /// equality that would otherwise include them. Two delegates freshly built for the very same connection
-    /// (<c>DepotMemorySource.BuildRegistrationPairs</c>, say) are never reference-equal to each other even when
-    /// they close over identical data, which would make every one of that connection's own unrelated saves look
-    /// "changed" to <c>DepotSettingsControl._SyncMemorySources</c>'s before/after diff and force an unnecessary
-    /// Remove+Add of a scheme that did not actually change — the very thing that diff exists to skip. Content
-    /// identity here means the three fields a session's own standing instructions are actually built from.
+    /// <see cref="ListLocationsAsync"/>/<see cref="SignInAsync"/>/<see cref="CheckReachability"/> — deliberately
+    /// overriding the record-generated equality that would otherwise include them. Two delegates freshly built for
+    /// the very same connection (<c>DepotMemorySource.BuildRegistrationPairs</c>, say) are never reference-equal to
+    /// each other even when they close over identical data, which would make every one of that connection's own
+    /// unrelated saves look "changed" to <c>DepotSettingsControl._SyncMemorySources</c>'s before/after diff and
+    /// force an unnecessary Remove+Add of a scheme that did not actually change — the very thing that diff exists to
+    /// skip. Content identity here means the three fields a session's own standing instructions are actually built
+    /// from.
     /// <para>
     /// <see cref="Scheme"/> compares <see cref="StringComparison.OrdinalIgnoreCase"/> to agree with
     /// <see cref="ProjectMemorySourceRegistry"/> and a project's stored <c>MemoryRef</c>, both of which resolve a
@@ -71,11 +86,10 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     /// other consumer still treats it as the one source it always was.
     /// </para>
     /// <para>
-    /// Because equality ignores the delegates, a <c>with</c> expression that only replaces
-    /// <see cref="ListLocationsAsync"/>/<see cref="SignInAsync"/> produces a registration equal to the original —
-    /// harmless today (nothing in this codebase builds one that way), but a future <c>Distinct</c>/<c>HashSet</c>/
-    /// dictionary-key use of these registrations would silently keep whichever instance it saw first, delegates and
-    /// all. Worth remembering before reaching for one of those.
+    /// Because equality ignores the delegates, a <c>with</c> expression that only replaces one of them produces a
+    /// registration equal to the original — harmless today (nothing in this codebase builds one that way), but a
+    /// future <c>Distinct</c>/<c>HashSet</c>/dictionary-key use of these registrations would silently keep whichever
+    /// instance it saw first, delegates and all. Worth remembering before reaching for one of those.
     /// </para>
     /// </summary>
     public bool Equals(ProjectMemorySourceRegistration? other) =>

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -13,11 +14,12 @@ namespace Cockpit.Core.Tests.Plugins;
 /// <see cref="IMcpToolInvoker"/>, added so a plugin (the project editor's Depot picker) can call a tool on its own
 /// contributed MCP server before any session exists, without ever seeing the bearer token the invoker used.
 /// <para>
-/// Review fix: scoped to servers <em>this</em> plugin itself registered via <see cref="ICockpitHost.AddMcpServer"/>
-/// — <see cref="IMcpToolInvoker.InvokeAsync"/> resolves against the same merged catalog a session connects to,
-/// which also holds every other plugin's contributions and every cockpit-internal endpoint, none of which carry
-/// this plugin's own consent. Every test below registers its server through the real <c>AddMcpServer</c> call
-/// first, the same way a plugin would, rather than reaching into the host's private tracking directly.
+/// Review fix: scoped by <see cref="CockpitHost._IsKnownMcpServerNameAsync"/> — the shared registry (any
+/// <see cref="AddMcpServer"/> caller ends up here) or any plugin's own <see cref="IPluginMcpProvider.GetMcpServers()"/>
+/// (AC-504's per-project delivery model, Depot's own since that ticket). Every test below registers its server
+/// through a stateful <see cref="IMcpServerStore"/> fake, so <see cref="ICockpitHost.AddMcpServer"/> and
+/// <see cref="ICockpitHost.RemoveMcpServer"/> actually change what a later <see cref="CallMcpToolAsync"/> sees,
+/// the same way a real store would.
 /// </para>
 /// </summary>
 public class CockpitHostCallMcpToolTests
@@ -33,11 +35,10 @@ public class CockpitHostCallMcpToolTests
     }
 
     [Fact]
-    public async Task AServerThisPluginNeverRegistered_AnswersUnavailable_WithoutAskingTheInvoker()
+    public async Task AServerNeverRegisteredAnywhere_AnswersUnavailable_WithoutAskingTheInvoker()
     {
-        // The security-relevant case: an unrelated server name (another plugin's, an operator-configured one, a
-        // cockpit-internal endpoint) must never be reachable through this bridge just because it happens to be
-        // enabled somewhere in the shared catalog.
+        // The security-relevant case: an unrelated server name (a cockpit-internal endpoint, say) must never be
+        // reachable through this bridge just because it happens to be enabled somewhere in the shared catalog.
         var invoker = Substitute.For<IMcpToolInvoker>();
         var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
 
@@ -57,6 +58,24 @@ public class CockpitHostCallMcpToolTests
         var result = await host.CallMcpToolAsync("Depot: Work", "list_projects");
 
         Assert.Equal(PluginMcpToolCallOutcome.Unavailable, result.Outcome);
+    }
+
+    [Fact]
+    public async Task AServerKnownOnlyThroughAPluginMcpProvider_IsReachable()
+    {
+        // AC-504: Depot's own connections are delivered per-project through IPluginMcpProvider.GetMcpServers()
+        // rather than pushed via AddMcpServer — this bridge has to reach those too, the same way OAuth sign-in
+        // resolution already does.
+        var invoker = Substitute.For<IMcpToolInvoker>();
+        invoker.InvokeAsync("Depot: Wispslate", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(McpToolInvocationResult.Success("""{"projects":[]}"""));
+        var provider = Substitute.For<IPluginMcpProvider>();
+        provider.GetMcpServers().Returns([new McpServerContribution("Depot: Wispslate", "https://depot.example.com/mcp")]);
+        var host = await _BuildHostWithRegisteredServerAsync(serverName: null, invoker, mcpProvider: provider);
+
+        var result = await host.CallMcpToolAsync("Depot: Wispslate", "list_projects");
+
+        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
     }
 
     [Fact]
@@ -117,7 +136,8 @@ public class CockpitHostCallMcpToolTests
         Assert.Equal("mcp-tool-call", failure!.Phase);
     }
 
-    private static async Task<CockpitHost> _BuildHostWithRegisteredServerAsync(string serverName, IMcpToolInvoker? invoker, PluginDiagnostics? diagnostics = null)
+    private static async Task<CockpitHost> _BuildHostWithRegisteredServerAsync(
+        string? serverName, IMcpToolInvoker? invoker, PluginDiagnostics? diagnostics = null, IPluginMcpProvider? mcpProvider = null)
     {
         var collection = new ServiceCollection();
         if (invoker is not null)
@@ -125,8 +145,23 @@ public class CockpitHostCallMcpToolTests
             collection.AddSingleton(invoker);
         }
 
+        if (mcpProvider is not null)
+        {
+            collection.AddSingleton(mcpProvider);
+        }
+
+        // A stateful fake, not a fixed .Returns([]) — AddMcpServer/RemoveMcpServer below have to actually change
+        // what a later LoadAsync sees, the same as a real store, or the "removed" test would trivially pass for
+        // the wrong reason (nothing was ever really there to remove).
+        var servers = new List<McpServerConfig>();
         var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => servers.ToList());
+        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                servers = callInfo.Arg<IReadOnlyList<McpServerConfig>>().ToList();
+                return Task.CompletedTask;
+            });
         collection.AddSingleton(store);
 
         var services = collection.BuildServiceProvider();
@@ -141,7 +176,11 @@ public class CockpitHostCallMcpToolTests
             NullCockpitSessionObserver.Instance,
             diagnostics ?? new PluginDiagnostics());
 
-        await host.AddMcpServer(new McpServerContribution(serverName, "https://depot.example.com/mcp"));
+        if (serverName is not null)
+        {
+            await host.AddMcpServer(new McpServerContribution(serverName, "https://depot.example.com/mcp"));
+        }
+
         return host;
     }
 }

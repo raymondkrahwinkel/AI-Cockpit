@@ -128,8 +128,10 @@ public class ProjectDialogMemorySourceTests
     [Fact]
     public void PickingASourceThatCanListItsOwnLocations_KeepsChooseEnabled() => HeadlessAvalonia.Run(() =>
     {
-        var depot = new MemorySourceChoice("Depot project", "depot", ListLocationsAsync: _ => Task.FromResult(
-            Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success([])));
+        var depot = new MemorySourceChoice("Depot project", "depot")
+        {
+            ListLocationsAsync = _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success([])),
+        };
         var viewModel = ViewModelWith(new MemorySourceChoice("Folder", null), depot);
         var window = new ProjectDialog { DataContext = viewModel };
         window.Show();

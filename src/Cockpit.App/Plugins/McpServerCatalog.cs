@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.App.Plugins;
@@ -31,22 +32,45 @@ internal sealed class McpServerCatalog(
         // lists them while the session fan-out still sees them.
         var internalServers = internalProviders.SelectMany(_ServersOf).ToList();
 
-        // AC-500: projectId reaches each plugin's own bevraging — not just the overlay step below — so a plugin
-        // can contribute a server that exists only for one project (its own Depot connection, say) rather than
-        // every project seeing every plugin server and the overlay only ever being able to remove one.
+        // Loaded once, ahead of both places this session's project matters below: which Memory-role scheme(s) it
+        // carries (AC-504) and, further down, its McpOverlay. Null when there is no projectId or nothing in the
+        // store answers to it — the same "no project" case the overlay step always treated as a no-op.
+        Project? project = null;
+        if (!string.IsNullOrEmpty(projectId))
+        {
+            var projects = await projectStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            project = projects.Find(projectId);
+        }
+
+        // AC-504: a project's own Memory-role rows, reduced to the scheme each one names — "depot.wispslate" out of
+        // a stored "depot.wispslate:my-slug" — parsed here (Cockpit.Core, which owns ProjectMemoryRef) so a plugin
+        // never has to parse a reference itself across the plugin-ALC boundary. A row whose reference does not
+        // parse (a Folder row's plain path, say) contributes no scheme, which is exactly how a project with no
+        // matching connection ends up with an empty list rather than a null-reference-shaped one.
+        // Trimmed before parsing — the same rule SessionStartDefaults applies to a stored reference before parsing
+        // it (Project.Resources.Reference is saved trimmed by the project editor, but a hand-edited cockpit.json is
+        // not guaranteed to be) — so a reference with surrounding whitespace resolves to the same scheme here as it
+        // does in a session's own standing instructions, rather than silently matching in one place and not the
+        // other for the very same stored value.
+        var projectMemorySchemes = project?.Resources
+            .Where(resource => resource.Role == ProjectResourceRole.Memory && resource.ReachesSessions)
+            .Select(resource => ProjectMemoryRef.TryParse(resource.Reference.Trim(), out var scheme, out _) ? scheme : null)
+            .Where(scheme => scheme is not null)
+            .Select(scheme => scheme!)
+            .ToList()
+            ?? [];
+
+        // AC-500/AC-504: projectId (and now the project's own memory schemes) reach each plugin's own bevraging —
+        // not just the overlay step below — so a plugin can contribute a server that exists only for one project
+        // (its own Depot connection, say) rather than every project seeing every plugin server and the overlay
+        // only ever being able to remove one.
         var pluginServers = pluginProviders
-            .SelectMany(provider => _ServersOf(provider, projectId))
+            .SelectMany(provider => _ServersOf(provider, projectId, projectMemorySchemes))
             .Select(PluginMcpMapping.ToServerConfig)
             .ToList();
 
         var servers = Merge(registry, [.. internalServers, .. pluginServers]);
-        if (string.IsNullOrEmpty(projectId))
-        {
-            return servers;
-        }
-
-        var projects = await projectStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return projects.Find(projectId)?.McpOverlay.ApplyTo(servers) ?? servers;
+        return project?.McpOverlay.ApplyTo(servers) ?? servers;
     }
 
     public Task<IReadOnlyList<McpServerConfig>> GetServersAsync(CancellationToken cancellationToken = default) =>
@@ -72,11 +96,11 @@ internal sealed class McpServerCatalog(
     // are simply absent for this assembly, and the failure is logged. projectId flows through unconditionally
     // (AC-500) — null for a session with no project is exactly the value IPluginMcpProvider's default overload
     // reads as "give me the project-agnostic set", so an unscoped caller sees the same servers as before.
-    private IReadOnlyList<McpServerContribution> _ServersOf(IPluginMcpProvider provider, string? projectId)
+    private IReadOnlyList<McpServerContribution> _ServersOf(IPluginMcpProvider provider, string? projectId, IReadOnlyList<string> projectMemorySchemes)
     {
         try
         {
-            return provider.GetMcpServers(projectId);
+            return provider.GetMcpServers(projectId, projectMemorySchemes);
         }
         catch (Exception exception)
         {

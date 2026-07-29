@@ -11,16 +11,18 @@ using NSubstitute;
 namespace Cockpit.Plugin.Depot.Tests;
 
 /// <summary>
-/// <see cref="DepotSettingsControl.Save"/> (AC-243): persists the connection list, and syncs the shared MCP
-/// registry — a new/kept connection is (re)contributed under its <c>"Depot: &lt;name&gt;"</c> name, and a connection
-/// that is gone or renamed has its <em>old</em> registry entry reclaimed so a stale contribution never lingers
-/// (the orphan-cleanup KubernetesSettingsControl.Save does for a cluster's secret, applied to the registry instead).
+/// <see cref="DepotSettingsControl.Save"/> (AC-243, reworked AC-504): persists the connection list, and reclaims a
+/// removed or renamed connection's <em>old</em> "Depot: &lt;name&gt;" MCP-registry entry — left over from an install
+/// that predates AC-504's move to offering a connection's server per-project instead of pushing it into the shared
+/// registry (the orphan-cleanup KubernetesSettingsControl.Save does for a cluster's secret, applied to the registry
+/// instead). Save never adds to that registry any more: a kept or new connection's server is what
+/// <see cref="DepotPlugin.GetMcpServers(string?, IReadOnlyList{string})"/> answers with, not a registry row.
 /// </summary>
 [Collection("avalonia")]
 public class DepotSettingsControlTests
 {
     [Fact]
-    public void Save_NewConnection_ContributesItAsAnOAuthMcpServer_UnderThePrefixedName()
+    public void Save_NewConnection_NeverPushesItIntoTheSharedMcpRegistry()
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
@@ -30,11 +32,7 @@ public class DepotSettingsControlTests
         var saved = view.Save();
 
         Assert.True(saved);
-        _ = host.Received(1).AddMcpServer(Arg.Is<McpServerContribution>(contribution =>
-            contribution.Name == "Depot: Work"
-            && contribution.Url == "https://depot.example.com/mcp"
-            && contribution.OAuthAuthority == "https://depot.example.com"
-            && contribution.OAuthClientId == null));
+        _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
         Assert.Equal("Work", settings.Connections.Single().Name);
     }
 
@@ -57,10 +55,10 @@ public class DepotSettingsControlTests
         Assert.Empty(settings.Connections);
     }
 
-    // The guard this pins: AddMcpServer is an upsert-by-name, so a rename that only re-added under the new name
-    // would leave the old name's entry (and whatever token is filed under it) behind forever.
+    // The guard this pins: a rename changes McpServerName, so the old entry would otherwise be left behind forever
+    // — reclaimed here even though Save no longer re-adds anything under the new name.
     [Fact]
-    public void Save_RenamedConnection_ReclaimsTheOldNameAndContributesTheNewOne()
+    public void Save_RenamedConnection_ReclaimsTheOldNameAndAddsNothingNew()
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage())
@@ -73,41 +71,14 @@ public class DepotSettingsControlTests
         view.Save();
 
         _ = host.Received(1).RemoveMcpServer("Depot: Work");
-        _ = host.Received(1).AddMcpServer(Arg.Is<McpServerContribution>(contribution => contribution.Name == "Depot: Work (new)"));
-    }
-
-    // The race Save() used to have: RemoveMcpServer and AddMcpServer each do their own load-modify-save round trip
-    // with no locking across calls, so firing both at once meant the Add's read could land before the Remove's
-    // write, and whichever SaveAsync finished last would silently win. Holding RemoveMcpServer's task open proves
-    // the fix — Save() must not have started the Add while the Remove is still pending.
-    [Fact]
-    public async Task Save_RemovalAndAddition_AwaitsTheRemovalBeforeStartingTheAddition()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var removeSignal = new TaskCompletionSource();
-        host.RemoveMcpServer("Depot: Work").Returns(_ => removeSignal.Task);
-        var settings = new DepotSettings(new FakePluginStorage())
-        {
-            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
-        };
-        var view = new DepotSettingsControl(host, settings);
-        _SetRowFields(view, index: 0, name: "Work (new)", url: "https://depot.example.com");
-
-        view.Save();
-
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
-
-        removeSignal.SetResult();
-        await _WaitUntilAsync(() => host.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ICockpitHost.AddMcpServer)));
-
-        _ = host.Received(1).AddMcpServer(Arg.Is<McpServerContribution>(contribution => contribution.Name == "Depot: Work (new)"));
     }
 
-    // The guard this pins: two rows saved under the same name would upsert the very same registry entry from two
-    // separate AddMcpServer calls — keep the first and drop the rest instead of letting the store end up holding
-    // whichever row's URL happened to win.
+    // The guard this pins: two rows saved under the same name would leave the registry unable to tell them apart —
+    // keep the first and drop the rest, the same first-one-wins rule BuildRegistrationPairs applies to a colliding
+    // scheme.
     [Fact]
-    public void Save_TwoRowsWithTheSameName_KeepsOnlyTheFirst_AndContributesOnce()
+    public void Save_TwoRowsWithTheSameName_KeepsOnlyTheFirst()
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
@@ -118,9 +89,8 @@ public class DepotSettingsControlTests
 
         view.Save();
 
-        _ = host.Received(1).AddMcpServer(Arg.Any<McpServerContribution>());
-        _ = host.Received(1).AddMcpServer(Arg.Is<McpServerContribution>(contribution => contribution.Url == "https://first.example.com/mcp"));
         Assert.Single(settings.Connections);
+        Assert.Equal("https://first.example.com", settings.Connections.Single().Url);
     }
 
     // AC-501: memory sources sync the same save a connection's MCP contribution does, live, without an app restart.
@@ -210,6 +180,42 @@ public class DepotSettingsControlTests
         host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
     }
 
+    /// <summary>
+    /// AC-502/AC-503, explicitly: <see cref="DepotSettingsControl._SyncMemorySources"/> (private) calls
+    /// <see cref="DepotMemorySource.BuildRegistrationPairs"/> twice for the same connection content — once for
+    /// <c>_originalConnections</c>, once for the freshly-saved list — and each call wires brand-new
+    /// <see cref="ProjectMemorySourceRegistration.ListLocationsAsync"/>/<see cref="ProjectMemorySourceRegistration.SignInAsync"/>/
+    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> closures over that call's own connection
+    /// instance. Two such closures are never delegate-equal, but <see cref="ProjectMemorySourceRegistration"/>'s own
+    /// equality override (AC-502) deliberately ignores all three, comparing only Scheme/Title/Instruction — so the
+    /// record's own <c>==</c> correctly reads two independently-built registrations for the same connection as
+    /// equal, which is exactly what lets <see cref="DepotSettingsControl._SyncMemorySources"/>'s plain <c>==</c>
+    /// diff (no hand-rolled comparison needed) skip an unchanged connection.
+    /// </summary>
+    [Fact]
+    public void Save_UnchangedConnection_IsNotReRegistered_DespiteEachBuildRegistrationPairsCallWiringItsOwnClosures()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+
+        var first = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
+        var second = DepotMemorySource.BuildRegistrationPairs(settings.Connections, host).Single().Registration;
+        Assert.Equal(first, second);
+        Assert.NotSame(first.CheckReachability, second.CheckReachability);
+        Assert.NotSame(first.ListLocationsAsync, second.ListLocationsAsync);
+
+        var view = new DepotSettingsControl(host, settings);
+
+        view.Save();
+
+        // And Save — which runs exactly this shape internally — must not treat the connection as changed.
+        host.DidNotReceive().AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>());
+        host.DidNotReceive().RemoveProjectMemorySource(Arg.Any<string>());
+    }
+
     // A connection removed ahead of another in the list promotes the survivor into the primary slot — its scheme
     // changes from a namespaced one to the plain "depot", which existing "depot:<slug>"-linked projects rely on.
     [Fact]
@@ -292,18 +298,6 @@ public class DepotSettingsControlTests
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached
     // tree has no realised visual children to walk, the same reason CanvasThemeRenderTests always shows a window
     // before it starts pulling controls out of one.
-    // Save()'s MCP-registry sync runs as a discarded fire-and-forget task, so its continuation after
-    // removeSignal.SetResult() is not guaranteed to have run by the very next line — this polls briefly instead of
-    // assuming synchronous continuation timing, which is an implementation detail the test should not depend on.
-    private static async Task _WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(2);
-        while (!condition() && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(10);
-        }
-    }
-
     private static void _Show(Control control)
     {
         // A control already attached under a shown window (a prior _Show/_AddRow/_SetRowFields call in the same
