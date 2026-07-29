@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -16,10 +15,10 @@ public class AutopilotConsultBriefTests
     {
         var turn = AutopilotConsultBrief.ConsultTurn(_Step(), "Which auth scheme should the endpoint use?");
 
-        turn.Should().Contain("Wire the API");
-        turn.Should().Contain("Which auth scheme should the endpoint use?");
-        turn.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_answer_worker");
-        turn.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_escalate_to_operator");
+        Assert.Contains("Wire the API", turn);
+        Assert.Contains("Which auth scheme should the endpoint use?", turn);
+        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_answer_worker", turn);
+        Assert.Contains("mcp__cockpit-autopilot-ceo__autopilot_escalate_to_operator", turn);
     }
 
     [Fact]
@@ -27,8 +26,8 @@ public class AutopilotConsultBriefTests
     {
         var turn = AutopilotConsultBrief.ConsultTurn(null, "a question");
 
-        turn.Should().Contain("a question");
-        turn.Should().Contain("autopilot_answer_worker");
-        turn.Should().Contain("autopilot_escalate_to_operator");
+        Assert.Contains("a question", turn);
+        Assert.Contains("autopilot_answer_worker", turn);
+        Assert.Contains("autopilot_escalate_to_operator", turn);
     }
 }

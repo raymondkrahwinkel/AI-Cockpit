@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -29,20 +28,20 @@ public class AutopilotSettingsTests
     {
         var settings = new AutopilotSettings(new FakeStorage());
 
-        settings.MaxSelfFixAttempts().Should().Be(2);
-        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
-        settings.CeoProfileLabel().Should().BeNull();
-        settings.CeoModel().Should().BeNull();
+        Assert.Equal(2, settings.MaxSelfFixAttempts());
+        Assert.Equal(AutopilotCostStrategy.Balanced, settings.CostStrategy());
+        Assert.Null(settings.CeoProfileLabel());
+        Assert.Null(settings.CeoModel());
 
         settings.SetMaxSelfFixAttempts(4);
         settings.SetCostStrategy(AutopilotCostStrategy.CostFirst);
         settings.SetCeoProfileLabel("work");
         settings.SetCeoModel("opus");
 
-        settings.MaxSelfFixAttempts().Should().Be(4);
-        settings.CostStrategy().Should().Be(AutopilotCostStrategy.CostFirst);
-        settings.CeoProfileLabel().Should().Be("work");
-        settings.CeoModel().Should().Be("opus");
+        Assert.Equal(4, settings.MaxSelfFixAttempts());
+        Assert.Equal(AutopilotCostStrategy.CostFirst, settings.CostStrategy());
+        Assert.Equal("work", settings.CeoProfileLabel());
+        Assert.Equal("opus", settings.CeoModel());
     }
 
     [Fact]
@@ -51,15 +50,15 @@ public class AutopilotSettingsTests
         var settings = new AutopilotSettings(new FakeStorage());
 
         // AC-201 loop-cap default.
-        settings.MaxConsultsPerStep().Should().Be(3);
+        Assert.Equal(3, settings.MaxConsultsPerStep());
 
         settings.SetMaxConsultsPerStep(5);
-        settings.MaxConsultsPerStep().Should().Be(5);
+        Assert.Equal(5, settings.MaxConsultsPerStep());
 
         const string project = "/home/me/repo";
         settings.SetMaxConsultsPerStep(1, project);
-        settings.MaxConsultsPerStep(project).Should().Be(1);
-        settings.MaxConsultsPerStep().Should().Be(5);
+        Assert.Equal(1, settings.MaxConsultsPerStep(project));
+        Assert.Equal(5, settings.MaxConsultsPerStep());
     }
 
     [Fact]
@@ -71,8 +70,8 @@ public class AutopilotSettingsTests
         settings.SetCostStrategy(AutopilotCostStrategy.Balanced);
         settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, project);
 
-        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
-        settings.CostStrategy(project).Should().Be(AutopilotCostStrategy.QualityFirst);
+        Assert.Equal(AutopilotCostStrategy.Balanced, settings.CostStrategy());
+        Assert.Equal(AutopilotCostStrategy.QualityFirst, settings.CostStrategy(project));
     }
 
     [Fact]
@@ -81,7 +80,7 @@ public class AutopilotSettingsTests
         var settings = new AutopilotSettings(new FakeStorage());
         settings.SetMaxSelfFixAttempts(7);
 
-        settings.MaxSelfFixAttempts("/some/other/repo").Should().Be(7);
+        Assert.Equal(7, settings.MaxSelfFixAttempts("/some/other/repo"));
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class AutopilotSettingsTests
 
         settings.SetCeoProfileLabel(null, project);
 
-        settings.CeoProfileLabel(project).Should().Be("work");
+        Assert.Equal("work", settings.CeoProfileLabel(project));
     }
 
     [Fact]
@@ -101,11 +100,11 @@ public class AutopilotSettingsTests
     {
         var settings = new AutopilotSettings(new FakeStorage());
 
-        settings.AutonomyMode().Should().Be(AutopilotSettings.DefaultAutonomyMode);
-        AutopilotSettings.DefaultAutonomyMode.Should().Be("acceptEdits");
+        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode());
+        Assert.Equal("acceptEdits", AutopilotSettings.DefaultAutonomyMode);
 
         settings.SetAutonomyMode("plan");
-        settings.AutonomyMode().Should().Be("plan");
+        Assert.Equal("plan", settings.AutonomyMode());
     }
 
     [Fact]
@@ -117,7 +116,7 @@ public class AutopilotSettingsTests
 
         settings.SetAutonomyMode("bypassPermissions");
 
-        settings.AutonomyMode().Should().Be(AutopilotSettings.DefaultAutonomyMode);
+        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode());
     }
 
     [Fact]
@@ -131,8 +130,8 @@ public class AutopilotSettingsTests
         settings.SetAutonomyMode("acceptEdits");
         settings.SetAutonomyMode("bypassPermissions", project);
 
-        settings.AutonomyMode(project).Should().Be(AutopilotSettings.DefaultAutonomyMode);
-        settings.AutonomyMode().Should().Be("acceptEdits");
+        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, settings.AutonomyMode(project));
+        Assert.Equal("acceptEdits", settings.AutonomyMode());
     }
 
     [Fact]
@@ -146,7 +145,7 @@ public class AutopilotSettingsTests
         settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, "/repo");
         settings.SetCeoProfileLabel("work");
 
-        fired.Should().Be(3);
+        Assert.Equal(3, fired);
     }
 
     [Fact]

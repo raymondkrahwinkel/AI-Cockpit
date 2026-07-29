@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
+using Cockpit.TestSupport;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -49,16 +49,16 @@ public class AutopilotRunManagerTests
         manager.Submit(_Plan("c"));
 
         // Cap is 2: a and b run, c waits its turn.
-        started.Should().ContainInOrder("a", "b");
-        started.Should().NotContain("c");
-        manager.Active.Should().HaveCount(2);
-        queue.Count.Should().Be(1);
+        Assert.True(SequenceAssert.ContainsInOrder(started, "a", "b"));
+        Assert.DoesNotContain("c", started);
+        Assert.Equal(2, System.Linq.Enumerable.Count(manager.Active));
+        Assert.Equal(1, queue.Count);
 
         // a finishes → its slot frees → c starts (b and c now running).
         gates["a"].SetResult();
         await _Eventually(() => started.Contains("c") && manager.Active.Count == 2);
 
-        queue.Count.Should().Be(0);
+        Assert.Equal(0, queue.Count);
     }
 
     [Fact]
@@ -82,8 +82,8 @@ public class AutopilotRunManagerTests
         manager.Submit(_Plan("a"));
         manager.Submit(_Plan("b"));
 
-        started.Should().ContainInOrder("a");
-        started.Should().NotContain("b");
+        Assert.True(SequenceAssert.ContainsInOrder(started, "a"));
+        Assert.DoesNotContain("b", started);
 
         gates["a"].SetResult();
         await _Eventually(() => started.Contains("b") && manager.Active.Count == 1);
@@ -115,15 +115,15 @@ public class AutopilotRunManagerTests
         var manager = new AutopilotRunManager(queue, settings) { Runner = Start };
 
         // The runner throws while starting the first plan — the reservation must be released, not leaked.
-        manager.Invoking(m => m.Submit(_Plan("a"))).Should().Throw<InvalidOperationException>();
-        started.Should().BeEmpty();
+        Assert.Throws<InvalidOperationException>(() => manager.Submit(_Plan("a")));
+        Assert.Empty(started);
 
         // The single slot is free again (cap is 1): a later submit with a now-working runner actually starts a run.
         throwOnStart = false;
         manager.Submit(_Plan("b"));
 
-        started.Should().ContainSingle().Which.Should().Be("b");
-        manager.Active.Should().HaveCount(1);
+        Assert.Equal("b", Assert.Single(started));
+        Assert.Single(manager.Active);
     }
 
     private static async Task _Eventually(Func<bool> condition)
@@ -133,6 +133,6 @@ public class AutopilotRunManagerTests
             await Task.Delay(10);
         }
 
-        condition().Should().BeTrue("the condition should hold within the timeout");
+        Assert.True(condition(), "the condition should hold within the timeout");
     }
 }

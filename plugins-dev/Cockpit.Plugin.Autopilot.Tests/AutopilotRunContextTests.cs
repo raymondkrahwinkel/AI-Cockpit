@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -15,8 +13,7 @@ public class AutopilotRunContextTests
     [Fact]
     public void ShouldToastAwaiting_FiresOnTheEdgeIntoAwaitingOperator()
     {
-        AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator)
-            .Should().BeTrue();
+        Assert.True(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator));
     }
 
     [Fact]
@@ -32,7 +29,7 @@ public class AutopilotRunContextTests
             AutopilotPlanPhase.Stopped,
         })
         {
-            AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, current).Should().BeFalse();
+            Assert.False(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.Running, current));
         }
     }
 
@@ -41,24 +38,23 @@ public class AutopilotRunContextTests
     {
         // The guard's whole point: OnControllerChanged re-renders many times while the run waits, but only the first
         // transition into the wait should toast — a same-phase render must not fire another.
-        AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator)
-            .Should().BeFalse();
+        Assert.False(AutopilotRunContext.ShouldToastAwaiting(AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator));
     }
 
     [Fact]
     public void IsSettledOutcome_RecordsMergeReadyBlockedAndStopped()
     {
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.MergeReady).Should().BeTrue();
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Blocked).Should().BeTrue();
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Stopped).Should().BeTrue();
+        Assert.True(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.MergeReady));
+        Assert.True(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Blocked));
+        Assert.True(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Stopped));
     }
 
     [Fact]
     public void IsSettledOutcome_DoesNotRecordAnUnsettledRun()
     {
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Planning).Should().BeFalse();
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Running).Should().BeFalse();
-        AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.AwaitingOperator).Should().BeFalse();
+        Assert.False(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Planning));
+        Assert.False(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Running));
+        Assert.False(AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.AwaitingOperator));
     }
 
     [Fact]
@@ -66,9 +62,9 @@ public class AutopilotRunContextTests
     {
         // The persistent "needs you" marker's condition (AC-203): a run in AwaitingOperator raises the standing signal,
         // and it stays raised as long as any active run is in that phase — regardless of what the others are doing.
-        AutopilotPlanWorkspaceBody.NeedsOperatorAttention([AutopilotPlanPhase.AwaitingOperator]).Should().BeTrue();
-        AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
-            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().BeTrue();
+        Assert.True(AutopilotPlanWorkspaceBody.NeedsOperatorAttention([AutopilotPlanPhase.AwaitingOperator]));
+        Assert.True(AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]));
     }
 
     [Fact]
@@ -76,7 +72,7 @@ public class AutopilotRunContextTests
     {
         // The marker clears the moment the run leaves AwaitingOperator — answered (→ Running) or settled — so it never
         // outlives the wait it signals. No active run at all is likewise nothing to flag.
-        AutopilotPlanWorkspaceBody.NeedsOperatorAttention([]).Should().BeFalse();
+        Assert.False(AutopilotPlanWorkspaceBody.NeedsOperatorAttention([]));
         foreach (var phase in new[]
         {
             AutopilotPlanPhase.Planning,
@@ -86,7 +82,7 @@ public class AutopilotRunContextTests
             AutopilotPlanPhase.Stopped,
         })
         {
-            AutopilotPlanWorkspaceBody.NeedsOperatorAttention([phase]).Should().BeFalse();
+            Assert.False(AutopilotPlanWorkspaceBody.NeedsOperatorAttention([phase]));
         }
     }
 
@@ -95,8 +91,8 @@ public class AutopilotRunContextTests
     {
         // A CEO consult (spoor 2, AC-201) keeps the run Running — only an operator escalation (spoor 3) turns it
         // AwaitingOperator. A run that is merely Running, however many, must not raise the marker.
-        AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
-            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running]).Should().BeFalse();
+        Assert.False(AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running]));
     }
 
     [Fact]
@@ -104,9 +100,9 @@ public class AutopilotRunContextTests
     {
         // The unbugged single-run case, and the multi-run case where nothing needs the operator yet: the first run
         // stays the default, exactly what the surface showed before AC-440.
-        AutopilotPlanWorkspaceBody.PreferredContextIndex([AutopilotPlanPhase.Running]).Should().Be(0);
-        AutopilotPlanWorkspaceBody.PreferredContextIndex(
-            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Planning]).Should().Be(0);
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.PreferredContextIndex([AutopilotPlanPhase.Running]));
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Planning]));
     }
 
     [Fact]
@@ -115,17 +111,17 @@ public class AutopilotRunContextTests
         // AC-440's bug: the pane always rendered _activeContexts[0] while the "Needs you" badge lit up for any active
         // run in AwaitingOperator — so a second, later run's blockade could sit behind the first run's still-running
         // step surface with no way to reach it. The awaiting run must win regardless of its position in the list.
-        AutopilotPlanWorkspaceBody.PreferredContextIndex(
-            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().Be(1);
-        AutopilotPlanWorkspaceBody.PreferredContextIndex(
-            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().Be(2);
+        Assert.Equal(1, AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]));
+        Assert.Equal(2, AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]));
     }
 
     [Fact]
     public void PreferredContextIndex_PicksTheFirstAwaitingRun_WhenSeveralAreAwaiting()
     {
-        AutopilotPlanWorkspaceBody.PreferredContextIndex(
-            [AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator]).Should().Be(0);
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.PreferredContextIndex(
+            [AutopilotPlanPhase.AwaitingOperator, AutopilotPlanPhase.AwaitingOperator]));
     }
 
     [Fact]
@@ -133,7 +129,7 @@ public class AutopilotRunContextTests
     {
         // The badge is never visible with nothing awaiting, but the click handler guards it anyway rather than
         // trusting that invariant blindly.
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 0, currentIndex: -1).Should().BeNull();
+        Assert.Null(AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 0, currentIndex: -1));
     }
 
     [Fact]
@@ -142,9 +138,9 @@ public class AutopilotRunContextTests
         // Repeated clicks must reach every awaiting run in turn, not stick on the first (the exact bug a review caught
         // before this shipped: deriving "next" from the badge's own click history rather than the run actually shown
         // made the first click on a second awaiting run land back on the one already displayed).
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: -1).Should().Be(0);
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 0).Should().Be(1);
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 1).Should().Be(0);
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: -1));
+        Assert.Equal(1, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 0));
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 2, currentIndex: 1));
     }
 
     [Fact]
@@ -153,8 +149,8 @@ public class AutopilotRunContextTests
         // With one awaiting run already shown (currentIndex 0), the "next" is itself — the caller's own
         // ReferenceEquals guard is what turns this into a no-op click rather than a same-run re-render that would
         // rebuild the answer TextBox and drop whatever the operator had typed.
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: 0).Should().Be(0);
-        AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: -1).Should().Be(0);
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: 0));
+        Assert.Equal(0, AutopilotPlanWorkspaceBody.NextAwaitingIndex(awaitingCount: 1, currentIndex: -1));
     }
 
     /// <summary>Round-trips through JSON the way the host's real storage does, so an unset key reads back as "not set".</summary>
@@ -179,10 +175,10 @@ public class AutopilotRunContextTests
     {
         var request = AutopilotRunContext.ValidatorCeoRequest(new AutopilotSettings(new FakeStorage()), "/runs/worktree", _SourcePlan(), "run-1");
 
-        request.ConfineFileToolsToWorkingDirectory.Should().BeTrue();
-        request.WorkingDirectory.Should().Be("/runs/worktree");
+        Assert.True(request.ConfineFileToolsToWorkingDirectory);
+        Assert.Equal("/runs/worktree", request.WorkingDirectory);
         // The validator never cuts its own worktree — it reads the one the run already has.
-        request.IsolateInWorktree.Should().BeFalse();
+        Assert.False(request.IsolateInWorktree);
     }
 
     [Fact]
@@ -212,8 +208,9 @@ public class AutopilotRunContextTests
 
         var request = AutopilotRunContext.ValidatorCeoRequest(settings, "/runs/worktree", _SourcePlan(), "run-1");
 
-        request.PermissionMode.Should().NotBeNullOrWhiteSpace();
+        Assert.False(string.IsNullOrWhiteSpace(request.PermissionMode));
         // Coerced away from bypass by AutopilotSettings (AC-209), so even a stored bypass cannot reach the driver here.
-        request.PermissionMode.Should().Be(AutopilotSettings.DefaultAutonomyMode).And.NotBe("bypassPermissions");
+        Assert.Equal(AutopilotSettings.DefaultAutonomyMode, request.PermissionMode);
+        Assert.NotEqual("bypassPermissions", request.PermissionMode);
     }
 }

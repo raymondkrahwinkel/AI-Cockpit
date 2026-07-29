@@ -1,5 +1,4 @@
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -13,14 +12,14 @@ public class AutopilotRunEnvironmentTests
     [Fact]
     public void IsolateFor_AGitRepository_Isolates()
     {
-        AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Repository).Should().BeTrue();
+        Assert.True(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Repository));
     }
 
     [Fact]
     public void IsolateFor_ANonRepository_DoesNotIsolate()
     {
         // The one case that runs without isolation — a plain folder the host confirmed is not a git repository.
-        AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.NotARepository).Should().BeFalse();
+        Assert.False(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.NotARepository));
     }
 
     [Fact]
@@ -28,6 +27,6 @@ public class AutopilotRunEnvironmentTests
     {
         // An older host or a failed probe answers Unknown — it must be treated as needing isolation, never as a licence
         // to run free, so the guard is never dropped by an inconclusive answer.
-        AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Unknown).Should().BeTrue();
+        Assert.True(AutopilotRunEnvironment.IsolateFor(GitDirectoryStatus.Unknown));
     }
 }

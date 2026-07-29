@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -33,7 +32,7 @@ public class AutopilotSettingsSectionsTests
     {
         var control = _Control();
 
-        control.SectionTitles.Should().Equal("CEO (planning)", "Cost & tokens", "Run safety", "Templates");
+        Assert.Equal(new[] { "CEO (planning)", "Cost & tokens", "Run safety", "Templates" }, control.SectionTitles);
     }
 
     [Fact]
@@ -45,10 +44,8 @@ public class AutopilotSettingsSectionsTests
         {
             control.ShowSection(index);
 
-            var page = control.Content.Should().BeOfType<StackPanel>().Subject;
-            page.Children[0].Should().BeOfType<TextBlock>()
-                .Which.Text.Should().Be(control.SectionTitles[index],
-                    "a section keeps its own heading, so it still says what it is once it is the only thing on screen");
+            var page = Assert.IsType<StackPanel>(control.Content);
+            Assert.Equal(control.SectionTitles[index], Assert.IsType<TextBlock>(page.Children[0]).Text);
         }
     }
 
@@ -57,9 +54,7 @@ public class AutopilotSettingsSectionsTests
     {
         var control = _Control();
 
-        control.Content.Should().BeOfType<StackPanel>()
-            .Which.Children[0].Should().BeOfType<TextBlock>()
-            .Which.Text.Should().Be("CEO (planning)");
+        Assert.Equal("CEO (planning)", Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(control.Content).Children[0]).Text);
     }
 
     private static AutopilotSettingsControl _Control()

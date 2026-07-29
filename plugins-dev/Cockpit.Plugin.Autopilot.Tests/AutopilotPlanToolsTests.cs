@@ -2,7 +2,6 @@ using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Tracking;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
@@ -24,14 +23,14 @@ public class AutopilotPlanToolsTests
             ]
             """;
 
-        AutopilotPlanTools.TryParseSteps(json, out var steps, out var error).Should().BeTrue();
-        error.Should().BeNull();
-        steps.Should().HaveCount(2);
-        steps[0].Should().BeEquivalentTo(new
+        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out var error));
+        Assert.Null(error);
+        Assert.Equal(2, System.Linq.Enumerable.Count(steps));
+        Assert.Equivalent(new
         {
             Id = "1", Title = "Code", ProfileLabel = "Claude", Model = "Sonnet", Mode = GateMode.Skip, Status = AutopilotStepStatus.Pending,
-        });
-        steps[1].Mode.Should().Be(GateMode.Hard);
+        }, steps[0]);
+        Assert.Equal(GateMode.Hard, steps[1].Mode);
     }
 
     [Fact]
@@ -45,10 +44,10 @@ public class AutopilotPlanToolsTests
             ]
             """;
 
-        AutopilotPlanTools.TryParseSteps(json, out var steps, out _).Should().BeTrue();
-        steps[0].IsReviewGate.Should().BeTrue();
-        steps[0].Mode.Should().Be(GateMode.Hard);
-        steps[1].IsReviewGate.Should().BeFalse();
+        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
+        Assert.True(steps[0].IsReviewGate);
+        Assert.Equal(GateMode.Hard, steps[0].Mode);
+        Assert.False(steps[1].IsReviewGate);
     }
 
     [Fact]
@@ -61,9 +60,9 @@ public class AutopilotPlanToolsTests
             ]
             """;
 
-        AutopilotPlanTools.TryParseSteps(json, out var steps, out _).Should().BeTrue();
-        steps[0].McpServers.Should().Equal("cockpit-verify");
-        steps[1].McpServers.Should().BeEmpty();
+        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
+        Assert.Equal(new[] { "cockpit-verify" }, steps[0].McpServers);
+        Assert.Empty(steps[1].McpServers);
     }
 
     [Fact]
@@ -71,8 +70,8 @@ public class AutopilotPlanToolsTests
     {
         const string json = """[{"id":"5","title":"Conventions","profile":"Qwen (local)","brief":"b"}]""";
 
-        AutopilotPlanTools.TryParseSteps(json, out var steps, out _).Should().BeTrue();
-        steps[0].Model.Should().BeNull();
+        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
+        Assert.Null(steps[0].Model);
     }
 
     [Fact]
@@ -86,32 +85,32 @@ public class AutopilotPlanToolsTests
             ]
             """;
 
-        AutopilotPlanTools.TryParseSteps(json, out var steps, out _).Should().BeTrue();
-        steps[0].AgentCount.Should().Be(3);
-        steps[1].AgentCount.Should().Be(1);
-        steps[2].AgentCount.Should().Be(1);
+        Assert.True(AutopilotPlanTools.TryParseSteps(json, out var steps, out _));
+        Assert.Equal(3, steps[0].AgentCount);
+        Assert.Equal(1, steps[1].AgentCount);
+        Assert.Equal(1, steps[2].AgentCount);
     }
 
     [Fact]
     public void TryParseSteps_RejectsAnEmptyArray()
     {
-        AutopilotPlanTools.TryParseSteps("[]", out var steps, out var error).Should().BeFalse();
-        steps.Should().BeEmpty();
-        error.Should().Contain("at least one step");
+        Assert.False(AutopilotPlanTools.TryParseSteps("[]", out var steps, out var error));
+        Assert.Empty(steps);
+        Assert.Contains("at least one step", error);
     }
 
     [Fact]
     public void TryParseSteps_RejectsInvalidJson()
     {
-        AutopilotPlanTools.TryParseSteps("not json", out _, out var error).Should().BeFalse();
-        error.Should().Contain("not valid JSON");
+        Assert.False(AutopilotPlanTools.TryParseSteps("not json", out _, out var error));
+        Assert.Contains("not valid JSON", error);
     }
 
     [Fact]
     public void TryParseSteps_RejectsAStepWithoutIdOrTitle()
     {
-        AutopilotPlanTools.TryParseSteps("""[{"title":"no id","profile":"Claude"}]""", out _, out var error).Should().BeFalse();
-        error.Should().Contain("id and a title");
+        Assert.False(AutopilotPlanTools.TryParseSteps("""[{"title":"no id","profile":"Claude"}]""", out _, out var error));
+        Assert.Contains("id and a title", error);
     }
 
     // AC-210: the (profile, model) validity check the CEO's plan is held to.
@@ -127,38 +126,43 @@ public class AutopilotPlanToolsTests
     [Fact]
     public void ValidateStepProfiles_AcceptsAModelOnTheProfilesList_AndAnEmptyModelForALocalProfile()
     {
-        AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "opus")], Roster).Should().BeNull();
+        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "opus")], Roster));
         // Case-insensitive: the CEO may write "Opus" where the roster lists "opus".
-        AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "Sonnet")], Roster).Should().BeNull();
-        AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", null)], Roster).Should().BeNull();
+        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "Sonnet")], Roster));
+        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", null)], Roster));
     }
 
     [Fact]
     public void ValidateStepProfiles_RejectsAModelTheProfileDoesNotOffer()
     {
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "gpt-5")], Roster);
-        error.Should().Contain("Claude").And.Contain("gpt-5").And.Contain("opus, sonnet, haiku");
+        Assert.Contains("Claude", error);
+        Assert.Contains("gpt-5", error);
+        Assert.Contains("opus, sonnet, haiku", error);
     }
 
     [Fact]
     public void ValidateStepProfiles_RejectsAChoiceProfileWithNoModel()
     {
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", null)], Roster);
-        error.Should().Contain("Claude").And.Contain("no model");
+        Assert.Contains("Claude", error);
+        Assert.Contains("no model", error);
     }
 
     [Fact]
     public void ValidateStepProfiles_RejectsAModelOnALocalProfileThatPinsItsOwn()
     {
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", "qwen2.5-coder")], Roster);
-        error.Should().Contain("Qwen (local)").And.Contain("leave 'model' empty");
+        Assert.Contains("Qwen (local)", error);
+        Assert.Contains("leave 'model' empty", error);
     }
 
     [Fact]
     public void ValidateStepProfiles_RejectsAProfileThatIsNotConfigured()
     {
         var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Codex", null)], Roster);
-        error.Should().Contain("Codex").And.Contain("not one of the configured profiles");
+        Assert.Contains("Codex", error);
+        Assert.Contains("not one of the configured profiles", error);
     }
 
     [Fact]
@@ -166,7 +170,7 @@ public class AutopilotPlanToolsTests
     {
         // With no roster to check against (a host that supplies none) the plan-time gate is a no-op — the roster is the
         // only source of truth it can check, and rejecting every plan would be worse than deferring to the embed-time net.
-        AutopilotPlanTools.ValidateStepProfiles([_Step("Anything", "whatever")], []).Should().BeNull();
+        Assert.Null(AutopilotPlanTools.ValidateStepProfiles([_Step("Anything", "whatever")], []));
     }
 
     [Fact]
@@ -178,8 +182,8 @@ public class AutopilotPlanToolsTests
             "Ship it",
             """[{"id":"1","title":"Code","profile":"Claude","model":"gpt-5","brief":"b","hard":true}]""");
 
-        _Ok(result).Should().BeFalse();
-        result.Should().Contain("gpt-5");
+        Assert.False(_Ok(result));
+        Assert.Contains("gpt-5", result);
     }
 
     [Fact]
@@ -196,8 +200,8 @@ public class AutopilotPlanToolsTests
             ]
             """);
 
-        _Ok(result).Should().BeTrue();
-        controller.Plan!.Steps.Should().HaveCount(2);
+        Assert.True(_Ok(result));
+        Assert.Equal(2, System.Linq.Enumerable.Count(controller.Plan!.Steps));
     }
 
     private static (AutopilotPlanTools Tools, AutopilotPlanController Controller) _PlanningTools(
@@ -233,8 +237,9 @@ public class AutopilotPlanToolsTests
             "Work the epic",
             """[{"id":"1","title":"Fix the child","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
 
-        _Ok(result).Should().BeFalse();
-        result.Should().Contain("AC-1").And.Contain("Backlog");
+        Assert.False(_Ok(result));
+        Assert.Contains("AC-1", result);
+        Assert.Contains("Backlog", result);
     }
 
     [Fact]
@@ -252,8 +257,8 @@ public class AutopilotPlanToolsTests
             "Work the epic",
             """[{"id":"1","title":"A perfectly normal-sounding step title","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
 
-        _Ok(result).Should().BeFalse();
-        result.Should().Contain("Brainstorm");
+        Assert.False(_Ok(result));
+        Assert.Contains("Brainstorm", result);
     }
 
     [Fact]
@@ -269,8 +274,8 @@ public class AutopilotPlanToolsTests
             "Work the epic",
             """[{"id":"1","title":"Fix the child","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-1"}]""");
 
-        _Ok(result).Should().BeTrue();
-        controller.Plan!.Steps[0].SourceIssueId.Should().Be("AC-1");
+        Assert.True(_Ok(result));
+        Assert.Equal("AC-1", controller.Plan!.Steps[0].SourceIssueId);
     }
 
     [Fact]
@@ -286,7 +291,7 @@ public class AutopilotPlanToolsTests
             "Ship it",
             """[{"id":"1","title":"Do the work","profile":"Claude","model":"sonnet","brief":"b","hard":false,"issueId":"AC-343"}]""");
 
-        _Ok(result).Should().BeTrue();
+        Assert.True(_Ok(result));
         await tracker.DidNotReceive().GetIssueSnapshotAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -308,7 +313,7 @@ public class AutopilotPlanToolsTests
             ]
             """);
 
-        _Ok(result).Should().BeTrue();
+        Assert.True(_Ok(result));
         await tracker.Received(1).GetIssueSnapshotAsync("AC-1", Arg.Any<CancellationToken>());
     }
 
@@ -323,7 +328,7 @@ public class AutopilotPlanToolsTests
             "Work the epic",
             """[{"id":"1","title":"A step with no tracker item","profile":"Claude","model":"sonnet","brief":"b","hard":false}]""");
 
-        _Ok(result).Should().BeTrue();
+        Assert.True(_Ok(result));
     }
 
     private sealed class FakeStorage : IPluginStorage

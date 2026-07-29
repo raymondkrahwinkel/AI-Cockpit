@@ -1,6 +1,4 @@
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -21,9 +19,9 @@ public class AutopilotRunTests
             ["title"] = "Autopilot b — trigger",
         }));
 
-        run.Tracker.Should().Be("youtrack");
-        run.IssueId.Should().Be("AC-150");
-        run.Title.Should().Be("Autopilot b — trigger");
+        Assert.Equal("youtrack", run.Tracker);
+        Assert.Equal("AC-150", run.IssueId);
+        Assert.Equal("Autopilot b — trigger", run.Title);
     }
 
     [Fact]
@@ -51,8 +49,8 @@ public class AutopilotRunTests
     {
         var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string> { ["issue"] = "42" }, caller: "github-issues"));
 
-        run.Tracker.Should().Be("github-issues");
-        run.Title.Should().BeEmpty();
+        Assert.Equal("github-issues", run.Tracker);
+        Assert.Empty(run.Title);
     }
 
     [Fact]
@@ -65,8 +63,8 @@ public class AutopilotRunTests
             ["repository"] = "owner/repo",
         }));
 
-        run.Data.Should().ContainKey("url").WhoseValue.Should().Be("https://example/7");
-        run.Data.Should().ContainKey("repository");
+        Assert.Equal("https://example/7", run.Data["url"]);
+        Assert.True(run.Data.ContainsKey("repository"));
     }
 
     [Fact]
@@ -83,8 +81,8 @@ public class AutopilotRunTests
 
         var source = AutopilotPlanSource.FromRun(run);
 
-        source.Should().NotBeNull();
-        source!.Url.Should().Be("https://youtrack.example/issue/AC-138");
+        Assert.NotNull(source);
+        Assert.Equal("https://youtrack.example/issue/AC-138", source!.Url);
     }
 
     [Fact]
@@ -92,6 +90,6 @@ public class AutopilotRunTests
     {
         var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string> { ["issue"] = "AC-1" }));
 
-        AutopilotPlanSource.FromRun(run)!.Url.Should().BeEmpty();
+        Assert.Empty(AutopilotPlanSource.FromRun(run)!.Url);
     }
 }

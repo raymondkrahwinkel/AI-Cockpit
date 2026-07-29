@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -39,13 +37,14 @@ public class AutopilotTemplateStoreTests
         // A fresh store over the same storage is the restart.
         var restored = new AutopilotTemplateStore(storage).List([]);
 
-        var template = restored.Should().ContainSingle().Subject;
-        template.Id.Should().Be("user.mine");
-        template.Origin.Should().Be(AutopilotTemplateOrigin.User);
-        template.Body.Should().Be("Do {{input.thing}}");
-        template.RequiredPlaceholders.Should().ContainSingle().Which.Should().Be("input.thing");
-        template.Editable.Should().BeTrue();
-        template.Deletable.Should().BeTrue();
+        var template = Assert.Single(restored);
+        Assert.Equal("user.mine", template.Id);
+        Assert.Equal(AutopilotTemplateOrigin.User, template.Origin);
+        Assert.Equal("Do {{input.thing}}", template.Body);
+        Assert.NotNull(template.RequiredPlaceholders);
+        Assert.Equal("input.thing", Assert.Single(template.RequiredPlaceholders));
+        Assert.True(template.Editable);
+        Assert.True(template.Deletable);
     }
 
     [Fact]
@@ -56,15 +55,15 @@ public class AutopilotTemplateStoreTests
 
         var combined = store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]);
 
-        combined.Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(combined));
         var plugin = combined[0];
-        plugin.Id.Should().Be("acme.triage");
-        plugin.Origin.Should().Be(AutopilotTemplateOrigin.Plugin);
-        plugin.OwnerPluginId.Should().Be("acme");
-        plugin.Editable.Should().BeTrue();     // plugin templates are editable...
-        plugin.Deletable.Should().BeFalse();   // ...but never deletable
-        combined[1].Id.Should().Be("user.mine");
-        combined[1].Origin.Should().Be(AutopilotTemplateOrigin.User);
+        Assert.Equal("acme.triage", plugin.Id);
+        Assert.Equal(AutopilotTemplateOrigin.Plugin, plugin.Origin);
+        Assert.Equal("acme", plugin.OwnerPluginId);
+        Assert.True(plugin.Editable);     // plugin templates are editable...
+        Assert.False(plugin.Deletable);   // ...but never deletable
+        Assert.Equal("user.mine", combined[1].Id);
+        Assert.Equal(AutopilotTemplateOrigin.User, combined[1].Origin);
     }
 
     [Fact]
@@ -75,13 +74,14 @@ public class AutopilotTemplateStoreTests
         store.UpsertOverride(new AutopilotTemplateOverride("acme.triage", "My triage", "My {{issue.id}} brief", ["issue.id"]));
 
         var restored = new AutopilotTemplateStore(storage);
-        var template = restored.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]).Should().ContainSingle().Subject;
+        var template = Assert.Single(restored.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]));
 
-        template.Name.Should().Be("My triage");                  // the override's fields win...
-        template.Body.Should().Be("My {{issue.id}} brief");
-        template.RequiredPlaceholders.Should().ContainSingle().Which.Should().Be("issue.id");
-        template.Origin.Should().Be(AutopilotTemplateOrigin.Plugin); // ...while it stays a plugin template
-        template.OwnerPluginId.Should().Be("acme");
+        Assert.Equal("My triage", template.Name);                  // the override's fields win...
+        Assert.Equal("My {{issue.id}} brief", template.Body);
+        Assert.NotNull(template.RequiredPlaceholders);
+        Assert.Equal("issue.id", Assert.Single(template.RequiredPlaceholders));
+        Assert.Equal(AutopilotTemplateOrigin.Plugin, template.Origin); // ...while it stays a plugin template
+        Assert.Equal("acme", template.OwnerPluginId);
     }
 
     [Fact]
@@ -92,10 +92,10 @@ public class AutopilotTemplateStoreTests
 
         store.ResetOverride("acme.triage");
 
-        var template = store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]).Should().ContainSingle().Subject;
-        template.Name.Should().Be("Triage");                 // the original registration is back...
-        template.Body.Should().Be("Triage {{issue.id}}");
-        store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]).Should().HaveCount(1); // ...the template itself was never removed
+        var template = Assert.Single(store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")]));
+        Assert.Equal("Triage", template.Name);                 // the original registration is back...
+        Assert.Equal("Triage {{issue.id}}", template.Body);
+        Assert.Single(store.List([_Registration("acme.triage", "Triage", "Triage {{issue.id}}")])); // ...the template itself was never removed
     }
 
     [Fact]
@@ -105,10 +105,10 @@ public class AutopilotTemplateStoreTests
         store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "Mine", "body"));
 
         store.DeleteUserTemplate("acme.triage"); // a plugin id — not a user template, so nothing is removed
-        store.List([_Registration("acme.triage", "Triage", "t")]).Should().HaveCount(2);
+        Assert.Equal(2, System.Linq.Enumerable.Count(store.List([_Registration("acme.triage", "Triage", "t")])));
 
         store.DeleteUserTemplate("user.mine");   // the user template — gone
-        store.List([_Registration("acme.triage", "Triage", "t")]).Select(t => t.Id).Should().ContainSingle().Which.Should().Be("acme.triage");
+        Assert.Equal("acme.triage", Assert.Single(store.List([_Registration("acme.triage", "Triage", "t")]).Select(t => t.Id)));
     }
 
     [Fact]
@@ -129,18 +129,18 @@ public class AutopilotTemplateStoreTests
             _Registration("acme.release", "Release", "Cut a release"),
         ]);
 
-        combined.Select(t => t.Id).Should().Equal("acme.triage", "acme.release", "user.mine");
+        Assert.Equal(new[] { "acme.triage", "acme.release", "user.mine" }, combined.Select(t => t.Id));
 
-        combined[0].Name.Should().Be("My triage");                       // the override won over the registration...
-        combined[0].Body.Should().Be("My {{issue.id}}");
-        combined[0].Origin.Should().Be(AutopilotTemplateOrigin.Plugin);  // ...while it stayed a plugin template
-        combined[0].Deletable.Should().BeFalse();
+        Assert.Equal("My triage", combined[0].Name);                       // the override won over the registration...
+        Assert.Equal("My {{issue.id}}", combined[0].Body);
+        Assert.Equal(AutopilotTemplateOrigin.Plugin, combined[0].Origin);  // ...while it stayed a plugin template
+        Assert.False(combined[0].Deletable);
 
-        combined[1].Name.Should().Be("Release");                         // an un-overridden registration shows through as-is
-        combined[1].Origin.Should().Be(AutopilotTemplateOrigin.Plugin);
+        Assert.Equal("Release", combined[1].Name);                         // an un-overridden registration shows through as-is
+        Assert.Equal(AutopilotTemplateOrigin.Plugin, combined[1].Origin);
 
-        combined[2].Origin.Should().Be(AutopilotTemplateOrigin.User);    // the operator's own, deletable
-        combined[2].Deletable.Should().BeTrue();
+        Assert.Equal(AutopilotTemplateOrigin.User, combined[2].Origin);    // the operator's own, deletable
+        Assert.True(combined[2].Deletable);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public class AutopilotTemplateStoreTests
 
         var act = () => store.UpsertUserTemplate(AutopilotTemplate.ForPlugin("acme", new PluginAutopilotTemplate("acme.triage", "Triage", "body")));
 
-        act.Should().Throw<ArgumentException>();
+        Assert.Throws<ArgumentException>(act);
     }
 
     [Fact]
@@ -160,8 +160,8 @@ public class AutopilotTemplateStoreTests
         store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "First", "one"));
         store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "Second", "two"));
 
-        var template = store.List([]).Should().ContainSingle().Subject;
-        template.Name.Should().Be("Second");
-        template.Body.Should().Be("two");
+        var template = Assert.Single(store.List([]));
+        Assert.Equal("Second", template.Name);
+        Assert.Equal("two", template.Body);
     }
 }

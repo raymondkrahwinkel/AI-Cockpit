@@ -1,7 +1,5 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Workspaces;
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -19,8 +17,8 @@ public class CeoBusyIndicatorModelTests
 
         using var model = new CeoBusyIndicatorModel(session, pushed.Add);
 
-        model.IsWorking.Should().BeTrue();
-        pushed.Should().Equal(true);
+        Assert.True(model.IsWorking);
+        Assert.Equal(new[] { true }, pushed);
     }
 
     [Fact]
@@ -32,13 +30,13 @@ public class CeoBusyIndicatorModelTests
         using var model = new CeoBusyIndicatorModel(session, pushed.Add);
 
         session.Raise(true);
-        model.IsWorking.Should().BeTrue();
+        Assert.True(model.IsWorking);
 
         session.Raise(false);
-        model.IsWorking.Should().BeFalse();
+        Assert.False(model.IsWorking);
 
         // The initial push plus each flip, in order.
-        pushed.Should().Equal(false, true, false);
+        Assert.Equal(new[] { false, true, false }, pushed);
     }
 
     [Fact]
@@ -51,8 +49,8 @@ public class CeoBusyIndicatorModelTests
         model.Dispose();
         session.Raise(true);
 
-        model.IsWorking.Should().BeFalse();
-        pushed.Should().Equal(false);
+        Assert.False(model.IsWorking);
+        Assert.Equal(new[] { false }, pushed);
     }
 
     private sealed class FakeCeoSession : IEmbeddedSession

@@ -1,4 +1,3 @@
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -19,29 +18,29 @@ public class AutopilotPlanTests
     [Fact]
     public void Label_FallsBackToGoal_WhenNoNameSet()
     {
-        _Plan("Add a helper class").Label.Should().Be("Add a helper class");
+        Assert.Equal("Add a helper class", _Plan("Add a helper class").Label);
     }
 
     [Fact]
     public void Label_IsTheName_WhenSet()
     {
-        _Plan("Add a helper class", "HelperTwo").Label.Should().Be("HelperTwo");
+        Assert.Equal("HelperTwo", _Plan("Add a helper class", "HelperTwo").Label);
     }
 
     [Fact]
     public void SuggestedName_FallsThroughNameThenGoalThenFirstStepTitle()
     {
         // Name wins when set.
-        new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)]) { Name = "Chosen" }
-            .SuggestedName.Should().Be("Chosen");
+        Assert.Equal("Chosen", new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)]) { Name = "Chosen" }
+            .SuggestedName);
 
         // No name → the goal.
-        new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
-            .SuggestedName.Should().Be("the goal");
+        Assert.Equal("the goal", new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
+            .SuggestedName);
 
         // No name and no goal (the CEO passed neither) → the first step's title, so the field is never left empty.
-        new AutopilotPlan("", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
-            .SuggestedName.Should().Be("First step");
+        Assert.Equal("First step", new AutopilotPlan("", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
+            .SuggestedName);
     }
 
     [Fact]
@@ -49,14 +48,14 @@ public class AutopilotPlanTests
     {
         // A tracker-triggered run reads as "AC-191 - …" in the queue and history (AC-199), on both the name and the
         // goal fallback.
-        _SourcePlan("Autopilot: enforce the rule").Label.Should().Be("AC-191 - Autopilot: enforce the rule");
-        _SourcePlan("the goal", "Chosen name").Label.Should().Be("AC-191 - Chosen name");
+        Assert.Equal("AC-191 - Autopilot: enforce the rule", _SourcePlan("Autopilot: enforce the rule").Label);
+        Assert.Equal("AC-191 - Chosen name", _SourcePlan("the goal", "Chosen name").Label);
     }
 
     [Fact]
     public void SuggestedName_PrefixesTheSourceIssueKey_ForATrackerRun()
     {
-        _SourcePlan("Autopilot: enforce the rule").SuggestedName.Should().Be("AC-191 - Autopilot: enforce the rule");
+        Assert.Equal("AC-191 - Autopilot: enforce the rule", _SourcePlan("Autopilot: enforce the rule").SuggestedName);
     }
 
     [Fact]
@@ -64,17 +63,17 @@ public class AutopilotPlanTests
     {
         // The CEO may already have proposed a prefixed name (or the prefix was applied once already, e.g. an approved
         // Name carried it in) — it must not become "AC-191 - AC-191 - …".
-        _SourcePlan("AC-191 - Autopilot: enforce", "AC-191 - Autopilot: enforce")
-            .Label.Should().Be("AC-191 - Autopilot: enforce");
-        _SourcePlan("AC-191 - Autopilot: enforce").SuggestedName.Should().Be("AC-191 - Autopilot: enforce");
+        Assert.Equal("AC-191 - Autopilot: enforce", _SourcePlan("AC-191 - Autopilot: enforce", "AC-191 - Autopilot: enforce")
+            .Label);
+        Assert.Equal("AC-191 - Autopilot: enforce", _SourcePlan("AC-191 - Autopilot: enforce").SuggestedName);
     }
 
     [Fact]
     public void SourcePrefix_IsNotApplied_ForACeoFirstPlan()
     {
         // No source → no issue key to prefix with; the name is left exactly as-is.
-        _Plan("Autopilot: enforce the rule").Label.Should().Be("Autopilot: enforce the rule");
-        _Plan("Autopilot: enforce the rule").SuggestedName.Should().Be("Autopilot: enforce the rule");
+        Assert.Equal("Autopilot: enforce the rule", _Plan("Autopilot: enforce the rule").Label);
+        Assert.Equal("Autopilot: enforce the rule", _Plan("Autopilot: enforce the rule").SuggestedName);
     }
 
     [Fact]
@@ -83,9 +82,9 @@ public class AutopilotPlanTests
         var plan = _Plan("Add a helper class");
         var named = plan.WithName("HelperTwo");
 
-        named.Name.Should().Be("HelperTwo");
-        named.Steps.Should().BeEquivalentTo(plan.Steps);
-        plan.Name.Should().BeEmpty();
+        Assert.Equal("HelperTwo", named.Name);
+        Assert.Equivalent(plan.Steps, named.Steps);
+        Assert.Empty(plan.Name);
     }
 
     [Fact]
@@ -94,9 +93,9 @@ public class AutopilotPlanTests
         var plan = _Plan("Add a helper class");
         var located = plan.WithWorkingDirectory("/home/ray/proj");
 
-        located.WorkingDirectory.Should().Be("/home/ray/proj");
-        located.Steps.Should().BeEquivalentTo(plan.Steps);
-        plan.WorkingDirectory.Should().BeEmpty();
+        Assert.Equal("/home/ray/proj", located.WorkingDirectory);
+        Assert.Equivalent(plan.Steps, located.Steps);
+        Assert.Empty(plan.WorkingDirectory);
     }
 
     // AC-434. Plain xUnit Assert here (not FluentAssertions, which the codebase is moving off — CSharp.md

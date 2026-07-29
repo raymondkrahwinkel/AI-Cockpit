@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Cockpit.Plugins.Abstractions.Profiles;
-using FluentAssertions;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -21,10 +20,10 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan);
 
-        brief.Should().Contain("Ship reading levels in the chat view");
-        brief.Should().Contain("youtrack AC-138");
-        brief.Should().Contain("Reading levels");
-        brief.Should().Contain(AutopilotPlanTools.QualifiedToolName);
+        Assert.Contains("Ship reading levels in the chat view", brief);
+        Assert.Contains("youtrack AC-138", brief);
+        Assert.Contains("Reading levels", brief);
+        Assert.Contains(AutopilotPlanTools.QualifiedToolName, brief);
     }
 
     [Fact]
@@ -43,13 +42,13 @@ public class AutopilotCeoBriefTests
         var brief = AutopilotCeoBrief.For(plan);
 
         // Reads are invited.
-        brief.Should().Contain("READ the tracker");
-        brief.Should().Contain("child issues");
-        brief.Should().Contain("parent for");
+        Assert.Contains("READ the tracker", brief);
+        Assert.Contains("child issues", brief);
+        Assert.Contains("parent for", brief);
         // Writes are forbidden while planning — the guardrail, not the tool names.
-        brief.Should().Contain("Do NOT move the issue's stage or post notes");
-        brief.Should().NotContain("autopilot_tracker_stage");
-        brief.Should().NotContain("autopilot_tracker_note");
+        Assert.Contains("Do NOT move the issue's stage or post notes", brief);
+        Assert.DoesNotContain("autopilot_tracker_stage", brief);
+        Assert.DoesNotContain("autopilot_tracker_note", brief);
     }
 
     [Fact]
@@ -61,8 +60,8 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan);
 
-        brief.Should().NotContain("READ the tracker");
-        brief.Should().NotContain("Do NOT move the issue's stage");
+        Assert.DoesNotContain("READ the tracker", brief);
+        Assert.DoesNotContain("Do NOT move the issue's stage", brief);
     }
 
     [Fact]
@@ -75,8 +74,8 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan);
 
-        brief.Should().Contain("What the issue asks for");
-        brief.Should().Contain("Add Developer/Focus/Simple reading levels to the SDK chat view.");
+        Assert.Contains("What the issue asks for", brief);
+        Assert.Contains("Add Developer/Focus/Simple reading levels to the SDK chat view.", brief);
     }
 
     [Fact]
@@ -86,15 +85,15 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan);
 
-        brief.Should().Contain("CEO-first");
-        brief.Should().Contain("ask them what this run should achieve");
-        brief.Should().Contain(AutopilotPlanTools.QualifiedToolName);
+        Assert.Contains("CEO-first", brief);
+        Assert.Contains("ask them what this run should achieve", brief);
+        Assert.Contains(AutopilotPlanTools.QualifiedToolName, brief);
     }
 
     [Fact]
     public void QualifiedToolName_CombinesTheEndpointAndToolName()
     {
-        AutopilotPlanTools.QualifiedToolName.Should().Be("mcp__cockpit-autopilot-plan__autopilot_plan");
+        Assert.Equal("mcp__cockpit-autopilot-plan__autopilot_plan", AutopilotPlanTools.QualifiedToolName);
     }
 
     [Fact]
@@ -109,17 +108,17 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan, profiles);
 
-        brief.Should().Contain("Qwen (local)");
-        brief.Should().Contain("runs locally, free");
-        brief.Should().Contain("Claude");
-        brief.Should().Contain("hosted API, paid");
+        Assert.Contains("Qwen (local)", brief);
+        Assert.Contains("runs locally, free", brief);
+        Assert.Contains("Claude", brief);
+        Assert.Contains("hosted API, paid", brief);
         // The suggestions ride along so the CEO knows a profile's model options.
-        brief.Should().Contain("opus, sonnet");
+        Assert.Contains("opus, sonnet", brief);
         // The cost-aware selection instruction: default cheap/local, reserve a paid model for steps that need it.
-        brief.Should().Contain("lean cheap");
-        brief.Should().Contain("local, free");
-        brief.Should().Contain("paid, hosted model");
-        brief.Should().Contain("say in the brief why");
+        Assert.Contains("lean cheap", brief);
+        Assert.Contains("local, free", brief);
+        Assert.Contains("paid, hosted model", brief);
+        Assert.Contains("say in the brief why", brief);
     }
 
     [Fact]
@@ -137,10 +136,10 @@ public class AutopilotCeoBriefTests
         // The roster teaches the CEO how to read the signals it has — local-vs-paid, and whatever the provider itself
         // declared about its models. It used to assert an order over the model names on top of that, which was the
         // reverse of the list it described (AC-256); these profiles declare no ranking, so it must claim none.
-        brief.Should().NotContain("lighter/cheaper to heavier/more capable");
-        brief.Should().Contain("in no particular order");
-        brief.Should().Contain("a local profile is usually a lighter model that can stall on a demanding step");
-        brief.Should().Contain("the cheapest option that can actually carry the step to a finished, committed result");
+        Assert.DoesNotContain("lighter/cheaper to heavier/more capable", brief);
+        Assert.Contains("in no particular order", brief);
+        Assert.Contains("a local profile is usually a lighter model that can stall on a demanding step", brief);
+        Assert.Contains("the cheapest option that can actually carry the step to a finished, committed result", brief);
     }
 
     [Fact]
@@ -152,12 +151,12 @@ public class AutopilotCeoBriefTests
 
         // The execution-fit instruction is unconditional (present even without a roster) and provider-neutral — it steers
         // an EXECUTING step onto a model that can carry it, and off the lightest option chosen merely because it is free.
-        brief.Should().Contain("EXECUTING step");
-        brief.Should().Contain("put an executing coding step on the lightest option merely because it is free");
-        brief.Should().Contain("genuinely do it");
+        Assert.Contains("EXECUTING step", brief);
+        Assert.Contains("put an executing coding step on the lightest option merely because it is free", brief);
+        Assert.Contains("genuinely do it", brief);
         // Provider-neutral: no brand is prescribed anywhere in the brief.
-        brief.Should().NotContain("Claude");
-        brief.Should().NotContain("qwen");
+        Assert.DoesNotContain("Claude", brief);
+        Assert.DoesNotContain("qwen", brief);
     }
 
     [Fact]
@@ -169,10 +168,10 @@ public class AutopilotCeoBriefTests
 
         // The CEO is told to write each step's brief so a light model executes it without interpreting or asking — the
         // second half of the fix (a sharper brief lets a cheaper model succeed).
-        brief.Should().Contain("glass-clear, imperative, fully self-sufficient instruction");
-        brief.Should().Contain("committed in the worktree");
-        brief.Should().Contain("even a light model builds it rather than \"analysing\" it");
-        brief.Should().Contain("cheapest-adequate model reinforce each other");
+        Assert.Contains("glass-clear, imperative, fully self-sufficient instruction", brief);
+        Assert.Contains("committed in the worktree", brief);
+        Assert.Contains("even a light model builds it rather than \"analysing\" it", brief);
+        Assert.Contains("cheapest-adequate model reinforce each other", brief);
     }
 
     [Fact]
@@ -180,11 +179,11 @@ public class AutopilotCeoBriefTests
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
 
-        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.CostFirst).Should().Contain("Cost comes first");
-        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.QualityFirst).Should().Contain("Quality comes first");
-        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.Balanced).Should().Contain("lean cheap");
+        Assert.Contains("Cost comes first", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.CostFirst));
+        Assert.Contains("Quality comes first", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.QualityFirst));
+        Assert.Contains("lean cheap", AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.Balanced));
         // The default is Balanced when no strategy is passed.
-        AutopilotCeoBrief.For(plan).Should().Contain("lean cheap");
+        Assert.Contains("lean cheap", AutopilotCeoBrief.For(plan));
     }
 
     [Fact]
@@ -194,8 +193,8 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan, profiles: null, ceoIdentity: "Zyra (personal)");
 
-        brief.Should().Contain("Zyra (personal)");
-        brief.Should().Contain("your identity for this run");
+        Assert.Contains("Zyra (personal)", brief);
+        Assert.Contains("your identity for this run", brief);
     }
 
     [Fact]
@@ -207,10 +206,10 @@ public class AutopilotCeoBriefTests
 
         // AC-197: the CEO is steered to scope-first, targeted search tools and the project graph/index, and away from
         // repeated whole-repo `bash grep -rn` sweeps that burn tokens.
-        brief.Should().Contain("scope first");
-        brief.Should().Contain("Grep, Glob, Read");
-        brief.Should().Contain("graph/index");
-        brief.Should().Contain("bash grep -rn");
+        Assert.Contains("scope first", brief);
+        Assert.Contains("Grep, Glob, Read", brief);
+        Assert.Contains("graph/index", brief);
+        Assert.Contains("bash grep -rn", brief);
     }
 
     [Fact]
@@ -301,10 +300,10 @@ public class AutopilotCeoBriefTests
 
         var brief = AutopilotCeoBrief.For(plan);
 
-        brief.Should().NotContain("Profiles you can assign steps to");
-        brief.Should().NotContain("your identity for this run");
+        Assert.DoesNotContain("Profiles you can assign steps to", brief);
+        Assert.DoesNotContain("your identity for this run", brief);
         // The cost guidance is unconditional — it stands even with no roster passed.
-        brief.Should().Contain("lean cheap");
+        Assert.Contains("lean cheap", brief);
     }
 
     // The brief is a wrapped raw string literal, so a sentence in it is broken by a newline and indentation wherever it

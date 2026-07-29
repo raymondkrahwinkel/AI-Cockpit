@@ -1,5 +1,3 @@
-using FluentAssertions;
-
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
@@ -22,8 +20,8 @@ public class AutopilotPlanControllerTests
 
         controller.BeginPlanning(plan);
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.Planning);
-        controller.Plan.Should().BeSameAs(plan);
+        Assert.Equal(AutopilotPlanPhase.Planning, controller.Phase);
+        Assert.Same(plan, controller.Plan);
     }
 
     [Fact]
@@ -35,8 +33,8 @@ public class AutopilotPlanControllerTests
         var revised = PlanWith(Step("1"), Step("2"));
         controller.UpdatePlan(revised);
 
-        controller.Plan.Should().BeSameAs(revised);
-        controller.Phase.Should().Be(AutopilotPlanPhase.Planning);
+        Assert.Same(revised, controller.Plan);
+        Assert.Equal(AutopilotPlanPhase.Planning, controller.Phase);
     }
 
     [Fact]
@@ -45,8 +43,8 @@ public class AutopilotPlanControllerTests
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(AutopilotPlan.Empty(null, "Goal"));
 
-        controller.Approve().Should().BeFalse();
-        controller.Phase.Should().Be(AutopilotPlanPhase.Planning);
+        Assert.False(controller.Approve());
+        Assert.Equal(AutopilotPlanPhase.Planning, controller.Phase);
     }
 
     [Fact]
@@ -55,20 +53,20 @@ public class AutopilotPlanControllerTests
         var controller = new AutopilotPlanController();
         controller.BeginPlanning(PlanWith(Step("1")));
 
-        controller.Approve().Should().BeTrue();
-        controller.Phase.Should().Be(AutopilotPlanPhase.Running);
+        Assert.True(controller.Approve());
+        Assert.Equal(AutopilotPlanPhase.Running, controller.Phase);
     }
 
     [Fact]
     public void BeginPlanning_WhileARunIsLive_IsRefused_LeavingTheRunUntouched()
     {
         var controller = new AutopilotPlanController();
-        controller.BeginPlanning(PlanWith(Step("1"))).Should().BeTrue();
+        Assert.True(controller.BeginPlanning(PlanWith(Step("1"))));
         controller.Approve();
 
-        controller.BeginPlanning(PlanWith(Step("other"))).Should().BeFalse();
-        controller.Phase.Should().Be(AutopilotPlanPhase.Running);
-        controller.Plan!.Steps.Should().ContainSingle().Which.Id.Should().Be("1");
+        Assert.False(controller.BeginPlanning(PlanWith(Step("other"))));
+        Assert.Equal(AutopilotPlanPhase.Running, controller.Phase);
+        Assert.Equal("1", Assert.Single(controller.Plan!.Steps).Id);
     }
 
     [Fact]
@@ -80,8 +78,8 @@ public class AutopilotPlanControllerTests
         controller.SettleStep("1", AutopilotStepStatus.Passed);
         controller.Settle();
 
-        controller.BeginPlanning(PlanWith(Step("2"))).Should().BeTrue();
-        controller.Phase.Should().Be(AutopilotPlanPhase.Planning);
+        Assert.True(controller.BeginPlanning(PlanWith(Step("2"))));
+        Assert.Equal(AutopilotPlanPhase.Planning, controller.Phase);
     }
 
     [Fact]
@@ -93,8 +91,8 @@ public class AutopilotPlanControllerTests
 
         controller.StartStep("1");
 
-        controller.ActiveStep!.Id.Should().Be("1");
-        controller.ActiveStep!.Status.Should().Be(AutopilotStepStatus.Running);
+        Assert.Equal("1", controller.ActiveStep!.Id);
+        Assert.Equal(AutopilotStepStatus.Running, controller.ActiveStep!.Status);
     }
 
     [Fact]
@@ -106,11 +104,11 @@ public class AutopilotPlanControllerTests
         controller.SettleStep("1", AutopilotStepStatus.Passed);
         controller.SettleStep("2", AutopilotStepStatus.Passed);
 
-        controller.AllSettled.Should().BeTrue();
+        Assert.True(controller.AllSettled);
         controller.Settle();
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
-        controller.BlockReason.Should().BeNull();
+        Assert.Equal(AutopilotPlanPhase.MergeReady, controller.Phase);
+        Assert.Null(controller.BlockReason);
     }
 
     [Fact]
@@ -124,8 +122,8 @@ public class AutopilotPlanControllerTests
 
         controller.Settle();
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.Blocked);
-        controller.BlockReason.Should().Contain("Step 1");
+        Assert.Equal(AutopilotPlanPhase.Blocked, controller.Phase);
+        Assert.Contains("Step 1", controller.BlockReason);
     }
 
     [Fact]
@@ -139,7 +137,7 @@ public class AutopilotPlanControllerTests
 
         controller.Settle();
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        Assert.Equal(AutopilotPlanPhase.MergeReady, controller.Phase);
     }
 
     [Fact]
@@ -150,10 +148,10 @@ public class AutopilotPlanControllerTests
         controller.Approve();
 
         controller.StartStep("1");
-        controller.Plan!.Steps[0].Attempts.Should().Be(1);
+        Assert.Equal(1, controller.Plan!.Steps[0].Attempts);
 
         controller.StartStep("1");
-        controller.Plan!.Steps[0].Attempts.Should().Be(2);
+        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
     }
 
     [Fact]
@@ -164,9 +162,9 @@ public class AutopilotPlanControllerTests
         controller.Approve();
         controller.StartStep("1");
 
-        controller.ValidateStep("1", AutopilotStepOutcome.Passed, maxAttempts: 2).Should().BeFalse();
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Passed);
-        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Passed, maxAttempts: 2));
+        Assert.Equal(AutopilotStepStatus.Passed, controller.Plan!.Steps[0].Status);
+        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -179,9 +177,9 @@ public class AutopilotPlanControllerTests
         controller.Approve();
         controller.StartStep("1"); // attempt 1
 
-        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeTrue();
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Pending);
-        controller.Plan!.Steps[0].Reworks.Should().Be(1);
+        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
+        Assert.Equal(AutopilotStepStatus.Pending, controller.Plan!.Steps[0].Status);
+        Assert.Equal(1, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -193,14 +191,14 @@ public class AutopilotPlanControllerTests
 
         // Attempt 1 → rejected → rework; attempt 2 → rejected → out of attempts → Failed, no more rework.
         controller.StartStep("1");
-        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeTrue();
+        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
         controller.StartStep("1");
-        controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2).Should().BeFalse();
+        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Rejected, maxAttempts: 2));
 
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
-        controller.Plan!.Steps[0].Attempts.Should().Be(2);
+        Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
+        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
         // Only the first rejection sent it back to rework; the second ran out of attempts and settled Failed directly.
-        controller.Plan!.Steps[0].Reworks.Should().Be(1);
+        Assert.Equal(1, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -214,9 +212,9 @@ public class AutopilotPlanControllerTests
         controller.Approve();
         controller.StartStep("1"); // attempt 1
 
-        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeTrue();
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Pending);
-        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
+        Assert.Equal(AutopilotStepStatus.Pending, controller.Plan!.Steps[0].Status);
+        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
     }
 
     [Fact]
@@ -228,16 +226,15 @@ public class AutopilotPlanControllerTests
 
         // Attempt 1 → faulted → back to Pending, no rework counted; attempt 2 → faulted → out of attempts → Failed.
         controller.StartStep("1");
-        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeTrue();
+        Assert.True(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
         controller.StartStep("1");
-        controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2).Should().BeFalse();
+        Assert.False(controller.ValidateStep("1", AutopilotStepOutcome.Faulted, maxAttempts: 2));
 
-        controller.Plan!.Steps[0].Status.Should().Be(AutopilotStepStatus.Failed);
-        controller.Plan!.Steps[0].Attempts.Should().Be(2);
-        controller.Plan!.Steps[0].Reworks.Should().Be(0);
+        Assert.Equal(AutopilotStepStatus.Failed, controller.Plan!.Steps[0].Status);
+        Assert.Equal(2, controller.Plan!.Steps[0].Attempts);
+        Assert.Equal(0, controller.Plan!.Steps[0].Reworks);
         // Attempts > 1 with zero reworks is exactly the run-restart shape AutopilotCorrection.Classify reads.
-        AutopilotCorrection.Classify(controller.Plan!.Steps[0].Status, controller.Plan!.Steps[0].Attempts, controller.Plan!.Steps[0].Reworks)
-            .Should().Be(AutopilotCorrectionKind.RunRestart);
+        Assert.Equal(AutopilotCorrectionKind.RunRestart, AutopilotCorrection.Classify(controller.Plan!.Steps[0].Status, controller.Plan!.Steps[0].Attempts, controller.Plan!.Steps[0].Reworks));
     }
 
     [Fact]
@@ -248,12 +245,12 @@ public class AutopilotPlanControllerTests
         controller.Approve();
 
         controller.Block("Which region should this target?");
-        controller.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        controller.PendingQuestion.Should().Contain("region");
+        Assert.Equal(AutopilotPlanPhase.AwaitingOperator, controller.Phase);
+        Assert.Contains("region", controller.PendingQuestion);
 
         controller.ResumeRunning();
-        controller.Phase.Should().Be(AutopilotPlanPhase.Running);
-        controller.PendingQuestion.Should().BeNull();
+        Assert.Equal(AutopilotPlanPhase.Running, controller.Phase);
+        Assert.Null(controller.PendingQuestion);
     }
 
     [Fact]
@@ -265,8 +262,8 @@ public class AutopilotPlanControllerTests
 
         controller.Park("No operator answer within the grace time.");
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.Blocked);
-        controller.BlockReason.Should().Contain("grace time");
+        Assert.Equal(AutopilotPlanPhase.Blocked, controller.Phase);
+        Assert.Contains("grace time", controller.BlockReason);
     }
 
     [Fact]
@@ -279,9 +276,9 @@ public class AutopilotPlanControllerTests
 
         controller.Stop("Stopped by operator");
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.Stopped);
-        controller.BlockReason.Should().Be("Stopped by operator");
-        controller.PendingQuestion.Should().BeNull();
+        Assert.Equal(AutopilotPlanPhase.Stopped, controller.Phase);
+        Assert.Equal("Stopped by operator", controller.BlockReason);
+        Assert.Null(controller.PendingQuestion);
     }
 
     [Fact]
@@ -294,8 +291,8 @@ public class AutopilotPlanControllerTests
 
         controller.Stop("Stopped by operator");
 
-        controller.Phase.Should().Be(AutopilotPlanPhase.Stopped);
-        controller.PendingQuestion.Should().BeNull();
+        Assert.Equal(AutopilotPlanPhase.Stopped, controller.Phase);
+        Assert.Null(controller.PendingQuestion);
     }
 
     [Fact]
@@ -309,7 +306,7 @@ public class AutopilotPlanControllerTests
 
         controller.Stop("Stopped by operator");
 
-        count.Should().Be(1);
+        Assert.Equal(1, count);
     }
 
     [Fact]
@@ -325,7 +322,7 @@ public class AutopilotPlanControllerTests
         controller.SettleStep("1", AutopilotStepStatus.Passed);
         controller.Settle();
 
-        count.Should().Be(5);
+        Assert.Equal(5, count);
     }
 
     [Fact]
