@@ -30,6 +30,21 @@ internal sealed class McpOAuthTokenEntry
     /// <summary>The endpoint the token was obtained for, so a server that later answers to the same name under a different address does not inherit it.</summary>
     public string? ResourceUrl { get; set; }
 
+    /// <summary>
+    /// The OAuth client id these tokens were issued to (AC-505). Without this surviving a restart, a stored
+    /// <see cref="RefreshToken"/> is dead on arrival: the SDK only attempts a refresh grant once it has a client
+    /// identity to present, and a fresh process has none until this is read back.
+    /// </summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>The client secret paired with <see cref="ClientId"/> — covered by the existing <c>secret</c> rule in <c>SecretFields</c>, same as <c>AccessToken</c>/<c>RefreshToken</c> are by <c>token</c>.</summary>
+    public string? ClientSecret { get; set; }
+
+    public string? TokenEndpointAuthMethod { get; set; }
+
+    /// <summary>The authorization server <see cref="ClientId"/> was registered with.</summary>
+    public string? AuthorizationServer { get; set; }
+
     public static McpOAuthTokenEntry FromDomain(string serverName, McpOAuthToken token) => new()
     {
         ServerName = serverName,
@@ -39,6 +54,10 @@ internal sealed class McpOAuthTokenEntry
         ExpiresAt = token.ExpiresAt,
         Scope = token.Scope,
         ResourceUrl = token.ResourceUrl,
+        ClientId = token.ClientId,
+        ClientSecret = token.ClientSecret,
+        TokenEndpointAuthMethod = token.TokenEndpointAuthMethod,
+        AuthorizationServer = token.AuthorizationServer,
     };
 
     public McpOAuthToken ToDomain() => new()
@@ -49,5 +68,9 @@ internal sealed class McpOAuthTokenEntry
         ExpiresAt = ExpiresAt,
         Scope = Scope,
         ResourceUrl = ResourceUrl,
+        ClientId = ClientId,
+        ClientSecret = ClientSecret,
+        TokenEndpointAuthMethod = TokenEndpointAuthMethod,
+        AuthorizationServer = AuthorizationServer,
     };
 }

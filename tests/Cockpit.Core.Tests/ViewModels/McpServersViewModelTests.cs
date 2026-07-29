@@ -119,6 +119,29 @@ public class McpServersViewModelTests
         Assert.Equal("k", config.ApiKey);
     }
 
+    [Fact]
+    public void ToConfig_ForOAuth_KeepsTrimmedScopesOverride_AndDropsItWhenAuthIsNotOAuth()
+    {
+        var editable = new EditableMcpServerViewModel(new McpServerConfig
+        {
+            Name = "depot",
+            Transport = McpTransport.Http,
+            Url = "https://depot.example/mcp",
+            Auth = McpServerAuth.OAuth,
+            OAuthScopes = "depot offline_access",
+        });
+
+        Assert.Equal("depot offline_access", editable.OAuthScopes);
+
+        editable.OAuthScopes = "  depot offline_access  ";
+        Assert.Equal("depot offline_access", editable.ToConfig().OAuthScopes);
+
+        // A row that used to be OAuth and got switched to another auth mode must not carry a stale scopes override
+        // along — the same rule ToConfig already applies to OAuthAuthority/OAuthClientId.
+        editable.Auth = McpServerAuth.ApiKey;
+        Assert.Null(editable.ToConfig().OAuthScopes);
+    }
+
     private sealed class FakeInternalMcpProvider(params McpServerConfig[] servers) : ICockpitInternalMcpProvider
     {
         public IReadOnlyList<McpServerConfig> GetServers() => servers;

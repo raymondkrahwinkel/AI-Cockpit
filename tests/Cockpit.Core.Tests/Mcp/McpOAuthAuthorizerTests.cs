@@ -1,6 +1,7 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Authentication;
 
 namespace Cockpit.Core.Tests.Mcp;
 
@@ -68,15 +69,19 @@ public class McpOAuthAuthorizerTests
     {
         var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(Server, interactive: false);
 
-        Assert.NotNull(options.AuthorizationRedirectDelegate);
-        var code = await options.AuthorizationRedirectDelegate(
-            new Uri("https://depot.example/connect/authorize"),
-            options.RedirectUri ?? new Uri("http://127.0.0.1:0/callback"),
+        Assert.NotNull(options.AuthorizationCallbackHandler);
+        var result = await options.AuthorizationCallbackHandler(
+            new AuthorizationCallbackContext
+            {
+                AuthorizationUri = new Uri("https://depot.example/connect/authorize"),
+                RedirectUri = options.RedirectUri ?? new Uri("http://127.0.0.1:0/callback"),
+            },
             CancellationToken.None);
 
-        // No authorization code means the SDK reports the flow as failed, which the coordinator reads as "this needs
-        // the operator". The alternative — a browser opening because a session started — is the thing being prevented.
-        Assert.Null(code);
+        // No authorization result means the SDK reports the flow as failed, which the coordinator reads as "this
+        // needs the operator". The alternative — a browser opening because a session started — is the thing being
+        // prevented.
+        Assert.Null(result);
     }
 
     [Fact]
@@ -84,14 +89,15 @@ public class McpOAuthAuthorizerTests
     {
         var stageRecorder = new McpSignInStageRecorder();
         var options = _CreateWithBrowser(tookTheUrl: true).CreateOptions(Server, interactive: true, stageRecorder);
-        Assert.NotNull(options.AuthorizationRedirectDelegate);
+        Assert.NotNull(options.AuthorizationCallbackHandler);
         Assert.NotNull(options.RedirectUri);
 
         // The authorization step waits on its listener for as long as it takes; a broken assumption here would hang
         // the suite rather than fail it, so the wait gets an outer bound.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var authorization = options.AuthorizationRedirectDelegate(
-            AuthorizationUri, options.RedirectUri, timeout.Token);
+        var authorization = options.AuthorizationCallbackHandler(
+            new AuthorizationCallbackContext { AuthorizationUri = AuthorizationUri, RedirectUri = options.RedirectUri },
+            timeout.Token);
 
         // Read before the redirect is driven, which is the only moment the hand-off stage stands alone: the URL has
         // gone to the desktop and nothing has arrived back yet. That is what an operator who closes the tab leaves
@@ -100,7 +106,7 @@ public class McpOAuthAuthorizerTests
 
         await _DriveTheRedirectAsync(options.RedirectUri, "code=the-code");
 
-        Assert.Equal("the-code", await authorization);
+        Assert.Equal("the-code", (await authorization)?.Code);
         Assert.Equal(McpSignInStage.AuthorizationReturned, stageRecorder.Reached);
     }
 
@@ -109,12 +115,13 @@ public class McpOAuthAuthorizerTests
     {
         var stageRecorder = new McpSignInStageRecorder();
         var options = _CreateWithBrowser(tookTheUrl: true).CreateOptions(Server, interactive: true, stageRecorder);
-        Assert.NotNull(options.AuthorizationRedirectDelegate);
+        Assert.NotNull(options.AuthorizationCallbackHandler);
         Assert.NotNull(options.RedirectUri);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var authorization = options.AuthorizationRedirectDelegate(
-            AuthorizationUri, options.RedirectUri, timeout.Token);
+        var authorization = options.AuthorizationCallbackHandler(
+            new AuthorizationCallbackContext { AuthorizationUri = AuthorizationUri, RedirectUri = options.RedirectUri },
+            timeout.Token);
         await _DriveTheRedirectAsync(options.RedirectUri, "error=access_denied");
 
         // The operator pressed Deny and watched this listener answer their own browser tab. Holding the stage back
@@ -129,15 +136,16 @@ public class McpOAuthAuthorizerTests
     {
         var stageRecorder = new McpSignInStageRecorder();
         var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(Server, interactive: true, stageRecorder);
-        Assert.NotNull(options.AuthorizationRedirectDelegate);
+        Assert.NotNull(options.AuthorizationCallbackHandler);
         Assert.NotNull(options.RedirectUri);
 
         // No redirect is driven, and none can be: nothing took the URL. The step used to block on its listener for a
         // callback that could never arrive, leaving the operator on a spinner with no message at all — worse than
         // the wrong message AC-457 set out to remove. Pinned as "already finished" rather than as a short wait,
         // because a wait that comes back on a timeout would pass this test by taking half a minute over it.
-        var authorization = options.AuthorizationRedirectDelegate(
-            NonBrowsableAuthorizationUri, options.RedirectUri, CancellationToken.None);
+        var authorization = options.AuthorizationCallbackHandler(
+            new AuthorizationCallbackContext { AuthorizationUri = NonBrowsableAuthorizationUri, RedirectUri = options.RedirectUri },
+            CancellationToken.None);
 
         Assert.True(authorization.IsCompleted, "the authorization step waited for a redirect that can never arrive");
 
@@ -158,5 +166,45 @@ public class McpOAuthAuthorizerTests
         Assert.NotNull(options.RedirectUri);
         Assert.Equal("127.0.0.1", options.RedirectUri.Host);
         Assert.Equal("/callback", options.RedirectUri.AbsolutePath);
+    }
+
+    [Fact]
+    public void CreateOptions_WithConfiguredOAuthScopes_SetsAScopeSelectorThatReplacesWhateverWasDerived()
+    {
+        var server = Server with { OAuthScopes = "depot custom-scope" };
+
+        var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(server);
+
+        // ClientOAuthOptions.Scopes is only ever a fallback the SDK falls through to when a server gave it nothing
+        // to derive from — it cannot override a server that advertises its own scopes_supported. ScopeSelector runs
+        // after that derivation and replaces it outright, which is what a per-server override (AC-505 criterion 3)
+        // actually needs. Fed an unrelated candidate list (standing in for whatever the SDK derived), it must still
+        // come back with exactly the configured scopes.
+        Assert.NotNull(options.ScopeSelector);
+        var selected = options.ScopeSelector(["openid", "offline_access", "depot"]);
+        Assert.Equal(["depot", "custom-scope"], selected);
+    }
+
+    [Fact]
+    public void CreateOptions_WithCommaSeparatedOAuthScopes_SplitsThemAnyway()
+    {
+        // The field is free text; a scope list pasted from a server's own docs is at least as often
+        // comma-separated as space-separated.
+        var server = Server with { OAuthScopes = "openid, offline_access,\tdepot" };
+
+        var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(server);
+
+        Assert.NotNull(options.ScopeSelector);
+        Assert.Equal(["openid", "offline_access", "depot"], options.ScopeSelector([]));
+    }
+
+    [Fact]
+    public void CreateOptions_WithoutConfiguredOAuthScopes_LeavesTheDerivationUntouched()
+    {
+        var options = _Create(new FakeMcpOAuthTokenStore()).CreateOptions(Server);
+
+        // No override configured — the SDK's own WWW-Authenticate → PRM → offline_access derivation must run
+        // unchanged, which means nothing here should intercept it.
+        Assert.Null(options.ScopeSelector);
     }
 }

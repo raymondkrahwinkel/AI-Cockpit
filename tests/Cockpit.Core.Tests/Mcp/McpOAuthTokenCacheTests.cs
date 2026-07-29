@@ -158,6 +158,36 @@ public class McpOAuthTokenCacheTests
     }
 
     [Fact]
+    public async Task StoreThenGetTokens_RoundTripsTheClientIdentity()
+    {
+        // AC-505: without these, a refresh token stored here is unusable beyond the connection that obtained it —
+        // the SDK only attempts a refresh grant once it has a client identity to present, and it restores that
+        // identity from exactly these fields (ClientOAuthProvider.RestoreCachedClientCredentials).
+        var (cache, store) = _Create();
+
+        await cache.StoreTokensAsync(new TokenContainer
+        {
+            AccessToken = "access",
+            RefreshToken = "refresh",
+            TokenType = "Bearer",
+            ExpiresIn = 3600,
+            ObtainedAt = DateTimeOffset.UtcNow,
+            ClientId = "dcr-client",
+            ClientSecret = "dcr-secret",
+            TokenEndpointAuthMethod = "client_secret_post",
+            AuthorizationServer = "https://depot.example",
+        });
+
+        var container = await cache.GetTokensAsync();
+
+        Assert.NotNull(container);
+        Assert.Equal("dcr-client", container.ClientId);
+        Assert.Equal("dcr-secret", container.ClientSecret);
+        Assert.Equal("client_secret_post", container.TokenEndpointAuthMethod);
+        Assert.Equal("https://depot.example", container.AuthorizationServer);
+    }
+
+    [Fact]
     public async Task StoreTokens_WithoutAnAccessToken_StoresNothing()
     {
         var (cache, store) = _Create();

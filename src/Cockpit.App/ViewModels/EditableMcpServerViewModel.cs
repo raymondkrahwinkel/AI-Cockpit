@@ -62,6 +62,10 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     [ObservableProperty]
     private string _oAuthClientId;
 
+    /// <summary>Space-separated OAuth scopes that override what the SDK would otherwise derive (AC-505).</summary>
+    [ObservableProperty]
+    private string _oAuthScopes;
+
     [ObservableProperty]
     private bool _enabled;
 
@@ -217,6 +221,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _apiKey = server.ApiKey ?? string.Empty;
         _oAuthAuthority = server.OAuthAuthority ?? string.Empty;
         _oAuthClientId = server.OAuthClientId ?? string.Empty;
+        _oAuthScopes = server.OAuthScopes ?? string.Empty;
         _enabled = server.Enabled;
         _selectedScope = McpServerScopeOption.For(server.Scope);
 
@@ -249,6 +254,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         ApiKey = IsApiKeyAuth && !string.IsNullOrWhiteSpace(ApiKey) ? ApiKey.Trim() : null,
         OAuthAuthority = IsOAuthAuth && !string.IsNullOrWhiteSpace(OAuthAuthority) ? OAuthAuthority.Trim() : null,
         OAuthClientId = IsOAuthAuth && !string.IsNullOrWhiteSpace(OAuthClientId) ? OAuthClientId.Trim() : null,
+        OAuthScopes = IsOAuthAuth && !string.IsNullOrWhiteSpace(OAuthScopes) ? OAuthScopes.Trim() : null,
         Headers = IsHttp
             ? [.. Headers.Select(row => new McpHeader(row.Name.Trim(), row.Value.Trim())).Where(header => header.IsComplete)]
             : [],

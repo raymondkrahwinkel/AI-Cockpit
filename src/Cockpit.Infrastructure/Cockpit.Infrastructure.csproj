@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <!-- SessionSwitch (lock/unlock) presence events for the Windows presence detector. The package is
          Windows-only at runtime but restores/builds on any host, keeping Infrastructure a plain net10.0
          assembly (no Windows target framework needed). -->
@@ -23,10 +23,13 @@
          localhost. Later (#26 tool-loop) the same IChatClient hosts MCP tools via ModelContextProtocol. -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <!-- 2.0.0 (AC-505): the client's ClientOAuthProvider now requests `offline_access` itself whenever the
+         authorization server advertises it (SEP-2207) — the reason McpOAuthAuthorizer no longer has to derive
+         a scope list by hand. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
     <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
-         tool-loop to the user's MCP servers. Kept on the same 1.4.x line as the AspNetCore server package. -->
-    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+         tool-loop to the user's MCP servers. Kept on the same line as the AspNetCore server package. -->
+    <PackageReference Include="ModelContextProtocol" Version="2.0.0" />
     <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running the multilingual SupertonicTTS model in-proc —
          no Python, no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the model's own
          sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on

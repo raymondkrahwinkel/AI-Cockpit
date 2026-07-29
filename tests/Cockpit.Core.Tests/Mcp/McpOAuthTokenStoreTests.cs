@@ -30,6 +30,10 @@ public class McpOAuthTokenStoreTests : IDisposable
         ExpiresAt = new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero),
         Scope = "mcp:read",
         ResourceUrl = "https://depot.example/mcp",
+        ClientId = "dcr-client",
+        ClientSecret = "dcr-secret",
+        TokenEndpointAuthMethod = "client_secret_post",
+        AuthorizationServer = "https://depot.example",
     };
 
     [Fact]
@@ -53,6 +57,14 @@ public class McpOAuthTokenStoreTests : IDisposable
         Assert.Equal("mcp:read", loaded.Scope);
         Assert.Equal("https://depot.example/mcp", loaded.ResourceUrl);
         Assert.Equal(new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero), loaded.ExpiresAt);
+
+        // AC-505: without these surviving the round-trip (this store persists to cockpit.json — the actual survival
+        // this ticket's refresh token needs to be worth anything across an app restart), a stored refresh token is
+        // dead on arrival on the next cold start.
+        Assert.Equal("dcr-client", loaded.ClientId);
+        Assert.Equal("dcr-secret", loaded.ClientSecret);
+        Assert.Equal("client_secret_post", loaded.TokenEndpointAuthMethod);
+        Assert.Equal("https://depot.example", loaded.AuthorizationServer);
     }
 
     [Fact]
@@ -109,6 +121,13 @@ public class McpOAuthTokenStoreTests : IDisposable
         Assert.True(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.AccessToken)));
         Assert.True(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.RefreshToken)));
         Assert.False(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.Scheme)));
+
+        // AC-505: ClientSecret rides the same "secret" rule ClientId is deliberately not named to avoid — a client
+        // id is not a credential and should stay visible, the way AccessToken/RefreshToken already distinguish
+        // themselves from Scheme above.
+        Assert.True(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.ClientSecret)));
+        Assert.False(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.ClientId)));
+        Assert.False(SecretFields.ByName.IsSecret(nameof(McpOAuthToken.AuthorizationServer)));
     }
 
     public void Dispose()

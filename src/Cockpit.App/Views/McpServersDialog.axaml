@@ -147,6 +147,12 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding OAuthClientId}"/>
                     </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
+                        <TextBlock Text="OAuth scopes (optional — space-separated, replaces what is derived automatically; include offline_access yourself if you want a refresh token)"
+                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding OAuthScopes}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="openid offline_access depot"/>
+                    </StackPanel>
 
                     <!-- Sign-in status (AC-355): both actions are offered only while this row still stands for the
                          server the store knows by that name (IsSignInAvailable) — a sign-in is filed under that name,

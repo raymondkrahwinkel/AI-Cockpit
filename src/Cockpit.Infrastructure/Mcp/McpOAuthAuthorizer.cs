@@ -49,9 +49,12 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // A fresh loopback port per server avoids collisions; the redirect is registered via DCR so a
             // dynamic port is fine. The delegate derives its listener prefix from this same RedirectUri.
             RedirectUri = new Uri($"http://127.0.0.1:{_FreeLoopbackPort()}/callback"),
-            AuthorizationRedirectDelegate = interactive
-                ? (authorizationUri, redirectUri, cancellationToken) =>
-                    _HandleAuthorizationAsync(authorizationUri, redirectUri, stageRecorder, cancellationToken)
+            // AuthorizationCallbackHandler, not the obsolete AuthorizationRedirectDelegate (MCP9007): the
+            // latter cannot carry `state`/`iss` back to the SDK, which is what lets it validate the redirect
+            // against the request it made (RFC 9207 mix-up mitigation).
+            AuthorizationCallbackHandler = interactive
+                ? (context, cancellationToken) =>
+                    _HandleAuthorizationAsync(context.AuthorizationUri, context.RedirectUri, stageRecorder, cancellationToken)
                 : _RefuseAuthorizationAsync,
 
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
@@ -70,6 +73,21 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             options.DynamicClientRegistration = new DynamicClientRegistrationOptions { ClientName = "AI-OS Cockpit" };
         }
 
+        // The escape hatch (AC-505): ClientOAuthOptions.Scopes is only ever a fallback the SDK uses when a server
+        // gives it nothing to derive from, so it cannot override a server that advertises its own (narrower or
+        // wider) scopes_supported — which is exactly the case a per-server operator override exists for. Replacing
+        // the candidate list via ScopeSelector, which runs after that derivation, is what actually overrides it.
+        if (!string.IsNullOrWhiteSpace(server.OAuthScopes))
+        {
+            // Split on whitespace or comma: the field is free text, and a scope list pasted from a server's own
+            // docs is at least as often comma-separated as space-separated. The authorization request itself
+            // always joins back with a plain space (OAuth's own separator), regardless of what was typed.
+            var configuredScopes = server.OAuthScopes.Split(
+                [' ', ',', '\t', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries);
+            options.ScopeSelector = _ => configuredScopes;
+        }
+
         return options;
     }
 
@@ -78,17 +96,17 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
     /// the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
     /// point being that starting a session must never make a browser window appear on its own.
     /// </summary>
-    private Task<string?> _RefuseAuthorizationAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
+    private Task<AuthorizationResult?> _RefuseAuthorizationAsync(AuthorizationCallbackContext context, CancellationToken cancellationToken)
     {
         logger.LogInformation("An MCP server needs an interactive sign-in, which was not requested here; leaving it unauthorized.");
-        return Task.FromResult<string?>(null);
+        return Task.FromResult<AuthorizationResult?>(null);
     }
 
     // Opens the system browser at the authorization URL and waits on a loopback listener for the redirect,
     // returning the authorization code (or null on failure/cancel — the SDK then reports the auth failure).
     // Each stage is recorded where it is reached and never in advance (AC-457): the operator is told which stage
     // stopped, so a stage noted before the thing happened would put the untruth back one layer down.
-    private async Task<string?> _HandleAuthorizationAsync(
+    private async Task<AuthorizationResult?> _HandleAuthorizationAsync(
         Uri authorizationUri,
         Uri redirectUri,
         McpSignInStageRecorder? stageRecorder,
@@ -133,7 +151,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // the code is in hand would tell someone who watched their own browser return that nothing came back.
             stageRecorder?.Record(McpSignInStage.AuthorizationReturned);
 
-            var (code, error) = _ParseCallback(context.Request.Url?.Query);
+            var (code, state, iss, error) = _ParseCallback(context.Request.Url?.Query);
             await _RespondAsync(context, error is null).ConfigureAwait(false);
 
             if (error is not null)
@@ -142,7 +160,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
                 return null;
             }
 
-            return code;
+            return new AuthorizationResult { Code = code, State = state, Iss = iss };
         }
         catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or OperationCanceledException)
         {
@@ -151,9 +169,11 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         }
     }
 
-    private static (string? Code, string? Error) _ParseCallback(string? query)
+    private static (string? Code, string? State, string? Iss, string? Error) _ParseCallback(string? query)
     {
         string? code = null;
+        string? state = null;
+        string? iss = null;
         string? error = null;
 
         foreach (var pair in (query ?? string.Empty).TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
@@ -162,13 +182,20 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             var key = Uri.UnescapeDataString(parts[0]);
             var value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
 
-            if (key == "code")
+            switch (key)
             {
-                code = value;
-            }
-            else if (key == "error")
-            {
-                error = value;
+                case "code":
+                    code = value;
+                    break;
+                case "state":
+                    state = value;
+                    break;
+                case "iss":
+                    iss = value;
+                    break;
+                case "error":
+                    error = value;
+                    break;
             }
         }
 
@@ -177,7 +204,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             error = "no_code";
         }
 
-        return (code, error);
+        return (code, state, iss, error);
     }
 
     private static async Task _RespondAsync(HttpListenerContext context, bool success)
