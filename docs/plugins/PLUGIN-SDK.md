@@ -45,11 +45,11 @@ The shortest path from nothing to a running plugin:
 # 1. Scaffold from the template (see "Scaffold a new plugin" below for one-time template install)
 dotnet new cockpit-plugin -n My.Plugin -o plugins-dev/My.Plugin
 
-# 2. Build
-dotnet build plugins-dev/My.Plugin -c Release
+# 2. Build — a DEBUG build, matching the cockpit you'll run it in (see "The dev loop" below)
+dotnet build plugins-dev/My.Plugin -c Debug
 
 # 3. Package — plugin.json must sit at the zip root
-Compress-Archive -Path plugins-dev/My.Plugin/bin/Release/net10.0/* -DestinationPath my-plugin-1.0.0.zip
+Compress-Archive -Path plugins-dev/My.Plugin/bin/Debug/net10.0/* -DestinationPath my-plugin-dev.zip
 
 # 4. Install: in the cockpit, Options -> Plugins -> Install from zip..., pick the zip,
 #    "Review & enable", consent, then click "Restart cockpit now" (#53) — or restart it yourself.
@@ -58,6 +58,22 @@ Compress-Archive -Path plugins-dev/My.Plugin/bin/Release/net10.0/* -DestinationP
 That scaffolds a plugin with a left-menu button that opens a dialog (see
 [`templates/cockpit-plugin`](../../templates/cockpit-plugin)); read on for every contribution point, the
 manifest fields, and how to publish it to a store.
+
+### The dev loop
+
+That zip round-trip is only needed once, to get the plugin installed at all — a DEBUG cockpit run from a dev
+checkout notices from there on. Every rebuild after that:
+
+```bash
+dotnet build plugins-dev/My.Plugin -c Debug
+```
+
+lands in the running cockpit's plugins folder on its own — the running app watches `plugins-dev` for exactly
+this — and a toast offers a single **Reload** action to bring the new bytes in and restart. There's no in-place
+hot-swap (a loaded plugin assembly cannot be unloaded — `PluginLoadContext` is not collectible), so "reload"
+means a quick, one-click restart rather than a hand copy and restart. This only happens on a dev checkout in a
+DEBUG build, and it only refreshes a plugin you already installed — it never installs one on its own, and it
+never touches a plugin you disabled or one the store already updated past your source.
 
 ### Scaffold a new plugin
 
