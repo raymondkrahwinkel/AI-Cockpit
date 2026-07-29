@@ -476,6 +476,80 @@ internal sealed class CockpitHost(
         }
     }
 
+    /// <summary>
+    /// Looks up the OAuth server this plugin contributed under <paramref name="name"/> and asks the shared
+    /// <see cref="IMcpOAuthCoordinator"/> non-interactively (AC-243) — the same read the host's own MCP-servers
+    /// dialog does per row. A name the store has no OAuth entry for (never contributed, contributed as a static
+    /// token, or removed), or a coordinator that is not registered, answers <see cref="PluginMcpAuthState.Unknown"/>
+    /// rather than throwing — a status read is informational only.
+    /// </summary>
+    public async Task<PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return PluginMcpAuthState.Unknown;
+        }
+
+        try
+        {
+            var store = services.GetRequiredService<IMcpServerStore>();
+            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+
+            if (server is null)
+            {
+                return PluginMcpAuthState.Unknown;
+            }
+
+            return await coordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) switch
+            {
+                McpAuthState.Authorized => PluginMcpAuthState.Authorized,
+                McpAuthState.AuthorizationRequired => PluginMcpAuthState.AuthorizationRequired,
+                _ => PluginMcpAuthState.Unknown,
+            };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-auth-state", exception.Message);
+            return PluginMcpAuthState.Unknown;
+        }
+    }
+
+    /// <summary>
+    /// Drives the same interactive loopback sign-in the host's own MCP-servers dialog offers (AC-243/AC-355) for
+    /// the OAuth server this plugin contributed under <paramref name="name"/>, reporting only a named outcome —
+    /// never a token (Iron Law #8) and never the failure detail the dialog's own row reserves for its own log line.
+    /// A name with no matching OAuth entry, or a host with no coordinator registered, answers
+    /// <see cref="PluginMcpSignInOutcome.Unavailable"/> without attempting anything.
+    /// </summary>
+    public async Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return PluginMcpSignInOutcome.Unavailable;
+        }
+
+        try
+        {
+            var store = services.GetRequiredService<IMcpServerStore>();
+            var server = (await store.LoadAsync(cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.Ordinal) && candidate.Auth == McpServerAuth.OAuth);
+
+            if (server is null)
+            {
+                return PluginMcpSignInOutcome.Unavailable;
+            }
+
+            var access = await coordinator.AcquireAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
+            return access.State == McpAuthState.Authorized ? PluginMcpSignInOutcome.Authorized : PluginMcpSignInOutcome.Declined;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-sign-in", exception.Message);
+            return PluginMcpSignInOutcome.Unreachable;
+        }
+    }
+
     public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
         services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
             ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)

@@ -18,6 +18,12 @@
          standalone with no host to provide them, so it carries runtime copies — the same reason the FanOut and
          Autopilot plugin test projects do. -->
     <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- IL#9 render test (AC-243): a real Skia headless platform plus the cockpit's own theme, same set the
+         Workflows plugin's render tests use — see HeadlessAvalonia.cs for why headless drawing (no glyphs) is not enough. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

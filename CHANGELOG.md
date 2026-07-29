@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Depot plugin now has a settings screen — connect one or more Depot instances by name and URL, with no
+  auth fields to fill in: Depot has a single sign-in path, so each connection is handed to the cockpit's own MCP
+  sign-in flow and the plugin never sees or stores a token. Renaming or removing a connection cleans up its old MCP
+  registration so a stale entry never lingers, and every connection shows whether it's signed in right there in the
+  row, with a Sign in button that opens the browser only when you click it.
 - added: an incompatible plugin now says so before you install it, not after. The plugin store's browse card shows
   a red "Incompatible" badge with the reason — a contract version it was built for, or a cockpit version it needs —
   and its Install/Update button is disabled; nothing is hidden from the catalogue, but a click that would only fail

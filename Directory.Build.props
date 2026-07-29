@@ -8,7 +8,16 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.13.0: sub-agent activity is now attributable to its parent Task tool call (AC-146) — new host-provided
+    <!-- 0.14.0: a plugin can now learn and drive its own MCP OAuth sign-in standing (AC-243) — new host-provided
+         functionality a plugin contributes to: ICockpitHost.GetMcpServerAuthStateAsync / SignInMcpServerAsync,
+         added because a plugin that contributes an OAuth McpServerContribution (AC-500, 0.13.0's predecessor) had
+         no way back to it — AddMcpServer is fire-and-forget, and the resulting sign-in standing lived only in the
+         host's own MCP-servers dialog. Both members look the contribution up by name first, so a name with no
+         OAuth entry answers "nothing to report" rather than acting on a server that is not the caller's. A plugin
+         that calls either sets minHostVersion 0.14.0: an older host's copy of Cockpit.Plugins.Abstractions has no
+         such member, so the call cannot resolve at all, the same failure mode every entry below this one guards
+         against. Minor because it is additive; still 0.x.
+         0.13.0: sub-agent activity is now attributable to its parent Task tool call (AC-146) — new host-provided
          functionality a plugin contributes to: PluginSessionEvent.ParentToolUseId (and SessionEvent.ParentToolUseId,
          which already existed unassigned, now actually carried through), optional and only ever used to nest a
          sub-agent's own events under its parent row, never to change what the driver is asked to do. A plugin
@@ -91,7 +100,7 @@
          credentials. Deliberately still 0.x — under 1.0.0 semver promises nothing, which is the honest state of a
          thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself,
          and it is what switches on the minHostVersion gate (PluginLoadPolicy). -->
-    <VersionPrefix>0.13.0</VersionPrefix>
+    <VersionPrefix>0.14.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

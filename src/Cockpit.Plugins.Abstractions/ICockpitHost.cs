@@ -343,6 +343,33 @@ public interface ICockpitHost
     Task RemoveMcpServer(string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Where the cockpit's OAuth standing is for the MCP server this plugin contributed under <paramref name="name"/>
+    /// via <see cref="AddMcpServer"/> (AC-243/AC-355) — no network, no browser, just what is stored, the same
+    /// restraint the host's own MCP-servers dialog keeps when it draws a status badge for every row in a list.
+    /// <see cref="PluginMcpAuthState.Unknown"/> covers a name the host has no OAuth server registered under (never
+    /// contributed, contributed as a static-token server, or removed) as well as a host that predates this member —
+    /// a plugin cannot tell those apart from the outside, and does not need to: either way there is no standing to
+    /// report. Default <see cref="PluginMcpAuthState.Unknown"/> so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host reports
+    /// the real standing.
+    /// </summary>
+    Task<Mcp.PluginMcpAuthState> GetMcpServerAuthStateAsync(string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Mcp.PluginMcpAuthState.Unknown);
+
+    /// <summary>
+    /// The operator's own "sign in" act (AC-243/AC-355) for the MCP server this plugin contributed under
+    /// <paramref name="name"/> via <see cref="AddMcpServer"/> — opens a browser if needed and reports a named
+    /// outcome, driving the exact same loopback sign-in flow the host's own MCP-servers dialog uses rather than a
+    /// second one the plugin would have to build (AC-500's "the plugin never sees a bearer token" holds here too:
+    /// this never returns one, only whether asking for one worked). Default
+    /// <see cref="Mcp.PluginMcpSignInOutcome.Unavailable"/> so existing <see cref="ICockpitHost"/> implementations
+    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host can actually open a
+    /// browser.
+    /// </summary>
+    Task<Mcp.PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
+
+    /// <summary>
     /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13) —
     /// what a workflow or plugin uses to say what that session is working on (a ticket it picked up from YouTrack or
     /// GitHub, a phase), or clears it with an empty string. The session is named by its <c>IPluginSessionContext.PaneId</c>

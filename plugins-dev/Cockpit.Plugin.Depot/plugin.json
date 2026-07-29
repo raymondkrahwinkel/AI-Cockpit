@@ -1,11 +1,11 @@
 {
   "id": "depot",
   "name": "Depot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entryAssembly": "Cockpit.Plugin.Depot.dll",
   "entryType": "Cockpit.Plugin.Depot.DepotPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.10.0",
-  "description": "Lets a project's memory live in a Depot project instead of a folder: linking a project to a Depot slug tells every session that starts on it to read and write that memory through the Depot MCP.",
+  "minHostVersion": "0.14.0",
+  "description": "Lets a project's memory live in a Depot project instead of a folder, and connects one or more Depot instances so a session can reach them.",
   "author": "Cockpit"
 }
