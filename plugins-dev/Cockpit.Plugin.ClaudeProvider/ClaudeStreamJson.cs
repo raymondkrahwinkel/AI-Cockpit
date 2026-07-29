@@ -40,9 +40,17 @@ internal static class ClaudeStreamJson
             _ => [],
         };
 
+        // AC-146: a wire event that belongs to a sub-agent (Task tool call) carries this alongside session_id,
+        // naming the tool_use_id of the parent Task call — stamped onto every event this line yields with a
+        // `with` clone (works through the abstract base reference, since a record's clone is a virtual member)
+        // rather than threading the value through every _Parse* method's own construction.
+        var parentToolUseId = root.TryGetProperty("parent_tool_use_id", out var parentProp) && parentProp.ValueKind == JsonValueKind.String
+            ? parentProp.GetString()
+            : null;
+
         foreach (var evt in events)
         {
-            yield return evt;
+            yield return parentToolUseId is null ? evt : evt with { ParentToolUseId = parentToolUseId };
         }
     }
 

@@ -83,6 +83,65 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
+    /// <summary>
+    /// One sub-agent's own streaming state (AC-146) — the same shape as the top-level fields above
+    /// (<see cref="_currentAssistantEntry"/>/<see cref="_currentThinkingEntry"/>/<see cref="_currentThinkingBlockIndex"/>),
+    /// scoped to one Task tool call's own activity rather than the parent conversation, so a sub-agent's
+    /// streamed text/thinking accumulates onto its own rows instead of the top-level ones it runs alongside.
+    /// </summary>
+    private sealed class SubAgentLane(TranscriptEntryViewModel anchor)
+    {
+        public TranscriptEntryViewModel Anchor { get; } = anchor;
+        public TranscriptEntryViewModel? CurrentAssistantEntry { get; set; }
+        public TranscriptEntryViewModel? CurrentThinkingEntry { get; set; }
+        public int CurrentThinkingBlockIndex { get; set; } = -1;
+    }
+
+    /// <summary>Live sub-agent lanes, keyed by the parent Task tool call's own tool_use_id. Cleared on every <see cref="TurnCompleted"/>: a sub-agent does not outlive the turn that spawned it.</summary>
+    private readonly Dictionary<string, SubAgentLane> _subAgentLanes = [];
+
+    /// <summary>
+    /// AC-146 defensive fallback: accumulates streaming text for an event that names a parent tool_use_id this
+    /// pane never resolved to a lane (the Task tool-use row it names as parent was never seen — a dropped event,
+    /// or a stray id; not expected with the current CLI/adapter, which always emits the Task tool-use row before
+    /// anything naming it as parent, but not trusted blindly). Kept entirely separate from
+    /// <see cref="_currentAssistantEntry"/> so an orphaned chunk can never merge into the genuine top-level reply
+    /// it happens to interleave with — still shown, so nothing vanishes silently, but never queued for read-aloud
+    /// and never raises the output-text signal, since it cannot be vouched as the session's own answer.
+    /// </summary>
+    private TranscriptEntryViewModel? _currentOrphanedSubAgentTextEntry;
+
+    /// <summary>
+    /// Resolves the sub-agent lane an event with this parent id belongs to (AC-146), lazily creating one the
+    /// first time an event names a parent whose anchor tool-use row is already in the top-level transcript. Null
+    /// for a top-level event (no parent id) or one naming a parent this pane never saw the tool-use row for — a
+    /// caller then treats the latter as an orphaned sub-agent event (still shown, kept out of read-aloud/output
+    /// signals — see the call sites), never as a genuine top-level one, so nothing is silently lost <em>and</em>
+    /// nothing gets attributed to the operator's own reply that was not it.
+    /// </summary>
+    private SubAgentLane? _ResolveSubAgentLane(string? parentToolUseId)
+    {
+        if (string.IsNullOrEmpty(parentToolUseId))
+        {
+            return null;
+        }
+
+        if (_subAgentLanes.TryGetValue(parentToolUseId, out var lane))
+        {
+            return lane;
+        }
+
+        var anchor = Transcript.LastOrDefault(t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == parentToolUseId);
+        if (anchor is null)
+        {
+            return null;
+        }
+
+        lane = new SubAgentLane(anchor);
+        _subAgentLanes[parentToolUseId] = lane;
+        return lane;
+    }
+
     // How many characters of this turn's assistant prose have already been sent to read-aloud (AC-97). A turn
     // pauses on a question/permission and then keeps streaming into the same growing entry afterwards — the Claude
     // driver never re-emits a completed snapshot, so a turn is one appending entry — which is why this tracks a
@@ -1432,6 +1491,37 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextDelta delta:
+                // AC-146: a sub-agent's own streaming text accumulates onto its lane's row, nested under its
+                // Task tool-use anchor rather than into the top-level transcript — the operator's own reply and
+                // a sub-agent's internal narration must never merge into one row.
+                if (_ResolveSubAgentLane(delta.ParentToolUseId) is { } textLane)
+                {
+                    textLane.CurrentThinkingEntry = null;
+                    if (textLane.CurrentAssistantEntry is null)
+                    {
+                        textLane.CurrentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
+                        textLane.Anchor.SubAgentRows.Add(textLane.CurrentAssistantEntry);
+                    }
+
+                    textLane.CurrentAssistantEntry.AppendText(delta.Text);
+                    break;
+                }
+
+                // AC-146: a parent id this pane never resolved to a lane (the anchor tool-use row was never
+                // seen) is an orphan, not a top-level chunk — shown, in its own separate entry so it can never
+                // merge into whatever the genuine top-level reply is doing, but never queued for read-aloud.
+                if (!string.IsNullOrEmpty(delta.ParentToolUseId))
+                {
+                    if (_currentOrphanedSubAgentTextEntry is null)
+                    {
+                        _currentOrphanedSubAgentTextEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
+                        Transcript.Add(_currentOrphanedSubAgentTextEntry);
+                    }
+
+                    _currentOrphanedSubAgentTextEntry.AppendText(delta.Text);
+                    break;
+                }
+
                 // Visible prose has started, so the reasoning block that preceded it is done: close the thinking
                 // row (AC-213) so a later thinking block opens a fresh row instead of appending onto this one.
                 _CloseThinkingRow();
@@ -1446,6 +1536,40 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextCompleted completed:
+                // A sub-agent's completed-text snapshot (some providers send one instead of streaming deltas)
+                // lands on its own lane the same way the streaming path above does, and never joins the
+                // top-level read-aloud queue below.
+                if (_ResolveSubAgentLane(completed.ParentToolUseId) is { } completedLane)
+                {
+                    completedLane.CurrentThinkingEntry = null;
+                    if (completedLane.CurrentAssistantEntry is not null)
+                    {
+                        completedLane.CurrentAssistantEntry = null;
+                    }
+                    else
+                    {
+                        completedLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text));
+                    }
+
+                    break;
+                }
+
+                // AC-146: same orphan handling as the streaming case above — never queued for read-aloud, never
+                // raises the output-text signal below.
+                if (!string.IsNullOrEmpty(completed.ParentToolUseId))
+                {
+                    if (_currentOrphanedSubAgentTextEntry is not null)
+                    {
+                        _currentOrphanedSubAgentTextEntry = null;
+                    }
+                    else
+                    {
+                        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text));
+                    }
+
+                    break;
+                }
+
                 _CloseThinkingRow();
                 if (_currentAssistantEntry is not null)
                 {
@@ -1460,11 +1584,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 }
 
                 // Assistant prose is one of the two channels a plugin watches for an output signal (the other
-                // is tool output below) — e.g. Claude announcing "opened https://github.com/…/pull/5".
+                // is tool output below) — e.g. Claude announcing "opened https://github.com/…/pull/5". A
+                // sub-agent's own narration is not the session's answer to the operator, so it never reaches
+                // this signal either (kept inside the branch above).
                 RaiseOutputText(completed.Text);
                 break;
 
             case ToolUseRequested toolUse:
+                // AC-146: a sub-agent's own tool call nests under its Task row instead of flattening into the
+                // top-level transcript — this is also how a sub-agent's tool call becomes an anchor a *further*
+                // nested lane could resolve against, though today's CLI only nests one level deep.
+                if (_ResolveSubAgentLane(toolUse.ParentToolUseId) is { } toolUseLane)
+                {
+                    toolUseLane.CurrentAssistantEntry = null;
+                    toolUseLane.CurrentThinkingEntry = null;
+                    toolUseLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(
+                        TranscriptEntryKind.ToolUse,
+                        $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
+                    {
+                        ToolUseId = toolUse.ToolUseId,
+                        ToolName = toolUse.ToolName,
+                        InputJson = toolUse.InputJson,
+                    });
+                    break;
+                }
+
                 // Close the current assistant text row so prose that streams *after* this tool call starts a
                 // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
@@ -1481,6 +1625,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case ToolResult toolResult:
+                // AC-146: a sub-agent's own tool result couples to its tool-use row inside that lane's nested
+                // rows, the same by-tool_use_id matching the top-level branch below uses — never the flat
+                // Transcript, and never the output/tool-activity signals a top-level result raises.
+                if (_ResolveSubAgentLane(toolResult.ParentToolUseId) is { } toolResultLane)
+                {
+                    var nestedToolUseEntry = toolResultLane.Anchor.SubAgentRows.LastOrDefault(
+                        t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == toolResult.ToolUseId);
+                    if (nestedToolUseEntry is not null)
+                    {
+                        nestedToolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
+                    }
+                    else
+                    {
+                        toolResultLane.Anchor.SubAgentRows.Add(new TranscriptEntryViewModel(
+                            TranscriptEntryKind.ToolResult,
+                            toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                    }
+
+                    break;
+                }
+
                 var toolUseEntry = Transcript.LastOrDefault(
                     t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == toolResult.ToolUseId);
                 if (toolUseEntry is not null)
@@ -1496,6 +1661,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Transcript.Add(new TranscriptEntryViewModel(
                         TranscriptEntryKind.ToolResult,
                         toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                }
+
+                // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row
+                // was never seen) is coupled/shown above like any other, so nothing vanishes silently — but it is
+                // an orphaned sub-agent event, not a genuine top-level one, so it must not be mistaken for the
+                // session's own output: neither signal below is for anything but the top-level conversation.
+                if (!string.IsNullOrEmpty(toolResult.ParentToolUseId))
+                {
+                    break;
                 }
 
                 // Tool output is where a shelled-out `gh pr create`/`git push` prints its pull-request url, so
@@ -1515,7 +1689,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case PermissionRequested permission:
-                var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
+                // AC-146: a sub-agent's own tool call can need approval too — the row it responds to lives
+                // nested under its Task anchor rather than in the flat Transcript, so look there when the
+                // top-level search comes up empty.
+                var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId)
+                    ?? _ResolveSubAgentLane(permission.ParentToolUseId)?.Anchor.SubAgentRows.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
 
                 // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a prompt
                 // the autonomous run has no one to answer — that stall left the run stuck first on its own
@@ -1588,6 +1766,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _readAloudFlushedLength = 0;
                 _currentAssistantEntry = null;
                 _CloseThinkingRow();
+                // A sub-agent does not outlive the turn that spawned it (AC-146): a fresh Task call next turn
+                // gets a fresh anchor and lane, never one still holding a finished sub-agent's dangling state.
+                _subAgentLanes.Clear();
+                _currentOrphanedSubAgentTextEntry = null;
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
@@ -1623,8 +1805,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case SessionStatusChanged statusChanged:
                 // needs_action non-empty is the CLI telling the host the session wants attention
                 // (e.g. a pending question) — same "jump out in the sidebar" signal as a pending
-                // tool permission. RateLimitInfo/UnknownEvent stay out of scope for status (per-session
-                // status overview and agent-tree rendering are later increments); ConsumeEventsAsync
+                // tool permission. RateLimitInfo/UnknownEvent stay out of scope for status (a
+                // per-session status overview is a later increment; sub-agent nesting shipped in
+                // AC-146 via ParentToolUseId, above); ConsumeEventsAsync
                 // already delivers them to any future subscriber.
                 if (!string.IsNullOrEmpty(statusChanged.NeedsAction))
                 {
@@ -1644,6 +1827,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case AssistantThinkingDelta thinkingDelta:
                 if (!string.IsNullOrEmpty(thinkingDelta.Thinking))
                 {
+                    // AC-146: a sub-agent's own reasoning stays in its lane, same rule as its text above.
+                    if (_ResolveSubAgentLane(thinkingDelta.ParentToolUseId) is { } thinkingLane)
+                    {
+                        if (thinkingLane.CurrentThinkingEntry is null || thinkingDelta.BlockIndex != thinkingLane.CurrentThinkingBlockIndex)
+                        {
+                            thinkingLane.CurrentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)
+                            {
+                                IsExpanded = true,
+                            };
+                            thinkingLane.CurrentThinkingBlockIndex = thinkingDelta.BlockIndex;
+                            thinkingLane.Anchor.SubAgentRows.Add(thinkingLane.CurrentThinkingEntry);
+                        }
+
+                        thinkingLane.CurrentThinkingEntry.AppendText(thinkingDelta.Thinking);
+                        break;
+                    }
+
                     if (_currentThinkingEntry is null || thinkingDelta.BlockIndex != _currentThinkingBlockIndex)
                     {
                         _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)

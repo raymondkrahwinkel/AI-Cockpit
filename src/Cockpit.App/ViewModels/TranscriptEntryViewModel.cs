@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -136,6 +138,39 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public string? ToolUseId { get; init; }
 
+    // --- Sub-agent nesting (AC-146) ---------------------------------------------------------------------------
+    // A Task/Agent tool call's own row anchors whatever activity the sub-agent it spawned produced — its own
+    // tool calls, text and thinking, matched to this row by SessionEvent.ParentToolUseId == this row's own
+    // ToolUseId. Nested here rather than flattened into the top-level Transcript, and collapsed by default
+    // (Raymond, 2026-07-29): an operator sees that a sub-agent ran, and expands to see what it did.
+
+    /// <summary>Events belonging to the sub-agent this tool-use row spawned, in arrival order.</summary>
+    public ObservableCollection<TranscriptEntryViewModel> SubAgentRows { get; } = [];
+
+    /// <summary>True once at least one sub-agent event has arrived — the anchor row shows its expand toggle only then.</summary>
+    public bool HasSubAgentRows => SubAgentRows.Count > 0;
+
+    /// <summary>Collapsed by default; the operator expands to see the sub-agent's own activity.</summary>
+    [ObservableProperty]
+    private bool _isSubAgentExpanded;
+
+    /// <summary>The expand toggle's label, e.g. "3 sub-agent events".</summary>
+    public string SubAgentSummaryText => $"{SubAgentRows.Count} sub-agent event{(SubAgentRows.Count == 1 ? "" : "s")}";
+
+    /// <summary>Chevron for the sub-agent toggle, matching the expanded/collapsed state.</summary>
+    public MaterialIconKind SubAgentToggleIconKind => IsSubAgentExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
+
+    private void _OnSubAgentRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(HasSubAgentRows));
+        OnPropertyChanged(nameof(SubAgentSummaryText));
+    }
+
+    [RelayCommand]
+    private void ToggleSubAgentExpanded() => IsSubAgentExpanded = !IsSubAgentExpanded;
+
+    partial void OnIsSubAgentExpandedChanged(bool value) => OnPropertyChanged(nameof(SubAgentToggleIconKind));
+
     /// <summary>Tool name for a tool-use row; used to build the always-allow rule label.</summary>
     public string? ToolName { get; init; }
 
@@ -159,6 +194,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         Kind = kind;
         _text = text;
         Timestamp = timestamp;
+        SubAgentRows.CollectionChanged += _OnSubAgentRowsChanged;
     }
 
     public void AppendText(string delta)

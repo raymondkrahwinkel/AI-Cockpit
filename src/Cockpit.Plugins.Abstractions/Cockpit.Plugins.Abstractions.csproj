@@ -255,7 +255,13 @@
          already-compiled driver keeps constructing this record the old way and simply reports no model. Only
          ever read to seed a control's starting value, never to fire a live switch back at the driver. Additions
          only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.38.0</Version>
+    <!-- 1.39.0 (AC-146): added PluginSessionEvent.ParentToolUseId — non-null when an event belongs to a nested
+         Task/sub-agent tool call rather than the top-level conversation, carried verbatim from the wire event so
+         the host can nest a sub-agent's own activity under its parent tool-use row instead of flattening it into
+         the top-level transcript. Optional, defaulting to null: an already-compiled driver keeps constructing
+         every event the old way and simply never attributes any to a sub-agent. Additions only — a minor; major
+         and abstractionsVersion stay 1. -->
+    <Version>1.39.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

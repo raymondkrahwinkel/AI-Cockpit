@@ -45,6 +45,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   rather than a change, keeps the full inspection exactly as it was. The cheaper route is offered only where the
   cockpit can genuinely see what happened, and it says so rather than quietly settling for a summary. Tests still run
   where they always ran — there is no test run added per step.
+- added: a Claude SDK session's sub-agents (the Agent/Task tool) are no longer a black box — their own tool calls,
+  text and thinking now nest under the parent Task row instead of vanishing until the final result. Collapsed by
+  default (a "N sub-agent events" line you expand), since a sub-agent can be chatty and that verbosity is not
+  something you want dropped on you by default. A sub-agent's own narration never reaches read-aloud — only the
+  session's own reply does. Requires a recent enough `claude` CLI to forward the extra detail; an older one simply
+  starts the session without it, same as before.
 - added: the YouTrack plugin's "attach message images to an issue" tool can now attach an image file directly by
   path, not only images sent with the current message — so a screenshot pasted straight into a terminal pane, or
   an image an agent produced itself, can be attached even though it never rode along on a message. The path must

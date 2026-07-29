@@ -8,6 +8,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App;
 
@@ -86,6 +87,11 @@ internal static class Screenshotter
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // A sub-agent's own activity nested under its parent Task tool-use row (AC-146), collapsed (the default an
+        // operator meets) and expanded — the verbosity a collapsed default guards against is exactly the thing
+        // this ticket's own acceptance criteria demanded be eyeballed on screen, not just asserted in a test.
+        ["session-subagent"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: false) },
+        ["session-subagent-expanded"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: true) },
         ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
         // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
@@ -343,6 +349,26 @@ internal static class Screenshotter
                 ? new TtyView { DataContext = ttyViewModel }
                 : new SessionView { DataContext = viewModel },
         };
+    }
+
+    // A live-looking transcript with a Task tool call whose sub-agent is (or just was) active — its own text,
+    // tool call and result — nested under the Task row (AC-146), either at rest (collapsed, the default) or
+    // expanded so the nested activity actually shows.
+    private static SessionView _SubAgentSession(bool expanded)
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Let me check the failing test." });
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_task1", ToolName = "Task", InputJson = """{"description":"Investigate the flaky checkout test","prompt":"Find why CheckoutTests.Total_WithDiscount flakes"}""" });
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Reading the test and the code it exercises.", ParentToolUseId = "toolu_task1" });
+        viewModel.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_sub1", ToolName = "Read", InputJson = """{"file_path":"tests/CheckoutTests.cs"}""", ParentToolUseId = "toolu_task1" });
+        viewModel.Apply(new ToolResult { SessionId = "s1", ToolUseId = "toolu_sub1", Content = "public void Total_WithDiscount() { ... }", IsError = false, ParentToolUseId = "toolu_task1" });
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 1, Text = "Found it: the discount rounds before tax is applied on some locales.", ParentToolUseId = "toolu_task1" });
+
+        var anchor = viewModel.Transcript.Single(row => row.ToolUseId == "toolu_task1");
+        anchor.IsSubAgentExpanded = expanded;
+
+        return new SessionView { DataContext = viewModel };
     }
 
     // Renders the MCP-servers dialog in the state that had no way of being looked at (AC-427): an OAuth server, so

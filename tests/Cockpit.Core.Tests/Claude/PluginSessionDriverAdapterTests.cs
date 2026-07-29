@@ -994,5 +994,12 @@ public class PluginSessionDriverAdapterTests
             new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, Usage = new PluginTokenUsage(100, 20, 5, 0), NumTurns = 3 },
             (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Usage == new TokenUsage(100, 20, 5, 0) && turn.NumTurns == 3),
         ];
+        // AC-146: ParentToolUseId is carried on the PluginSessionEvent base, so it must reach every SessionEvent
+        // subtype's own base property, not just one hand-picked case.
+        yield return
+        [
+            new PluginAssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "hi", ParentToolUseId = "toolu_task1" },
+            (Func<SessionEvent, bool>)(evt => evt.ParentToolUseId == "toolu_task1"),
+        ];
     }
 }

@@ -12,4 +12,13 @@ public abstract record PluginSessionEvent
 {
     /// <summary>Session id the driver assigned, once known.</summary>
     public required string? SessionId { get; init; }
+
+    /// <summary>
+    /// Non-null when this event belongs to a nested Task/sub-agent tool call rather than the top-level
+    /// conversation (AC-146) — carried verbatim from the wire event's own parent id, so the host can attribute
+    /// a sub-agent's activity to the parent tool-use row instead of flattening it into the top-level transcript.
+    /// Optional: a provider with no sub-agent concept leaves it <see langword="null"/>, and an already-compiled
+    /// plugin that never sets it keeps constructing every event the old way.
+    /// </summary>
+    public string? ParentToolUseId { get; init; }
 }
