@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the YouTrack plugin's "attach message images to an issue" tool can now attach an image file directly by
+  path, not only images sent with the current message — so a screenshot pasted straight into a terminal pane, or
+  an image an agent produced itself, can be attached even though it never rode along on a message. The path must
+  point inside the terminal's own paste folder or the session's working directory, and the file must genuinely be
+  an image (checked by its content, not by its name) — anything else is refused.
 - added: an autonomous run now has a spending ceiling it cannot talk its way past. A session provider can state what
   its own models cost, cheapest first — the Claude provider now does, and any other provider can — and the planner is
   held to that ranking: unless you have set the cost strategy to quality-first, a step that is not a review gate has
