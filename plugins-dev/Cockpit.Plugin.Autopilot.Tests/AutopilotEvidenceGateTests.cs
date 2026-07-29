@@ -65,7 +65,9 @@ public class AutopilotEvidenceGateTests
 
         Assert.True(coordinator.ReportStepDone("step-pane", "did the work"));
         await _Until(() => turns.Count >= 1);
-        Assert.Equal([("/repo/.worktrees/run", "mark-commit")], source.Collected);
+        var (collectedPath, collectedMark) = Assert.Single(source.Collected);
+        Assert.Equal("/repo/.worktrees/run", collectedPath);
+        Assert.Equal("mark-commit", collectedMark.Commit);
 
         Assert.True(coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok"));
         await run.WaitAsync(Timeout);
@@ -207,27 +209,27 @@ public class AutopilotEvidenceGateTests
 
     // A hand-rolled fake, not an NSubstitute mock: NSubstitute cannot proxy an internal interface without the assembly
     // opting in to DynamicProxyGenAssembly2, which this project does not.
-    private sealed class FakeEvidenceSource(AutopilotWorktreeChange? change, string? mark = "mark-commit") : IAutopilotEvidenceSource
+    private sealed class FakeEvidenceSource(AutopilotWorktreeChange? change) : IAutopilotEvidenceSource
     {
         public List<string> Marked { get; } = [];
 
-        public List<(string Path, string Since)> Collected { get; } = [];
+        public List<(string Path, AutopilotWorktreeMark Mark)> Collected { get; } = [];
 
-        public Task<string?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default)
+        public Task<AutopilotWorktreeMark?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default)
         {
             lock (Marked)
             {
                 Marked.Add(worktreePath);
             }
 
-            return Task.FromResult(mark);
+            return Task.FromResult<AutopilotWorktreeMark?>(new AutopilotWorktreeMark("mark-commit", []));
         }
 
-        public Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, string sinceCommit, CancellationToken cancellationToken = default)
+        public Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, AutopilotWorktreeMark mark, CancellationToken cancellationToken = default)
         {
             lock (Collected)
             {
-                Collected.Add((worktreePath, sinceCommit));
+                Collected.Add((worktreePath, mark));
             }
 
             return Task.FromResult(change);
@@ -236,10 +238,10 @@ public class AutopilotEvidenceGateTests
 
     private sealed class ThrowingEvidenceSource : IAutopilotEvidenceSource
     {
-        public Task<string?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default) =>
+        public Task<AutopilotWorktreeMark?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("git is not here");
 
-        public Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, string sinceCommit, CancellationToken cancellationToken = default) =>
+        public Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, AutopilotWorktreeMark mark, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("git is not here");
     }
 

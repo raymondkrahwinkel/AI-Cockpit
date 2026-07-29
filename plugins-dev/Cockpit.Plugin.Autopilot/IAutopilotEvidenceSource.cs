@@ -12,21 +12,27 @@ namespace Cockpit.Plugin.Autopilot;
 /// the harness cannot observe falls back to the CEO's own inspection rather than failing, which is what keeps the cheap
 /// validation route opt-in on evidence instead of the default.
 /// </para>
+/// <para>
+/// What this does <em>not</em> establish: the bytes inside the change are still the step's own work, and the step's
+/// session stays alive until after the verdict, so anything it writes between reporting done and being judged falls
+/// outside the collected change. The guarantee is about <em>authorship of the account</em> — the step cannot tell the
+/// CEO what it changed — not about the worktree standing still.
+/// </para>
 /// </summary>
 internal interface IAutopilotEvidenceSource
 {
     /// <summary>
-    /// The worktree's current commit, to measure the step against once it finishes. Null when
+    /// Pins the worktree as it stands now, so the step that is about to run can later be measured against it. Null when
     /// <paramref name="worktreePath"/> is not a usable git worktree — there is then nothing to observe, and the
     /// validation keeps the deep inspection.
     /// </summary>
-    Task<string?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default);
+    Task<AutopilotWorktreeMark?> MarkAsync(string worktreePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// What changed in <paramref name="worktreePath"/> since <paramref name="sinceCommit"/> — committed work, work left
-    /// uncommitted, and files git does not track yet. Null when nothing can be observed (not a git worktree, git
-    /// refused), never an empty change standing in for a failure: "the step changed nothing" and "we could not look"
-    /// lead to opposite instructions for the CEO and must not collapse into one.
+    /// What changed in <paramref name="worktreePath"/> since <paramref name="mark"/> — committed work, work left
+    /// uncommitted, and files git does not track yet that were not already there. Null when nothing can be observed
+    /// (not a git worktree, git refused), never an empty change standing in for a failure: "the step changed nothing"
+    /// and "we could not look" lead to opposite instructions for the CEO and must not collapse into one.
     /// </summary>
-    Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, string sinceCommit, CancellationToken cancellationToken = default);
+    Task<AutopilotWorktreeChange?> CollectAsync(string worktreePath, AutopilotWorktreeMark mark, CancellationToken cancellationToken = default);
 }

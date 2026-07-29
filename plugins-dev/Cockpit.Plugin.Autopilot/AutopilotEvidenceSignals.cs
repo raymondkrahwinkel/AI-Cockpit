@@ -1,12 +1,12 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The targeted spot-checks the harness computes for itself (AC-255) — the deliberate alternative to validating a fixed
-/// percentage of steps deeply. The failure this gate guards against is an honest-but-wrong summary, not a lying one;
-/// against an honest mistake, sampling p% of steps catches p% of the mistakes, while these catch the shapes that are
-/// wrong in a way the harness can see without reading anything.
+/// The targeted spot-checks the harness computes for itself (AC-255) — chosen over deeply validating a fixed
+/// percentage of steps, which was the other candidate for this gate. The failure it guards against is an
+/// honest-but-wrong summary, not a lying one; against an honest mistake, sampling p% of steps catches p% of the
+/// mistakes, while these catch the shapes that are wrong in a way the harness can see without reading anything.
 /// <para>
-/// Every one of these RAISES A CONCERN and never returns a verdict. They are heuristics: a false positive costs the CEO
+/// Every one of these raises a concern and never returns a verdict. They are heuristics: a false positive costs the CEO
 /// one look at the files — which is what it did for every step before this gate existed — and a step is never rejected
 /// on one. That asymmetry is why they may be as blunt as they are.
 /// </para>
@@ -36,6 +36,15 @@ internal static class AutopilotEvidenceSignals
             concerns.Add(
                 $"This step was already sent back {step.Reworks} time(s) — its acceptance has failed here before, so "
                 + "read the change rather than the summary.");
+        }
+        else if (step.Attempts > 1)
+        {
+            // Attempts also grows on an attempt no CEO ever judged — a crashed or stalled session (AutopilotCorrection).
+            // That earlier attempt's work is behind this attempt's mark, so the change below is only the latest slice
+            // while the acceptance covers the whole step. Without this the rework concern would stay silent for it.
+            concerns.Add(
+                $"This is attempt {step.Attempts}: an earlier attempt ran and never reached a verdict, so what follows "
+                + "is only what this attempt changed, while the acceptance covers the whole step.");
         }
 
         return concerns;

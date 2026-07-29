@@ -662,10 +662,12 @@ internal sealed class AutopilotRunCoordinator(
             }
 
             // AC-255: where the worktree stood before this step's agents touched it, so the harness can tell the CEO
-            // what this step changed instead of asking it to take the summary's word. Taken after the safety commit
-            // above so a review gate's fork and this mark see the same history. Only a step that runs in the run's
+            // what this step changed instead of asking it to take the summary's word. It only has to be taken before
+            // the agents start — whether they commit their work or leave it lying is not this mark's problem, since
+            // the diff it is later measured against reaches the working tree. Only a step that runs in the run's
             // shared worktree can be measured this way (stepWorktreePath) — a parallel step's agents each write to
-            // their own, and a run in a plain folder has none; both keep the inspection instruction.
+            // their own, a review gate reads a throwaway fork, and a run in a plain folder has no worktree at all;
+            // all three keep the inspection instruction.
             var evidenceMark = await _MarkEvidenceAsync(stepWorktreePath, cancellationToken).ConfigureAwait(false);
 
             for (var index = 0; index < agentCount; index++)
@@ -866,7 +868,7 @@ internal sealed class AutopilotRunCoordinator(
 
     // AC-255: where the shared run worktree stood before a step ran. Null whenever there is nothing to measure against
     // — no source, no shared worktree, or git could not answer — and the step then validates the way it always did.
-    private async Task<string?> _MarkEvidenceAsync(string? worktreePath, CancellationToken cancellationToken)
+    private async Task<AutopilotWorktreeMark?> _MarkEvidenceAsync(string? worktreePath, CancellationToken cancellationToken)
     {
         if (_evidenceSource is null || worktreePath is not { Length: > 0 })
         {
@@ -889,12 +891,12 @@ internal sealed class AutopilotRunCoordinator(
     // rule in one place: evidence is offered only where the harness could actually observe, never assumed.
     private async Task<AutopilotStepEvidence?> _CollectEvidenceAsync(
         string? worktreePath,
-        string? mark,
+        AutopilotWorktreeMark? mark,
         AutopilotStep step,
         IReadOnlyList<string> summaries,
         CancellationToken cancellationToken)
     {
-        if (_evidenceSource is null || worktreePath is not { Length: > 0 } || mark is not { Length: > 0 })
+        if (_evidenceSource is null || worktreePath is not { Length: > 0 } || mark is null)
         {
             return null;
         }
