@@ -4,10 +4,22 @@ using Cockpit.Core.Sessions;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Accumulates the token usage and cost a session has run up (#8 token/cost meter). Each
-/// <see cref="TurnCompleted"/> result carries the usage and <c>total_cost_usd</c> for that one turn
-/// (the CLI emits one <c>result</c> per user prompt), so a session total is simply their running sum —
-/// this holds that sum and formats it for the compact meter next to the session status.
+/// Accumulates the token usage and cost a session has run up (#8 token/cost meter), and formats it for the
+/// compact meter next to the session status.
+/// <para>
+/// The two halves of a <see cref="TurnCompleted"/> result are counted differently, because the CLI reports
+/// them differently: <c>usage</c> covers only the turn that just finished, so it sums, while
+/// <c>total_cost_usd</c> is what the session has cost so far, so it replaces the previous figure. Summing
+/// the cost charged every earlier turn again, which grew with the turn count — the nine-turn session in the
+/// pilot run recorded $29.23 against a real $5.38. Measured against a real <c>claude</c> run rather than
+/// assumed.
+/// </para>
+/// <para>
+/// Following the newest figure is the whole story because a meter only ever sees one CLI process:
+/// <c>SessionViewModel.StartConfiguredAsync</c> returns early while a runtime exists, and the runtime is
+/// only cleared when the panel is disposed. There is therefore no earlier process whose spend could need
+/// carrying over, and no attempt is made to invent one from the numbers.
+/// </para>
 /// </summary>
 internal sealed class SessionUsageMeter
 {
@@ -15,6 +27,8 @@ internal sealed class SessionUsageMeter
     public int OutputTokens { get; private set; }
     public int CacheReadInputTokens { get; private set; }
     public int CacheCreationInputTokens { get; private set; }
+
+    /// <summary>The newest session-so-far cost the provider reported, which is the session's cost.</summary>
     public double TotalCostUsd { get; private set; }
 
     /// <summary>Completed turns counted into the meter (a turn is counted even when its result carried no usage).</summary>
@@ -38,7 +52,7 @@ internal sealed class SessionUsageMeter
 
         if (costUsd is { } cost)
         {
-            TotalCostUsd += cost;
+            TotalCostUsd = cost;
         }
 
         Turns++;
