@@ -34,6 +34,21 @@ public class ThemeControlStateTests
     });
 
     [Fact]
+    public void AnUncheckedCheckBox_CarriesTheThemesOwnSurfaceAndHairline() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-422: Fluent's own CheckBox template sets Background and BorderBrush on this same Border directly
+        // in markup, which runs at Template priority. The theme's own rule for this Border used to carry no
+        // pseudoclass, which is plain Style priority — below Template — so it never won: an unticked box
+        // measured Transparent/#99ffffff (Fluent's own resources) regardless of what this rule asked for.
+        // Fixed by naming the state explicitly (":unchecked"), which promotes the rule to StyleTrigger priority.
+        var box = new CheckBox { Content = "x", IsChecked = false };
+        using var host = RenderedScene.Show(box);
+
+        Assert.Equal(RenderedScene.Token("CockpitPanelBgColor"), _Fill(box, "NormalRectangle"));
+        Assert.Equal(RenderedScene.Token("CockpitHairlineColor"), _BorderBrush(box, "NormalRectangle"));
+    });
+
+    [Fact]
     public void APickedRadioButton_DrawsInTheCockpitAccent_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
     {
         // The same defect as the CheckBox above, one control further along: the ring was filled and stroked with
@@ -68,9 +83,11 @@ public class ThemeControlStateTests
     [Fact]
     public void AnUnpickedRadioButton_CarriesTheThemesOwnSurfaceAndHairline() => HeadlessAvalonia.Run(() =>
     {
-        // Asserted against the tokens rather than against the unticked CheckBox: that one renders its box
-        // Transparent, so the theme's CockpitPanelBgBrush setter does not reach its unchecked state. Pinning the
-        // radio to what the CheckBox happens to render would pin it to that, which is not what the theme says.
+        // Asserted against the tokens rather than against the unticked CheckBox: the two controls reach their
+        // template parts by different routes (a real ControlTemplate here, Fluent's own template plus a
+        // reclaimed rule there — see AnUncheckedCheckBox_CarriesTheThemesOwnSurfaceAndHairline), so pinning the
+        // radio to what the checkbox happens to render would couple two tests that have nothing to do with
+        // each other.
         var choice = new RadioButton { Content = "x", IsChecked = false };
         using var host = RenderedScene.Show(choice);
 
@@ -545,6 +562,9 @@ public class ThemeControlStateTests
 
     private static Color _Fill(Control control, string part) =>
         ((ISolidColorBrush)_Part<Border>(control, part).Background!).Color;
+
+    private static Color _BorderBrush(Control control, string part) =>
+        _ColourOf(_Part<Border>(control, part).BorderBrush);
 
     private static Color _EllipseFill(Control control, string part) =>
         _ColourOf(_Part<Ellipse>(control, part).Fill);

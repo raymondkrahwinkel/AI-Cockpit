@@ -656,7 +656,13 @@
     <!-- CheckBox: the box follows CockpitAccentColor. Until now it drew with Avalonia's *system* accent —
          they happen to coincide since the theme moved onto blue (AC-334), but nothing connects them, so a
          change to the token would have quietly left every tick behind on the old colour. -->
-    <Style Selector="CheckBox /template/ Border#NormalRectangle">
+    <!-- Named "CheckBox:unchecked" rather than the bare "CheckBox" this used to be (AC-422): Fluent's own
+         template sets Background/BorderBrush on this same Border directly in markup (Template priority), which
+         outranks a plain Style-priority setter with no pseudoclass. The setter never lost an argument, it just
+         never got to make one — an unticked box rendered Fluent's own transparent fill and translucent stroke
+         regardless of what this rule asked for. A pseudoclass promotes the rule to StyleTrigger priority, which
+         is the one thing here that outranks Template. -->
+    <Style Selector="CheckBox:unchecked /template/ Border#NormalRectangle">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>

@@ -991,6 +991,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an unticked checkbox now sits on the cockpit's own dark surface with its own hairline border, instead
+  of a barely-there transparent box outlined in the operating system's default translucent white.
 - fixed: a plugin section's chevron, title and header border now fall back to the cockpit's own faint-text,
   primary-text and hairline colours if the theme lookup ever misses, instead of a plain grey or white that
   was never part of the palette.
