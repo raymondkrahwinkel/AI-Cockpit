@@ -90,9 +90,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         // AC-89: when this session has a pane id, hand it its own per-session token instead of the shared app key, so
         // a request from it can be attributed to this pane and the consent broker cannot be tricked by another pane's
         // agent claiming this session's id. Without a pane id (no session to name) it falls back to the shared key.
+        // AC-143: the minted token is kept so it can be revoked at this route's own teardown below, in
+        // TtyProcessOwningSessionFiles — the pty's end is otherwise invisible to the keyring.
+        var mintedToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
         baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
         {
-            [WellKnownSessionEnvironment.CockpitMcpKey] = string.IsNullOrEmpty(paneId) ? authKey.Value : keyring.TokenFor(paneId),
+            [WellKnownSessionEnvironment.CockpitMcpKey] = mintedToken ?? authKey.Value,
         };
 
         var context = new TtyLaunchContext(
@@ -127,10 +130,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 
         // The files the launch wrote live exactly as long as the session that needs them: an MCP config holds the
-        // registry's bearer headers, and the limits of a session that has ended are nobody's business.
-        return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null
+        // registry's bearer headers, and the limits of a session that has ended are nobody's business. AC-143: a
+        // minted pane token needs the same wrapping so its revoke runs when this process is disposed, even when the
+        // provider itself wrote no session-scoped files.
+        return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null && mintedToken is null
             ? process
-            : new TtyProcessOwningSessionFiles(process, spec.SessionScopedFiles, spec.StatusFile);
+            : new TtyProcessOwningSessionFiles(process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken);
     }
 
     /// <summary>
