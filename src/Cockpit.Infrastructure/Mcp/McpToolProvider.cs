@@ -15,20 +15,15 @@ namespace Cockpit.Infrastructure.Mcp;
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(
+    IMcpServerCatalog catalog,
+    IMcpOAuthAuthorizer oauthAuthorizer,
+    IMcpOAuthCoordinator oauthCoordinator,
+    McpAuthKey authKey,
+    SessionMcpKeyring keyring,
+    ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
-    // AC-505 follow-up (2026-07-29): SDK 2.0.0 added McpClientOptions.DiscoverProbeTimeout (5s default), which
-    // bounds the initial protocol-version-discovery request — but a 401 on that same request is where the SDK
-    // also runs the interactive OAuth sign-in, so the default leaves an operator about five seconds to see a
-    // browser tab and grant consent. Both timeouts have to move together: DiscoverProbeTimeout only takes effect
-    // while it is shorter than InitializationTimeout, so raising one without the other changes nothing.
-    private static readonly McpClientOptions InteractiveOAuthClientOptions = new()
-    {
-        InitializationTimeout = TimeSpan.FromMinutes(5),
-        DiscoverProbeTimeout = TimeSpan.FromMinutes(5),
-    };
-
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, CancellationToken cancellationToken = default)
     {
         // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
@@ -146,7 +141,13 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
     {
         try
         {
-            var clientOptions = server.Auth == McpServerAuth.OAuth ? InteractiveOAuthClientOptions : null;
+            // AC-505 follow-up: the widened timeout is only worth paying when a sign-in might actually have to
+            // run — GetStateAsync is a local read (no network, no browser; see its own doc comment), so a server
+            // with an already-usable token still connects on the fast default and a merely slow (not down) OAuth
+            // server cannot stall the whole session-connect Task.WhenAll for the widened window on every start.
+            var needsInteractiveOAuth = server.Auth == McpServerAuth.OAuth
+                && await oauthCoordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired;
+            var clientOptions = needsInteractiveOAuth ? McpInteractiveOAuthClientOptions.Value : null;
             var client = await McpClient.CreateAsync(_BuildTransport(server, sessionToken), clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 

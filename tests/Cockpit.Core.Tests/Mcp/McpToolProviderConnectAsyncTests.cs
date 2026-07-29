@@ -132,7 +132,7 @@ public class McpToolProviderConnectAsyncTests
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new List<McpServerConfig>());
         var provider = new McpToolProvider(
-            catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
+            catalog, Substitute.For<IMcpOAuthAuthorizer>(), Substitute.For<IMcpOAuthCoordinator>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
 
         await using var session = await provider.ConnectAsync(projectId: "project-1");
 
@@ -204,10 +204,36 @@ public class McpToolProviderConnectAsyncTests
         Assert.Equal(0, keyring.LiveTokenCount);
     }
 
-    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null)
+    // AC-505 follow-up: the widened DiscoverProbeTimeout/InitializationTimeout pairing (McpInteractiveOAuthClientOptions)
+    // is only worth paying when a sign-in might actually run — a server whose GetStateAsync already reports a usable
+    // token connects on the SDK's fast default instead, so a merely slow (not down) OAuth server cannot stall the
+    // whole session-connect Task.WhenAll for the widened window on every session start. Verified by checking the
+    // coordinator is actually consulted before the connect, which is what decides that fork.
+    [Fact]
+    public async Task ConnectAsync_ForAnOAuthServer_AsksTheCoordinatorWhetherASignInIsNeeded_BeforeConnecting()
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
+        var provider = _ProviderFor(
+            _DisableBuiltIns().Append(new McpServerConfig { Name = "server-oauth", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Auth = McpServerAuth.OAuth }),
+            oauthAuthorizer: new FakeMcpOAuthAuthorizer(),
+            oauthCoordinator: coordinator);
+
+        await using var session = await provider.ConnectAsync();
+
+        await coordinator.Received(1).GetStateAsync(Arg.Is<McpServerConfig>(server => server.Name == "server-oauth"), Arg.Any<CancellationToken>());
+    }
+
+    private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry, SessionMcpKeyring? keyring = null, IMcpOAuthAuthorizer? oauthAuthorizer = null, IMcpOAuthCoordinator? oauthCoordinator = null)
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
-        return new McpToolProvider(catalog, oauthAuthorizer ?? Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), keyring ?? new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
+        return new McpToolProvider(
+            catalog,
+            oauthAuthorizer ?? Substitute.For<IMcpOAuthAuthorizer>(),
+            oauthCoordinator ?? Substitute.For<IMcpOAuthCoordinator>(),
+            new McpAuthKey(),
+            keyring ?? new SessionMcpKeyring(),
+            NullLogger<McpToolProvider>.Instance);
     }
 }
