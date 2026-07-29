@@ -30,6 +30,13 @@ namespace Cockpit.App.ViewTests;
 /// "Started" here means the panel's own <c>Status</c>, which only a launch call
 /// (<c>StartConfiguredAsync</c>/<c>LaunchConfigured</c>) changes from its "Not started." default.
 /// </summary>
+/// <remarks>
+/// Tagged <c>[Collection("avalonia")]</c> only for <see cref="ReopenAndSendResume_OnARestoredKnownPane_StartsItWithTheSavedConversationId"/>
+/// — the one test here whose path (<c>ScheduledResumeCoordinator.StartAsync</c>) touches
+/// <c>Dispatcher.UIThread</c>, which hangs forever without the headless platform this collection's fixture sets up
+/// (<see cref="HeadlessAvalonia"/>). Every other test in this class builds view-models only and does not need it.
+/// </remarks>
+[Collection("avalonia")]
 public class SessionRestoreViewTests
 {
     private static readonly SessionProfile WorkProfile = new("work", new ClaudeConfig(@"C:\fake\.claude"));
@@ -234,6 +241,112 @@ public class SessionRestoreViewTests
     }
 
     /// <summary>
+    /// AC-290 end-to-end: a scheduled resume due after a restart finds its pane only offering a restore (no runtime
+    /// yet, so <c>CanTakeAPrompt</c> is false), and reopens it through
+    /// <see cref="ScheduledResumeCoordinator.ReopenAndSend"/> exactly the way "Resume conversation" would — same
+    /// conversation id, same profile. <c>ResolveSession</c> (wired by <see cref="CockpitViewModel.StartScheduledResumesAsync"/>,
+    /// same as production) does find the pane; it is <c>CanTakeAPrompt</c> being false on a pane that was only just
+    /// restored — never started — that refuses the direct send and forces the reopen path.
+    /// </summary>
+    [Fact]
+    public Task ReopenAndSendResume_OnARestoredKnownPane_StartsItWithTheSavedConversationId() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (vm, restored, driver) = await _RestoreOneKnownPaneAsync();
+
+        var store = Substitute.For<IScheduledResumeStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
+        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        await vm.StartScheduledResumesAsync();
+
+        await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
+        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+
+        await driver.Received(1).StartAsync(
+            WorkProfile, Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
+            Arg.Is<SessionResume?>(resume => resume != null && resume.Mode == SessionResumeMode.BySessionId && resume.SessionId == "conv-1"),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.False(restored.HasRestoreOffer, "the banner disappears once the reopen lands, same as an operator-accepted resume");
+    });
+
+    /// <summary>
+    /// AC-290's guard: a restored pane whose conversation cannot be resumed (wrong provider, worktree gone, no
+    /// state at all) must never be started just because a scheduled resume came due. As above, <c>ResolveSession</c>
+    /// finds the pane fine — it is <c>CanTakeAPrompt</c> being false (never started) that forces the reopen
+    /// attempt, which is what is under test here.
+    /// </summary>
+    [Fact]
+    public Task ReopenAndSendResume_WhenTheConversationCannotBeResumed_NeverStartsTheSession() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var pane = new WorkspacePane("unsupported-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+
+        var state = new SessionStateRecord("unsupported-pane", "work", "ollama", null, SessionConversationIdState.Unsupported, "/repo", null, null, null, DateTimeOffset.UtcNow);
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
+
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
+
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyEvents());
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+
+        var vm = NewVm(
+            workspaceStore,
+            stateStore,
+            new SessionRestorePlanner(profileStore),
+            sessionFactory: () => new SessionViewModel(new SessionManager(factory)));
+
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+        var restored = Assert.Single(vm.Sessions);
+        Assert.False(restored.CanResumeConversation);
+
+        var store = Substitute.For<IScheduledResumeStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
+        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        await vm.StartScheduledResumesAsync();
+
+        await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
+        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+
+        await driver.DidNotReceive().StartAsync(
+            Arg.Any<SessionProfile>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
+            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.True(restored.HasRestoreOffer, "the offer is left standing — nothing was started to clear it");
+    });
+
+    /// <summary>
+    /// AC-290's other boundary: a TTY pane's <c>PromptSink</c> is wired asynchronously by the view once its pty has
+    /// actually come up, well after a launch call already returns and the restore offer already clears — so a
+    /// silent reopen-and-send could start the pty, destroy the offer, and still have nothing to send into. Until
+    /// that can be waited on properly, the reopen path skips TTY panes outright: the resume falls back to the
+    /// ordinary undelivered report, and — unlike the SDK case above — the offer is left standing rather than
+    /// consumed by an attempt that could not finish.
+    /// </summary>
+    [Fact]
+    public Task ReopenAndSendResume_OnARestoredTtyPane_IsSkipped_TheOfferStaysStanding() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var (vm, restored) = await _RestoreOneKnownTtyPaneAsync();
+
+        var store = Substitute.For<IScheduledResumeStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<ScheduledResume>());
+        vm.ScheduledResumes = new ScheduledResumeCoordinator(store);
+        await vm.StartScheduledResumesAsync();
+
+        await vm.ScheduledResumes.ScheduleAsync(new ScheduledResume(restored.PaneId, DateTimeOffset.Now.AddMinutes(-1), "carry on", "test"));
+        await vm.ScheduledResumes.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.True(restored.HasRestoreOffer, "a TTY reopen is skipped outright, so nothing ever started to clear it");
+        Assert.True(restored.CanResumeConversation, "the offer is untouched, not degraded by a failed attempt");
+    });
+
+    /// <summary>
     /// AC-410's biggest risk, per the design doc: <c>TtyViewModel.OnProcessExited</c> used to close the pane
     /// unconditionally, so a resume that fails fast — <c>claude --resume &lt;expired-id&gt;</c> printing an error
     /// and exiting immediately — deleted the very pane record it was trying to bring back, in the same run that
@@ -243,7 +356,7 @@ public class SessionRestoreViewTests
     [Fact]
     public async Task TtyResumeThatExitsImmediately_DoesNotClosePane_ButOffersItBackWithTheReason()
     {
-        var restored = await _RestoreOneKnownTtyPaneAsync();
+        var (_, restored) = await _RestoreOneKnownTtyPaneAsync();
         var closed = false;
         restored.CloseRequested += (_, _) => closed = true;
 
@@ -264,7 +377,7 @@ public class SessionRestoreViewTests
     [Fact]
     public async Task TtyResumeThatLaunchesSuccessfully_ClosesNormallyOnALaterExit()
     {
-        var restored = await _RestoreOneKnownTtyPaneAsync();
+        var (_, restored) = await _RestoreOneKnownTtyPaneAsync();
         var closed = false;
         restored.CloseRequested += (_, _) => closed = true;
 
@@ -276,7 +389,7 @@ public class SessionRestoreViewTests
         Assert.True(closed, "the degrade window closed once the launch succeeded, so a later exit is an ordinary close");
     }
 
-    private static async Task<SessionPanelViewModel> _RestoreOneKnownTtyPaneAsync()
+    private static async Task<(CockpitViewModel Vm, SessionPanelViewModel Restored)> _RestoreOneKnownTtyPaneAsync()
     {
         var pane = new WorkspacePane("known-tty-pane", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Tty };
         var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
@@ -299,7 +412,7 @@ public class SessionRestoreViewTests
         var restored = Assert.Single(vm.Sessions);
         Assert.True(restored.CanResumeConversation);
 
-        return restored;
+        return (vm, restored);
     }
 
     /// <summary>

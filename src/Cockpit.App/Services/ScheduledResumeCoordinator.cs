@@ -39,6 +39,16 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
     public Func<string, SessionPanelViewModel?>? ResolveSession { get; set; }
 
     /// <summary>
+    /// Tries to reopen a pane that is gone, or merely restored and not yet started, and send the prompt into it —
+    /// AC-290. Returns whether that landed. Set by the cockpit, which alone knows how to reopen a session's earlier
+    /// conversation (AC-410's restore machinery); null when it cannot (unit tests, the designer), in which case a
+    /// resume whose pane cannot be sent into always falls straight through to the lapsed/undelivered report below,
+    /// exactly as it did before this existed. Deliberately silent and unattended — a resume was scheduled ahead of
+    /// time precisely to run while nobody is at the desk, so this never asks first.
+    /// </summary>
+    public Func<string, string, Task<bool>>? ReopenAndSend { get; set; }
+
+    /// <summary>
     /// Raised when the set of pending resumes changes, so a session can show or drop its "resuming at …" line.
     /// <para>
     /// Raised on whichever thread called in, which in this app is always the UI thread: schedule and cancel come
@@ -232,9 +242,14 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
                 continue;
             }
 
-            // The session is gone, not yet started, or could not take the prompt. Never send it into a fresh one:
-            // "continue" with no history behind it is meaningless, and worse than doing nothing because it looks
-            // like it worked.
+            if (await _TryReopenAsync(resume))
+            {
+                continue;
+            }
+
+            // The session is gone, not yet started, or could not take the prompt, and it could not be reopened
+            // either. Never send it into a fresh one: "continue" with no history behind it is meaningless, and
+            // worse than doing nothing because it looks like it worked.
             _toast?.Show("A resume could not be delivered — its session is no longer open.", ToastSeverity.Warning);
             _logger.LogWarning(
                 "Resume for session {Pane}, due {DueAt:u}, could not be delivered — that session is gone, not started, or would not take it.",
@@ -244,6 +259,42 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
 
         await _PersistAsync(cancellationToken);
         PendingChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// AC-290's other half: before reporting a resume as undelivered, gives <see cref="ReopenAndSend"/> a chance to
+    /// bring the session back and send into it. False for every reason that cannot happen — nothing set, nothing
+    /// to reopen with, the reopen itself failed or threw — which is deliberately indistinguishable to the caller:
+    /// each of those is the same honest fallback, not a new failure mode of its own.
+    /// </summary>
+    private async Task<bool> _TryReopenAsync(ScheduledResume resume)
+    {
+        if (ReopenAndSend is null)
+        {
+            return false;
+        }
+
+        bool delivered;
+        try
+        {
+            delivered = await ReopenAndSend(resume.PaneId, resume.Prompt);
+        }
+        catch (Exception exception)
+        {
+            // Reopening reaches into session launch, which can fail in ways a scheduler tick must survive — same
+            // discipline as _OnTick below: log it, never let it take the next tick down with it.
+            _logger.LogWarning(exception, "Reopening session {Pane} for its resume threw; falling back to the undelivered report.", resume.PaneId);
+            return false;
+        }
+
+        if (!delivered)
+        {
+            return false;
+        }
+
+        _toast?.Show($"A resume for {resume.DueAt.ToLocalTime():ddd HH:mm} reopened its session and was sent.", ToastSeverity.Success);
+        _logger.LogInformation("Resume for session {Pane}, due {DueAt:u}, reopened its session and was sent.", resume.PaneId, resume.DueAt);
+        return true;
     }
 
     private async void _OnTick(object? sender, EventArgs e)
@@ -271,6 +322,7 @@ public sealed class ScheduledResumeCoordinator : ISingletonService, IDisposable
         _disposed = true;
 
         ResolveSession = null;
+        ReopenAndSend = null;
         PendingChanged = null;
 
         if (_timer is null)

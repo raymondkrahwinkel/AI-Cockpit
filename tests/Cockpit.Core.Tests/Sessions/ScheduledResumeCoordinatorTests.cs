@@ -1,6 +1,8 @@
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Toasts;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -24,6 +26,15 @@ public class ScheduledResumeCoordinatorTests
             Saved = [.. resumes];
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>Records every toast shown, so a test can tell the "reopened and sent" report apart from the ordinary "could not be delivered" one.</summary>
+    private sealed class RecordingToast : IToastService
+    {
+        public List<(string Message, ToastSeverity Severity)> Shown { get; } = [];
+
+        public void Show(string message, ToastSeverity severity, string? actionLabel = null, Action? onAction = null) =>
+            Shown.Add((message, severity));
     }
 
     private static ScheduledResume Resume(string paneId, DateTimeOffset dueAt, string prompt = "continue") =>
@@ -180,5 +191,95 @@ public class ScheduledResumeCoordinatorTests
         Assert.Empty(session.Sent);
         Assert.Empty(coordinator.Pending);
         Assert.Empty(store.Saved);
+    }
+
+    /// <summary>
+    /// AC-290: a pane that is gone outright is not necessarily a dead end — if it can be reopened (a crash the
+    /// operator was never asked about, picked back up after a restart), the resume should still land rather than
+    /// report undelivered just because the direct send found nothing to send into.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheSessionIsGoneButReopenSucceeds_ThePromptStillLands()
+    {
+        var store = new InMemoryStore();
+        var coordinator = new ScheduledResumeCoordinator(store) { ResolveSession = _ => null };
+        var reopened = new List<(string PaneId, string Prompt)>();
+        coordinator.ReopenAndSend = (paneId, prompt) =>
+        {
+            reopened.Add((paneId, prompt));
+            return Task.FromResult(true);
+        };
+
+        await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on"));
+        await coordinator.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.Equal(("pane-1", "carry on"), Assert.Single(reopened));
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
+    }
+
+    /// <summary>AC-290: the same restore attempt applies to a pane that resolved but was not yet startable, not only a pane that is gone.</summary>
+    [Fact]
+    public async Task WhenTheResolvedPaneIsNotYetStartedAndReopenSucceeds_ThePromptStillLands()
+    {
+        var store = new InMemoryStore();
+        var coordinator = new ScheduledResumeCoordinator(store);
+        var session = new TestSessionPanel { CanTakeAPromptOverride = false };
+        coordinator.ResolveSession = _ => session;
+        var reopened = new List<string>();
+        coordinator.ReopenAndSend = (paneId, _) =>
+        {
+            reopened.Add(paneId);
+            return Task.FromResult(true);
+        };
+
+        await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1), "carry on"));
+        await coordinator.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.Equal("pane-1", Assert.Single(reopened));
+        Assert.Empty(coordinator.Pending);
+        // The direct-send path must not also fire — the reopen path is what handled this resume, not both.
+        Assert.Empty(session.Sent);
+    }
+
+    /// <summary>
+    /// AC-290: a reopen that cannot help (no persisted offer, wrong provider) reports the same honest,
+    /// distinguishable "could not be delivered" outcome as no reopen at all — never the "reopened and sent" one.
+    /// </summary>
+    [Fact]
+    public async Task WhenReopenCannotHelp_TheResumeFallsBackToUndelivered_WithTheUndeliveredToast()
+    {
+        var store = new InMemoryStore();
+        var toast = new RecordingToast();
+        var coordinator = new ScheduledResumeCoordinator(store, toast) { ResolveSession = _ => null };
+        coordinator.ReopenAndSend = (_, _) => Task.FromResult(false);
+
+        await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1)));
+        await coordinator.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
+        var shown = Assert.Single(toast.Shown);
+        Assert.Equal("A resume could not be delivered — its session is no longer open.", shown.Message);
+        Assert.Equal(ToastSeverity.Warning, shown.Severity);
+    }
+
+    /// <summary>AC-290: reopening reaches into session launch, which can fail in ways a scheduler tick must survive rather than propagate.</summary>
+    [Fact]
+    public async Task WhenReopenThrows_TheResumeFallsBackToUndelivered_WithTheUndeliveredToast_AndNothingPropagates()
+    {
+        var store = new InMemoryStore();
+        var toast = new RecordingToast();
+        var coordinator = new ScheduledResumeCoordinator(store, toast) { ResolveSession = _ => null };
+        coordinator.ReopenAndSend = (_, _) => throw new InvalidOperationException("the launch profile no longer exists");
+
+        await coordinator.ScheduleAsync(Resume("pane-1", DateTimeOffset.Now.AddMinutes(-1)));
+        await coordinator.RunDueAsync(DateTimeOffset.Now);
+
+        Assert.Empty(coordinator.Pending);
+        Assert.Empty(store.Saved);
+        var shown = Assert.Single(toast.Shown);
+        Assert.Equal("A resume could not be delivered — its session is no longer open.", shown.Message);
+        Assert.Equal(ToastSeverity.Warning, shown.Severity);
     }
 }

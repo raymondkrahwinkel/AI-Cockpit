@@ -3445,6 +3445,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         coordinator.ResolveSession = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId);
+        coordinator.ReopenAndSend = _ReopenAndSendResumeAsync;
 
         return coordinator.StartAsync();
     }
@@ -5495,6 +5496,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.RestoreOffer = null;
         }
+    }
+
+    /// <summary>
+    /// AC-290's other half of a scheduled resume: when its pane is gone, or merely restored and not yet started,
+    /// but the earlier conversation is one AC-410 already knows how to bring back, reopen it exactly the way the
+    /// restore-offer banner's own "Resume conversation" would — <see cref="_StartRestoredSessionAsync"/> — and send
+    /// the prompt the moment it lands. Wired as <see cref="ScheduledResumeCoordinator.ReopenAndSend"/>.
+    /// <para>
+    /// Deliberately does not compose a fresh restore plan for a pane <see cref="RestoreSessionPanesAsync"/> never
+    /// saw this run: a pane closed on purpose already had its <c>WorkspacePane</c> record removed (<see
+    /// cref="CloseSessionAsync"/>), so there is nothing left to reopen it with, and reopening it anyway would
+    /// second-guess the operator's own close. The reachable case is a crash the operator was never asked about —
+    /// restart materializes the restore offer, and a resume due after that restart can pick it straight back up.
+    /// </para>
+    /// <para>
+    /// SDK sessions only, for now: a TTY's <c>PromptSink</c> is wired asynchronously by the view once its pty has
+    /// actually come up (<c>TtyView.StartPty</c>), well after <see cref="_StartSessionAsync"/> already returned and
+    /// <see cref="_StartRestoredSessionAsync"/> already cleared the offer — so <c>CanTakeAPrompt</c> reads false
+    /// immediately afterwards every time, and attempting a TTY reopen here would start the pty, destroy its restore
+    /// offer, and still have to report the resume as undelivered. Left for a follow-up that can wait for the pty
+    /// rather than assume it is already there; an SDK session's runtime, by contrast, is up by the time
+    /// <c>StartConfiguredAsync</c> returns.
+    /// </para>
+    /// <para>
+    /// Gates on the saved conversation id directly rather than <see cref="SessionPanelViewModel.CanResumeConversation"/>
+    /// (which only reflects <see cref="SessionRestoreAvailability.Known"/>): <see cref="_StartRestoredSessionAsync"/>
+    /// decides <see cref="SessionResume.BySessionId"/> vs. <see cref="SessionResume.New"/> from the id string itself,
+    /// and a provider that reports <c>Known</c> without actually supplying one — a contract violation at the plugin
+    /// seam, but not one anything currently stops — must not fall through to a silent fresh start under this
+    /// method's own toast claiming otherwise.
+    /// </para>
+    /// </summary>
+    private async Task<bool> _ReopenAndSendResumeAsync(string paneId, string prompt)
+    {
+        if (Sessions.FirstOrDefault(session => session.PaneId == paneId) is not SessionViewModel session
+            || session.RestoreOffer?.State?.ConversationId is not { Length: > 0 })
+        {
+            return false;
+        }
+
+        await _StartRestoredSessionAsync(session, SessionRestoreChoice.Resume);
+
+        return session.RestoreOffer is null && session.CanTakeAPrompt && await session.SendPromptAsync(prompt);
     }
 
     /// <summary>A restore offer was resolved into a start (AC-410) — run the matching launch through the normal start path.</summary>

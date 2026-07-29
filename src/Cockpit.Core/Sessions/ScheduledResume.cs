@@ -9,12 +9,15 @@ namespace Cockpit.Core.Sessions;
 /// </para>
 /// </summary>
 /// <param name="PaneId">
-/// The session pane this was scheduled on, and where the prompt goes. A resume aims at an already-running pane and
-/// nothing else: reopening a closed conversation to send into it needs the session's whole launch behind it, which
-/// this does not carry. A restored pane can keep this same id across a restart (AC-410's pane-id continuity), but
-/// that alone is not enough — <c>ScheduledResumeCoordinator.RunDueAsync</c> also requires the pane to already be
-/// startable-into (<c>SessionPanelViewModel.CanTakeAPrompt</c>) before it sends, so a resume whose pane is gone, or
-/// merely restored and not yet started, is reported as undelivered rather than sent nowhere.
+/// The session pane this was scheduled on, and where the prompt goes. <c>ScheduledResumeCoordinator.RunDueAsync</c>
+/// sends straight into it only when it is already startable-into (<c>SessionPanelViewModel.CanTakeAPrompt</c>); a
+/// pane that is gone outright, or merely restored and not yet started, falls to
+/// <c>ScheduledResumeCoordinator.ReopenAndSend</c> instead (AC-290), which reopens the earlier conversation the same
+/// way the restore-offer banner's own "Resume conversation" does — but only for an SDK-kind pane this run's restart
+/// already brought back as an offer (AC-410's pane-id continuity + <c>SessionRestorePlanner</c>). A pane closed on
+/// purpose during this run, a live crash mid-session with no restart behind it, or a TTY pane (its <c>PromptSink</c>
+/// comes up only once the view's pty has actually started, too late to trust here) carries no reopen this can use,
+/// and the resume is reported as undelivered rather than sent nowhere.
 /// </param>
 /// <param name="DueAt">When to send. For an allowance this is its reset moment; for a hand-scheduled resume, whatever the operator picked.</param>
 /// <param name="Prompt">What to send — the provider's default ("continue") unless the operator wrote something else before scheduling.</param>
