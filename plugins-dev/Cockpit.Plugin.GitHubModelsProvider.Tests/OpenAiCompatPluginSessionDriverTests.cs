@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.GitHubModelsProvider.Tests;
@@ -26,9 +25,9 @@ public class OpenAiCompatPluginSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)).Should().Be("Hello world.");
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
-        events.Should().ContainSingle(evt => evt is PluginSessionInitialized);
+        Assert.Equal("Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        Assert.Single(events, evt => evt is PluginSessionInitialized);
     }
 
     [Fact]
@@ -38,9 +37,9 @@ public class OpenAiCompatPluginSessionDriverTests
 
         await driver.StartAsync();
 
-        driver.SessionId.Should().NotBeNullOrEmpty();
-        driver.Capabilities.SupportsTools.Should().BeFalse();
-        driver.Capabilities.SupportsPermissions.Should().BeFalse();
+        Assert.False(string.IsNullOrEmpty(driver.SessionId));
+        Assert.False(driver.Capabilities.SupportsTools);
+        Assert.False(driver.Capabilities.SupportsPermissions);
     }
 
     [Fact]
@@ -56,8 +55,8 @@ public class OpenAiCompatPluginSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         await _CollectUntilTurnCompletedAsync(driver);
 
-        captured.Should().NotBeNull();
-        captured!.ModelId.Should().Be("meta/llama-3.3-70b-instruct");
+        Assert.NotNull(captured);
+        Assert.Equal("meta/llama-3.3-70b-instruct", captured!.ModelId);
     }
 
     [Fact]
@@ -72,8 +71,8 @@ public class OpenAiCompatPluginSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.Should().ContainSingle(evt => evt is PluginSessionError);
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        Assert.Single(events, evt => evt is PluginSessionError);
+        Assert.True(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 
     [Fact]
@@ -91,7 +90,7 @@ public class OpenAiCompatPluginSessionDriverTests
         await driver.InterruptAsync();
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.StopReason.Should().Be("interrupt");
+        Assert.Equal("interrupt", Assert.Single(events.OfType<PluginTurnCompleted>()).StopReason);
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)
