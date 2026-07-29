@@ -249,7 +249,13 @@
          provider's estimate and say so in the property names, since a plugin with no priced feed carries a figure it
          compiled in. Both properties are init-only, defaulting to empty: an already-compiled plugin keeps its
          constructor and simply declares no estimates. Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.37.0</Version>
+    <!-- 1.38.0 (AC-141): added PluginSessionInitialized.Model — the model a session's init event reports it
+         actually started under, so the host's Model live-control can seed itself for a session launched with no
+         explicit model (Auto/default) instead of showing an empty placeholder. Init-only, defaulting to null: an
+         already-compiled driver keeps constructing this record the old way and simply reports no model. Only
+         ever read to seed a control's starting value, never to fire a live switch back at the driver. Additions
+         only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.38.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

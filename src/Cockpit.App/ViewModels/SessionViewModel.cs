@@ -1408,6 +1408,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
                     : $"{init.Tools.Count} tools connected";
 
+                // AC-141: a session launched with no explicit model (Auto/default) built its Model live-control
+                // with nothing to show — the init event is the one place the CLI states which model it actually
+                // picked. Seed it in, don't fire a switch: the driver already reported this, and set_model would
+                // be the host talking back a choice the operator never made.
+                if (init.Model is { Length: > 0 } resolvedModel)
+                {
+                    foreach (var control in LiveControls)
+                    {
+                        if (control.Key == WellKnownPluginSessionOptions.Model)
+                        {
+                            control.SeedIfUnset(resolvedModel);
+                        }
+                    }
+                }
+
                 ConnectedTools.Clear();
                 foreach (var tool in init.Tools.OrderBy(tool => tool, StringComparer.OrdinalIgnoreCase))
                 {

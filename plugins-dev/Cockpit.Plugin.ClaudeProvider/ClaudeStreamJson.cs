@@ -54,6 +54,10 @@ internal static class ClaudeStreamJson
         }
 
         var cwd = root.TryGetProperty("cwd", out var cwdProp) ? cwdProp.GetString() : null;
+        // The real model the CLI resolved this session to — the only place a session launched with no explicit
+        // model (Auto/default) ever states which one it picked (AC-141). _BuildLiveOptions seeds the Model
+        // control from the launch option instead, which is null in exactly that case.
+        var model = root.TryGetProperty("model", out var modelProp) ? modelProp.GetString() : null;
         var tools = new List<string>();
         if (root.TryGetProperty("tools", out var toolsProp) && toolsProp.ValueKind == JsonValueKind.Array)
         {
@@ -66,7 +70,7 @@ internal static class ClaudeStreamJson
             }
         }
 
-        yield return new PluginSessionInitialized { SessionId = sessionId, Cwd = cwd, Tools = tools };
+        yield return new PluginSessionInitialized { SessionId = sessionId, Cwd = cwd, Tools = tools, Model = model };
     }
 
     // The assistant snapshot carries complete blocks; both text and thinking are already streamed by the

@@ -250,6 +250,52 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-141: a session launched with no explicit model (Auto/default) opens the Model live-control with no
+    // current value — the init event is the only place the CLI later states which one it actually picked.
+    [Fact]
+    public async Task SessionInitialized_WithModel_SeedsTheModelLiveControl_WithoutSwitchingTheDriver()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("model", "Model", ["opus", "sonnet"], null),
+            new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], "medium"),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [], Model = "claude-sonnet-4-5-20250929" });
+
+        vm.LiveControls[0].SelectedValue.Should().Be("claude-sonnet-4-5-20250929");
+        // A pinned snapshot the suggestion list never offered still needs an item to show against.
+        vm.LiveControls[0].ChoiceItems.Select(c => c.Value).Should().Contain("claude-sonnet-4-5-20250929");
+        await session.DidNotReceive().SetLiveOptionAsync("model", Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithModel_DoesNotOverwriteAnAlreadyChosenModel()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("model", "Model", ["opus", "sonnet"], "opus"),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [], Model = "claude-sonnet-4-5-20250929" });
+
+        vm.LiveControls[0].SelectedValue.Should().Be("opus");
+
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public async Task PickingALiveControlValue_SwitchesItOnTheDriver()
     {
