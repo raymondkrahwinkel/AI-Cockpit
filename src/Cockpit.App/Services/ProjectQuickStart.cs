@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Projects;
 
 namespace Cockpit.App.Services;
 
@@ -46,7 +47,12 @@ public sealed class ProjectQuickStart(
             return null;
         }
 
-        var defaults = SessionStartDefaults.Resolve(project, profile, memorySources: memorySources.Sources.ToMemorySources());
+        // The probe is I/O, which Resolve deliberately never does itself (see its own remarks on
+        // unresolvedReferences) — a quick start is an actual launch, so it is worth the filesystem check a preview
+        // field elsewhere in the dialog skips.
+        var unresolvedReferences = ProjectResourceProbe.FindUnresolved(project.Resources);
+        var defaults = SessionStartDefaults.Resolve(
+            project, profile, memorySources: memorySources.Sources.ToMemorySources(), unresolvedReferences: unresolvedReferences);
 
         // The same rule the dialog opens on, from the same place: the promise here is "the dialog, skipped", so what
         // starts has to be what pressing Start would have started.

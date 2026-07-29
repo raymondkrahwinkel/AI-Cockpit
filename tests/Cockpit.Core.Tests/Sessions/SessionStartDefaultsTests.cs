@@ -233,7 +233,14 @@ public class SessionStartDefaultsTests
         var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
 
         prompt.Should().NotBeNull();
-        prompt!.Length.Should().BeLessThan(5000, "the block is capped so a session can still be started");
+        // AC-484: the fixed 4000-character InformationNoteBudget this bound used to check against is gone, replaced
+        // by one 5500-character ceiling shared across every project contribution (Instructions/Memory/Reference and
+        // the information rows together) — the sum of the two ceilings it replaces, so the worst case a project can
+        // contribute did not grow. This project has none of the first three blocks, so the information rows alone
+        // may spend the whole shared ceiling, which is why the bound moved up from "under 5000" at all.
+        // Asserted against the ceiling itself rather than a round number above it: a bound with slack in it passes
+        // whether or not the ceiling is enforced, which is exactly the guard this test is supposed to be.
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "the shared ceiling is enforced, not merely intended");
         prompt.Should().Contain("more that did not fit here", "a row that was left out has to be admitted, not dropped quietly");
         prompt.Should().Contain("Row 0", "the rows that do fit are still told");
     }
@@ -466,5 +473,631 @@ public class SessionStartDefaultsTests
             "project already knows, and keep it up to date as you work.");
         prompt.Should().NotContain(((char)0x202E).ToString());
         prompt.Should().NotContain(((char)0x200B).ToString());
+    }
+
+    // ── AC-484: sentences per role, a shared budget, and unresolved-reference notices ──────────────────────────
+
+    /// <summary>
+    /// The regression AC-484 must not break: a project that still keeps exactly one Memory
+    /// <see cref="ProjectResource"/> row — the common case, and every caller written against the old single
+    /// <c>MemoryRef</c> world — gets byte-for-byte the same sentence as <see cref="Resolve_AProjectWithAMemoryLocation_TellsTheSessionWhereToLook"/>,
+    /// whether that row was written through <c>MemoryRef</c> or straight through <c>Resources</c>.
+    /// </summary>
+    [Fact]
+    public void Resolve_ASingleMemoryResourceRow_ProducesExactlyTheOldSentence()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory)],
+        };
+
+        SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt.Should().Be(
+            "This project's memory lives at /home/raymond/Notes/Cockpit. Read it there when you need what this " +
+            "project already knows, and keep it up to date as you work.");
+    }
+
+    /// <summary>AC-484 acceptance criterion 1: two memory rows are named together in one sentence, not two separate ones.</summary>
+    [Fact]
+    public void Resolve_TwoMemoryRows_MentionsBothInOneSentence()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
+            ],
+        };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        // Both places named in the same sentence, not two independent ones — split off everything from the
+        // channel-guidance sentence onward and check the naming sentence in front of it mentions both.
+        var namingSentence = prompt!.Split(". Use the local folder")[0];
+        namingSentence.Should().Contain("lives in", "one sentence should introduce every memory place");
+        namingSentence.Should().Contain("/home/raymond/Notes/Cockpit", "the first memory row must still be named");
+        namingSentence.Should().Contain("Depot project \"cockpit\"", "the second memory row must still be named");
+        prompt.Should().Contain("MCP", "the channel-guidance sentence explains which channel is for what");
+    }
+
+    /// <summary>AC-484 acceptance criterion 2: an Instructions row asks for compliance and comes before the memory note.</summary>
+    [Fact]
+    public void Resolve_AnInstructionsRow_AsksForComplianceAndPrecedesTheMemoryNote()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("/home/raymond/Notes/house-rules.md", ProjectResourceRole.Instructions),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Should().Contain("/home/raymond/Notes/house-rules.md");
+        prompt.Should().Contain("follow", "an instructions row must ask the session to comply");
+        var instructionsIndex = prompt.IndexOf("house-rules.md", StringComparison.Ordinal);
+        var memoryIndex = prompt.IndexOf("This project's memory lives at", StringComparison.Ordinal);
+        memoryIndex.Should().BeGreaterThan(-1);
+        instructionsIndex.Should().BeLessThan(memoryIndex, "the more binding instructions block comes before the memory note");
+    }
+
+    /// <summary>AC-484 acceptance criterion 3: the total stays under the shared ceiling, and a dropped row is announced.</summary>
+    [Fact]
+    public void Resolve_TotalExceedsTheSharedBudget_StaysUnderItAndSaysWhatWasDropped()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory)],
+            AdditionalInfo = [.. Enumerable.Range(0, 60).Select(index =>
+                new ProjectInfoField($"Row {index}", new string('x', 200)) { IsSharedWithSessions = true })],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "the shared ceiling covers memory and information together, and is enforced rather than approached");
+        prompt.Should().Contain("more that did not fit here", "a dropped information row must be announced, not silently gone");
+        prompt.Should().Contain("This project's memory lives at /home/raymond/Notes/Cockpit", "memory stays even when the budget is tight");
+    }
+
+    /// <summary>
+    /// AC-484 acceptance criterion 4, re-proven against the new Resources-based architecture: a matched memory
+    /// source's own instruction text is dropped whole rather than clipped when it does not fit, exactly as
+    /// <see cref="Resolve_AnInstructionThatOverflowsTheBudget_IsLeftOutWholeNotClipped"/> already established for
+    /// the single-row path this refactor kept byte-identical.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnInstructionThatOverflows_IsNeverCutMidSentence()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)],
+        };
+        var overlongInstruction = new string('x', 2000);
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", overlongInstruction) };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().Be("This project's memory lives in Depot project \"cockpit\".");
+        prompt.Should().NotContain("x", "not even a fragment of the dropped instruction may leak into the prompt");
+    }
+
+    /// <summary>AC-484 acceptance criterion 5: a row with ReachesSessions = false never appears in any block.</summary>
+    [Fact]
+    public void Resolve_AResourceRowThatDoesNotReachSessions_NeverAppearsInAnyBlock()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory) { ReachesSessions = false },
+                new ProjectResource("/home/raymond/Notes/house-rules.md", ProjectResourceRole.Instructions) { ReachesSessions = false },
+                new ProjectResource("https://internal.example/handbook", ProjectResourceRole.Reference) { ReachesSessions = false },
+            ],
+        };
+
+        SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt.Should().BeNull(
+            "every row opted out of reaching a session, so no block has anything to say");
+    }
+
+    /// <summary>The counterpart: a row that does reach sessions still appears next to one that does not.</summary>
+    [Fact]
+    public void Resolve_OneRowReachesSessionsAndOneDoesNot_OnlyTheFirstAppears()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("/home/raymond/Notes/private-notes", ProjectResourceRole.Memory) { ReachesSessions = false },
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Should().Contain("/home/raymond/Notes/Cockpit");
+        prompt.Should().NotContain("private-notes", "a row that opted out must not appear even alongside one that did not");
+    }
+
+    /// <summary>AC-484 acceptance criterion 6: an unresolved reference blocks nothing and is named.</summary>
+    [Fact]
+    public void Resolve_AnUnresolvedReference_DoesNotBlockAndIsNamed()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory)],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(
+            project, WorkProfile, unresolvedReferences: ["/home/raymond/Notes/Cockpit"]).SystemPrompt;
+
+        prompt.Should().NotBeNull("a reference that could not be found must never block the session from starting");
+        prompt!.Should().Contain("/home/raymond/Notes/Cockpit", "the place is still named");
+        prompt.Should().Contain("could not be found", "the caller's probe result must be said out loud, not silently dropped");
+    }
+
+    /// <summary>
+    /// The same notice, but for a Reference-role row rather than Memory, and for one unresolved row among several
+    /// reference rows (AC-484 review, MUST-FIX 8: this test's own fixture used to hold only one row while the
+    /// summary above claimed "several unresolved ones" — the fixture is expanded here rather than the claim
+    /// weakened, so the doc comment and the test agree).
+    /// </summary>
+    [Fact]
+    public void Resolve_AnUnresolvedReferenceRow_IsNamedInTheReferenceBlock()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/handbook.md", ProjectResourceRole.Reference),
+                new ProjectResource("/home/raymond/Notes/style-guide.md", ProjectResourceRole.Reference),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(
+            project, WorkProfile, unresolvedReferences: ["/home/raymond/Notes/handbook.md"]).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Should().Contain("handbook.md", "the unresolved row is still named");
+        prompt.Should().Contain("style-guide.md", "the resolved row among several still appears");
+        prompt.Should().Contain("could not be found", "only the row the probe actually flagged is called out as missing");
+        prompt.Should().NotContain("style-guide.md could not be found", "the resolved row must not be flagged alongside the unresolved one");
+    }
+
+    // ── AC-484 adversarial review: hard ceilings on every block, not only the information rows ────────────────────
+
+    /// <summary>
+    /// MUST-FIX 1, attacked through the exact vector an adversarial review used: <see cref="ProjectResource.Label"/>
+    /// is operator-free text with no length limit upstream, and — until this fix — <c>_ResourceDisplay</c> passed
+    /// it straight through uncapped. A single row with a 20,000-character label used to produce a 20,054-character
+    /// prompt; the shared ceiling must hold regardless.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnInstructionsRowWithAnAbsurdlyLongLabel_StaysWithinTheSharedCeiling()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/house-rules.md", ProjectResourceRole.Instructions)
+                {
+                    Label = new string('L', 20_000),
+                },
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "an operator-typed Label carries no length limit upstream and must never be able to blow through the shared ceiling");
+        prompt.Should().Contain("(truncated)", "the label is a value, not an instruction, so it is shortened visibly rather than left whole or silently dropped");
+    }
+
+    /// <summary>
+    /// MUST-FIX 1, attacked with many ordinary-looking rows rather than one pathological one: twenty rows in each
+    /// of the three role blocks, each an unremarkable 200-character path. Before this fix none of the three blocks
+    /// had a ceiling of its own, so their combined length was bounded by nothing.
+    /// </summary>
+    [Fact]
+    public void Resolve_TwentyRowsInEachRole_StaysWithinTheSharedCeilingAndAnnouncesWhatWasDropped()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                .. Enumerable.Range(0, 20).Select(i => new ProjectResource($"/memory/{i}/" + new string('m', 200), ProjectResourceRole.Memory)),
+                .. Enumerable.Range(0, 20).Select(i => new ProjectResource($"/instructions/{i}/" + new string('i', 200), ProjectResourceRole.Instructions)),
+                .. Enumerable.Range(0, 20).Select(i => new ProjectResource($"/reference/{i}/" + new string('r', 200), ProjectResourceRole.Reference)),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "twenty rows in each of three roles must not be able to add their lengths without a shared per-block ceiling");
+        prompt.Should().Contain("did not fit here", "rows that could not be carried under the shared ceiling must be announced, not silently dropped");
+    }
+
+    /// <summary>
+    /// MUST-FIX 1, the third role: forty Reference rows alone (no Memory, no Instructions) must still respect the
+    /// shared ceiling — the review measured 12,889 characters here before this fix.
+    /// </summary>
+    [Fact]
+    public void Resolve_FortyReferenceRows_StaysWithinTheSharedCeiling()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [.. Enumerable.Range(0, 40).Select(i =>
+                new ProjectResource($"/reference/{i}/" + new string('r', 200), ProjectResourceRole.Reference))],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "forty reference rows alone must still respect the shared ceiling");
+        prompt.Should().Contain("did not fit here");
+    }
+
+    /// <summary>
+    /// MUST-FIX 2: the multi-row memory route (<c>_PlaceName</c>) used to have no per-value cap at all, so the same
+    /// 6000-character value that came out at 1500 characters (with "(truncated)") as a single row came out whole as
+    /// one of two — the exact guard a security review had put in place for the single-row route, silently switched
+    /// off the moment a project grew a second memory row.
+    /// </summary>
+    [Fact]
+    public void Resolve_TwoMemoryRows_EachPlaceNameRespectsThePerValueCap()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource(new string('y', 6000), ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500);
+        prompt.Should().Contain("(truncated)", "a place name in the multi-row route must be capped the same way the single-row route already was");
+        prompt.Should().NotContain(new string('y', 6000), "the raw 6000-character value must never reach the prompt whole");
+    }
+
+    /// <summary>
+    /// MUST-FIX 3, first gap: the very first information row used to be added however long, because the guard that
+    /// stops later rows only fired once at least one row had already been kept. A single 20,000-character value
+    /// used to produce a 20,054-character prompt on its own.
+    /// </summary>
+    [Fact]
+    public void Resolve_ASingleInformationRowLongerThanTheCeiling_StaysWithinTheSharedCeiling()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            AdditionalInfo = [new ProjectInfoField("Notes", new string('z', 20_000)) { IsSharedWithSessions = true }],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, new SessionProfile("work", new ClaudeConfig("~/.claude"))).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500, "the first information row must be capped just like any other, not passed through however long");
+        prompt.Should().Contain("(truncated)", "a value too long to fit is shortened visibly rather than silently, the same courtesy an overlong memory place gets");
+    }
+
+    /// <summary>
+    /// MUST-FIX 3, second gap: the admission line used to be added unconditionally, even when every row (including
+    /// the admission itself) had to be given back to fit — producing a heading with nothing usable under it. Engineered
+    /// here by letting many small Reference rows consume nearly the entire shared ceiling on their own, leaving the
+    /// information block a budget too small even for its own heading.
+    /// </summary>
+    [Fact]
+    public void Resolve_NoBudgetLeftForInformation_NeverShowsAHeadingWithNothingUnderIt()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            // Many short reference rows so the greedy row-fit leaves only a sliver of the shared ceiling unused —
+            // far less than the heading's own length — for the information block that comes after it.
+            Resources = [.. Enumerable.Range(0, 1000).Select(i => new ProjectResource($"/r{i:D4}", ProjectResourceRole.Reference))],
+            AdditionalInfo = [new ProjectInfoField("Note", "Should never be shown.") { IsSharedWithSessions = true }],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(5500);
+        prompt.Should().NotContain("What else you should know about this project", "a heading with nothing usable under it is worse than no heading at all");
+        prompt.Should().NotContain("Should never be shown");
+    }
+
+    // ── AC-484 adversarial review: the channel-guidance sentence only when both channels are genuinely in play ────
+
+    /// <summary>FIX 5: two plain local folders give an agent nowhere else to go, so the MCP/remote sentence must not appear.</summary>
+    [Fact]
+    public void Resolve_TwoLocalMemoryRows_GivesNoChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("/home/raymond/Notes/Cockpit2", ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("lives in", "both places are still named together");
+        prompt.Should().NotContain("MCP", "two plain local folders leave no MCP or remote source to point an agent at");
+    }
+
+    /// <summary>FIX 5: one local path and one depot: reference are genuinely two channels, so the advice belongs here.</summary>
+    [Fact]
+    public void Resolve_OneLocalPathAndOneDepotMemoryRow_GivesChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
+            ],
+        };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("MCP", "one local path and one depot: reference are genuinely two different channels");
+    }
+
+    /// <summary>FIX 5: two depot: rows leave nothing for "the local folder" in the advice sentence to name.</summary>
+    [Fact]
+    public void Resolve_TwoDepotMemoryRows_GivesNoChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("depot:other", ProjectResourceRole.Memory),
+            ],
+        };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().NotContain("local folder", "two depot: rows leave nothing for \"the local folder\" to name");
+    }
+
+    // ── AC-484 adversarial review: a blank reference must never produce a location sentence pointing nowhere ─────
+
+    /// <summary>FIX 6: a blank Instructions reference must drop out rather than saying "Read them and follow them" about nothing.</summary>
+    [Fact]
+    public void Resolve_ABlankInstructionsReference_ProducesNoGhostLocation()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource("   ", ProjectResourceRole.Instructions)],
+        };
+
+        SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt.Should().BeNull(
+            "a blank reference names no location, so there is nothing for this block to say");
+    }
+
+    /// <summary>FIX 6: a blank Reference reference must drop out even when the operator gave it a label.</summary>
+    [Fact]
+    public void Resolve_ABlankReferenceReference_ProducesNoGhostLocation()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources = [new ProjectResource(string.Empty, ProjectResourceRole.Reference) { Label = "Handbook" }],
+        };
+
+        SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt.Should().BeNull(
+            "a blank reference names no location even when a label was given");
+    }
+
+    /// <summary>FIX 6: a blank memory row alongside a real one must be dropped, not counted toward the multi-row route as a ghost place.</summary>
+    [Fact]
+    public void Resolve_ABlankMemoryReferenceAmongOthers_IsDroppedNotGhosted()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("   ", ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        // The blank row is filtered out before the role split even happens, so this is the ordinary single-row
+        // sentence, not a two-row one with a ghost second place.
+        prompt.Should().Be(
+            "This project's memory lives at /home/raymond/Notes/Cockpit. Read it there when you need what this " +
+            "project already knows, and keep it up to date as you work.");
+    }
+
+    // ── AC-484 confirming round: MUST-FIX 1 — a ProjectMemorySource.Title runs through the ceiling too ────────────
+
+    /// <summary>
+    /// MUST-FIX 1: before this fix <see cref="SessionStartDefaults"/>'s <c>_CappedSentence</c> only ever shortened
+    /// its <c>value</c> parameter, never its <c>prefix</c> — and a <see cref="ProjectMemorySource.Title"/> is
+    /// folded straight into that prefix ("This project's memory lives in {title} \""). A 20,000-character
+    /// <c>Title</c> therefore reached the prompt whole, plus a truncation marker, however small the actual memory
+    /// value was: capped in name only. Without the fix this prompt runs to roughly 20,000+ characters; with it, the
+    /// whole sentence must stay within the shared 5500-character ceiling.
+    /// </summary>
+    [Fact]
+    public void Resolve_AMemorySourceWithAnAbsurdlyLongTitle_StaysWithinTheSharedCeiling()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", new string('T', 20_000), "Read it there.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(
+            5500, "a ProjectMemorySource.Title is plugin text with no length limit upstream and must not be able to blow through the shared ceiling either");
+        prompt.Should().Contain("(truncated)", "the title is a name, not an instruction, so it is shortened visibly rather than left whole");
+    }
+
+    /// <summary>
+    /// MUST-FIX 1, the doubled case the confirming round measured: the same absurd <c>Title</c> also appears in the
+    /// not-found mention when the reference is unresolved, so a naive fix that only capped the sentence once (and
+    /// not the second, independent route through <c>_PlaceName</c>) would still let the total run to roughly double
+    /// the single-occurrence case. Both routes share one cap, so the total stays under the ceiling here too.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnAbsurdlyLongTitleAlsoUnresolved_StaysWithinTheSharedCeiling()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", new string('T', 20_000), "Read it there.") };
+
+        var prompt = SessionStartDefaults.Resolve(
+            project, WorkProfile, memorySources: sources, unresolvedReferences: ["depot:cockpit"]).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt!.Length.Should().BeLessThanOrEqualTo(
+            5500, "the same absurd title named twice — once in the sentence, once in the not-found mention — must still stay within the ceiling");
+        prompt.Should().Contain("could not be found");
+    }
+
+    /// <summary>
+    /// The regression MUST-FIX 1 must not break, pinned byte-for-byte: an ordinary, human-length
+    /// <see cref="ProjectMemorySource.Title"/> produces exactly the sentence it always did. This is the same
+    /// fixture as <see cref="Resolve_AMemoryRefNamingARegisteredSource_ExplainsHowToReachIt"/> — repeated here,
+    /// named for this round, so the confirming fix's own test file shows the pin explicitly rather than relying on
+    /// a reader to find it in an older test.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnOrdinaryTitle_ProducesExactlyTheSameSentenceAsBeforeTheConfirmingFix()
+    {
+        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP's read tool.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().Be(
+            "This project's memory lives in Depot project \"cockpit\". Read it through the Depot MCP's read tool.");
+    }
+
+    // ── AC-484 confirming round: FIX 2 — channel advice requires a genuinely registered source, not just a shape ──
+
+    /// <summary>
+    /// FIX 2: before this fix the channel-advice check asked only whether a memory row's reference had the
+    /// <em>shape</em> <c>&lt;scheme&gt;:&lt;value&gt;</c> (<c>ProjectMemoryRef.TryParse</c>), not whether that
+    /// scheme actually named a registered <see cref="ProjectMemorySource"/>. A plain URL kept as a second memory
+    /// row satisfies that shape without there being any MCP or remote source behind it at all, so the session was
+    /// wrongly told to use "the MCP or remote source" that does not exist.
+    /// </summary>
+    [Fact]
+    public void Resolve_ALocalPathAndAnUnregisteredUrlMemoryRow_GivesNoChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("https://intranet.example/wiki", ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("lives in", "both places are still named together");
+        prompt.Should().NotContain("MCP", "a URL that names no registered memory source is not a second channel, whatever its shape looks like");
+    }
+
+    /// <summary>
+    /// FIX 2's counterpart, proving the fix does not simply withhold advice always: a local path alongside a
+    /// reference naming a source that <em>is</em> actually registered still gets the advice. Same fixture as
+    /// <see cref="Resolve_OneLocalPathAndOneDepotMemoryRow_GivesChannelAdvice"/>, kept here so this round's fix and
+    /// its "does not over-correct" counterpart sit side by side.
+    /// </summary>
+    [Fact]
+    public void Resolve_ALocalPathAndARegisteredDepotMemoryRow_StillGivesChannelAdvice()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/home/raymond/Notes/Cockpit", ProjectResourceRole.Memory),
+                new ProjectResource("depot:cockpit", ProjectResourceRole.Memory),
+            ],
+        };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("MCP", "a local path and a reference naming an actually-registered source are genuinely two channels");
+    }
+
+    // ── AC-484 confirming round: FIX 3 — two-or-more memory rows still say how to reach the memory ────────────────
+
+    /// <summary>
+    /// FIX 3: before this fix, the multi-row memory sentence named where memory lived and stopped — the "read it
+    /// there … keep it up to date" sentence <see cref="_SingleMemorySentence"/> (via <c>Resolve</c>'s single-row
+    /// branch) already gives a lone unregistered row was missing entirely once a project grew a second row. That
+    /// contradicts the very reason the registry refuses a blank instruction: "naming a place a session cannot be
+    /// told how to reach leaves it no better off than the bare reference" — which is exactly what two un-instructed
+    /// rows produced.
+    /// </summary>
+    [Fact]
+    public void Resolve_TwoLocalMemoryRows_StillSaysHowToReachTheMemory()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("/notes/a", ProjectResourceRole.Memory),
+                new ProjectResource("/notes/b", ProjectResourceRole.Memory),
+            ],
+        };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain(
+            "Read it there when you need what this project already knows, and keep it up to date as you work.",
+            "two memory rows must still be told how to use them, not merely where they are");
+    }
+
+    /// <summary>
+    /// FIX 3, the registered-source case: before this fix a matched source's own <c>Instruction</c> — the whole
+    /// point of registering a source rather than leaving a bare reference — was dropped the moment a second memory
+    /// row appeared. Also proves the instruction is said only once even though two rows name the very same source.
+    /// </summary>
+    [Fact]
+    public void Resolve_TwoRegisteredMemoryRowsForTheSameSource_IncludesItsInstructionExactlyOnce()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            Resources =
+            [
+                new ProjectResource("depot:a", ProjectResourceRole.Memory),
+                new ProjectResource("depot:b", ProjectResourceRole.Memory),
+            ],
+        };
+        var sources = new[] { new ProjectMemorySource("depot", "Depot project", "Read it through the Depot MCP.") };
+
+        var prompt = SessionStartDefaults.Resolve(project, WorkProfile, memorySources: sources).SystemPrompt;
+
+        prompt.Should().NotBeNull();
+        prompt.Should().Contain("Read it through the Depot MCP.", "a matched source's instruction must reach the session even with more than one memory row");
+        var firstIndex = prompt!.IndexOf("Read it through the Depot MCP.", StringComparison.Ordinal);
+        prompt.IndexOf("Read it through the Depot MCP.", firstIndex + 1, StringComparison.Ordinal)
+            .Should().Be(-1, "two rows naming the same source must not repeat its instruction");
     }
 }

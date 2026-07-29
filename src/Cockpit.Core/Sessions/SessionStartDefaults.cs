@@ -24,7 +24,9 @@ namespace Cockpit.Core.Sessions;
 /// </param>
 /// <param name="SystemPrompt">
 /// The standing instructions to append to the provider's own system prompt: the profile's identity first
-/// (AC-142), then what the project asks of it. Null when neither has anything to say.
+/// (AC-142), then the project's own <see cref="Project.BehaviorPrompt"/>, then its <see cref="Project.Resources"/>
+/// rows — standing instructions first, then where its memory lives, then what it may merely look up — and last
+/// whatever the operator shared as plain information. Null when none of them have anything to say.
 /// </param>
 public sealed record SessionStartDefaults(
     string? WorkingDirectory,
@@ -40,9 +42,21 @@ public sealed record SessionStartDefaults(
     /// <param name="globalWorkingDirectory">The configured app-wide working directory, used when neither the project nor the profile names one.</param>
     /// <param name="memorySources">
     /// The memory sources plugins have registered (AC-165/166, <c>ICockpitHost.AddProjectMemorySource</c>), so a
-    /// project's <see cref="Project.MemoryRef"/> naming one of them is explained rather than merely quoted. Null (the
-    /// default) is exactly "none registered" — every caller that does not yet pass this list gets the plain,
+    /// <see cref="ProjectResourceRole.Memory"/> row naming one of them is explained rather than merely quoted. Null
+    /// (the default) is exactly "none registered" — every caller that does not yet pass this list gets the plain,
     /// unexplained sentence it always got, unchanged.
+    /// </param>
+    /// <param name="unresolvedReferences">
+    /// The <see cref="ProjectResource.Reference"/> values a caller has already checked and found missing (AC-484) —
+    /// deliberately an input, not something this method goes and finds out for itself. Resolving whether a
+    /// reference exists is I/O, and purity is a property this class keeps on purpose: the same rule is asked from
+    /// three different surfaces, and a resolver that sometimes touches disk and sometimes does not is one more way
+    /// for those three to disagree, this time depending on what the filesystem happened to look like at the moment
+    /// each was called. So a caller assembling an actual launch (<c>ProjectQuickStart</c>, the New-session dialog's
+    /// Start) runs its own small probe first and hands the result in as plain data; a caller only previewing a
+    /// field (a project or profile picker updating the working-directory box) can reasonably skip that and pass
+    /// null, which reads as "nothing known to be missing" rather than "nothing is missing" — the difference matters
+    /// only in that the former never mentions a broken reference, never that it blocks one.
     /// </param>
     /// <remarks>
     /// The MCP selection here stays the profile's, and that is not a gap in "the project wins": a project's
@@ -54,45 +68,447 @@ public sealed record SessionStartDefaults(
         Project? project,
         SessionProfile? profile,
         string? globalWorkingDirectory = null,
-        IReadOnlyList<ProjectMemorySource>? memorySources = null) =>
-        new(
+        IReadOnlyList<ProjectMemorySource>? memorySources = null,
+        IReadOnlyCollection<string>? unresolvedReferences = null)
+    {
+        // A row switched off (ReachesSessions = false) is filtered out before any block below ever sees it — the
+        // one place that rule is honored, rather than each block having to remember to check it itself. A blank
+        // reference is filtered out here too (AC-484 review, MUST-FIX 6): reachable via {"role":"Memory"} without a
+        // "reference" in a hand-edited cockpit.json (ProjectResourceEntry.ToDomain does Reference ?? string.Empty),
+        // and every block below builds its sentence around this value — an empty one produces a "read the
+        // instructions at " sentence pointing nowhere, in all three blocks alike. One filter here rather than three
+        // repeats of the same guard.
+        var reachable = project?.Resources
+            .Where(resource => resource.ReachesSessions && !string.IsNullOrWhiteSpace(resource.Reference))
+            .ToList()
+            ?? (IReadOnlyList<ProjectResource>)[];
+        var memoryRows = reachable.Where(resource => resource.Role == ProjectResourceRole.Memory).ToList();
+        var instructionRows = reachable.Where(resource => resource.Role == ProjectResourceRole.Instructions).ToList();
+        var referenceRows = reachable.Where(resource => resource.Role == ProjectResourceRole.Reference).ToList();
+
+        // Two different orders share this method, and confusing them is the bug an adversarial review found here
+        // (AC-484 MUST-FIX 1): every block used to be built at full, unbounded length and only *then* measured — so
+        // nothing ever stopped a single 20,000-character Label, or twenty 200-character paths, from blowing straight
+        // through the shared ceiling before a single byte of it was ever compared against a budget.
+        //
+        // Assignment order (who gets a share of the ceiling first): memory, then instructions, then reference, then
+        // the information rows. Memory goes first because the documented give-up order promises the memory sentence
+        // survives every other cut — without it a session does not even know where to look for what this project
+        // already knows, where a missing Instructions or Reference sentence merely costs convenience.
+        //
+        // Output order (what appears where in the joined prompt): instructions, then memory, then reference, then
+        // information — unchanged from before, and independent of the line above. The most binding block is read
+        // first regardless of which block happened to win the budget fight for its share of the ceiling.
+        var remaining = ProjectContributionBudget;
+
+        var memoryNote = _MemoryNote(memoryRows, memorySources, unresolvedReferences, remaining);
+        remaining = Math.Max(0, remaining - _ReservedLength(memoryNote));
+
+        // Give-up order, step 1 (within the instructions block itself): an Instructions row's file *content* would
+        // be dropped back to its location-only sentence here first, before a whole row is ever dropped — AC-486 is
+        // the work that teaches this block to carry a file's content in the first place. Until it does there is
+        // nothing here to drop, so this call is a deliberate no-op today; it stays in the pipeline, named, so
+        // AC-486 has a slot to fill rather than having to invent the step from scratch.
+        var instructionsNote = _WithoutInstructionContent(_InstructionsNote(instructionRows, unresolvedReferences, remaining));
+        remaining = Math.Max(0, remaining - _ReservedLength(instructionsNote));
+
+        var referenceNote = _ReferenceNote(referenceRows, unresolvedReferences, remaining);
+        remaining = Math.Max(0, remaining - _ReservedLength(referenceNote));
+
+        // The information rows are the one part of a project's contribution that was always built to shrink row by
+        // row (see _InformationNote) — everything ahead of it in the assignment order has already taken its share,
+        // so whatever is left of the shared ceiling is what the information block gets to work with.
+        var informationNote = _InformationNote(project, remaining);
+
+        return new(
             _FirstNonBlank(project?.SourceDirectory, profile?.DefaultWorkingDirectory, globalWorkingDirectory),
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project, memorySources), _InformationNote(project)));
+            // Order matters, most binding first — the same reasoning _JoinPrompts always applied ("identity first,
+            // then the task"), carried one level further now there is more than one kind of task-level note: the
+            // profile says who the session is, the project's BehaviorPrompt what it is working on, its Instructions
+            // rows what it must actively obey, its memory rows where to go read and write what it already knows,
+            // its Reference rows what it may merely look up, and last — least binding of all, since it is material
+            // the operator shared for reference rather than anything to act on — whatever else was ticked to share.
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, instructionsNote, memoryNote, referenceNote, informationNote));
+    }
 
     /// <summary>
-    /// How much of the standing instructions a project's shared information rows may take. A ceiling rather than trust,
-    /// because this block is the one part of the prompt that grows by the row: the Claude route hands the whole prompt
-    /// to its CLI as one argument, and a process command line has a hard limit — so an unbounded block does not merely
-    /// cost budget, it stops the session starting at all. Generous enough that a realistic project never meets it.
+    /// How much of the standing instructions a project's own contribution — its Instructions, Memory and Reference
+    /// rows together with its shared information rows — may take, replacing the two separate ceilings
+    /// (<c>InformationNoteBudget</c> of 4000, <c>MemoryNoteBudget</c> of 1500) this class used to keep. One shared
+    /// ceiling rather than two independent ones because nothing bounded their sum: with only a memory sentence and
+    /// an information block, two unrelated caps happened to be enough, but AC-484 adds two more blocks that grow
+    /// the same way, and two caps that do not know about each other do not stop the total from growing without
+    /// limit — only ever bounding each block in isolation. The reason a ceiling exists at all has not changed
+    /// (see the constant this one replaces): the Claude route hands the whole prompt to its CLI as one process
+    /// argument, and a command line has a hard limit, so an unbounded contribution does not merely cost budget, it
+    /// stops the session starting at all.
+    /// <para>
+    /// Exactly 4000 + 1500, the two ceilings this replaces, and deliberately not a character more. A change whose
+    /// purpose is to bound a total must not raise the worst case it was introduced to bound: before this, a project
+    /// could contribute 5500 characters, so after it a project must not be able to contribute more. The two new
+    /// blocks are not a reason to add headroom — under a shared ceiling they <em>compete</em> for it rather than
+    /// extend it, which is the whole point of sharing one. Projects still gain in practice: an information-only
+    /// project may now use the full 5500 where it was previously held to 4000, without the total ever growing.
+    /// </para>
+    /// <para>
+    /// AC-484 review (MUST-FIX 8): an earlier revision of this comment asserted the ceiling was already enforced —
+    /// it was not. Each of the four blocks below used to be built at its full, unbounded length before anything
+    /// measured it: a single row's operator-typed <see cref="ProjectResource.Label"/> or
+    /// <see cref="ProjectResource.Reference"/> carries no length limit upstream, so one 20,000-character label, or
+    /// twenty ordinary-looking rows, passed this constant by exactly that much. What is guaranteed now, and only
+    /// now, is by construction rather than intention: <see cref="_MemoryNote"/>, <see cref="_InstructionsNote"/> and
+    /// <see cref="_ReferenceNote"/> each fit themselves — dropping whole rows, never slicing a sentence — to
+    /// whatever share of this ceiling the assignment order (see <see cref="Resolve"/>'s own remarks) leaves them,
+    /// and <see cref="_InformationNote"/> does the same with what is left after all three. The sum of the four
+    /// therefore never exceeds this constant. That sum is <em>not</em> the whole of <see cref="SystemPrompt"/> —
+    /// the profile's own prompt and the project's <see cref="Project.BehaviorPrompt"/> are prepended ahead of it and
+    /// this ceiling never bounded either of those, before this fix or after.
+    /// </para>
+    /// <para>
+    /// AC-484 confirming round (MUST-FIX 1): the claim above — "the sum of the four therefore never exceeds this
+    /// constant" — was itself not yet true when it was written. The one-row branch of <see cref="_MemoryNote"/> was
+    /// the single exception among the four: unlike the other three, it never measured its own output against the
+    /// budget it was handed at all, and the value it renders (a <see cref="Projects.ProjectMemorySource.Title"/>
+    /// folded into <see cref="_CappedSentence"/>'s <c>prefix</c>) was itself capped only in the part
+    /// <see cref="_CappedSentence"/> ever shortened — <c>value</c>, never <c>prefix</c> — so a <c>Title</c> alone
+    /// could still make the "capped" sentence run past <see cref="_PlaceNameBudget"/>, and past this constant with
+    /// it. Both gaps are closed now: <see cref="_CappedSentence"/> cuts <c>prefix</c> too when it alone leaves no
+    /// room for a value, and the one-row branch is measured against its budget exactly like the other three.
+    /// </para>
     /// </summary>
-    private const int InformationNoteBudget = 4000;
+    private const int ProjectContributionBudget = 5500;
 
     /// <summary>
-    /// How much of the standing instructions a memory note may take. A ceiling for the same reason
-    /// <see cref="InformationNoteBudget"/> is one: the Claude route hands the whole prompt to its CLI as one process
-    /// argument, and a command line has a hard limit, so an unbounded sentence does not merely cost budget, it stops
-    /// the session starting at all. Far smaller than the information block's budget because this is one sentence, not
-    /// a list that grows by the row — a realistic memory location is a path or a project key, at most a few hundred
-    /// characters, and a realistic source instruction is a sentence or two a plugin author wrote by hand. 1500 leaves
-    /// room for both together several times over while still refusing to let either grow without limit.
+    /// How long a single displayed value — a memory place name, an Instructions or Reference row's
+    /// <see cref="ProjectResource.Label"/> or bare <see cref="ProjectResource.Reference"/> — may run before it is
+    /// cut, kept separate from <see cref="ProjectContributionBudget"/> on purpose: that budget bounds how the
+    /// several blocks of a project's contribution share one ceiling, while this one bounds a single value's own
+    /// rendering regardless of how much of the shared ceiling happens to be free. Folding this into the shared
+    /// budget would let one absurdly long path or label alone consume nearly all of it, leaving nothing for the
+    /// other blocks even though the pathological value itself never needed six thousand characters — a bigger
+    /// shared ceiling should buy more *blocks* room, not license one value to grow into all of it. 1500 is the same
+    /// figure this class has always used here (see the git history this constant replaces): a realistic memory
+    /// location is a path or a project key, at most a few hundred characters, and a realistic source instruction is
+    /// a sentence or two a plugin author wrote by hand — 1500 leaves room for both together several times over
+    /// while still refusing to let either grow without limit.
+    /// <para>
+    /// AC-484 review (MUST-FIX 2): originally applied only to the single-row memory sentence
+    /// (<see cref="_SingleMemorySentence"/>) via <see cref="_CappedSentence"/>. A second, uncapped route to the same
+    /// value — <see cref="_PlaceName"/>, used by the multi-row memory sentence — let a security guard a review had
+    /// put in place turn itself off the moment a project grew a second memory row: the same 6000-character value
+    /// that came out at 1500 characters as a single row came out whole, all 6000 of it, as one of two. Every
+    /// place-name-shaped value now goes through <see cref="_CappedSentence"/> against this same constant — in the
+    /// memory block (<see cref="_PlaceName"/>) and in the Instructions/Reference blocks
+    /// (<see cref="_ResourceDisplay"/>) alike — so there is exactly one route to "how long may a value run", not one
+    /// per block.
+    /// </para>
     /// </summary>
-    private const int MemoryNoteBudget = 1500;
+    private const int _PlaceNameBudget = 1500;
 
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
 
+    /// <summary>An estimate of how much of the shared budget a note actually costs once joined: its own length plus the blank line <see cref="_JoinPrompts"/> puts before the next part. Null/blank costs nothing — it does not appear in the joined prompt at all.</summary>
+    private static int _ReservedLength(string? note) => string.IsNullOrEmpty(note) ? 0 : note.Length + 2;
+
+    /// <summary>Whether <paramref name="reference"/> is one a caller's probe already found missing — see <see cref="Resolve"/>'s remarks on <c>unresolvedReferences</c> for why this class never checks that itself.</summary>
+    private static bool _IsUnresolved(string reference, IReadOnlyCollection<string>? unresolvedReferences) =>
+        unresolvedReferences is { Count: > 0 } && unresolvedReferences.Contains(reference);
+
     /// <summary>
-    /// Sentence endings that count as "already punctuated" for <see cref="_MemoryNote"/> — the same idea
+    /// <paramref name="missingPlaceNames"/> said out loud rather than silently — the same courtesy
+    /// <see cref="_InformationNote"/> gives a row that did not fit, applied here to a reference that could not be
+    /// found at all. Never blocks anything it is attached to: an agent that thinks a place holds no conventions
+    /// behaves differently from one that knows it simply could not read them, so the gap is named, and the session
+    /// starts regardless — the same line the bundled-plugin installer draws ("a convenience, not a dependency").
+    /// </summary>
+    private static string _NotFoundSuffix(IReadOnlyList<string> missingPlaceNames) => missingPlaceNames.Count switch
+    {
+        0 => string.Empty,
+        1 => $" {missingPlaceNames[0]} could not be found there — the session starts anyway; check the location when you get a chance.",
+        _ => $" The following could not be found: {_JoinWithAnd(missingPlaceNames)} — the session starts anyway; check them when you get a chance.",
+    };
+
+    /// <summary><paramref name="items"/> joined as an English list: empty for none, the one item alone, "a and b" for two, "a, b and c" for more.</summary>
+    private static string _JoinWithAnd(IReadOnlyList<string> items) => items.Count switch
+    {
+        0 => string.Empty,
+        1 => items[0],
+        2 => $"{items[0]} and {items[1]}",
+        _ => $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}",
+    };
+
+    /// <summary>
+    /// Step 1 of the give-up order documented on <see cref="ProjectContributionBudget"/>: when the shared budget is
+    /// tight, an Instructions row's file <em>content</em> should be the first thing dropped back to its
+    /// location-only sentence — content is the least essential part of an instructions block (the session can
+    /// still be told where to go read it itself), where the memory sentence is the one thing a session cannot do
+    /// without at all. AC-486 is the work that gives this block content to read in the first place; until then
+    /// <paramref name="instructionsNote"/> never carries any, so there is nothing to drop and this is a deliberate
+    /// no-op — kept as a named step rather than left out, so the budget pipeline already has the slot AC-486 needs
+    /// instead of that work having to invent one.
+    /// </summary>
+    private static string? _WithoutInstructionContent(string? instructionsNote) => instructionsNote;
+
+    /// <summary>
+    /// Sentence endings that count as "already punctuated" for <see cref="_SingleMemorySentence"/> — the same idea
     /// <see cref="_InformationNote"/> applies to a label's trailing colon, just for a sentence rather than a word.
     /// </summary>
     private static readonly char[] _SentenceEndings = ['.', '!', '?'];
 
     /// <summary>
-    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
-    /// one.
+    /// How a single <see cref="ProjectResourceRole.Memory"/> row's <see cref="ProjectResource.Reference"/> is said
+    /// back to the session, for whichever <paramref name="memorySources"/> row (if any) explains it — named via
+    /// that source's own <c>Title</c>, without its <c>Instruction</c>. Used both to render the single-row memory
+    /// sentence (<see cref="_SingleMemorySentence"/>) and to name a row in a multi-row sentence or a not-found
+    /// mention, so the two say the same place the same way.
+    /// <para>
+    /// AC-484 review (MUST-FIX 2): every branch below is now put through <see cref="_CappedSentence"/> against
+    /// <see cref="_PlaceNameBudget"/>, the same cap <see cref="_SingleMemorySentence"/> already applied to the
+    /// single-row case. Before this fix this method returned <paramref name="reference"/>'s value uncapped, so the
+    /// single-row route and the multi-row route disagreed on a value of the same length: 1500 characters
+    /// (truncated) as one row, the whole uncapped value as one of two. Two routes to the same rendering is exactly
+    /// the shape in which a guard a security review put in place quietly stops applying — the fix is one route.
+    /// </para>
+    /// </summary>
+    private static string _PlaceName(string reference, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        var trimmed = ProjectPromptText.OneLine(reference.Trim());
+        if (memorySources is { Count: > 0 }
+            && ProjectMemoryRef.TryParse(trimmed, out var scheme, out var value)
+            && memorySources.FirstOrDefault(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched
+            && ProjectPromptText.OneLine(matched.Title.Trim()) is { Length: > 0 } title)
+        {
+            return _CappedSentence($"{title} \"", ProjectPromptText.OneLine(value), "\"");
+        }
+
+        return _CappedSentence(string.Empty, trimmed, string.Empty);
+    }
+
+    /// <summary>
+    /// The registered <paramref name="memorySources"/> entry <paramref name="reference"/> actually names, or null
+    /// when it does not name one at all — a value with no <c>&lt;scheme&gt;:&lt;value&gt;</c> shape at all
+    /// (<see cref="ProjectMemoryRef.TryParse"/> fails), or one whose scheme nothing registered claims.
+    /// <para>
+    /// AC-484 confirming round (FIX 2): the one place this match is made, now shared by the multi-row channel-advice
+    /// check and the multi-row instruction text (<see cref="_MultiRowInstructionsText"/>) as well as by
+    /// <see cref="_PlaceName"/> and <see cref="_SingleMemorySentence"/>'s own inline version of the same test.
+    /// Before this helper existed, the channel-advice check asked only whether a reference had the
+    /// <em>shape</em> <c>&lt;scheme&gt;:&lt;value&gt;</c> — which a plain URL kept as a second memory row
+    /// ("https://intranet.example/wiki") satisfies without there being any registered source behind it at all — so
+    /// a project with one local folder and one URL got advice naming an MCP or remote source that was never
+    /// actually in play. "Looks like a reference" and "names a source this session can actually be pointed at" are
+    /// different questions, and only the second one should ever change what the session is told to do.
+    /// </para>
+    /// </summary>
+    private static bool _NamesRegisteredSource(string reference, IReadOnlyList<ProjectMemorySource>? memorySources) =>
+        _MatchedMemorySource(reference, memorySources) is not null;
+
+    /// <summary>
+    /// What an Instructions or Reference row is called back to the session: the operator's own
+    /// <see cref="ProjectResource.Label"/> when they gave one, the bare reference otherwise — the same choice
+    /// <see cref="Projects.ProjectInfoField"/> makes for an unlabelled row. Capped through
+    /// <see cref="_CappedSentence"/> against <see cref="_PlaceNameBudget"/> (AC-484 review, MUST-FIX 1/2): a
+    /// <see cref="ProjectResource.Label"/> is operator-free text with no length limit upstream, and was the
+    /// vector an adversarial review used to blow straight through the shared ceiling with a single 20,000-character
+    /// row.
+    /// </summary>
+    private static string _ResourceDisplay(ProjectResource row)
+    {
+        var raw = !string.IsNullOrWhiteSpace(row.Label) ? row.Label : row.Reference;
+        return _CappedSentence(string.Empty, ProjectPromptText.OneLine(raw.Trim()), string.Empty);
+    }
+
+    /// <summary>
+    /// Where a project's memory lives, said in a sentence the session can act on. Null when it keeps none, or when
+    /// nothing about it fits within <paramref name="budget"/> — this block goes first in the assignment order (see
+    /// <see cref="Resolve"/>'s own remarks), so that second case is reachable only under an absurdly small ceiling.
+    /// <para>
+    /// One row says it exactly the way this class always has (<see cref="_SingleMemorySentence"/>) — that
+    /// byte-for-byte match is deliberate: a project with a single memory row is by far the common case, and every
+    /// caller and every test written against the old single-<c>MemoryRef</c> world keeps working unchanged.
+    /// </para>
+    /// <para>
+    /// More than one row says so in a single sentence naming all of them that fit (AC-484 review, MUST-FIX 1: rows
+    /// that do not fit are dropped from the end, never a sentence sliced mid-way, and the drop is announced —
+    /// see <see cref="_FitRowsToBudget"/>). Only when the surviving rows are genuinely of both kinds — at least one
+    /// reference naming a <em>registered</em> <paramref name="memorySources"/> entry and at least one that does not
+    /// (<see cref="_NamesRegisteredSource"/> tells them apart; AC-484 confirming round, FIX 2 — a bare
+    /// <c>&lt;scheme&gt;:&lt;value&gt;</c> <em>shape</em> is not enough, a plain URL kept as a memory row has that
+    /// shape too without any source standing behind it) — does a second sentence follow on which channel to use for
+    /// what: the local folder for searching, bulk reading and working offline, the MCP or remote source for the
+    /// current shared state (AC-484 review, MUST-FIX 5). Two local folders have no MCP to send an agent to, and two
+    /// <c>depot:</c> rows have no "local folder" for "the local folder" to name — advice naming a channel that is
+    /// not actually in play is worse than no advice, so it is withheld unless both channels are genuinely present.
+    /// </para>
+    /// <para>
+    /// The multi-row sentence also says how to reach what it names (AC-484 confirming round, FIX 3): a distinct
+    /// registered source's own <c>Instruction</c> once per source, and the same "read it there and keep it up to
+    /// date" gist <see cref="_SingleMemorySentence"/> already falls back to for a single unregistered row, once for
+    /// however many unregistered rows survived the cut — see <see cref="_MultiRowInstructionsText"/>. Before this
+    /// fix the multi-row branch named the places and stopped, which is exactly the outcome the registry's own
+    /// blank-instruction refusal exists to rule out ("naming a place a session cannot be told how to reach leaves
+    /// it no better off than the bare reference"). Added only when the whole of it still fits the budget, and left
+    /// out whole rather than sliced when it does not — the same rule <see cref="_FitRowsToBudget"/> already applies
+    /// to a row that does not fit on its own.
+    /// </para>
+    /// </summary>
+    private static string? _MemoryNote(
+        IReadOnlyList<ProjectResource> memoryRows,
+        IReadOnlyList<ProjectMemorySource>? memorySources,
+        IReadOnlyCollection<string>? unresolvedReferences,
+        int budget)
+    {
+        if (memoryRows.Count == 0)
+        {
+            return null;
+        }
+
+        if (memoryRows.Count == 1)
+        {
+            var reference = memoryRows[0].Reference;
+            var sentence = _SingleMemorySentence(reference, memorySources);
+            if (sentence is null)
+            {
+                return null;
+            }
+
+            var missing = _IsUnresolved(reference, unresolvedReferences)
+                ? new[] { _PlaceName(reference, memorySources) }
+                : [];
+            var withSuffix = sentence + _NotFoundSuffix(missing);
+
+            // AC-484 confirming round (MUST-FIX 1): the one-row branch used to hand this back unmeasured — the
+            // only one of the four blocks that never checked its own output against `budget` at all, so nothing
+            // downstream ever caught a one-row sentence that still ran long (an absurd Title, capped per value but
+            // combined with its own not-found mention, could still add up to more than this call was ever given to
+            // spend). Dropped rather than truncated, the same rule _FitRowsToBudget already applies to a row that
+            // does not fit on its own: a sentence sliced mid-way can flip what it says.
+            return withSuffix.Length <= budget ? withSuffix : null;
+        }
+
+        var effectiveBudget = Math.Max(0, budget);
+        return _FitRowsToBudget(memoryRows, effectiveBudget, (kept, dropped) =>
+        {
+            var places = kept.Select(row => _PlaceName(row.Reference, memorySources)).ToList();
+            var missingPlaces = kept
+                .Where(row => _IsUnresolved(row.Reference, unresolvedReferences))
+                .Select(row => _PlaceName(row.Reference, memorySources))
+                .ToList();
+
+            // Both channels have to be genuinely present among the rows that survived the cut — a row dropped for
+            // budget is not "in play" any more than one never entered, so this is judged on `kept`, not on
+            // `memoryRows` as a whole. "Present" means a row actually names a *registered* source (AC-484
+            // confirming round, FIX 2), not merely a value shaped like one — see _NamesRegisteredSource's own
+            // remarks on why the shape alone (ProjectMemoryRef.TryParse) let a plain URL trigger this advice.
+            var hasSchemeRow = kept.Any(row => _NamesRegisteredSource(row.Reference, memorySources));
+            var hasPathRow = kept.Any(row => !_NamesRegisteredSource(row.Reference, memorySources));
+            var channelAdvice = hasSchemeRow && hasPathRow
+                ? " Use the local folder to search it, read it in bulk and work offline; use the MCP or remote " +
+                  "source for the current shared state. Reading may draw from either channel, but prefer writing " +
+                  "any one file through a single channel within a session — write the same file through both and " +
+                  "the next sync collides with your own edit."
+                : string.Empty;
+
+            var baseSentence = $"This project's memory lives in {_JoinWithAnd(places)}.";
+            var tail = channelAdvice + _NotFoundSuffix(missingPlaces) + _DroppedRowsSuffix(dropped);
+
+            // AC-484 confirming round (FIX 3): how to reach it is said here too, right after the sentence naming
+            // where it is — added only when the whole addition still fits `effectiveBudget`, and left out whole
+            // rather than sliced when it does not, exactly the way any other row _FitRowsToBudget considers either
+            // survives whole or is dropped, never cut mid-sentence.
+            var instructionsText = _MultiRowInstructionsText(kept, memorySources);
+            if (instructionsText.Length > 0)
+            {
+                var withInstructions = $"{baseSentence} {instructionsText}{tail}";
+                if (withInstructions.Length <= effectiveBudget)
+                {
+                    return withInstructions;
+                }
+            }
+
+            return $"{baseSentence}{tail}";
+        });
+    }
+
+    /// <summary>
+    /// The multi-row memory sentence's "how to reach it" text (AC-484 confirming round, FIX 3), assembled the same
+    /// way <see cref="_SingleMemorySentence"/> already says it for a single row: a distinct registered source's own
+    /// <c>Instruction</c>, tidied to one line and left with its own trailing punctuation if it already had one —
+    /// once per distinct source, not once per row, so two rows naming the same source (two <c>depot:</c> paths, for
+    /// instance) do not repeat its instruction. Any row among <paramref name="kept"/> that does not name a
+    /// registered source at all is covered once, not once per such row, by the same generic "read it there and keep
+    /// it up to date" gist the single-row sentence falls back to for an unregistered reference — a session with two
+    /// plain folders still needs telling how to treat them, just not a different sentence for each.
+    /// <para>
+    /// Empty when nothing here has anything to add — every kept row names a registered source whose
+    /// <c>Instruction</c> is itself blank (the registry refuses that, so this is reachable only for a caller that
+    /// built its own <paramref name="memorySources"/> list, the same escape hatch <see cref="_SingleMemorySentence"/>
+    /// already allows).
+    /// </para>
+    /// </summary>
+    private static string _MultiRowInstructionsText(IReadOnlyList<ProjectResource> kept, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        var sentences = new List<string>();
+        var coveredSources = new HashSet<ProjectMemorySource>();
+        var hasUnregisteredRow = false;
+
+        foreach (var row in kept)
+        {
+            var matched = _MatchedMemorySource(row.Reference, memorySources);
+            if (matched is null)
+            {
+                hasUnregisteredRow = true;
+                continue;
+            }
+
+            if (!coveredSources.Add(matched))
+            {
+                // Already covered by an earlier row naming the very same source.
+                continue;
+            }
+
+            var instruction = ProjectPromptText.OneLine(matched.Instruction.Trim());
+            if (instruction.Length > 0)
+            {
+                sentences.Add(_SentenceEndings.Contains(instruction[^1]) ? instruction : $"{instruction}.");
+            }
+        }
+
+        if (hasUnregisteredRow)
+        {
+            sentences.Add("Read it there when you need what this project already knows, and keep it up to date as you work.");
+        }
+
+        return string.Join(" ", sentences);
+    }
+
+    /// <summary>
+    /// The registered <paramref name="memorySources"/> entry <paramref name="reference"/> names, or null when it
+    /// does not name one at all — shared by <see cref="_NamesRegisteredSource"/> and
+    /// <see cref="_MultiRowInstructionsText"/> so both ask the identical question <see cref="_PlaceName"/> and
+    /// <see cref="_SingleMemorySentence"/> already ask inline for their own single-value cases.
+    /// </summary>
+    private static ProjectMemorySource? _MatchedMemorySource(string reference, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (memorySources is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var trimmed = ProjectPromptText.OneLine(reference.Trim());
+        return ProjectMemoryRef.TryParse(trimmed, out var scheme, out _)
+            ? memorySources.FirstOrDefault(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            : null;
+    }
+
+    /// <summary>
+    /// The single-row memory sentence, unchanged from the code AC-484 found here (only the input shape changed,
+    /// from <c>Project.MemoryRef</c> straight to a resource's <see cref="ProjectResource.Reference"/> — the two are
+    /// the same string for the row this is called with).
     /// <para>
     /// A reference of the shape <c>&lt;scheme&gt;:&lt;value&gt;</c> naming a registered <paramref name="memorySources"/>
     /// entry is explained — named by that source's own <c>Title</c>, with its <c>Instruction</c> appended so the
@@ -109,14 +525,14 @@ public sealed record SessionStartDefaults(
     /// line the session reads as an instruction of its own.
     /// </para>
     /// </summary>
-    private static string? _MemoryNote(Project? project, IReadOnlyList<ProjectMemorySource>? memorySources)
+    private static string? _SingleMemorySentence(string reference, IReadOnlyList<ProjectMemorySource>? memorySources)
     {
-        if (project?.MemoryRef is not { Length: > 0 } memory || string.IsNullOrWhiteSpace(memory))
+        if (string.IsNullOrWhiteSpace(reference))
         {
             return null;
         }
 
-        var trimmed = ProjectPromptText.OneLine(memory.Trim());
+        var trimmed = ProjectPromptText.OneLine(reference.Trim());
         if (memorySources is { Count: > 0 }
             && ProjectMemoryRef.TryParse(trimmed, out var scheme, out var value)
             && memorySources.FirstOrDefault(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched
@@ -140,7 +556,7 @@ public sealed record SessionStartDefaults(
             // not fit even though the place alone (already capped above) does. Cutting an instruction in half can
             // flip what it means — "do not delete the old notes" becomes "do not delete" — so a too-long instruction
             // is left out whole rather than clipped: the place is still said, just not how to use it.
-            return withInstruction.Length <= MemoryNoteBudget ? withInstruction : located;
+            return withInstruction.Length <= _PlaceNameBudget ? withInstruction : located;
         }
 
         return _CappedSentence(
@@ -151,25 +567,157 @@ public sealed record SessionStartDefaults(
 
     /// <summary>
     /// <paramref name="prefix"/> + <paramref name="value"/> + <paramref name="suffix"/>, cut down to
-    /// <see cref="MemoryNoteBudget"/> if it does not fit. Only <paramref name="value"/> is ever shortened: it is a
-    /// name — a path, a project key — not an instruction, so unlike an instruction it is safe to cut rather than
-    /// having to be dropped whole. The cut is marked in place, in the spirit of <see cref="_InformationNote"/>'s
+    /// <see cref="_PlaceNameBudget"/> if it does not fit. <paramref name="value"/> is the one part shortened first:
+    /// it is a name — a path, a project key — not an instruction, so unlike an instruction it is safe to cut rather
+    /// than having to be dropped whole. The cut is marked in place, in the spirit of <see cref="_InformationNote"/>'s
     /// "(and N more that did not fit here…)": the session, and the operator reading the prompt back, should be able
     /// to see that the location shown is not the whole of it.
+    /// <para>
+    /// AC-484 confirming round (MUST-FIX 1): <paramref name="prefix"/> is capped the same way when it alone already
+    /// leaves no room for a value — before this fix only <paramref name="value"/> was ever bounded, so a
+    /// <paramref name="prefix"/> built from unbounded plugin text (<see cref="_PlaceName"/> and
+    /// <see cref="_SingleMemorySentence"/> both fold a <see cref="Projects.ProjectMemorySource.Title"/> into theirs)
+    /// could grow without limit while this method kept insisting it never returned more than
+    /// <see cref="_PlaceNameBudget"/> characters: once <paramref name="prefix"/> alone reached that length, the
+    /// computed <c>available</c> room for <paramref name="value"/> clamped to zero and the method handed back
+    /// <paramref name="prefix"/> whole, plus a marker and <paramref name="suffix"/> — exactly as unbounded as the
+    /// value cut was supposed to prevent. A normal call is unaffected: <paramref name="prefix"/> only takes this
+    /// path when it does not fit the budget on its own, which never happens for the short literal prefixes this
+    /// class builds (a handful of words and a quote) or for an ordinary <c>Title</c>.
+    /// </para>
     /// </summary>
     private static string _CappedSentence(string prefix, string value, string suffix)
     {
         var sentence = $"{prefix}{value}{suffix}";
-        if (sentence.Length <= MemoryNoteBudget)
+        if (sentence.Length <= _PlaceNameBudget)
         {
             return sentence;
         }
 
         const string truncationMarker = " (truncated)";
-        var available = Math.Max(0, MemoryNoteBudget - prefix.Length - suffix.Length - truncationMarker.Length);
+
+        // The prefix itself might already be the whole reason this does not fit — an unbounded plugin Title folded
+        // into it, for instance — in which case there is no room left for any of the value at all, and cutting the
+        // prefix in place (the same visible marker the value gets) is the only way to keep the promise this method
+        // makes rather than handing the whole of an unbounded prefix straight through.
+        var maxPrefixLength = Math.Max(0, _PlaceNameBudget - suffix.Length - truncationMarker.Length);
+        if (prefix.Length > maxPrefixLength)
+        {
+            return $"{prefix[..maxPrefixLength]}{truncationMarker}{suffix}";
+        }
+
+        var available = Math.Max(0, _PlaceNameBudget - prefix.Length - suffix.Length - truncationMarker.Length);
         var shortenedValue = value[..Math.Min(value.Length, available)] + truncationMarker;
         return $"{prefix}{shortenedValue}{suffix}";
     }
+
+    /// <summary>
+    /// A block asking the session to follow this project's standing instructions, naming where they are kept —
+    /// content-free today (AC-484 is scoped to the sentence, not reading the file; AC-486 is what teaches this
+    /// class to read one). One row names it directly; more than one row is asked to follow all of them, listed —
+    /// as many as fit <paramref name="budget"/>, the rest dropped and announced rather than growing the sentence
+    /// without limit (AC-484 review, MUST-FIX 1; see <see cref="_FitRowsToBudget"/>).
+    /// </summary>
+    private static string? _InstructionsNote(IReadOnlyList<ProjectResource> instructionRows, IReadOnlyCollection<string>? unresolvedReferences, int budget)
+    {
+        if (instructionRows.Count == 0)
+        {
+            return null;
+        }
+
+        return _FitRowsToBudget(instructionRows, Math.Max(0, budget), (kept, dropped) =>
+        {
+            var places = kept.Select(_ResourceDisplay).ToList();
+            var sentence = places.Count == 1
+                ? $"This project keeps standing instructions at {places[0]}. Read them and follow them for the rest of this session."
+                : $"This project keeps standing instructions in {_JoinWithAnd(places)}. Read them and follow them all for the rest of this session.";
+
+            var missing = kept
+                .Where(row => _IsUnresolved(row.Reference, unresolvedReferences))
+                .Select(_ResourceDisplay)
+                .ToList();
+            return sentence + _NotFoundSuffix(missing) + _DroppedRowsSuffix(dropped);
+        });
+    }
+
+    /// <summary>
+    /// A block saying this project keeps material worth looking things up in — never obeyed, never written to,
+    /// the same distinction <see cref="ProjectResourceRole.Reference"/> draws. One row names it directly; more than
+    /// one row lists all of them — as many as fit <paramref name="budget"/>, the rest dropped and announced rather
+    /// than growing the sentence without limit (AC-484 review, MUST-FIX 1; see <see cref="_FitRowsToBudget"/>).
+    /// </summary>
+    private static string? _ReferenceNote(IReadOnlyList<ProjectResource> referenceRows, IReadOnlyCollection<string>? unresolvedReferences, int budget)
+    {
+        if (referenceRows.Count == 0)
+        {
+            return null;
+        }
+
+        return _FitRowsToBudget(referenceRows, Math.Max(0, budget), (kept, dropped) =>
+        {
+            var places = kept.Select(_ResourceDisplay).ToList();
+            var sentence = places.Count == 1
+                ? $"This project keeps reference material at {places[0]} — look things up there when you need an answer."
+                : $"This project keeps reference material in {_JoinWithAnd(places)} — look things up there when you need an answer.";
+
+            var missing = kept
+                .Where(row => _IsUnresolved(row.Reference, unresolvedReferences))
+                .Select(_ResourceDisplay)
+                .ToList();
+            return sentence + _NotFoundSuffix(missing) + _DroppedRowsSuffix(dropped);
+        });
+    }
+
+    /// <summary>
+    /// Fits a row-listing block (Instructions, Reference, or the multi-row Memory sentence) inside
+    /// <paramref name="budget"/> by dropping whole rows from the end, never by slicing the sentence
+    /// <paramref name="render"/> builds around them — the same AC-166 rule <see cref="_SingleMemorySentence"/>
+    /// already applies to an overlong instruction ("do not delete the old notes" must never become "do not
+    /// delete" by being cut mid-word). Tries every row first; if that does not fit, tries all but the last, and so
+    /// on, so the rows kept are always a prefix of <paramref name="rows"/> — the ones the operator entered first,
+    /// consistent with how <see cref="_InformationNote"/> already keeps a prefix of its own rows.
+    /// <para>
+    /// AC-484 review (MUST-FIX 1): before this, none of the three row-listing blocks had any per-block ceiling at
+    /// all — each was built once, at full length, and only measured afterwards. A single absurdly long row (an
+    /// operator-typed <see cref="ProjectResource.Label"/> has no length limit upstream) or simply many ordinary
+    /// rows could each make the sentence this method now bounds grow past the shared ceiling on its own.
+    /// </para>
+    /// <para>
+    /// Returns null when even a single row does not fit — nothing here to introduce a list of "N more" without at
+    /// least one row actually named, so the whole block drops rather than showing an admission with nothing above
+    /// it. Reachable only under a budget too small to hold even one row, which given the assignment order
+    /// documented on <see cref="ProjectContributionBudget"/> means the blocks ahead of this one in that order have
+    /// already spent nearly the entire shared ceiling.
+    /// </para>
+    /// </summary>
+    private static string? _FitRowsToBudget(
+        IReadOnlyList<ProjectResource> rows,
+        int budget,
+        Func<IReadOnlyList<ProjectResource>, int, string> render)
+    {
+        for (var count = rows.Count; count > 0; count--)
+        {
+            var candidate = render(rows.Take(count).ToList(), rows.Count - count);
+            if (candidate.Length <= budget)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The clause that owns up to whole rows <see cref="_FitRowsToBudget"/> dropped rather than naming — the prose
+    /// counterpart to <see cref="_Admission"/>'s bullet line for the information block, said the same way: a
+    /// dropped row is announced, never silently gone.
+    /// </summary>
+    private static string _DroppedRowsSuffix(int dropped) => dropped switch
+    {
+        0 => string.Empty,
+        1 => " One more did not fit here — read it in the project itself.",
+        _ => $" {dropped} more did not fit here — read them in the project itself.",
+    };
 
     /// <summary>
     /// The project's own information rows that the operator ticked to share (AC-314), as one labelled block — never a
@@ -187,7 +735,12 @@ public sealed record SessionStartDefaults(
     /// one.
     /// </para>
     /// </summary>
-    private static string? _InformationNote(Project? project)
+    /// <param name="budget">
+    /// How much of the shared <see cref="ProjectContributionBudget"/> is left for this block once the parts that
+    /// go ahead of it in the assignment order (Memory, Instructions, Reference) have taken their share — see the
+    /// order documented on that constant. Never the fixed ceiling this block used to answer to on its own.
+    /// </param>
+    private static string? _InformationNote(Project? project, int budget)
     {
         var shared = project?.AdditionalInfo
             .Where(field => field.ReachesSessions)
@@ -200,31 +753,93 @@ public sealed record SessionStartDefaults(
             return null;
         }
 
+        // The heading and the newline joining it to the first row are part of what this block costs, so they come
+        // off the budget before a single row is measured against it. Leaving them out is how a ceiling ends up
+        // being passed by exactly the length of the things nobody counted.
+        const string heading = "What else you should know about this project:";
+        var available = Math.Max(0, budget - heading.Length - 1);
+        if (available <= 0)
+        {
+            // AC-484 review (MUST-FIX 3): nothing can follow the heading at all, so the heading does not go out
+            // either — a heading over an empty list is worse than saying nothing about this block.
+            return null;
+        }
+
         var lines = new List<string>();
-        var budget = InformationNoteBudget;
+        var used = 0;
         foreach (var field in shared)
         {
             // A label the operator already punctuated keeps its own colon rather than getting a second one.
             var label = field.Label.EndsWith(':') ? field.Label : $"{field.Label}:";
-            var line = field.HasLabel ? $"- {label} {field.Value}" : $"- {field.Value}";
-            if (line.Length > budget && lines.Count > 0)
+            var prefix = field.HasLabel ? $"- {label} " : "- ";
+            var line = $"{prefix}{field.Value}";
+
+            // AC-484 review (MUST-FIX 3): the very first row used to be added however long, because the check
+            // below that stops later rows only fired once `lines.Count > 0`. A single field whose own value ran
+            // past the whole budget therefore always passed straight through, alone, regardless of `budget`. A
+            // line too long to fit at all is now shortened first — it is a value the operator shared, not an
+            // instruction, so cutting it (with a visible marker) is the same safe move
+            // <see cref="_CappedSentence"/> already makes for an overlong memory place.
+            if (line.Length > available)
             {
+                const string marker = " (truncated)";
+                var roomForValue = available - prefix.Length - marker.Length;
+                if (roomForValue > 0)
+                {
+                    line = $"{prefix}{field.Value[..Math.Min(field.Value.Length, roomForValue)]}{marker}";
+                }
+            }
+
+            if (used + line.Length > available)
+            {
+                // This row — the first as much as any other, now that the special case above is gone — does not
+                // fit even on its own. Stop rather than skip ahead: a row that did not fit is reported by the
+                // admission below, not silently passed over in favor of a shorter one further down the list.
                 break;
             }
 
             lines.Add(line);
-            budget -= line.Length + 1;
+            used += line.Length + 1;
         }
 
         // Said out loud rather than trimmed away in silence: the session is told its picture is incomplete, and the
         // operator can see in the prompt that a row they ticked did not make it.
+        //
+        // The admission has to fit inside the budget too, which means giving rows back until it does — and its own
+        // length moves while that happens, because the number in it grows as rows are dropped. Recomputed each time
+        // round rather than measured once: an admission that itself overruns the ceiling would be the one line in
+        // this block guaranteed to be wrong about the very thing it is there to report.
         if (lines.Count < shared.Count)
         {
-            lines.Add($"- (and {shared.Count - lines.Count} more that did not fit here — read them in the project itself)");
+            var admission = _Admission(shared.Count - lines.Count);
+            while (lines.Count > 0 && used + admission.Length > available)
+            {
+                used -= lines[^1].Length + 1;
+                lines.RemoveAt(lines.Count - 1);
+                admission = _Admission(shared.Count - lines.Count);
+            }
+
+            // AC-484 review (MUST-FIX 3): the admission used to be added unconditionally, even once every row had
+            // been given back to make room for it — with an empty `lines` and a budget too small for even the
+            // admission itself, that produced the heading followed by a single line that itself overran the
+            // ceiling. Left out entirely rather than shown broken: a budget this tight means nothing about this
+            // block can be said at all.
+            if (admission.Length <= available)
+            {
+                lines.Add(admission);
+            }
         }
 
-        return $"What else you should know about this project:\n{string.Join('\n', lines)}";
+        return lines.Count == 0 ? null : $"{heading}\n{string.Join('\n', lines)}";
     }
+
+    /// <summary>
+    /// The line that owns up to the rows this block could not carry. Its own length is part of the budget, which is
+    /// why it exists as a function: the caller has to be able to ask what it would cost for a given count before
+    /// deciding whether that count is affordable.
+    /// </summary>
+    private static string _Admission(int dropped) =>
+        $"- (and {dropped} more that did not fit here — read them in the project itself)";
 
     /// <summary>
     /// The profile's standing instructions with the project's appended under them, blank-separated. Both apply and

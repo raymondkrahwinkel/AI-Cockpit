@@ -25,10 +25,10 @@ public sealed record ProjectResource(string Reference, ProjectResourceRole Role)
     public string? Label { get; init; }
 
     /// <summary>
-    /// Whether a starting session should be told about this row. Stored and round-tripped now, but not yet honored:
-    /// <c>Project.MemoryRef</c> is what a session is actually told about today, and it reads straight off
-    /// <see cref="Project.Resources"/> without consulting this flag at all. AC-484 is the work that makes a session
-    /// actually check it before speaking up.
+    /// Whether a starting session should be told about this row. Honored by
+    /// <see cref="Cockpit.Core.Sessions.SessionStartDefaults.Resolve"/> (AC-484): a row with this set to false is
+    /// filtered out before any block of the standing instructions is built, so it never appears in a memory,
+    /// instructions or reference sentence, whatever else the row says.
     /// <para>
     /// Defaults to true — unlike <see cref="ProjectInfoField.IsSharedWithSessions"/>, which defaults off because an
     /// information row arrives as reference material for the operator first. A memory or instruction row exists
