@@ -22,6 +22,15 @@ internal sealed class McpOAuthCoordinator(
     /// </summary>
     private static readonly TimeSpan ExpiryMargin = TimeSpan.FromMinutes(2);
 
+    // AC-505 follow-up (2026-07-29): see McpToolProvider.InteractiveOAuthClientOptions — the same SDK 2.0.0
+    // DiscoverProbeTimeout/InitializationTimeout pairing has to widen here too, only for the operator-facing
+    // "sign in"/"sign in again" path; a non-interactive renewal check should still fail fast.
+    private static readonly McpClientOptions InteractiveOAuthClientOptions = new()
+    {
+        InitializationTimeout = TimeSpan.FromMinutes(5),
+        DiscoverProbeTimeout = TimeSpan.FromMinutes(5),
+    };
+
     public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
     {
         if (server.Auth != McpServerAuth.OAuth)
@@ -188,7 +197,8 @@ internal sealed class McpOAuthCoordinator(
                 OAuth = authorizer.CreateOptions(server, interactive, stageRecorder),
             });
 
-            await using var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var clientOptions = interactive ? InteractiveOAuthClientOptions : null;
+            await using var client = await McpClient.CreateAsync(transport, clientOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

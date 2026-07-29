@@ -144,4 +144,34 @@ public class McpOAuthOfflineAccessFlowTests
         Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, access.AccessToken);
         Assert.Equal(InProcessOAuthMcpServer.RenewedAccessToken, (await store.GetAsync("depot"))?.AccessToken);
     }
+
+    [Fact]
+    public async Task Acquire_Interactively_SurvivesABrowserConsentThatTakesLongerThanTheDefaultDiscoverProbeTimeout()
+    {
+        // AC-505 follow-up (2026-07-29, live-verified against production Depot): ModelContextProtocol.Core 2.0.0
+        // added McpClientOptions.DiscoverProbeTimeout (5s default) around the same HTTP call whose 401 the SDK
+        // turns into this interactive sign-in — so on an unmodified McpClientOptions, an operator who takes more
+        // than about five seconds to see the browser tab and click consent has the whole flow cancelled out from
+        // under them (confirmed live: the loopback listener's GetContextAsync is torn down mid-wait, and the SDK
+        // reports "AuthorizationCallbackHandler returned a null authorization result"). Red without the coordinator's
+        // widened McpClientOptions: a 6-second delay before the redirect is enough to reproduce it deterministically.
+        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
+        var store = new FakeMcpOAuthTokenStore();
+        var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store)
+        {
+            BrowserOpener = url =>
+            {
+                _ = Task.Delay(TimeSpan.FromSeconds(6))
+                    .ContinueWith(_ => _BrowserHttpClient.GetAsync(url), TaskScheduler.Default);
+                return true;
+            },
+        };
+        var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: true, timeout.Token);
+
+        Assert.Equal(McpAuthState.Authorized, access.State);
+        Assert.Equal(InProcessOAuthMcpServer.AccessToken, access.AccessToken);
+    }
 }
