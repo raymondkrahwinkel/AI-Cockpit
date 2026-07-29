@@ -63,6 +63,18 @@
             <Color x:Key="CockpitAccentSelectionColor">#293b82f6</Color>
             <SolidColorBrush x:Key="CockpitAccentSelectionBrush" Color="{StaticResource CockpitAccentSelectionColor}"/>
 
+            <!-- Accent at 25% (#40 alpha) — the quiet edge a TextBox/ComboBox gets from a click (AC-438).
+                 :focus-visible carries the full accent ring for keyboard navigation; a plain :focus (which a
+                 mouse click also sets) is not silence — a clicked field still needs a marker distinct from a
+                 merely-hovered one — but it is not the loud keyboard ring either, or the two signals would be
+                 the same colour and the whole point of splitting them is lost. 25% rather than the 16% used
+                 for a selection tint: that one shades a whole row, this one is a 1-2px stroke, and needed more
+                 of the accent in it to still read as its own colour rather than fade into the hairline grey —
+                 checked against both CockpitHairlineColor and CockpitHairlineHoverColor in
+                 ThemeControlStateTests (rendered pixels, not a hex comparison by eye). -->
+            <Color x:Key="CockpitFocusHairlineColor">#403b82f6</Color>
+            <SolidColorBrush x:Key="CockpitFocusHairlineBrush" Color="{StaticResource CockpitFocusHairlineColor}"/>
+
             <!-- White at 4% (#0a alpha) — the wash under a chromeless button on hover. A token rather than a
                  literal because it is the one place the theme paints with light instead of with a surface
                  colour: a ghost button has no fill to brighten, so it borrows one from whatever it sits on. -->
@@ -527,12 +539,23 @@
          pseudo-class (StyleTrigger priority, above Template), so it has to be reclaimed here or it falls back to
          Fluent's #99000000. Measured on a plain picker and on ComboBox.Compact. Focus reclaims nothing here, so
          there is nothing to hold on to in that state. Focus is declared after hover for the same reason as the
-         input below: clicking a picker makes both true, and the later rule wins. -->
+         input below: clicking a picker makes both true, and the later rule wins.
+         :focus here is deliberately the quiet edge (AC-438), not the full accent ring: a click focuses a picker
+         too, and a ring left behind by the pointer marks the last thing touched rather than where the keyboard
+         is — the same reasoning Button/RadioButton/CheckBox.Switch already followed with :focus-visible. Unlike
+         those controls, though, this field is otherwise indistinguishable from an unfocused one the moment the
+         pointer leaves it, so a plain :focus is not left bare — it gets CockpitFocusHairlineBrush, quieter than
+         the keyboard ring but still its own colour, distinct from CockpitHairlineHoverBrush above. :focus-visible
+         is declared after :focus so the keyboard ring outranks the quiet edge when both are true (Tab always
+         sets both; a click never sets :focus-visible at all — measured in the headless harness, not assumed). -->
     <Style Selector="ComboBox:pointerover /template/ Border#Background">
         <Setter Property="Background" Value="{TemplateBinding Background}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
     </Style>
     <Style Selector="ComboBox:focus /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
+    </Style>
+    <Style Selector="ComboBox:focus-visible /template/ Border#Background">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
     <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
@@ -612,10 +635,21 @@
         <Setter Property="Background" Value="{TemplateBinding Background}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
     </Style>
+    <!-- :focus/:focus-visible split, AC-438: the full accent ring moves to :focus-visible (the keyboard signal,
+         following the same convention Button/RadioButton/CheckBox.Switch already use), and a plain :focus —
+         which a mouse click also sets, with no :focus-visible alongside it — keeps CockpitFocusHairlineBrush,
+         a quieter marker than the ring rather than nothing. Without it, a clicked field would look identical to
+         an unfocused one once the pointer moves off (the state pointerover was answering for above stops being
+         true), which is exactly the "did my click even land" question this pair exists to answer for. This is
+         not a case of forgetting to finish the AC-425 cleanup: the two rules below are the deliberate quiet half
+         of it, not a stray :focus left behind. -->
     <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
         <Setter Property="Background" Value="{TemplateBinding Background}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="{TemplateBinding BorderThickness}"/>
+    </Style>
+    <Style Selector="TextBox:focus-visible /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
     <!-- A disabled field recedes, for the same reason a disabled picker does. This matches :disabled only —
          IsEnabled="False" — not IsReadOnly, which carries no pseudo-class here and is untouched by this rule.
@@ -966,7 +1000,16 @@
     <!-- Selected *and* focused — the state a row is in the moment you click it, and the one that was
          missing. Without these three the row fell through to Fluent and turned light grey with dark text
          in the middle of a dark list, which reads as a rendering fault rather than as a selection
-         (Discover in the plugin store, the picked profile in ManageProfiles). -->
+         (Discover in the plugin store, the picked profile in ManageProfiles).
+         Considered for the :focus -> :focus-visible split of AC-438 and left alone: this rule does not draw a
+         focus *ring* at all (nothing here touches BorderBrush), it re-asserts the same Background that :selected
+         already set, only to stop Fluent's own :focus rule for this part from winning with its light-grey fill.
+         A selected row is a different concept from an input's edge — the fill is the selection, meant to stay
+         exactly as visible whether the row is selected by a keyboard Enter, a click, or is simply the row that
+         was selected last and never touched since — not a transient "you're here now" marker that should fade
+         to something quieter once the pointer/keyboard moves on. Splitting it into :focus/:focus-visible would
+         make a selected-but-not-currently-focused row (the common case: you selected it, then tabbed elsewhere)
+         lose its background entirely, which is the AC-336 bug this rule exists to prevent, reintroduced. -->
     <Style Selector="ListBoxItem:selected:focus /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>

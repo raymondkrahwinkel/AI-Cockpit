@@ -758,6 +758,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a text field or dropdown you just clicked into no longer draws the same bright accent ring as one you
+  tabbed to with the keyboard. The full ring is now reserved for keyboard focus, so it marks where the keyboard
+  actually is rather than the last thing the pointer touched; a clicked field still gets its own quieter edge so
+  it doesn't look untouched, just not as loud as the keyboard signal.
+
 - changed: Autopilot now plans its review gates to spend verification where the verdict is. A gate reviews, its
   findings get fixed, and it reviews again until a round finds nothing — the rounds in between are asked to build
   incrementally and run the tests around the change, and only the round that finds nothing does the whole-project

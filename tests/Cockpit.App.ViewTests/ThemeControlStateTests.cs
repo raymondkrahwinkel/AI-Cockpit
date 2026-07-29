@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 
@@ -447,9 +448,13 @@ public class ThemeControlStateTests
     {
         // Clicking into a field leaves the pointer on it, so hover and focus are both live and both name this
         // element. Handing the control's own fill and border back removed the two things that used to tell those
-        // states apart (Fluent turned a focused field black and thickened its border), which leaves the accent
-        // edge as the only thing this default TextBox (a real border, asked for at rest) has left to draw the
+        // states apart (Fluent turned a focused field black and thickened its border), which leaves this edge
+        // as the only thing this default TextBox (a real border, asked for at rest) has left to draw the
         // difference with — and that edge is lost unless focus is declared after hover.
+        // AC-438: box.Focus() here is the click route, not the keyboard one — Avalonia only sets :focus-visible
+        // through actual keyboard navigation (see AnInput_TakesTheFullAccentRing_OnlyViaKeyboardFocus below,
+        // which proves that with a real Tab press rather than assuming it). So the colour this test pins is now
+        // the quiet CockpitFocusHairlineBrush, not the full accent ring.
         var box = new TextBox { Text = "x" };
         using var host = RenderedScene.Show(box);
 
@@ -458,7 +463,83 @@ public class ThemeControlStateTests
         host.Window.UpdateLayout();
 
         Assert.True(box is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
+        Assert.False(box.Classes.Contains(":focus-visible"), "a click, not a Tab, put focus here");
+        Assert.Equal(RenderedScene.Token("CockpitFocusHairlineColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+    });
+
+    [Fact]
+    public void AnInput_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-438: the full accent ring moved to :focus-visible, which Avalonia only sets when focus arrived via
+        // keyboard navigation — not via Control.Focus() and not via a pointer click (both proven bare of
+        // :focus-visible above and in AnInput_TakesTheQuietEdge_WhenFocusedByAClick below). A real Tab press is
+        // simulated rather than assumed, because "focus-visible behaves like focus" is exactly the kind of thing
+        // that is easy to get backwards.
+        var before = new Button { Content = "before" };
+        var box = new TextBox { Text = "x" };
+        using var host = RenderedScene.Show(new StackPanel { Children = { before, box } });
+
+        before.Focus();
+        host.Window.UpdateLayout();
+        host.Window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.UpdateLayout();
+
+        Assert.True(box.IsFocused, "the Tab press has to actually land on the field for this to mean anything");
+        Assert.True(box.Classes.Contains(":focus-visible"), "a Tab press is exactly the keyboard route :focus-visible exists for");
         Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+    });
+
+    [Fact]
+    public void AnInput_TakesTheQuietEdge_WhenFocusedByAClickAlone() => HeadlessAvalonia.Run(() =>
+    {
+        // The click route on its own, pointer off the field entirely afterwards — so nothing here could be hover
+        // answering for focus, only the quiet :focus rule itself.
+        var box = new TextBox { Text = "x" };
+        using var host = RenderedScene.Show(box);
+
+        host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
+        box.Focus();
+        host.Window.UpdateLayout();
+
+        Assert.False(box.IsPointerOver, "focus has to be read on its own, or hover answers for it");
+        Assert.True(box.IsFocused, "and only while the box actually holds focus");
+        Assert.False(box.Classes.Contains(":focus-visible"), "Control.Focus() is the click route, not the keyboard one");
+        Assert.Equal(RenderedScene.Token("CockpitFocusHairlineColor"), _ColourOf(_Part<Border>(box, "PART_BorderElement").BorderBrush));
+    });
+
+    [Fact]
+    public void AnInput_ClickFocusAndHover_PaintDistinguishableColours() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-438's third acceptance criterion: a clicked field and a merely-hovered one are exactly the pair
+        // AC-425 nearly rendered identically once before (both name Border#PART_BorderElement, same priority).
+        // Measured as painted pixels rather than compared as resource tokens, the same way AC-406's amber wash
+        // guard settled a similar question — a brush is what a control was told to paint with, not what reached
+        // the screen. BorderThickness is widened to 6 for the sample: at the theme's own 1px hairline, Avalonia
+        // centres the stroke on the geometry edge, so half of it falls outside the control's own bounds and a
+        // point 2px in samples the fill rather than the edge — a fatter, deliberately test-only border removes
+        // that hair-splitting.
+        var hovered = new TextBox { Text = "x", BorderThickness = new Thickness(6) };
+        var focused = new TextBox { Text = "x", BorderThickness = new Thickness(6) };
+        using var host = RenderedScene.Show(new StackPanel { Children = { hovered, focused } });
+
+        host.Window.MouseMove(hovered.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+        Assert.True(hovered is { IsPointerOver: true, IsFocused: false });
+
+        host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
+        focused.Focus();
+        host.Window.UpdateLayout();
+        Assert.True(focused is { IsPointerOver: false, IsFocused: true });
+
+        var hoveredEdge = hovered.TranslatePoint(new Point(3, hovered.Bounds.Height / 2), host.Window) ?? default;
+        var focusedEdge = focused.TranslatePoint(new Point(3, focused.Bounds.Height / 2), host.Window) ?? default;
+
+        var hoveredPixel = RenderedScene.PaintedAt(host.Window, hoveredEdge);
+        var focusedPixel = RenderedScene.PaintedAt(host.Window, focusedEdge);
+
+        var delta = Math.Abs(hoveredPixel.R - focusedPixel.R) + Math.Abs(hoveredPixel.G - focusedPixel.G) + Math.Abs(hoveredPixel.B - focusedPixel.B);
+        Assert.True(delta > 20, $"a hovered edge at {hoveredPixel} and a click-focused edge at {focusedPixel} read as the same colour (Δ{delta})");
     });
 
     [Fact]
@@ -484,6 +565,8 @@ public class ThemeControlStateTests
         // The input's problem one control along, and the one this theme has now been caught by twice: hover and
         // focus name the same element at the same priority, so the later rule answers for both while you are
         // clicking. The order is right; nothing was holding it there until this.
+        // AC-438: picker.Focus() is the click route (no :focus-visible), so this now pins the quiet edge — see
+        // APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus for the loud one.
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
         using var host = RenderedScene.Show(picker);
 
@@ -492,7 +575,59 @@ public class ThemeControlStateTests
         host.Window.UpdateLayout();
 
         Assert.True(picker is { IsPointerOver: true, IsFocused: true }, "this is about the two states at once");
+        Assert.False(picker.Classes.Contains(":focus-visible"), "a click, not a Tab, put focus here");
+        Assert.Equal(RenderedScene.Token("CockpitFocusHairlineColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+    });
+
+    [Fact]
+    public void APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus() => HeadlessAvalonia.Run(() =>
+    {
+        // The ComboBox half of AC-438's :focus/:focus-visible split, proven with a real Tab press rather than
+        // assumed from the TextBox result one control along.
+        var before = new Button { Content = "before" };
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = RenderedScene.Show(new StackPanel { Children = { before, picker } });
+
+        before.Focus();
+        host.Window.UpdateLayout();
+        host.Window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.UpdateLayout();
+
+        Assert.True(picker.IsFocused, "the Tab press has to actually land on the picker for this to mean anything");
+        Assert.True(picker.Classes.Contains(":focus-visible"), "a Tab press is exactly the keyboard route :focus-visible exists for");
         Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+    });
+
+    [Fact]
+    public void APicker_ClickFocusAndHover_PaintDistinguishableColours() => HeadlessAvalonia.Run(() =>
+    {
+        // The ComboBox half of AC-438's third acceptance criterion — same pair, one control along. BorderThickness
+        // widened for the same reason as the TextBox guard above: a fatter test-only border keeps the sample
+        // point away from the antialiased seam at the theme's own 1px hairline.
+        var hovered = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0, BorderThickness = new Thickness(6) };
+        var focused = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0, BorderThickness = new Thickness(6) };
+        using var host = RenderedScene.Show(new StackPanel { Children = { hovered, focused } });
+
+        host.Window.MouseMove(hovered.TranslatePoint(new Point(5, 5), host.Window) ?? default);
+        host.Window.UpdateLayout();
+        Assert.True(hovered is { IsPointerOver: true, IsFocused: false });
+
+        host.Window.MouseMove(new Point(host.Window.Width - 1, host.Window.Height - 1));
+        focused.Focus();
+        host.Window.UpdateLayout();
+        Assert.True(focused is { IsPointerOver: false, IsFocused: true });
+
+        var hoveredBorder = _Part<Border>(hovered, "Background");
+        var focusedBorder = _Part<Border>(focused, "Background");
+        var hoveredEdge = hoveredBorder.TranslatePoint(new Point(3, hoveredBorder.Bounds.Height / 2), host.Window) ?? default;
+        var focusedEdge = focusedBorder.TranslatePoint(new Point(3, focusedBorder.Bounds.Height / 2), host.Window) ?? default;
+
+        var hoveredPixel = RenderedScene.PaintedAt(host.Window, hoveredEdge);
+        var focusedPixel = RenderedScene.PaintedAt(host.Window, focusedEdge);
+
+        var delta = Math.Abs(hoveredPixel.R - focusedPixel.R) + Math.Abs(hoveredPixel.G - focusedPixel.G) + Math.Abs(hoveredPixel.B - focusedPixel.B);
+        Assert.True(delta > 20, $"a hovered edge at {hoveredPixel} and a click-focused edge at {focusedPixel} read as the same colour (Δ{delta})");
     });
 
     [Fact]
@@ -533,6 +668,8 @@ public class ThemeControlStateTests
     [Fact]
     public void APicker_ShowsFocus_WhenItIsFocusedButThePointerIsNotOnIt() => HeadlessAvalonia.Run(() =>
     {
+        // AC-438: picker.Focus() is the click route on its own, pointer off the picker entirely — so this pins
+        // the quiet edge, not the keyboard ring (see APicker_TakesTheFullAccentRing_OnlyViaKeyboardFocus).
         var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
         using var host = RenderedScene.Show(picker);
 
@@ -542,7 +679,8 @@ public class ThemeControlStateTests
 
         Assert.False(picker.IsPointerOver, "focus has to be read on its own, or hover answers for it");
         Assert.True(picker.IsFocused, "and only while the picker actually holds focus");
-        Assert.Equal(RenderedScene.Token("CockpitAccentColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
+        Assert.False(picker.Classes.Contains(":focus-visible"), "Control.Focus() is the click route, not the keyboard one");
+        Assert.Equal(RenderedScene.Token("CockpitFocusHairlineColor"), _ColourOf(_Part<Border>(picker, "Background").BorderBrush));
     });
 
     [Fact]
