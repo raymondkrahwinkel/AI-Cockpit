@@ -728,7 +728,17 @@ public partial class TtyView : UserControl
         }
 
         parts.Append(CultureInfo.InvariantCulture, $" · LANG={lang ?? "(unset)"} LC_ALL={lcAll ?? "(unset)"}");
+
+        // AC-129: which family the renderer really draws with, and the advance every column position is a
+        // multiple of. The configured list leads with Windows-only families, so on another platform the name
+        // that wins is whatever the font manager substitutes — and a substitute that is not monospace cannot
+        // hold the grid. Without this the operator (and the bug report) can only guess at it.
+        parts.Append(CultureInfo.InvariantCulture,
+            $" · font {Terminal.EffectiveFontFamily}{(Terminal.UsingMonospaceFallback ? " (substituted)" : "")}" +
+            $" · cell {Terminal.CellWidth.ToString("0.###", CultureInfo.InvariantCulture)}px");
+
         _viewModel.Diagnostics = parts.ToString();
+
     }
 
     private void StartPty()

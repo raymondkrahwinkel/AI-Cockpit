@@ -31,6 +31,11 @@ internal sealed class PortaPtyProcess : IConPtyProcess
     /// its environment (Porta.Pty overlays this onto the inherited process environment; since
     /// <paramref name="environment"/> already carries that base plus our overrides, the result is
     /// the same dictionary reaching the child).
+    /// <para>
+    /// On Linux the launch goes through <see cref="PtyTerminalModes.WrapForSaneModes"/> first: a shell that fixes
+    /// the pty's line disciplines and then <c>exec</c>s this executable, because the pty is handed to us with them
+    /// all cleared (AC-129). The <c>exec</c> keeps the pid, the signals and the process tree as they were.
+    /// </para>
     /// </summary>
     /// <remarks>
     /// <see cref="PtyProvider.SpawnAsync"/> is only genuinely asynchronous on its Windows path; the
@@ -47,11 +52,13 @@ internal sealed class PortaPtyProcess : IConPtyProcess
         short columns,
         short rows)
     {
+        var (app, commandLine) = PtyTerminalModes.WrapForSaneModes(executablePath, arguments);
+
         var options = new PtyOptions
         {
             Name = "xterm-256color",
-            App = executablePath,
-            CommandLine = arguments.ToArray(),
+            App = app,
+            CommandLine = commandLine,
             Cwd = workingDirectory,
             Cols = columns,
             Rows = rows,

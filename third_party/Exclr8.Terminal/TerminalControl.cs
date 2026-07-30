@@ -1231,6 +1231,21 @@ public class TerminalControl : Control, IDisposable
         }
     }
 
+    /// <summary>The family the renderer actually draws with. Differs from
+    /// <see cref="FontFamily"/> when the configured family is missing on this
+    /// machine or is not monospace, in which case the renderer substitutes a
+    /// platform monospace face — see <see cref="UsingMonospaceFallback"/>.</summary>
+    public string EffectiveFontFamily => _renderer.EffectiveFontFamily;
+
+    /// <summary>True when the configured family failed the monospace probe and a
+    /// substitute was used. A host that surfaces this saves its operator from
+    /// guessing why a grid does not line up.</summary>
+    public bool UsingMonospaceFallback => _renderer.UsingMonospaceFallback;
+
+    /// <summary>Measured advance of one cell in device-independent pixels — the
+    /// number every column position is a multiple of.</summary>
+    public double CellWidth => _renderer.CellWidth;
+
     /// <summary>Step the terminal font size by whole points. Positive
     /// direction enlarges (Cmd+=), negative shrinks (Cmd+-). Reflows
     /// the grid so the cell count matches the new cell metrics.</summary>
