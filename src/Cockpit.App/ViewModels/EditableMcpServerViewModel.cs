@@ -20,7 +20,7 @@ namespace Cockpit.App.ViewModels;
 /// <see cref="SignOutAsync"/>).
 /// </para>
 /// <para>
-/// A row is identified by <see cref="_id"/> (AC-403), not by the name in its own text box. That is what makes a
+/// A row is identified by <see cref="Id"/> (AC-403), not by the name in its own text box. That is what makes a
 /// rename safe: the name is edited, saved and re-read, while the id it is filed under never moves, so a sign-out on
 /// one row can no longer act on what a rename has since handed to another. It also makes
 /// <see cref="McpServersViewModel"/>'s post-save resync an identity match rather than the list-position match it had
