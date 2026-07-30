@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
@@ -113,6 +114,57 @@ public class PullRequestRefreshSourceTests
         Assert.Equal(2, ran.Count(x => !x));
     }
 
+    /// <summary>
+    /// AC-515 blocker 2: a snapshot that is not valid JSON at all — a truncated write (see blocker 1) or a leftover
+    /// from an incompatible earlier build — must read as "nothing persisted yet", the same as a fresh install,
+    /// rather than throw out of the constructor. This runs inside <c>GitHubPullRequestsPlugin.Initialize</c>, before
+    /// <c>AddSettings</c>/<c>AddSideMenuSection</c>/<c>AddWidget</c> register anything — an unguarded throw here
+    /// used to make <c>PluginManager.Initialize</c> skip every one of this plugin's contributions over one bad key.
+    /// <see cref="JsonBackedStorage"/> (unlike <see cref="InMemoryStorage"/>) round-trips through
+    /// <see cref="System.Text.Json.JsonSerializer"/> like the host's real <c>PluginStorage</c> does, so this
+    /// actually drives the deserialize path the bug lives in.
+    /// </summary>
+    [Fact]
+    public void ColdStart_WithUnparsableStoredJson_FallsBackToEmpty_InsteadOfThrowing()
+    {
+        var storage = new JsonBackedStorage();
+        storage.SeedRaw("refreshSourceSnapshot", "not json at all");
+
+        var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
+
+        var current = source.Current;
+        source.Dispose();
+
+        Assert.Empty(current.Result.PullRequests);
+        Assert.False(current.Result.RepositoryMissing);
+        Assert.Null(current.FetchedAt);
+    }
+
+    /// <summary>
+    /// AC-515 blocker 2's other failure shape: valid JSON that simply is not this record's shape (e.g. a value
+    /// written under this key by something unrelated). <see cref="System.Text.Json.JsonSerializer"/> does not
+    /// throw for this — <see cref="PullRequestFeedSnapshot.Result"/> is a required, non-nullable reference, but a
+    /// missing JSON property still deserializes to a snapshot whose <c>Result</c> is null, since deserialization
+    /// does not enforce non-null reference members. A bare <c>?? Empty</c> on the constructor's read would miss
+    /// this: the deserialized object is not null, only its <c>Result</c> is — so <see cref="PullRequestRefreshSource"/>
+    /// must reject it explicitly rather than merely catch an exception that never comes.
+    /// </summary>
+    [Fact]
+    public void ColdStart_WithWrongShapedJson_FallsBackToEmpty_InsteadOfCarryingANullResult()
+    {
+        var storage = new JsonBackedStorage();
+        storage.SeedRaw("refreshSourceSnapshot", """{"totally":"unrelated","shape":true}""");
+
+        var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
+
+        var current = source.Current;
+        source.Dispose();
+
+        Assert.NotNull(current.Result);
+        Assert.Empty(current.Result.PullRequests);
+        Assert.Null(current.FetchedAt);
+    }
+
     [Fact]
     public void StaleAfter_IsThreeTimesTheGhClientTtl_NotARoundedNumber()
     {
@@ -185,5 +237,22 @@ public class PullRequestRefreshSourceTests
         public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? (T?)value : default;
 
         public void Set<T>(string key, T value) => _values[key] = value;
+    }
+
+    /// <summary>
+    /// Unlike <see cref="InMemoryStorage"/>, stores values as the raw JSON strings the host's real
+    /// <c>PluginStorage</c> does — needed for the malformed/wrong-shape tests above, which are only real bugs on
+    /// the JSON round trip; <see cref="InMemoryStorage"/> keeps the live object and would never exercise
+    /// <see cref="JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)"/> at all.
+    /// </summary>
+    private sealed class JsonBackedStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, string> _values = [];
+
+        public void SeedRaw(string key, string rawJson) => _values[key] = rawJson;
+
+        public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
+
+        public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
     }
 }

@@ -57,7 +57,7 @@ internal sealed class PullRequestRefreshSource : IDisposable
     {
         _storage = storage;
         _load = load;
-        _current = _storage.Get<PullRequestFeedSnapshot>(StorageKey) ?? PullRequestFeedSnapshot.Empty;
+        _current = _ReadPersistedSnapshot() ?? PullRequestFeedSnapshot.Empty;
 
         // Due time zero: a fetch starts the moment the source exists, not after the first full interval — the
         // persisted/empty snapshot above is what a view shows in the meantime, never a wait.
@@ -66,6 +66,32 @@ internal sealed class PullRequestRefreshSource : IDisposable
 
     /// <summary>The last known answer — always available synchronously, whatever loaded it (a previous run, an earlier tick, a manual refresh).</summary>
     public PullRequestFeedSnapshot Current => _current;
+
+    /// <summary>
+    /// Reads the last persisted snapshot, treating anything that does not come back as a genuine, complete
+    /// snapshot the same way as nothing having been persisted yet (AC-515). This constructor runs inside
+    /// <see cref="GitHubPullRequestsPlugin.Initialize"/>, before <c>AddSettings</c>/<c>AddSideMenuSection</c>/
+    /// <c>AddWidget</c> register anything — an exception escaping it is caught by <c>PluginManager.Initialize</c>,
+    /// which then skips every one of this plugin's contributions, not just this source. A storage value can fail
+    /// to come back usable two ways: it is not valid JSON at all (a truncated write, an older/foreign format —
+    /// <see cref="JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)"/> throws), or it deserializes
+    /// without throwing but into a shape this record does not actually carry (e.g. a value written under this key
+    /// by something else, or a schema this snapshot no longer matches) — <see cref="PullRequestFeedSnapshot.Result"/>
+    /// is a required, non-nullable reference, but a JSON object missing that property still deserializes to a
+    /// snapshot with a null one, since deserialization does not enforce non-null reference members. Either way
+    /// nothing usable was found, so the caller falls back to <see cref="PullRequestFeedSnapshot.Empty"/>.
+    /// </summary>
+    private PullRequestFeedSnapshot? _ReadPersistedSnapshot()
+    {
+        try
+        {
+            return _storage.Get<PullRequestFeedSnapshot>(StorageKey) is { Result: not null } snapshot ? snapshot : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     /// <summary>What the caller's own attempt failed with, if <see cref="RefreshAsync"/> returned <see langword="true"/> and it did not succeed. Never set by an attempt a caller was gated out of — see <see cref="RefreshAsync"/>.</summary>
     public Exception? LastError { get; private set; }
