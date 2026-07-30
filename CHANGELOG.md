@@ -1144,7 +1144,6 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
-<<<<<<< HEAD
 - fixed: an MCP server you sign in to with a browser (Depot) no longer disappears from a running session when its
   access token expires. The session is now pointed at a local address the cockpit answers, and the cockpit puts a
   freshly renewed token on each call as it passes through — so the token's lifetime is no longer the session's
