@@ -86,7 +86,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // the read-aloud tailer above so status works regardless of the read-aloud toggle. The safety timeout only
     // rescues a busy turn that went silent far past any real turn (a missed end_turn, a killed CLI).
     private static readonly TimeSpan BusySafetyTimeout = TimeSpan.FromSeconds(120);
-    private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout);
+    // AC-276: long enough to cover the gap between a turn ending and the CLI stating how many sub-agents are still
+    // running (measured p99 2634 ms), so the session does not flash Done — and fire "session finished" — in between.
+    private static readonly TimeSpan TurnSettleDelay = TimeSpan.FromSeconds(3);
+    private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout, TurnSettleDelay);
 
     // Throttles the pty-output liveness keep-alive (AC-75) to ~1 Hz — the terminal flushes at up to 30 fps.
     private DateTimeOffset _lastAliveSignalAt;

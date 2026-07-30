@@ -5861,8 +5861,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // A session with a backgrounded shell still running is not finished, whatever the status says (AC-276):
         // the status deliberately reaches Done there, because a dev server or a tail -f would otherwise pin it on
         // "working" forever — but announcing it as finished while it is still doing something is the very thing
-        // this notification should not do. Sub-agents need no check here: they hold the status at
-        // WorkingBackground, so that flank never reads Busy → Done to begin with.
+        // this notification should not do. Sub-agents are not checked here because they never let this flank read
+        // Busy → Done in the first place: on the SDK route the task list arrives before the turn's result, and on
+        // the TTY route TtyActivityStatusTracker's settle delay holds the finish until the count that follows it
+        // has had time to arrive. Both are load-bearing for that claim — see their own tests.
         if (session.SessionStatus == SessionStatus.Done
             && previous == SessionStatus.Busy
             && !session.HasOutstandingBackgroundShells)
