@@ -73,3 +73,30 @@ jobs:
             dotnet test "$tests" --configuration Release --verbosity minimal
             echo "::endgroup::"
           done
+
+  # Green tests say a plugin works; they say nothing about whether anyone will ever get it. The store offers an
+  # update only when the version string moved, so a plugin changed under its existing number is unpublishable —
+  # it passes every check here and reaches nobody (AC-276, 2026-07-30). This is the cheapest moment to catch it:
+  # before the change is merged and the number is already spent.
+  plugin-versions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The guard reads plugin.json at two commits, so the shallow default clone is not enough.
+          fetch-depth: 0
+
+      - name: Every changed plugin carries a newer version
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A branch's first push reports an all-zero "before"; there is no range to compare and nothing to check.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base commit to compare against; skipping."
+            exit 0
+          fi
+          bash scripts/check-plugin-versions.sh "$BASE" HEAD
+
+      - name: Guard's own tests
+        run: bash scripts/check-plugin-versions.test.sh

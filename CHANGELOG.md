@@ -1165,6 +1165,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: several sessions starting at once could each renew the same sign-in, which on a server that issues one-use
   refresh tokens can invalidate the authorization outright. One renewal now runs at a time and the others use its
   result.
+
+- fixed: a session no longer reads as finished while work it started is still running. A sub-agent that outlives the
+  turn keeps the session showing that it is working in the background, and a backgrounded shell holds the "session
+  finished" notification back until it ends. The status used to flip to done the moment the main turn did, then
+  flicker between working and done for the rest of it.
+
 - fixed: opening the GitHub Issues dialog from a project that is linked to a repository now actually opens on that
   repository. It always fell back to showing every repository instead, so the link made no difference to what you saw.
   Narrowing the list by label no longer hides that repository either, so the preselection cannot be sidestepped.

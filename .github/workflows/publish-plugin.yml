@@ -12,11 +12,44 @@ name: Publish plugin to store
 # pipeline. minHostVersion is only as honest as the discipline of bumping it when a plugin starts needing a
 # new host API; the gate assumes you do.
 #
-# Deliberately manual (workflow_dispatch), not on-push: a plugin and the host change it depends on often land
-# together, and a human is the right judge of "is the host out yet". The same gate + steps would make an
-# auto-on-merge trigger safe later; only the trigger would change.
+# It is also callable (workflow_call), which is how publish-updated-plugins.yml ships whatever main carries
+# that the store does not have yet. That trigger exists because "deliberately manual" turned out to mean
+# "silently skipped": on 2026-07-30 twelve of twenty-four plugins held merged code no published zip contained,
+# and the store index reported every one of them up to date. A human judging "is the host out yet" is still the
+# right idea — it just cannot be the only thing standing between a fix and the people it was written for. The
+# judgement is now the gate below plus the verification before the merge, both of which run every time.
+#
+# A caller may ask for the store PR to be merged for it (auto_merge). That is only defensible because the
+# checks that a reviewer would do are done here first: the zip is re-hashed from disk, its contents are looked
+# at, and the index entry is checked against both. The store repo has no workflows and no branch protection,
+# so `gh pr merge --auto` would wait for nothing — there is no CI over there to be the second pair of eyes,
+# which is exactly why it has to be in this job.
 
 on:
+  workflow_call:
+    inputs:
+      plugin:
+        description: The plugin id to publish
+        required: true
+        # A called workflow cannot take a choice; the dispatch form below keeps the picker for humans.
+        type: string
+      notes:
+        description: Release notes for this version
+        required: false
+        type: string
+      dry_run:
+        description: Build, hash and verify, but open no PR
+        required: false
+        type: boolean
+        default: false
+      auto_merge:
+        description: Merge the store PR once the verification below passes
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      STORE_PUBLISH_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       plugin:
@@ -54,6 +87,11 @@ on:
         type: string
       dry_run:
         description: Build, hash and show the index diff, but do not open a PR
+        required: false
+        type: boolean
+        default: false
+      auto_merge:
+        description: Merge the store PR once verification passes (leave off to review it yourself)
         required: false
         type: boolean
         default: false
@@ -248,10 +286,63 @@ jobs:
           git -C store --no-pager diff -- index.json || true
           echo "::endgroup::"
 
+      # What a reviewer of the store PR would actually check, done here so it happens on every publish rather
+      # than when someone is paying attention. Each of these has a way of going wrong quietly: an index entry
+      # whose sha256 belongs to an earlier build installs and then fails its own integrity check; a zip whose
+      # plugin.json is one folder down installs as an empty plugin; a version that is not the newest in the
+      # index is one the store will never offer, which is the whole failure this pipeline exists to prevent.
+      - name: Verify the zip and the index entry agree
+        if: steps.check.outputs.skip != 'true'
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MANIFEST: ${{ steps.resolve.outputs.manifest }}
+          REL: ${{ steps.package.outputs.rel }}
+          SHA: ${{ steps.package.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip_path="store/$REL"
+
+          actual="$(sha256sum "$zip_path" | cut -d' ' -f1)"
+          if [ "$actual" != "$SHA" ]; then
+            echo "::error::The zip on disk hashes to $actual but the run recorded $SHA."
+            exit 1
+          fi
+
+          claimed="$(jq -r --arg id "$PLUGIN" --arg v "$VERSION" \
+            '.plugins[]? | select(.id==$id) | .versions[]? | select(.version==$v) | .sha256' store/index.json)"
+          if [ "$claimed" != "$actual" ]; then
+            echo "::error::index.json claims sha256 $claimed for $PLUGIN $VERSION; the zip hashes to $actual."
+            exit 1
+          fi
+
+          listing="$(unzip -Z1 "$zip_path")"
+          if ! printf '%s\n' "$listing" | grep -qx 'plugin.json'; then
+            echo "::error::The zip has no plugin.json at its root — the installer would find no manifest."
+            exit 1
+          fi
+          entry="$(jq -r '.entryAssembly' "$MANIFEST")"
+          if ! printf '%s\n' "$listing" | grep -qx "$entry"; then
+            echo "::error::The zip has no $entry at its root, the assembly plugin.json names as the entry point."
+            exit 1
+          fi
+
+          # A published version the store will never offer is the failure this whole pipeline is about, so it
+          # is checked rather than assumed: the version going out has to be the highest this plugin has.
+          highest="$(jq -r --arg id "$PLUGIN" '.plugins[]? | select(.id==$id) | .versions[]?.version' store/index.json | sort -V | tail -1)"
+          if [ "$highest" != "$VERSION" ]; then
+            echo "::error::$VERSION is not the newest version of $PLUGIN in the index ($highest is). The store offers only the newest, so this would reach nobody."
+            exit 1
+          fi
+
+          echo "Verified: $PLUGIN $VERSION · sha256 $actual · manifest and $entry present · newest in the index."
+
       # Open a PR against the store repo rather than pushing to its main: publishing to a store users install
       # from is outward-facing, and the zip + index diff is exactly what a reviewer wants to see. Dry runs stop
       # before this. The PR body is built into a file so no interpolation lands in a shell string.
       - name: Open a PR against the store repo
+        id: pr
         if: steps.check.outputs.skip != 'true' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
@@ -289,6 +380,31 @@ jobs:
             --title "Publish $PLUGIN $VERSION" \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             || echo "::warning::Branch pushed; a PR may already exist for $branch."
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      # Merging is what actually publishes: until this happens the plugin exists only on a branch nobody
+      # installs from. Plain merge rather than `--auto`, deliberately — auto-merge waits for required checks,
+      # and the store repo has none, so asking for it would either merge instantly under a name that suggests
+      # otherwise or hang forever on a queue with nothing in it. The verification step above is the gate; this
+      # step only exists to stop that verification from ending in a branch someone still has to remember.
+      - name: Merge the store PR
+        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true && inputs.auto_merge == true
+        env:
+          GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$(gh pr list --repo "$STORE_REPO" --head "$BRANCH" --state open --json number -q '.[0].number')"
+          if [ -z "$number" ]; then
+            echo "::error::No open PR found for branch $BRANCH; refusing to guess which one to merge."
+            exit 1
+          fi
+          gh pr merge "$number" --repo "$STORE_REPO" --squash --delete-branch
+          echo "::notice::Published $PLUGIN $VERSION — store PR #$number merged."
 
       - name: Dry-run summary
         if: steps.check.outputs.skip != 'true' && inputs.dry_run == true
