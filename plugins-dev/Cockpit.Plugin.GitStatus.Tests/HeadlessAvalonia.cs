@@ -5,7 +5,7 @@ using Avalonia.Threading;
 namespace Cockpit.Plugin.GitStatus.Tests;
 
 /// <summary>
-/// An Avalonia runtime without a screen, so the dialog's wiring is knowable without running the cockpit and
+/// An Avalonia runtime without a screen, so a control's wiring is knowable without running the cockpit and
 /// looking — the same arrangement the GitHubIssues/YouTrack plugin test projects use, and <c>Cockpit.App.ViewTests</c>
 /// for the host's own views.
 /// <para>
@@ -38,7 +38,7 @@ public sealed class HeadlessAvalonia : IDisposable
                 // Skia rather than headless drawing, deliberately: headless drawing stubs out text shaping, so
                 // glyphs measure without real widths and a layout assertion proves less than it appears to. Real
                 // measurement costs a Skia reference and makes what these tests assert about layout actually true.
-                AppBuilder.Configure<DialogTestApp>()
+                AppBuilder.Configure<GitStatusTestApp>()
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                     .UseSkia()
                     .WithInterFont()
@@ -61,6 +61,15 @@ public sealed class HeadlessAvalonia : IDisposable
 
     /// <summary>Runs a test body on the thread Avalonia belongs to, and hands its failure back to the test.</summary>
     public static void Run(Action body) => Dispatcher.UIThread.Invoke(body);
+
+    /// <summary>
+    /// The same, returning a value — for a single short read/action rather than a whole test body. Deliberately
+    /// short-lived rather than nested inside another <see cref="Run"/>: a caller polling for something that only
+    /// changes on a real <c>DispatcherTimer</c> (<c>GitStatusHeaderControlTests</c>' debounced reload) needs this
+    /// thread's own main loop to actually run between polls, which a single blocking call spanning the whole wait
+    /// would prevent.
+    /// </summary>
+    public static T Run<T>(Func<T> body) => Dispatcher.UIThread.Invoke(body);
 
     public void Dispose() => _stop?.Cancel();
 }

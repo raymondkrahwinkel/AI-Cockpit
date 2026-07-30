@@ -4,10 +4,15 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitStatus;
 
 /// <summary>
-/// Git status (#1): a left-menu button opening a dialog that shows the branch / uncommitted / unpushed /
-/// ahead-behind status of your configured repositories, and drops a status summary into the active session
-/// on click. The repository list is managed from the plugin manager's gear (settings) and persisted in the
-/// host's per-plugin storage, so <see cref="ConfigureServices"/> is empty.
+/// Git status (#1): a per-session header indicator (<see cref="GitStatusHeaderControl"/>) showing the branch /
+/// uncommitted / unpushed / ahead-behind status of the repo that session is working in, and dropping a status
+/// summary into that session on click. Everything it needs lives in the host's services already, so
+/// <see cref="ConfigureServices"/> is empty.
+/// <para>
+/// AC-522 removed the plugin's other half — a left-menu button opening a dialog over a manually configured
+/// repository list, for watching a repo with no session open. Raymond judged that overbuilt for what the
+/// per-session indicator already covers; the workflow steps below are unrelated and stayed.
+/// </para>
 /// </summary>
 public sealed class GitStatusPlugin : ICockpitPlugin
 {
@@ -15,7 +20,7 @@ public sealed class GitStatusPlugin : ICockpitPlugin
         Id: "git-status",
         DisplayName: "Git status",
         Author: "Cockpit",
-        Description: "An inline panel that follows the active session — the branch / uncommitted / unpushed status of the repo it is working in, refreshing when the session switches or runs a git command — plus a button/dialog for the same across all your configured repositories. Click to drop a status summary into the session.");
+        Description: "An inline panel that follows the active session — the branch / uncommitted / unpushed status of the repo it is working in, refreshing when the session switches or runs a git command. Click to drop the status summary into the session.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -36,10 +41,6 @@ public sealed class GitStatusPlugin : ICockpitPlugin
         {
             host.AddWorkflowStep(step);
         }
-        host.AddSideMenuButton(
-            "Git status",
-            // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            () => _ = host.ShowDialogAsync("Git status", () => new GitStatusDialogControl(settings, host.Actions), "status", width: 780, height: 540));
     }
 
     public void Dispose()
