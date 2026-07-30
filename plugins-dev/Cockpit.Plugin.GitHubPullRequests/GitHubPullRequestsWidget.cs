@@ -12,21 +12,21 @@ using Cockpit.Plugins.Abstractions.Widgets;
 namespace Cockpit.Plugin.GitHubPullRequests;
 
 /// <summary>
-/// The dashboard-workspace view of your open pull requests (#AC-18): the same list the always-on side-menu
-/// section shows — number, title, repository, an amber stripe on the ones waiting for your review, left-click
-/// to drop a review prompt, right-click for the menu — placed as a resizable pane. It reads the same
-/// <see cref="PullRequestRefreshSource"/> the side section subscribes to (AC-515) and the same connection/
-/// repository settings, so the two never disagree about what is open; what it adds is a per-pane "how many to
-/// show", because a dashboard pane is sized by hand.
+/// The dashboard-workspace view of your open pull requests (#AC-18): number, title, repository, an amber stripe
+/// on the ones waiting for your review, left-click to drop a review prompt, right-click for the menu — placed as
+/// a resizable pane. It reads the same <see cref="PullRequestRefreshSource"/> the side-menu badge (AC-517)
+/// subscribes to (AC-515) and the same connection/repository settings, so the two never disagree about what is
+/// open; what it adds is a per-pane "how many to show", because a dashboard pane is sized by hand.
 /// </summary>
 /// <remarks>
 /// Built in <c>Initialize</c> where the full <see cref="ICockpitHost"/> is in scope, so the closure hands it the
 /// host (to inject prompts and open dialogs), this instance's <see cref="IWidgetContext"/> (its own count, its
 /// refresh signal), and the plugin's one shared <see cref="PullRequestRefreshSource"/> — every widget instance
 /// (a dashboard can hold more than one) reads the same source rather than polling for itself. Pull requests the
-/// operator has set aside in the section are hidden here too — ignoring is a decision about a PR, not about one
-/// surface — but the widget does not offer the ignore action itself, or announce review-request arrivals;
-/// curation and the toast both stay with the side section.
+/// operator has set aside are hidden here too — ignoring is a decision about a PR, not about one surface — but
+/// the widget does not offer the ignore action itself, or announce review-request arrivals; curation and the
+/// toast both stay with <see cref="PullRequestBadgeUpdater"/>, which runs for the plugin's whole lifetime rather
+/// than only while a pane happens to be on screen.
 /// </remarks>
 internal sealed class GitHubPullRequestsWidget : UserControl
 {
@@ -60,7 +60,7 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         // RefreshRequested (below). A second one inside the pane would be two controls for one gesture.
         _counts = new TextBlock { FontSize = 11, Margin = new Thickness(2, 0, 0, 2), VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
 
-        // Same faint styling as the side section's marker — visible, not an alarm (IL#9 / AC-515 criterion 6).
+        // Faint, not an alarm: visible, but this says "you're looking at what was last fetched", not "something needs your attention" (IL#9 / AC-515 criterion 6).
         _stale = new TextBlock
         {
             Text = "showing an older list",
@@ -111,9 +111,9 @@ internal sealed class GitHubPullRequestsWidget : UserControl
             },
         };
 
-        // The pane's ↻ asks the shared source for a forced refresh — the same source the side section and every
-        // other widget instance read from, so "how many to show" changing here does not mean re-fetching for
-        // itself; a count change just re-renders on the next Updated.
+        // The pane's ↻ asks the shared source for a forced refresh — the same source the badge and every other
+        // widget instance read from, so "how many to show" changing here does not mean re-fetching for itself; a
+        // count change just re-renders on the next Updated.
         context.RefreshRequested += (_, _) => _ = _RefreshAsync(forceRefresh: true);
 
         _signalRefresh = new DispatcherTimer { Interval = SignalDebounce };
@@ -145,8 +145,8 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         Dispatcher.UIThread.Post(() => _ApplySnapshot(snapshot));
 
     // The background poll lives on the shared source now and runs regardless of any pane being on screen; what is
-    // tied to attach/detach here is only this instance's own subscription — unsubscribing on detach matters more
-    // for a widget than the always-on side section, since a pane can be removed from a dashboard entirely.
+    // tied to attach/detach here is only this instance's own subscription — a pane can be removed from a
+    // dashboard entirely, unlike the badge, which unsubscribes only when the plugin itself unloads.
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -181,7 +181,7 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         }
     }
 
-    /// <summary>Draws one snapshot from the shared source. See the side section's own copy of this reasoning — the two surfaces read the same source but never announce arrivals themselves; curation stays with the persistent list.</summary>
+    /// <summary>Draws one snapshot from the shared source — this widget never announces arrivals itself (see <see cref="PullRequestBadgeUpdater"/>); curation stays with the persistent, per-operator ignore list.</summary>
     private void _ApplySnapshot(PullRequestFeedSnapshot snapshot)
     {
         var result = snapshot.Result;
