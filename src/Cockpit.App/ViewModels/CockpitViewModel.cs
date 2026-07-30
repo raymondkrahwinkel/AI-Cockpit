@@ -5843,7 +5843,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(SessionPanelViewModel.SessionStatus) || sender is not SessionPanelViewModel session)
+        if (sender is not SessionPanelViewModel session)
+        {
+            return;
+        }
+
+        // The last background shell ending is the moment a session that was withheld below actually becomes
+        // finished (AC-276). Its status does not change then — it is already Done — so without this the
+        // notification would not merely be delayed but lost for good, on every session that ran one.
+        if (e.PropertyName == nameof(SessionPanelViewModel.HasOutstandingBackgroundShells))
+        {
+            if (session.SessionStatus == SessionStatus.Done && !session.HasOutstandingBackgroundShells)
+            {
+                NotifySessionFinished(session);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName != nameof(SessionPanelViewModel.SessionStatus))
         {
             return;
         }
@@ -5865,8 +5883,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Busy → Done in the first place: on the SDK route the task list arrives before the turn's result, and on
         // the TTY route TtyActivityStatusTracker's settle delay holds the finish until the count that follows it
         // has had time to arrive. Both are load-bearing for that claim — see their own tests.
+        // WorkingBackground counts as a working state here, not just Busy (AC-276). A session with sub-agents now
+        // settles Busy → WorkingBackground → Done, and matching only on Busy would silently drop the notification
+        // for exactly the sessions this ticket is about — the flicker would be gone and so would the announcement.
         if (session.SessionStatus == SessionStatus.Done
-            && previous == SessionStatus.Busy
+            && previous is SessionStatus.Busy or SessionStatus.WorkingBackground
             && !session.HasOutstandingBackgroundShells)
         {
             NotifySessionFinished(session);

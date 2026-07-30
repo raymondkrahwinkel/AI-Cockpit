@@ -51,6 +51,28 @@ public class CockpitViewModelSessionIdleTests
     }
 
     [Fact]
+    public async Task FinishingATurnThroughWorkingBackground_StillNotifies()
+    {
+        // AC-276 made WorkingBackground reachable, so a session with sub-agents now settles
+        // Busy → WorkingBackground → Done. Matching the finish on a Busy → Done edge alone would drop the
+        // notification for exactly those sessions: the flicker would be gone and so would the announcement.
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+        vm.IsWindowActive = false;
+
+        session.SessionStatus = SessionStatus.Busy;
+        session.SessionStatus = SessionStatus.WorkingBackground;
+        session.SessionStatus = SessionStatus.Done;
+
+        await _attentionNotifier.Received(1).NotifySessionFinishedAsync(
+            Arg.Any<AttentionNotification>(),
+            Arg.Any<bool>(),
+            Arg.Any<bool>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ReachingDoneWithoutHavingBeenBusy_DoesNotNotify()
     {
         var vm = NewVm();

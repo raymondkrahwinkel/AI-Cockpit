@@ -1799,6 +1799,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
                 ClearCurrentTurnImages();
                 IsBusy = false;
+                // Whatever was outstanding died with the session (AC-276). Unlike the TTY route this one has no
+                // safety timeout to fall back on, so a sub-agent left in the list here would hold a crashed session
+                // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
+                _backgroundTasks = [];
+                OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
                 _RecomputeStatus();
                 break;
 

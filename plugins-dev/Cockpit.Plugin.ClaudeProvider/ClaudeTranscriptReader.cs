@@ -156,14 +156,15 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     {
                         outstandingShells.Add(shellId);
                     }
-                    else if (!outstandingShells.Remove(shellId) && pendingSubAgents > 0)
+                    else
                     {
-                        // The same notification closes sub-agents too, and only the shells are tracked by id — so an
-                        // end naming an id no shell claims belongs to an agent. Decrementing here rather than waiting
-                        // for the next turn_duration is what lets the last agent of a turn release the session
-                        // promptly; the next turn_duration restates the truth either way, so an id misattributed
-                        // here self-corrects instead of accumulating.
-                        pendingSubAgents--;
+                        // The same notification shape closes sub-agents too, but an end naming an id this reader
+                        // never saw start is not evidence of anything: the tail begins at the end of the file, so a
+                        // session resumed mid-turn legitimately sees ends for work it never saw begin. Inferring a
+                        // sub-agent finished from that would decrement a count belonging to a different, still-live
+                        // agent — reintroducing this ticket's own flicker by another route. Sub-agents are left
+                        // entirely to the count the CLI restates each turn.
+                        outstandingShells.Remove(shellId);
                     }
                 }
 

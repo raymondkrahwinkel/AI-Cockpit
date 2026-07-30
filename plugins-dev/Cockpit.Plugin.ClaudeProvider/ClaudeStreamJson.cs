@@ -68,8 +68,10 @@ internal static class ClaudeStreamJson
     /// The CLI's own ledger of work that outlived its turn (AC-276): sub-agents still running, shells still open.
     /// It restates the <em>complete</em> set every time rather than sending deltas, which is why the host can
     /// build a status on it — see <see cref="PluginBackgroundTasksChanged"/>. An entry whose <c>task_type</c> this
-    /// build does not recognise maps to <see cref="PluginBackgroundTaskKind.Unknown"/> rather than being dropped:
-    /// the host must still know the session is not idle, even when it cannot say what the work is.
+    /// build does not recognise maps to <see cref="PluginBackgroundTaskKind.Unknown"/> rather than being dropped,
+    /// so the set stays a faithful record of what the provider reported. Note that the host deliberately acts on
+    /// neither the status nor the notification for an unknown kind — it cannot know which weighing applies — so
+    /// this preserves the information without letting it decide anything.
     /// </summary>
     private static PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
     {

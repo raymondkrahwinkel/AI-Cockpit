@@ -93,6 +93,26 @@ public class SessionOutstandingWorkStatusTests
     });
 
     [Fact]
+    public void ASessionError_ClearsOutstandingWork_SoACrashedSessionDoesNotHangOnWorkingBackground() => HeadlessAvalonia.Run(() =>
+    {
+        // Unlike the TTY route this one has no safety timeout to fall back on: a sub-agent left in the list after
+        // the session died would hold it on WorkingBackground indefinitely, and RequiresCloseConfirmation would
+        // keep asking "still working?" when closing a session that is not.
+        var session = new SessionViewModel();
+        session.IsBusy = true;
+        session.Apply(Outstanding(
+            new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1"),
+            new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
+
+        session.Apply(new SessionError { SessionId = "s1", Message = "the driver died" });
+
+        // Idle rather than Done because no turn ever completed — the point is that it is not WorkingBackground,
+        // which is where a surviving sub-agent entry would have pinned it with nothing left to release it.
+        Assert.Equal(SessionStatus.Idle, session.SessionStatus);
+        Assert.False(session.HasOutstandingBackgroundShells);
+    });
+
+    [Fact]
     public void NeedsAttention_StillOutranksOutstandingWork() => HeadlessAvalonia.Run(() =>
     {
         // A permission prompt must still surface while a sub-agent runs: an operator who cannot see the request
