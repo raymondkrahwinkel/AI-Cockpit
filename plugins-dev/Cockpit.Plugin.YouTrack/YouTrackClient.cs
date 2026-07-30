@@ -200,11 +200,7 @@ internal sealed class YouTrackClient
 
         try
         {
-            var json = await _GetAsync(
-                $"{baseUrl}/admin/projects/{projectShortName}/customFields?fields=field(name),bundle(values(name))",
-                token,
-                cancellationToken);
-
+            var json = await _GetProjectCustomFieldsJsonAsync(baseUrl, token, projectShortName, cancellationToken);
             return YouTrackFieldParser.ParseProjectFieldValues(json, fieldName);
         }
         catch (Exception)
@@ -212,6 +208,59 @@ internal sealed class YouTrackClient
             return [];
         }
     }
+
+    /// <summary>
+    /// The project's allowed status values, independent of any single issue — unlike <see cref="GetIssueFieldsAsync"/>'s
+    /// per-issue read, this is what a state dropdown needs before any issue has been fetched at all: every open stage
+    /// the project defines, not just the ones a particular page of issues happens to show. Which field is "the" status
+    /// is resolved by the same State/Stage/Kanban State preference <see cref="YouTrackFieldParser"/> applies elsewhere,
+    /// so this and the per-issue Set-state menu can never disagree about it. Needs the token's account to read the
+    /// project's field configuration; returns no field name and an empty list — never throws — same fail-open shape as
+    /// <see cref="GetProjectsAsync"/>.
+    /// <para>
+    /// Asks for <c>isResolved</c> (<see href="https://www.jetbrains.com/help/youtrack/devportal/api-entity-StateBundleElement.html">StateBundleElement</see>-only)
+    /// so a resolved value (Done) never enters the dropdown — the state filter always queries with
+    /// <c>#Unresolved</c>, so "Done" would be an option that reads as present but returns nothing. What YouTrack
+    /// does when a project's status field runs on a plain <c>EnumBundle</c> instead (a Stage/Kanban State field,
+    /// whose elements carry no <c>isResolved</c> at all) is not documented; if asking for it makes the whole call
+    /// fail, this retries once with the field this endpoint has always asked for, keeping every value — a response
+    /// that already came back, just without <c>isResolved</c> on it, needs no retry: <see cref="YouTrackFieldParser.ParseProjectStateField"/>
+    /// already keeps a value it cannot confirm is resolved.
+    /// </para>
+    /// </summary>
+    public async Task<(string? FieldName, IReadOnlyList<string> Values)> GetProjectStateFieldAsync(string instanceBaseUrl, string token, string projectShortName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(projectShortName))
+        {
+            return (null, []);
+        }
+
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+
+        try
+        {
+            var json = await _GetAsync(
+                $"{baseUrl}/admin/projects/{projectShortName}/customFields?fields=field(name),bundle(values(name,isResolved))",
+                token,
+                cancellationToken);
+            return YouTrackFieldParser.ParseProjectStateField(json);
+        }
+        catch (Exception)
+        {
+            try
+            {
+                var json = await _GetProjectCustomFieldsJsonAsync(baseUrl, token, projectShortName, cancellationToken);
+                return YouTrackFieldParser.ParseProjectStateField(json);
+            }
+            catch (Exception)
+            {
+                return (null, []);
+            }
+        }
+    }
+
+    private static Task<string> _GetProjectCustomFieldsJsonAsync(string baseUrl, string token, string projectShortName, CancellationToken cancellationToken) =>
+        _GetAsync($"{baseUrl}/admin/projects/{projectShortName}/customFields?fields=field(name),bundle(values(name))", token, cancellationToken);
 
     /// <summary>
     /// Attaches a file to an issue (AC-14): a multipart POST to <c>{instance}/issues/{id}/attachments</c>, the way

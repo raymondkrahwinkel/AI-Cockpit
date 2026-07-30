@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
@@ -17,19 +18,28 @@ namespace Cockpit.Plugin.YouTrack;
 /// The "YouTrack Issues" dialog opened from the side-menu button (#48): an instance selector (which of the
 /// configured <see cref="YouTrackInstance"/>s to query), a project filter (plus "All", populated from the
 /// instance's admin API with a silent fallback to the projects already present in the fetched issues), a state
-/// filter (plus "All", populated from the already-fetched issues' State/Stage custom field) and a search box,
-/// driving a sortable <see cref="DataGrid"/> of open issues on the left plus a details panel on the right —
-/// summary, chips, a rendered description, a fixed action toolbar and a collapsible preview of the prompt it
-/// would produce (with a copy button). Switching instance or project re-fetches (a different instance is a
-/// different server; a specific project narrows the server-side query); switching state or typing a search term
-/// only re-filters the already-fetched list, client-side. "Add to prompt" injects into the active session; "New
-/// session" (AC-298) hands the same prompt to the cockpit's own New-session dialog instead. Built in code; the
-/// DataGrid theme is provided app-wide by the host.
+/// filter (plus "All", populated the same way — from the selected project's own status field via the admin API,
+/// so a stage that never made it into the first <see cref="MaxResults"/> issues is still offered, AC-518 — with a
+/// silent fallback to the already-fetched issues' State/Stage value when there is no single project to ask, or
+/// the call fails) and a search box, driving a sortable <see cref="DataGrid"/> of open issues on the left plus a
+/// details panel on the right — summary, chips, a rendered description, a fixed action toolbar and a collapsible
+/// preview of the prompt it would produce (with a copy button). Switching instance or project re-fetches (a
+/// different instance is a different server; a specific project narrows the server-side query); switching state
+/// re-fetches too when the field behind it is known (server-side, so a stage is never limited to whatever page
+/// already loaded), otherwise re-filters client-side the same as before AC-518; typing a search term always only
+/// re-filters the already-fetched list, client-side. Every fetch is itself capped at <see cref="MaxResults"/>; a
+/// result landing at exactly that count says so in the status line rather than silently reading as the whole
+/// list (AC-518 follow-up, mirrors GitHub Issues' own notice, AC-519). "Add to prompt" injects into the active
+/// session; "New session" (AC-298) hands the same prompt to the cockpit's own New-session dialog instead. Built
+/// in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class YouTrackDialogControl : UserControl
 {
     private const string AllOption = "All";
-    private const int MaxResults = 100;
+
+    // internal, not private: AC-518 follow-up's boundary test asserts against this constant itself, not a round
+    // number above it — the notice in _ReportLoaded only makes sense read against the exact value this fetches.
+    internal const int MaxResults = 100;
 
     // The project-filter's "every project" entry: a null Tag omits the server-side project: clause (#48).
     private static readonly YouTrackProjectOption AllProjectOption = new(null, AllOption);
@@ -76,6 +86,12 @@ internal sealed class YouTrackDialogControl : UserControl
     private IReadOnlyList<YouTrackIssue> _all = [];
     private string _renderedPrompt = string.Empty;
 
+    // The status field the current project resolved to (_ResolveStateFieldAsync), e.g. "State" or "Stage" — null
+    // when there is no single project to ask ("All projects", #48) or the admin lookup failed. Known, it lets
+    // _LoadIssuesAsync scope a chosen state server-side instead of only ever seeing whatever page already loaded
+    // (AC-518); unknown, the state filter falls back to the pre-AC-518 behaviour, client-side over the loaded rows.
+    private string? _stateFieldName;
+
     // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
     // the grid event that happened to be in flight: Start work and Set state report their outcome and then reload,
     // and that reload raises SelectionChanged twice — once on the empty grid, once back on the same issue. Clearing
@@ -91,6 +107,11 @@ internal sealed class YouTrackDialogControl : UserControl
     // projects: setting _projectFilter.SelectedItem there would otherwise also fire _OnProjectChangedAsync
     // and trigger a second, redundant issues fetch before the first one (driven explicitly below) even ran.
     private bool _isSyncingProjectFilter;
+
+    // Guards _WidenSearchIfTruncatedAsync against overlapping requests: Enter and LostFocus can both fire for the
+    // same "operator is done typing" moment (pressing Enter usually also moves focus away), and without this a
+    // second call could race the first one's grid/status update.
+    private bool _isWideningSearch;
 
     public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links, IssueStateChanges stateChanges)
     {
@@ -125,7 +146,7 @@ internal sealed class YouTrackDialogControl : UserControl
             Width = 140,
             Margin = new Thickness(0, 0, 8, 0),
         };
-        _stateFilter.SelectionChanged += (_, _) => _ApplyFilter();
+        _stateFilter.SelectionChanged += async (_, _) => await _OnStateFilterChangedAsync();
 
         // Assigned-to-me adds YouTrack's "for: me" clause to the server-side query, so a toggle re-fetches
         // rather than filtering the already-loaded list client-side.
@@ -140,7 +161,20 @@ internal sealed class YouTrackDialogControl : UserControl
         _search = new TextBox { PlaceholderText = "Filter by id, summary or state…", Width = 260 };
         _search.TextChanged += (_, _) => _ApplyFilter();
 
-        _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        // Widening past the loaded page (AC-518 follow-up) fires on Enter or on losing focus — never on
+        // TextChanged. Gating it behind "the operator is done for now" rather than every keystroke is what keeps
+        // this from becoming an HTTP call per letter while they are still typing (the gh-CLI-style call-storm this
+        // deliberately avoids); _ApplyFilter above still re-filters client-side on every keystroke as it always did.
+        _search.KeyDown += async (_, keyEventArgs) =>
+        {
+            if (keyEventArgs.Key == Key.Enter)
+            {
+                await _WidenSearchIfTruncatedAsync();
+            }
+        };
+        _search.LostFocus += async (_, _) => await _WidenSearchIfTruncatedAsync();
+
+        _status = new TextBlock { Name = "status", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadIssuesAsync();
@@ -478,6 +512,7 @@ internal sealed class YouTrackDialogControl : UserControl
             ?? AllProjectOption;
         _isSyncingProjectFilter = false;
 
+        await _ResolveStateFieldAsync((_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag);
         await _LoadIssuesAsync();
     }
 
@@ -488,7 +523,21 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
+        await _ResolveStateFieldAsync((_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag);
         await _LoadIssuesAsync();
+    }
+
+    private async Task _OnStateFilterChangedAsync()
+    {
+        if (_stateFieldName is not null)
+        {
+            // A known status field lets the next fetch scope to exactly this value server-side (AC-518), rather
+            // than only ever filtering whatever page of up-to-MaxResults issues already loaded.
+            await _LoadIssuesAsync();
+            return;
+        }
+
+        _ApplyFilter();
     }
 
     private async Task _LoadIssuesAsync()
@@ -522,11 +571,24 @@ internal sealed class YouTrackDialogControl : UserControl
 
             // A null Tag (the "All" option) omits the project: clause and queries every project on the instance.
             var projectTag = (_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag;
+            var selectedState = _stateFilter.SelectedItem as string;
 
-            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
-            _PopulateStateFilter();
+            // _stateFieldName known (_ResolveStateFieldAsync) means a chosen state can be scoped server-side —
+            // "all issues in this state", not just whichever of them fit in the first MaxResults (AC-518). Unknown
+            // (a failed lookup, or "All projects", #48), the state filter stays client-side over whatever page
+            // comes back, exactly as before this fix — see _ApplyFilter and the fallback populate below.
+            var extraFilter = _stateFieldName is { } fieldName && !string.IsNullOrEmpty(selectedState) && selectedState != AllOption
+                ? $"#Unresolved {fieldName}: {{{selectedState}}}"
+                : null;
+
+            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            if (_stateFieldName is null)
+            {
+                _SetStateOptions(_DistinctRowStates());
+            }
+
             _ApplyFilter();
-            _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
+            _ReportLoaded();
         }
         catch (Exception exception)
         {
@@ -540,22 +602,163 @@ internal sealed class YouTrackDialogControl : UserControl
         }
     }
 
-    // Rebuilds the state dropdown from the distinct states in the freshly loaded issues, keeping the previous
-    // selection if it is still present (otherwise falls back to "All") — mirrors the GitHub Issues dialog's
-    // repository-filter population, just on the State/Stage custom field instead.
-    private void _PopulateStateFilter()
+    // Whether the freshly loaded page might not be the whole truth — landing at exactly MaxResults could mean
+    // there is more behind it, or (rarely) that this project/state/search scope has precisely that many open
+    // issues; there is no cheap way to tell the two apart without a second, narrower request. One detection
+    // feeding two things (AC-518 follow-up): the truncation notice below, and _WidenSearchIfTruncatedAsync's own
+    // decision to look past the loaded page — not two independently maintained copies of the same "== MaxResults".
+    private bool _LoadedListMightBeTruncated => _all.Count == MaxResults;
+
+    // What a successful load reports — pulled out of _LoadIssuesAsync so the boundary worth proving precisely (a
+    // result landing at exactly MaxResults) is reachable without a live fetch (AC-518 follow-up). Mirrors
+    // GitHubIssuesDialogControl._ReportLoaded (AC-519) — same wording, same reasoning, on this dialog's own cap.
+    private void _ReportLoaded()
+    {
+        var baseline = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
+
+        // Over-warning on the rare exact match (a project with precisely MaxResults open issues) is the safer of
+        // the two wrong answers; the state filter (AC-518) is offered as the reliable way to see past it.
+        _SetStatus(_LoadedListMightBeTruncated
+            ? $"{baseline} The list may be incomplete at exactly {MaxResults} — filter by state for the reliable set."
+            : baseline);
+    }
+
+    // Looks past the loaded page when it might be truncated (AC-518 follow-up, Raymond: "als er meer dan 100 zijn,
+    // moet het alsnog doorzoekbaar en vindbaar zijn"). A non-truncated load is already the whole truth — whatever
+    // _ApplyFilter found client-side, hits or a real zero, is complete and correct, so a server call would add
+    // nothing. A TRUNCATED load's client-side hits are not proof of completeness either, though — there may be
+    // more matches beyond the loaded MaxResults that _ApplyFilter simply never saw — so this widens whenever the
+    // load might be truncated, regardless of how many local hits already show. Checking local-hit-count instead
+    // of load-truncation was this fix's own first, wrong draft: a term with 5 local hits inside a truncated page
+    // looks like a complete answer and is not one.
+    private async Task _WidenSearchIfTruncatedAsync()
+    {
+        if (_isWideningSearch)
+        {
+            return;
+        }
+
+        var query = _search.Text?.Trim();
+        if (string.IsNullOrEmpty(query) || !_LoadedListMightBeTruncated)
+        {
+            return;
+        }
+
+        if (_instanceSelector.SelectedItem is not YouTrackInstance instance
+            || string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token))
+        {
+            return;
+        }
+
+        var localHitCount = (_grid.ItemsSource as ObservableCollection<YouTrackIssue>)?.Count ?? 0;
+        _isWideningSearch = true;
+        _SetStatus("Searching the server past the loaded page…");
+        _loading.IsVisible = true;
+        try
+        {
+            var projectTag = (_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag;
+            var selectedState = _stateFilter.SelectedItem as string;
+            var searchTerm = BuildSearchTerm(_stateFieldName, selectedState, query);
+
+            var results = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, searchTerm, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+
+            if (results.Count > 0)
+            {
+                _grid.ItemsSource = new ObservableCollection<YouTrackIssue>(results);
+                _SetStatus($"{results.Count} issue(s) found on the server beyond the loaded page, matching \"{query}\".");
+                return;
+            }
+
+            // The server found nothing more: if the operator was already looking at local hits, leave the grid as
+            // it is — a wider search that adds nothing is not grounds to take away what was already found. An
+            // empty grid stays empty either way.
+            _SetStatus(localHitCount > 0
+                ? $"No further matches on the server for \"{query}\" beyond the {localHitCount} already shown."
+                : $"No open issues found on the server matching \"{query}\".");
+        }
+        catch (Exception exception)
+        {
+            // Leaves the grid exactly as _ApplyFilter last left it — a failed widen must not make the view emptier
+            // or more confusing than the plain client-side filter already was (never worse than today).
+            _SetStatus($"Could not search the server: {exception.Message}");
+        }
+        finally
+        {
+            _isWideningSearch = false;
+            _loading.IsVisible = false;
+        }
+    }
+
+    /// <summary>
+    /// The server-side widen-search term (AC-518 follow-up): <c>#Unresolved</c> stays — this dialog shows open
+    /// work, a deliberate choice kept from #48/AC-518, not something a free-text search should see past — plus the
+    /// active state (when the field is known, so a search cannot surface issues from a stage the state filter
+    /// itself excludes — the same two-truths mistake AC-518's own state filter guarded against) plus the free
+    /// text as a double-quoted phrase, YouTrack's own literal-phrase syntax: a term containing a colon, brace, or
+    /// other query character then reads as text instead of being parsed as one. An embedded backslash or double
+    /// quote is escaped the same way a quoted string commonly is; unlike the rest of this query shape, that
+    /// specific escaping is not verified against a live YouTrack (flagged, same as the isResolved uncertainty
+    /// earlier in this ticket).
+    /// </summary>
+    internal static string BuildSearchTerm(string? stateFieldName, string? selectedState, string query)
+    {
+        var stateTerm = stateFieldName is { } fieldName && !string.IsNullOrEmpty(selectedState) && selectedState != AllOption
+            ? $" {fieldName}: {{{selectedState}}}"
+            : string.Empty;
+
+        var escapedQuery = query.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return $"#Unresolved{stateTerm} \"{escapedQuery}\"";
+    }
+
+    // Asks the selected project's own status field for every value it allows (YouTrackClient.GetProjectStateFieldAsync,
+    // AC-518) — the same admin-API pattern _OnInstanceChangedAsync already uses for the project filter, and called at
+    // the same cadence: once per project/instance change, not on every reload, since a project's field configuration
+    // does not vary between one issue-fetch and the next.
+    private async Task _ResolveStateFieldAsync(string? projectTag)
+    {
+        _stateFieldName = null;
+
+        if (string.IsNullOrWhiteSpace(projectTag) || _instanceSelector.SelectedItem is not YouTrackInstance instance
+            || string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token))
+        {
+            // "All projects" (#48): no single project to ask, and different projects on one instance need not even
+            // share the same status field — merging them would take one admin call per project for a dropdown that
+            // mixes fields with different meanings. _LoadIssuesAsync's own fallback (distinct-of-rows) covers this,
+            // same as before this ticket (AC-518 step 6).
+            return;
+        }
+
+        var (fieldName, values) = await _client.GetProjectStateFieldAsync(instance.InstanceUrl, instance.Token, projectTag, CancellationToken.None);
+        if (values.Count == 0)
+        {
+            // A failed call, or a project whose status field YouTrackFieldParser does not recognize — leaves
+            // _stateFieldName null, so _LoadIssuesAsync's rows-fallback takes over once issues are back, and the
+            // dropdown is never emptier than it was before this fix (AC-518 step 2/3).
+            return;
+        }
+
+        _stateFieldName = fieldName;
+        _SetStateOptions(values);
+    }
+
+    // The values the freshly loaded rows carry — the pre-AC-518 dropdown source, kept as the fallback for a project
+    // whose status field could not be resolved, or "All projects" (#48).
+    private List<string> _DistinctRowStates() => _all
+        .Select(issue => issue.State)
+        .Where(state => !string.IsNullOrEmpty(state))
+        .Select(state => state!)
+        .ToList();
+
+    // Rebuilds the state dropdown from a set of values, keeping the previous selection if it is still present
+    // (otherwise falls back to "All").
+    private void _SetStateOptions(IEnumerable<string> states)
     {
         var previousSelection = _stateFilter.SelectedItem as string;
-        var states = _all
-            .Select(issue => issue.State)
-            .Where(state => !string.IsNullOrEmpty(state))
-            .Select(state => state!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(state => state, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
         var options = new List<string> { AllOption };
-        options.AddRange(states);
+        options.AddRange(states
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(state => state, StringComparer.OrdinalIgnoreCase));
+
         _stateFilter.ItemsSource = options;
         _stateFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
             ? previousSelection
@@ -565,11 +768,19 @@ internal sealed class YouTrackDialogControl : UserControl
     private void _ApplyFilter()
     {
         var query = _search.Text?.Trim();
-        var selectedState = _stateFilter.SelectedItem as string;
         IEnumerable<YouTrackIssue> filtered = _all;
-        if (!string.IsNullOrEmpty(selectedState) && selectedState != AllOption)
+
+        // Only filters here when _stateFieldName is unknown: once _LoadIssuesAsync has already scoped the fetch to
+        // exactly this field and value server-side, filtering again client-side risks disagreeing with it (a value
+        // that does not string-compare identically) rather than confirming it — the double-truth AC-518 step 4 warns
+        // about. Unknown, this is the only filtering the chosen state ever gets, same as before this fix.
+        if (_stateFieldName is null)
         {
-            filtered = filtered.Where(issue => string.Equals(issue.State, selectedState, StringComparison.OrdinalIgnoreCase));
+            var selectedState = _stateFilter.SelectedItem as string;
+            if (!string.IsNullOrEmpty(selectedState) && selectedState != AllOption)
+            {
+                filtered = filtered.Where(issue => string.Equals(issue.State, selectedState, StringComparison.OrdinalIgnoreCase));
+            }
         }
 
         if (!string.IsNullOrEmpty(query))

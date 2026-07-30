@@ -109,6 +109,39 @@ internal static class YouTrackFieldParser
         return [];
     }
 
+    /// <summary>
+    /// Whichever of a project's fields is its status — same State/Stage/Kanban State preference <see cref="Parse"/>
+    /// and <see cref="ParseStateName"/> apply — from the admin projects/customFields response. Unlike
+    /// <see cref="ParseProjectFieldValues"/>, which reads one already-known field by name and keeps every value
+    /// (including a resolved one — the per-issue Set-state menu has to be able to move an issue <em>to</em> Done),
+    /// this excludes resolved values: the dialog's state filter always queries with <c>#Unresolved</c> (AC-518
+    /// follow-up), so offering "Done" would be a choice that reads as present but always returns nothing. The
+    /// field's own name travels back with its values so a caller can query by it later.
+    /// </summary>
+    public static (string? FieldName, IReadOnlyList<string> Values) ParseProjectStateField(string projectCustomFieldsJson)
+    {
+        using var document = JsonDocument.Parse(projectCustomFieldsJson);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return (null, []);
+        }
+
+        var fields = document.RootElement.EnumerateArray().ToList();
+        foreach (var name in StateFieldNames)
+        {
+            var match = fields.FirstOrDefault(field =>
+                field.TryGetProperty("field", out var fieldElement)
+                && string.Equals(_String(fieldElement, "name"), name, StringComparison.Ordinal));
+
+            if (match.ValueKind == JsonValueKind.Object)
+            {
+                return (name, _BundleValues(match, excludeResolved: true));
+            }
+        }
+
+        return (null, []);
+    }
+
     private static YouTrackStateField _ToStateField(JsonElement field, string name) =>
         new(
             _String(field, "id") ?? string.Empty,
@@ -120,7 +153,13 @@ internal static class YouTrackFieldParser
             field.TryGetProperty("projectCustomField", out var projectCustomField) ? _BundleValues(projectCustomField) : [],
             []);
 
-    private static IReadOnlyList<string> _BundleValues(JsonElement projectCustomField)
+    // excludeResolved leaves out a value whose own isResolved is the literal JSON true (StateBundleElement only —
+    // JetBrains devportal). Absent or JSON null — an EnumBundle-backed Stage/Kanban-State field carries neither,
+    // and what YouTrack does when isResolved is requested on one is not documented (AC-518 follow-up) — keeps the
+    // value: a value this cannot confirm is resolved must never disappear from the state filter, that would be
+    // worse than showing one that turns out empty. ParseProjectFieldValues never passes excludeResolved: the
+    // per-issue Set-state menu has to be able to offer moving an issue to a resolved value, not just away from one.
+    private static IReadOnlyList<string> _BundleValues(JsonElement projectCustomField, bool excludeResolved = false)
     {
         if (!projectCustomField.TryGetProperty("bundle", out var bundle)
             || !bundle.TryGetProperty("values", out var values)
@@ -131,6 +170,7 @@ internal static class YouTrackFieldParser
 
         return values
             .EnumerateArray()
+            .Where(value => !excludeResolved || !_IsResolved(value))
             .Select(value => _String(value, "name"))
             .Where(value => value is { Length: > 0 })
             .Select(value => value!)
@@ -146,4 +186,7 @@ internal static class YouTrackFieldParser
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static bool _IsResolved(JsonElement value) =>
+        value.TryGetProperty("isResolved", out var isResolved) && isResolved.ValueKind == JsonValueKind.True;
 }
