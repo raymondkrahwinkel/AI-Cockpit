@@ -29,7 +29,7 @@ public class GitHubIssuesClientTests : IDisposable
         });
         GitHubIssuesClient.BaseUrl = server.BaseUrl;
 
-        var issues = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None, label: "in progress");
+        var (issues, _) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None, label: "in progress");
 
         Assert.Empty(issues);
         Assert.Equal(1, server.RequestCount);
@@ -59,9 +59,28 @@ public class GitHubIssuesClientTests : IDisposable
         using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit)));
         GitHubIssuesClient.BaseUrl = server.BaseUrl;
 
-        var issues = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
+        var (issues, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
 
         Assert.Equal(GitHubIssuesClient.IssuePageLimit, issues.Count);
+        Assert.True(wasTruncated);
+    }
+
+    [Fact]
+    public async Task GetOpenIssuesAsync_ExactlyAtThePageLimitWithSomePullRequestsMixedIn_StillReportsTruncation()
+    {
+        // AC-519 fix (adversarial review): the raw page can be exactly the limit yet filter down to far fewer real
+        // issues once pull requests are stripped out — this is the fixture that reproduces that: 100 raw items, 40
+        // of them pull requests, 60 real issues left. WasTruncated must still be true because it is measured on the
+        // raw page, before this method's own pull-request filter runs, not on what filtering leaves behind.
+        var realIssues = string.Join(",", Enumerable.Range(1, 60).Select(n => $$"""{ "number": {{n}}, "title": "Issue {{n}}", "html_url": "https://x/{{n}}" }"""));
+        var pullRequests = string.Join(",", Enumerable.Range(1, 40).Select(n => $$"""{ "number": {{1000 + n}}, "title": "PR {{n}}", "html_url": "https://x/pr/{{n}}", "pull_request": { "url": "https://x/pr/{{n}}" } }"""));
+        using var server = LoopbackServer.Start(_ => LoopbackServer.Json($"[{realIssues},{pullRequests}]"));
+        GitHubIssuesClient.BaseUrl = server.BaseUrl;
+
+        var (issues, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
+
+        Assert.Equal(60, issues.Count);
+        Assert.True(wasTruncated);
     }
 
     [Fact]
@@ -72,7 +91,7 @@ public class GitHubIssuesClientTests : IDisposable
         using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit + 1)));
         GitHubIssuesClient.BaseUrl = server.BaseUrl;
 
-        var issues = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
+        var (issues, _) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
 
         Assert.Equal(GitHubIssuesClient.IssuePageLimit + 1, issues.Count);
     }
@@ -89,9 +108,21 @@ public class GitHubIssuesClientTests : IDisposable
         using var server = LoopbackServer.Start(_ => LoopbackServer.Json(body));
         GitHubIssuesClient.BaseUrl = server.BaseUrl;
 
-        var issues = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
+        var (issues, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
 
         Assert.Equal([1], issues.Select(issue => issue.Number));
+        Assert.False(wasTruncated);
+    }
+
+    [Fact]
+    public async Task GetOpenIssuesAsync_OneShortOfThePageLimit_ReportsNotTruncated()
+    {
+        using var server = LoopbackServer.Start(_ => LoopbackServer.Json(_IssuesJson(GitHubIssuesClient.IssuePageLimit - 1)));
+        GitHubIssuesClient.BaseUrl = server.BaseUrl;
+
+        var (_, wasTruncated) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None);
+
+        Assert.False(wasTruncated);
     }
 
     [Fact]

@@ -514,12 +514,15 @@ public class GitHubIssuesDialogControlTests
     public void StatusLine_AtExactlyThePageLimit_WarnsTheListMayBeIncomplete() => HeadlessAvalonia.Run(() =>
     {
         // AC-519 AC3: the one boundary worth proving to the exact number — the constant itself, not a round number
-        // above it — since the notice's whole premise is "the result came back at exactly the page size".
+        // above it — since the notice's whole premise is "the result came back at exactly the page size". What
+        // decides the warning is _possiblyTruncated (AC-519 fix), set here the way a real fetch at exactly the raw
+        // page limit, with nothing filtered out of it, would leave it.
         var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit)
             .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
+        harness.SetPossiblyTruncated(true);
 
         harness.ReportLoaded();
 
@@ -539,6 +542,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
         var harness = DialogHarness.Open(settings, "octocat", issues);
+        harness.SetPossiblyTruncated(false);
 
         harness.ReportLoaded();
 
@@ -561,6 +565,7 @@ public class GitHubIssuesDialogControlTests
             .ToArray();
         var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = false };
         var harness = DialogHarness.Open(settings, "octocat", issues);
+        harness.SetPossiblyTruncated(true);
 
         harness.ReportLoaded();
 
@@ -569,6 +574,51 @@ public class GitHubIssuesDialogControlTests
         harness.Close();
 
         Assert.Contains("may be incomplete", status);
+    });
+
+    [Fact]
+    public void StatusLine_ClientSignalsTruncation_WarnsEvenThoughTheLoadedCountIsFarBelowTheLimit() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-519 fix, adversarial review: the exact under-warning bug — a raw page full of pull requests/archived
+        // issues filters down to well under the limit (60, here), and only the client-reported signal (not
+        // _all.Count) can still say "this was capped". Proves the dialog no longer reconstructs the signal from
+        // what filtering left behind.
+        var issues = Enumerable.Range(1, 60)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToArray();
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
+        var harness = DialogHarness.Open(settings, "octocat", issues);
+        harness.SetPossiblyTruncated(true);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.Contains("may be incomplete", status);
+    });
+
+    [Fact]
+    public void StatusLine_LoadedCountCoincidentallyAtTheLimit_DoesNotWarnWithoutTheClientSignal() => HeadlessAvalonia.Run(() =>
+    {
+        // The mirror of the previous test: _all.Count landing exactly on the limit is no longer, by itself, enough
+        // to warn — only _possiblyTruncated decides. This is what proves the decision moved off _all.Count entirely,
+        // not just that it still happens to agree with it in the common case.
+        var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToArray();
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
+        var harness = DialogHarness.Open(settings, "octocat", issues);
+        harness.SetPossiblyTruncated(false);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.DoesNotContain("may be incomplete", status);
     });
 
     /// <summary>
@@ -659,6 +709,18 @@ public class GitHubIssuesDialogControlTests
             var method = typeof(GitHubIssuesDialogControl).GetMethod("_ReportLoaded", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _ReportLoaded.");
             method.Invoke(_dialog, []);
+        }
+
+        /// <summary>
+        /// Plants the AC-519 truncation signal a real fetch would have handed back — measured by the client against
+        /// the raw page it received, before any local filtering. There is no live fetch here (see the class doc), so
+        /// this is planted alongside <see cref="_PlantLoadedIssues"/> the same way that field is: directly, by name.
+        /// </summary>
+        public void SetPossiblyTruncated(bool value)
+        {
+            var field = typeof(GitHubIssuesDialogControl).GetField("_possiblyTruncated", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _possiblyTruncated.");
+            field.SetValue(_dialog, value);
         }
 
         /// <summary>Plants what AC-317 would have resolved from the linked project's own repository field, bypassing <c>_host.GetProjectFieldValueAsync</c> (there is no live session/project here).</summary>

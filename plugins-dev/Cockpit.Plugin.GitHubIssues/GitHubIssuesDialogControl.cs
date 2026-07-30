@@ -95,6 +95,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly TextBlock _detailStatus;
 
     private IReadOnlyList<GitHubIssue> _all = [];
+
+    // Whether the fetch behind _all was possibly capped by the server's own page limit — measured by the client,
+    // against the raw count it received before any local filtering (pull requests in HTTP mode, archived-repo
+    // issues in gh mode) ran on it (AC-519 fix). _all.Count alone cannot answer this: filtering can shrink it well
+    // below the page limit even when the raw page was full, which is exactly the case an earlier version of this
+    // check (comparing _all.Count itself to the limit) missed.
+    private bool _possiblyTruncated;
+
     private string _renderedPrompt = string.Empty;
 
     // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
@@ -456,7 +464,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 ? selectedLabel
                 : null;
 
-            _all = _settings.UseGitHubCli
+            (_all, _possiblyTruncated) = _settings.UseGitHubCli
                 ? await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None, label is null ? null : GitHubGhClient.LabelSearchTerm(label))
                 : await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None, label);
 
@@ -487,11 +495,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         var baseline = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
         var limit = _settings.UseGitHubCli ? GitHubGhClient.IssueSearchLimit : GitHubIssuesClient.IssuePageLimit;
 
-        // A result of exactly the page size might have more behind it — or, rarely, might be the whole truth (a repo
-        // with precisely that many open issues). There is no cheap way to tell the two apart without a second,
-        // narrower request, so this warns on both; over-warning on the rare exact match is the safer of the two
-        // wrong answers; a label filter is offered as the reliable way to see past it.
-        _SetStatus(_all.Count == limit
+        // Whether to warn comes from _possiblyTruncated, not from comparing _all.Count to the limit here: both
+        // clients filter their raw page (pull requests, archived-repo issues) after the page limit is already
+        // applied, so _all.Count can sit well below the limit even though the raw page was full (AC-519 fix). A raw
+        // page of exactly the limit might have more behind it — or, rarely, might be the whole truth (a repo with
+        // precisely that many open issues). There is no cheap way to tell the two apart without a second, narrower
+        // request, so this warns on both; over-warning on the rare exact match is the safer of the two wrong
+        // answers; a label filter is offered as the reliable way to see past it.
+        _SetStatus(_possiblyTruncated
             ? $"{baseline} The list may be incomplete at exactly {limit} — filter by label for the reliable set."
             : baseline);
     }

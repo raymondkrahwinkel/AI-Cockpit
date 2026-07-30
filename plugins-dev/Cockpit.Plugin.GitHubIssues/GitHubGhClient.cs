@@ -13,9 +13,11 @@ namespace Cockpit.Plugin.GitHubIssues;
 internal sealed class GitHubGhClient
 {
     /// <summary>
-    /// gh's own page size for the issue search, and the count the dialog checks a result against to warn that the
-    /// list may be capped (AC-519): a result that comes back at exactly this size might have more behind it, and
-    /// there is no way to tell short of asking a narrower question (a label filter).
+    /// gh's own page size for the issue search. <see cref="SearchOpenIssuesAsync"/> compares the raw parsed count
+    /// against this — before archived-repo issues are filtered out of it in <see cref="ApplyArchivedFilter"/> — so
+    /// the dialog's "may be capped" warning (AC-519) is driven by a count taken where truncation actually happens: a
+    /// result that comes back at exactly this size might have more behind it, and there is no way to tell short of
+    /// asking a narrower question (a label filter).
     /// </summary>
     public const int IssueSearchLimit = 100;
 
@@ -25,12 +27,12 @@ internal sealed class GitHubGhClient
     private static readonly TimeSpan IssueTtl = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
     private static readonly object CacheGate = new();
-    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Repositories)> RepositoryCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Labels)> LabelsCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
+    public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
         // The assigned-to-me filter changes the server-side query, so it must key the cache separately —
@@ -47,23 +49,38 @@ internal sealed class GitHubGhClient
             {
                 if (IssueCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < IssueTtl)
                 {
-                    return cached.Issues;
+                    return (cached.Issues, cached.WasTruncated);
                 }
             }
         }
 
         var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
         var issues = _ParseIssues(await _RunGhAsync(SearchArguments(normalizedOwner, assignedToMe, extraTerms), cancellationToken));
+        var (result, wasTruncated) = ApplyArchivedFilter(issues, archived);
+
+        lock (CacheGate)
+        {
+            IssueCache[cacheKey] = (DateTimeOffset.UtcNow, result, wasTruncated);
+        }
+
+        return (result, wasTruncated);
+    }
+
+    /// <summary>
+    /// Excludes archived-repo issues from a freshly parsed page, and reports whether that raw, pre-exclusion page
+    /// was itself full (AC-519 fix) — pulled out of <see cref="SearchOpenIssuesAsync"/> so the truncation signal is
+    /// provable without shelling out to gh: a page of exactly <see cref="IssueSearchLimit"/> raw issues must still
+    /// warn even when most of them turn out to belong to archived repositories and get filtered out here, since the
+    /// truncation already happened server-side before this method ever runs.
+    /// </summary>
+    internal static (IReadOnlyList<GitHubIssue> Issues, bool WasTruncated) ApplyArchivedFilter(IReadOnlyList<GitHubIssue> issues, IReadOnlySet<string> archived)
+    {
+        var wasTruncated = issues.Count == IssueSearchLimit;
         var result = archived.Count == 0
             ? issues
             : issues.Where(issue => !archived.Contains(issue.Repository)).ToList();
 
-        lock (CacheGate)
-        {
-            IssueCache[cacheKey] = (DateTimeOffset.UtcNow, result);
-        }
-
-        return result;
+        return (result, wasTruncated);
     }
 
     /// <summary>

@@ -11,7 +11,11 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// </summary>
 internal sealed class GitHubIssuesClient
 {
-    /// <summary>The REST page size for an issues fetch — the dialog checks a result against this to warn the list may be capped (AC-519).</summary>
+    /// <summary>
+    /// The REST page size for an issues fetch. <see cref="GetOpenIssuesAsync"/> compares the raw response array
+    /// length against this — before pull requests are filtered out of it — so the dialog's "may be capped" warning
+    /// (AC-519) is driven by a count taken where truncation actually happens, not by what is left after filtering.
+    /// </summary>
     public const int IssuePageLimit = 100;
 
     /// <summary>Page size for a repo's label list — see <see cref="GitHubGhClient.LabelListLimit"/>, the gh-path equivalent.</summary>
@@ -22,7 +26,13 @@ internal sealed class GitHubIssuesClient
 
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<GitHubIssue>> GetOpenIssuesAsync(string owner, string repo, string? token, bool assignedToMe, CancellationToken cancellationToken, string? label = null)
+    /// <summary>
+    /// Fetches the repository's open issues. The returned <c>WasTruncated</c> is measured against the raw response
+    /// — the number of entries GitHub actually sent back, pull requests and all — before any of those are filtered
+    /// out below (AC-519 fix: a page filled with pull requests must still warn, even though the issue list handed
+    /// back is a great deal shorter than <see cref="IssuePageLimit"/>).
+    /// </summary>
+    public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> GetOpenIssuesAsync(string owner, string repo, string? token, bool assignedToMe, CancellationToken cancellationToken, string? label = null)
     {
         var repository = $"{owner}/{repo}";
         var query = $"state=open&per_page={IssuePageLimit}";
@@ -60,6 +70,10 @@ internal sealed class GitHubIssuesClient
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
+        // The raw count GitHub sent back for this page — measured here, before the pull-request filter below ever
+        // runs, so it still reflects whether the server itself filled the page (AC-519 fix).
+        var wasTruncated = document.RootElement.GetArrayLength() == IssuePageLimit;
+
         var issues = new List<GitHubIssue>();
         foreach (var element in document.RootElement.EnumerateArray())
         {
@@ -75,7 +89,7 @@ internal sealed class GitHubIssuesClient
             issues.Add(new GitHubIssue(number, title, htmlUrl, body, repository) { Labels = GitHubIssueLabels.Read(element) });
         }
 
-        return issues;
+        return (issues, wasTruncated);
     }
 
     /// <summary>

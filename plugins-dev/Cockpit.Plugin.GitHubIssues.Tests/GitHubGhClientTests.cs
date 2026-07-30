@@ -86,4 +86,64 @@ public class GitHubGhClientTests
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--json", "name"));
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--limit", GitHubGhClient.LabelListLimit.ToString()));
     }
+
+    [Fact]
+    public void ApplyArchivedFilter_ExactlyAtTheSearchLimitWithArchivedIssuesMixedIn_StillReportsTruncation()
+    {
+        // AC-519 fix (adversarial review): gh's own page can come back at exactly the search limit and still filter
+        // down to far fewer issues once archived-repo ones are excluded — this is the gh-path equivalent of the
+        // HTTP path's pull-request fixture. WasTruncated has to be measured on the raw parsed page (the "issues"
+        // argument here), not on what is left after this exclusion runs, or a repo full of archived-repo noise at
+        // exactly the page size would silently stop warning.
+        var issues = Enumerable.Range(1, 60)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/kept"))
+            .Concat(Enumerable.Range(1, 40).Select(number => new GitHubIssue(1000 + number, $"Archived {number}", $"https://x/{1000 + number}", null, "octocat/archived")))
+            .ToList();
+        var archived = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "octocat/archived" };
+        Assert.Equal(GitHubGhClient.IssueSearchLimit, issues.Count);
+
+        var (result, wasTruncated) = GitHubGhClient.ApplyArchivedFilter(issues, archived);
+
+        Assert.Equal(60, result.Count);
+        Assert.True(wasTruncated);
+    }
+
+    [Fact]
+    public void ApplyArchivedFilter_NoArchivedRepositories_LeavesTheListUntouched()
+    {
+        var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToList();
+
+        var (result, wasTruncated) = GitHubGhClient.ApplyArchivedFilter(issues, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Same(issues, result);
+        Assert.True(wasTruncated);
+    }
+
+    [Fact]
+    public void ApplyArchivedFilter_OneShortOfTheSearchLimit_ReportsNotTruncatedEvenAfterFiltering()
+    {
+        var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit - 1)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/archived"))
+            .ToList();
+        var archived = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "octocat/archived" };
+
+        var (_, wasTruncated) = GitHubGhClient.ApplyArchivedFilter(issues, archived);
+
+        Assert.False(wasTruncated);
+    }
+
+    [Fact]
+    public void ApplyArchivedFilter_RepositoryNameComparisonStaysCaseInsensitive()
+    {
+        // The archived set is built with StringComparer.OrdinalIgnoreCase (_GetArchivedReposAsync); this proves the
+        // AC-519 refactor kept that — a differently-cased repository name must still be excluded.
+        var issues = new List<GitHubIssue> { new(1, "Issue", "https://x/1", null, "Octocat/Hello-World") };
+        var archived = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "octocat/hello-world" };
+
+        var (result, _) = GitHubGhClient.ApplyArchivedFilter(issues, archived);
+
+        Assert.Empty(result);
+    }
 }

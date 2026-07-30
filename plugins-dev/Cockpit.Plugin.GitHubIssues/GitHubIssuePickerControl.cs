@@ -74,7 +74,9 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         try
         {
-            _all = await _client.SearchOpenIssuesAsync(
+            // The truncation signal (AC-519) is a dialog-only concern so far — this picker has never warned about a
+            // capped page and stays out of that scope here; only the loaded issues are kept.
+            (_all, _) = await _client.SearchOpenIssuesAsync(
                 _settings.GhOwner,
                 _mine.IsChecked == true,
                 forceRefresh: false,
