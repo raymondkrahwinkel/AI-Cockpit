@@ -47,12 +47,13 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
 
     public async Task AdoptLegacyEntriesAsync(IReadOnlyDictionary<string, string> idsByServerName, CancellationToken cancellationToken = default)
     {
-        // Read first and leave without writing when there is nothing to adopt, which is every start after the first
-        // one: this runs on every launch, and rewriting cockpit.json each time to change nothing is the kind of
-        // needless churn the registry's own removal path already refuses to do.
+        // Read first and leave without writing at all when nothing would move — which is every launch after the one
+        // that migrates, and every launch of an install that never had a plugin-keyed token to begin with. This runs
+        // on the startup path, and rewriting cockpit.json each time to change nothing is churn on a file the
+        // operator hand-edits and every other section store shares.
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (configFile?.McpOAuthTokens is null
-            || !configFile.McpOAuthTokens.Any(entry => string.IsNullOrEmpty(entry.ServerId)))
+            || !configFile.McpOAuthTokens.Any(entry => _AdoptableId(configFile.McpOAuthTokens, entry, idsByServerName) is not null))
         {
             return;
         }
@@ -60,23 +61,38 @@ internal sealed class McpOAuthTokenStore : IMcpOAuthTokenStore, ISingletonServic
         await _configFile.UpdateAsync(
             file =>
             {
-                // Whatever is already filed under an id keeps it — a real sign-in outranks a guess made from a name,
-                // and this must never overwrite one. Recomputed against the live list rather than the snapshot, so
-                // two legacy entries claiming the same id cannot both take it either.
-                foreach (var entry in file.McpOAuthTokens.Where(entry => string.IsNullOrEmpty(entry.ServerId)))
+                // Re-decided against the list this update actually holds rather than against the snapshot above: the
+                // read happened outside the write gate, so what was concluded there is a hint, not a fact.
+                // ToList() because the loop assigns into the entries it is walking, and that is exactly what the
+                // "does anyone already hold this id" check reads back.
+                foreach (var entry in file.McpOAuthTokens.ToList())
                 {
-                    if (!idsByServerName.TryGetValue(entry.ServerName.Trim(), out var serverId)
-                        || string.Equals(serverId, McpServerIdentity.LegacyIdFor(entry.ServerName), StringComparison.Ordinal)
-                        || file.McpOAuthTokens.Any(other => string.Equals(other.ServerId, serverId, StringComparison.Ordinal)))
+                    if (_AdoptableId(file.McpOAuthTokens, entry, idsByServerName) is { } serverId)
                     {
-                        continue;
+                        entry.ServerId = serverId;
                     }
-
-                    entry.ServerId = serverId;
                 }
             },
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The id <paramref name="entry"/> should be re-keyed onto, or <see langword="null"/> when it must be left
+    /// exactly as it is. Four ways to be left alone: it already carries an id — a real sign-in, which a guess made
+    /// from a name may never overwrite; no server currently answers to its name; the id offered is the one its own
+    /// name already derives to, so it is reachable without writing anything; or another entry already holds that id,
+    /// which is what stops two of these collapsing onto a single credential.
+    /// </summary>
+    private static string? _AdoptableId(
+        List<McpOAuthTokenEntry> entries,
+        McpOAuthTokenEntry entry,
+        IReadOnlyDictionary<string, string> idsByServerName) =>
+        string.IsNullOrEmpty(entry.ServerId)
+        && idsByServerName.TryGetValue(entry.ServerName.Trim(), out var serverId)
+        && !string.Equals(serverId, McpServerIdentity.LegacyIdFor(entry.ServerName), StringComparison.Ordinal)
+        && !entries.Any(other => string.Equals(other.ServerId, serverId, StringComparison.Ordinal))
+            ? serverId
+            : null;
 
     /// <summary>
     /// Whether <paramref name="entry"/> is the token held for <paramref name="serverId"/> (AC-403).

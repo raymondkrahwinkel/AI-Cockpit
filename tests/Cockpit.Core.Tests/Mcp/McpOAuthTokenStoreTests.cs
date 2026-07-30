@@ -171,6 +171,73 @@ public class McpOAuthTokenStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AdoptLegacyEntriesAsync_WithBothKindsInOneFile_TouchesOnlyTheOneWithoutAnId()
+    {
+        // The case the two tests above each half-miss: a file that has a legacy entry *and* a real sign-in, so the
+        // pass actually runs and has to leave the second one alone as it goes. A mutation that dropped the filter
+        // and swept every entry survived both of them — the file was all-legacy in one and all-id in the other.
+        _WriteLegacyTokenFile(serverName: "Depot: home");
+        var store = new McpOAuthTokenStore(_configFilePath);
+        await store.SaveAsync("connection-work", "Depot: work", _Token("real-sign-in"));
+
+        await store.AdoptLegacyEntriesAsync(new Dictionary<string, string>
+        {
+            ["Depot: home"] = "connection-home",
+            ["Depot: work"] = "hijack-id",
+        });
+
+        Assert.Equal("legacy-access", (await store.GetAsync("connection-home"))?.AccessToken);
+        Assert.Equal("real-sign-in", (await store.GetAsync("connection-work"))?.AccessToken);
+        Assert.Null(await store.GetAsync("hijack-id"));
+    }
+
+    [Fact]
+    public async Task AdoptLegacyEntriesAsync_WillNotTakeAnIdAnotherEntryAlreadyHolds()
+    {
+        // A name can be pointed at a different connection between two launches, so the map can name an id that is
+        // already spoken for. The entry that holds it got there by an actual sign-in and keeps it; the legacy one
+        // stays where it is rather than overwriting a live credential with an older one.
+        _WriteLegacyTokenFile(serverName: "Depot: home");
+        var store = new McpOAuthTokenStore(_configFilePath);
+        await store.SaveAsync("shared-id", "Depot: work", _Token("real-sign-in"));
+
+        await store.AdoptLegacyEntriesAsync(new Dictionary<string, string> { ["Depot: home"] = "shared-id" });
+
+        Assert.Equal("real-sign-in", (await store.GetAsync("shared-id"))?.AccessToken);
+        Assert.NotNull(await store.GetAsync(McpServerIdentity.LegacyIdFor("Depot: home")));
+    }
+
+    [Fact]
+    public async Task AdoptLegacyEntriesAsync_ForAServerWhoseOwnNameDerivesToTheOfferedId_ChangesNothing()
+    {
+        // Nothing to do for a server the derivation already reaches — its token is found without an id being
+        // written. The startup pass filters these out before it gets here; the store refuses them too, so a future
+        // caller that does not cannot turn a no-op into a rewrite of the whole file.
+        _WriteLegacyTokenFile(serverName: "corp");
+        var before = await File.ReadAllTextAsync(_configFilePath);
+
+        var store = new McpOAuthTokenStore(_configFilePath);
+        await store.AdoptLegacyEntriesAsync(new Dictionary<string, string> { ["corp"] = McpServerIdentity.LegacyIdFor("corp") });
+
+        Assert.Equal(before, await File.ReadAllTextAsync(_configFilePath));
+        Assert.NotNull(await store.GetAsync(McpServerIdentity.LegacyIdFor("corp")));
+    }
+
+    [Fact]
+    public async Task AdoptLegacyEntriesAsync_WithNothingLeftToAdopt_DoesNotRewriteTheFile()
+    {
+        // This runs on every launch. Rewriting cockpit.json each time to change nothing is churn on a file the
+        // operator hand-edits and every other section store shares.
+        var store = new McpOAuthTokenStore(_configFilePath);
+        await store.SaveAsync("connection-id", "Depot: work", _Token());
+        var before = await File.ReadAllTextAsync(_configFilePath);
+
+        await store.AdoptLegacyEntriesAsync(new Dictionary<string, string> { ["Depot: work"] = "connection-id" });
+
+        Assert.Equal(before, await File.ReadAllTextAsync(_configFilePath));
+    }
+
+    [Fact]
     public async Task AdoptLegacyEntriesAsync_DoesNotGiveTwoLegacyEntriesTheSameId()
     {
         _WriteLegacyTokenFile(serverName: "Depot: work", secondServerName: "Depot: home");
