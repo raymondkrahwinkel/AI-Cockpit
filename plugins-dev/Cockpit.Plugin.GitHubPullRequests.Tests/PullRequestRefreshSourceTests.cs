@@ -165,12 +165,107 @@ public class PullRequestRefreshSourceTests
         Assert.Null(current.FetchedAt);
     }
 
+    /// <summary>
+    /// A confirming review's follow-up on the same class of bug, one level deeper: a stored <c>{"Result":{}}</c>
+    /// deserializes to a non-null <see cref="PullRequestFeedResult"/> whose <c>PullRequests</c>/<c>ReviewRequested</c>
+    /// are themselves null — <see cref="System.Text.Json.JsonSerializer"/> enforces non-null reference members on
+    /// neither the record nor its positional parameters. A bare <c>Result: not null</c> check (the fix for the
+    /// blocker above) lets this one through; <c>GitHubPullRequestsWidget._ApplySnapshot</c>'s
+    /// <c>result.ReviewRequested.Select(...)</c> would throw a <see cref="NullReferenceException"/> rendering it.
+    /// </summary>
+    [Fact]
+    public void ColdStart_WithNullCollectionsInsideResult_FallsBackToEmpty_InsteadOfCarryingNullLists()
+    {
+        var storage = new JsonBackedStorage();
+        storage.SeedRaw("refreshSourceSnapshot", """{"Result":{}}""");
+
+        var source = new PullRequestRefreshSource(storage, (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)), pollInterval: TimeSpan.FromMinutes(10));
+
+        var current = source.Current;
+        source.Dispose();
+
+        Assert.NotNull(current.Result.PullRequests);
+        Assert.NotNull(current.Result.ReviewRequested);
+        Assert.Empty(current.Result.PullRequests);
+        Assert.Null(current.FetchedAt);
+    }
+
     [Fact]
     public void StaleAfter_IsThreeTimesTheGhClientTtl_NotARoundedNumber()
     {
         // Asserted against the constant itself, not a literal like TimeSpan.FromMinutes(15) — a change to the
         // client's own TTL must not silently desynchronise the marker's threshold from what the doc comment claims.
         Assert.Equal(GitHubPrGhClient.PullRequestTtl * 3, PullRequestRefreshSource.StaleAfter);
+    }
+
+    /// <summary>
+    /// Adversarial-review defect: <c>Dispose()</c> tore down the gate a still-running <see cref="PullRequestRefreshSource.RefreshAsync"/>
+    /// call was about to release into. This reproduces the exact shape — a call holding the gate and mid-`_load`
+    /// when <c>Dispose()</c> runs on top of it, then the load completing afterwards — by draining the constructor's
+    /// own due-time-zero tick first (same technique as <see cref="OverlappingRefreshCalls_CollapseIntoOneLoad"/>) so
+    /// the call under test is the only one holding the gate, then issuing it directly to get a real <see cref="Task{TResult}"/>
+    /// handle a fire-and-forget timer callback never gives the production code. Before the fix this call's task
+    /// faulted with <see cref="ObjectDisposedException"/> once <c>release</c> completed — unobserved in production,
+    /// since every real caller is `_ = RefreshAsync(...)`.
+    /// </summary>
+    [Fact]
+    public async Task Dispose_WhileARefreshIsInFlight_DoesNotThrowFromTheGateItDisposes()
+    {
+        var initialTickSeen = new TaskCompletionSource();
+        var emptyResult = new PullRequestFeedResult([], [], RepositoryMissing: false);
+        var release = new TaskCompletionSource<PullRequestFeedResult>();
+        var calls = 0;
+
+        var source = new PullRequestRefreshSource(
+            new InMemoryStorage(),
+            (_, _) =>
+            {
+                var n = Interlocked.Increment(ref calls);
+                if (n == 1)
+                {
+                    initialTickSeen.TrySetResult();
+                    return Task.FromResult(emptyResult);
+                }
+
+                return release.Task;
+            },
+            pollInterval: TimeSpan.FromMinutes(10));
+
+        await initialTickSeen.Task;
+        await Task.Delay(30); // lets the first RefreshAsync finish releasing the gate before the call under test starts
+
+        // Holds the gate and is suspended awaiting `_load` (release.Task, still pending) the moment Dispose runs —
+        // the callback-still-running-at-unload shape the review flagged.
+        var inFlight = source.RefreshAsync(forceRefresh: true);
+
+        source.Dispose();
+        release.SetResult(emptyResult);
+
+        var ran = await inFlight;
+
+        Assert.True(ran, "the in-flight call actually ran the load and should still report that, not fault");
+    }
+
+    /// <summary>
+    /// The other half of the same defect: a call that had not even reached the gate yet when <c>Dispose()</c> ran —
+    /// <see cref="SemaphoreSlim.WaitAsync(int)"/> itself throws <see cref="ObjectDisposedException"/> unconditionally
+    /// once the semaphore is disposed, regardless of its count. Before the fix this propagated straight out of
+    /// <see cref="PullRequestRefreshSource.RefreshAsync"/>.
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_CalledAfterDispose_IsGatedOutInsteadOfThrowing()
+    {
+        var source = new PullRequestRefreshSource(
+            new InMemoryStorage(),
+            (_, _) => Task.FromResult(new PullRequestFeedResult([], [], RepositoryMissing: false)),
+            pollInterval: TimeSpan.FromMinutes(10));
+
+        await Task.Delay(50); // lets the constructor's own due-time-zero tick finish and release the gate
+        source.Dispose();
+
+        var ranAfterDispose = await source.RefreshAsync(forceRefresh: true);
+
+        Assert.False(ranAfterDispose, "a call arriving after Dispose must be gated out like any other, not throw");
     }
 
     [Fact]

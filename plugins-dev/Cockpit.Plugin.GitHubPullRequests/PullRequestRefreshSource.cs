@@ -19,18 +19,39 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 internal sealed class PullRequestRefreshSource : IDisposable
 {
     /// <summary>
-    /// Aligned with <see cref="GitHubPrGhClient.PullRequestTtl"/> on purpose: ticking sooner would ask again before
-    /// an entry can even be stale (a wasted `gh` call replaying the same cache), ticking much later would leave the
-    /// list looking unchanged longer than the client's own cache already allows.
+    /// The margin <see cref="PollInterval"/> adds on top of <see cref="GitHubPrGhClient.PullRequestTtl"/> — see
+    /// there for why lining the two up exactly (as this used to) defeats the point of ticking at all. Comfortably
+    /// longer than a `gh` call itself ever takes (typically well under a second), so the previous cache entry has
+    /// actually gone stale by the time the next tick asks, without meaningfully changing how often a real fetch
+    /// happens.
     /// </summary>
-    private static readonly TimeSpan PollInterval = GitHubPrGhClient.PullRequestTtl;
+    private static readonly TimeSpan PollMargin = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// How old a fetch may be before a view is told to mark what it is showing as old. Three missed polls, not one:
-    /// a single transient `gh` hiccup must not flip the marker on, but data nobody has managed to refresh across
-    /// three tries — or a snapshot left over from a much earlier session — should read as old immediately.
+    /// One tick per <see cref="GitHubPrGhClient.PullRequestTtl"/> plus <see cref="PollMargin"/> — not exactly the
+    /// TTL. A poll's cache lookup checks its entry's age the instant the tick fires, but that entry was written
+    /// strictly *after* the previous tick, once that tick's own `gh` call actually returned. Setting this to
+    /// exactly the TTL therefore never gave the entry time to age past it before the next tick asked again: the
+    /// elapsed time a tick measures is always <c>PollInterval − (the previous call's own `gh` latency)</c>, which
+    /// is less than the TTL for any call that takes longer than an instant — so every poll after the first was a
+    /// cache replay, and <see cref="PullRequestRefreshSource.RefreshAsync"/> still stamped it with
+    /// <see cref="DateTimeOffset.UtcNow"/> as if it were a brand-new fetch. The "older" marker this source exists
+    /// to raise (<see cref="StaleAfter"/>) would then almost never appear, even while `gh` itself had gone unasked
+    /// for far longer than three TTLs. The margin is the fix: ticking sooner than the TTL would still be a wasted
+    /// `gh` call replaying the same cache (the reason to align at all), ticking by only the margin above it is
+    /// enough to reliably outlive that cache entry instead of merely equaling its lifetime.
     /// </summary>
-    public static readonly TimeSpan StaleAfter = PollInterval * 3;
+    private static readonly TimeSpan PollInterval = GitHubPrGhClient.PullRequestTtl + PollMargin;
+
+    /// <summary>
+    /// How old a fetch may be before a view is told to mark what it is showing as old. Three cache lifetimes, not
+    /// three poll ticks — tied to <see cref="GitHubPrGhClient.PullRequestTtl"/> directly rather than
+    /// <see cref="PollInterval"/>, so the margin above (a deliberate buffer that keeps each poll a genuine fetch)
+    /// does not also stretch out how long a stalled feed takes to read as old. A single transient `gh` hiccup must
+    /// not flip the marker on, but data nobody has managed to refresh across three tries — or a snapshot left over
+    /// from a much earlier session — should read as old immediately.
+    /// </summary>
+    public static readonly TimeSpan StaleAfter = GitHubPrGhClient.PullRequestTtl * 3;
 
     private const string StorageKey = "refreshSourceSnapshot";
 
@@ -80,12 +101,24 @@ internal sealed class PullRequestRefreshSource : IDisposable
     /// is a required, non-nullable reference, but a JSON object missing that property still deserializes to a
     /// snapshot with a null one, since deserialization does not enforce non-null reference members. Either way
     /// nothing usable was found, so the caller falls back to <see cref="PullRequestFeedSnapshot.Empty"/>.
+    /// <para>
+    /// The same gap exists one level deeper: a stored <c>{"Result":{}}</c> deserializes to a non-null
+    /// <see cref="PullRequestFeedResult"/> whose <see cref="PullRequestFeedResult.PullRequests"/> and
+    /// <see cref="PullRequestFeedResult.ReviewRequested"/> are themselves null — same reason, System.Text.Json
+    /// does not enforce non-null reference members on a positional record's parameters either. That snapshot
+    /// would pass a bare <c>Result: not null</c> check and reach a view — <see cref="GitHubPullRequestsWidget"/>'s
+    /// <c>result.ReviewRequested.Select(...)</c> throws a <see cref="NullReferenceException"/> rendering it — so
+    /// both collections are checked here too, not just their container.
+    /// </para>
     /// </summary>
     private PullRequestFeedSnapshot? _ReadPersistedSnapshot()
     {
         try
         {
-            return _storage.Get<PullRequestFeedSnapshot>(StorageKey) is { Result: not null } snapshot ? snapshot : null;
+            return _storage.Get<PullRequestFeedSnapshot>(StorageKey) is
+                { Result: { PullRequests: not null, ReviewRequested: not null } } snapshot
+                ? snapshot
+                : null;
         }
         catch (Exception)
         {
@@ -106,7 +139,21 @@ internal sealed class PullRequestRefreshSource : IDisposable
     /// <returns><see langword="true"/> if this call actually ran the load (whether it then succeeded or failed), <see langword="false"/> if another call was already in flight.</returns>
     public async Task<bool> RefreshAsync(bool forceRefresh)
     {
-        if (!await _refreshGate.WaitAsync(0))
+        bool acquired;
+        try
+        {
+            acquired = await _refreshGate.WaitAsync(0);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose() (the plugin unloading) ran between this call being kicked off — a poll tick or the
+            // settings-saved callback, both fire-and-forget, neither one this class can unsubscribe (see the
+            // constructor) — and it reaching the gate. Nothing is left to refresh for; treat it exactly like
+            // being gated out rather than let this surface as an unobserved exception from a caller nobody awaits.
+            return false;
+        }
+
+        if (!acquired)
         {
             return false;
         }
@@ -129,13 +176,32 @@ internal sealed class PullRequestRefreshSource : IDisposable
         }
         finally
         {
-            _refreshGate.Release();
+            try
+            {
+                _refreshGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Dispose() ran while `_load` above was still in flight — the callback that started this call had
+                // already begun before the plugin was torn down. The gate it would release into is gone and
+                // nobody is left waiting on it; swallow rather than let this escape from the fire-and-forget
+                // caller (the timer tick or the settings-saved handler) that kicked it off in the first place.
+            }
         }
 
         Updated?.Invoke(this, _current);
         return true;
     }
 
+    /// <summary>
+    /// Does not wait for a refresh that is mid-flight at the moment this runs (a poll tick or the settings-saved
+    /// callback landing the instant the plugin unloads) — <see cref="ICockpitPlugin.Dispose"/> is synchronous, and
+    /// blocking it on an in-progress `gh` call would hang the app's own shutdown on network/process latency this
+    /// class does not control. Instead it makes finishing safe: <see cref="RefreshAsync"/> catches
+    /// <see cref="ObjectDisposedException"/> around every touch of <see cref="_refreshGate"/>, so a call already
+    /// running when this executes still completes (and still updates <see cref="_current"/>/<see cref="LastError"/>
+    /// and raises <see cref="Updated"/>) without a disposed gate throwing out of it.
+    /// </summary>
     public void Dispose()
     {
         _timer.Dispose();
