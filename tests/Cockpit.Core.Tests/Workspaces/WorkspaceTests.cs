@@ -144,6 +144,44 @@ public class WorkspaceTests
         Assert.Equal(new GridCell(1, 0), moved.Panes.Single(pane => pane.Id == "p2").Cell);
     }
 
+    // AC-514: a name set after the pane already exists (a rename, a suggestion) must land on the persisted record
+    // in place — the same shape as WithPaneMoved, never an appended second entry (WithPane's shape) for the same id.
+    [Fact]
+    public void WithPaneRenamed_UpdatesTitleAndNameIsChosen_OnThatPaneOnly()
+    {
+        var sessions = Workspace.Create("S", WorkspaceType.Sessions)
+            .WithPane(new WorkspacePane("p1", PaneKind.AiSession) { Title = "local - 1", NameIsChosen = false })
+            .WithPane(new WorkspacePane("p2", PaneKind.AiSession) { Title = "local - 2", NameIsChosen = false });
+
+        var renamed = sessions.WithPaneRenamed("p1", "AC-514", nameIsChosen: true);
+
+        var pane1 = renamed.Panes.Single(pane => pane.Id == "p1");
+        Assert.Equal("AC-514", pane1.Title);
+        Assert.True(pane1.NameIsChosen);
+        Assert.Equal("local - 2", renamed.Panes.Single(pane => pane.Id == "p2").Title);
+    }
+
+    [Fact]
+    public void WithPaneRenamed_ReplacesTheRecordInPlace_RatherThanAppendingASecondOne()
+    {
+        var sessions = Workspace.Create("S", WorkspaceType.Sessions)
+            .WithPane(new WorkspacePane("p1", PaneKind.AiSession) { Title = "local - 1" });
+
+        var renamed = sessions.WithPaneRenamed("p1", "AC-514", nameIsChosen: false);
+
+        Assert.Single(renamed.Panes);
+    }
+
+    [Fact]
+    public void WithPaneRenamed_AnUnknownId_IsANoOp()
+    {
+        var sessions = Workspace.Create("S", WorkspaceType.Sessions).WithPane(new WorkspacePane("p1", PaneKind.AiSession) { Title = "local - 1" });
+
+        var renamed = sessions.WithPaneRenamed("gone", "AC-514", nameIsChosen: true);
+
+        Assert.Equal("local - 1", Assert.Single(renamed.Panes).Title);
+    }
+
     [Fact]
     public void Create_GivesEachWorkspaceItsOwnId()
     {
