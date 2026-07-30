@@ -1141,6 +1141,31 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - fixed: opening the GitHub Issues dialog from a project that is linked to a repository now actually opens on that
   repository. It always fell back to showing every repository instead, so the link made no difference to what you saw.
+  Narrowing the list by label no longer hides that repository either, so the preselection cannot be sidestepped.
+
+- fixed: filtering GitHub issues by a label whose name contains a comma returned nothing. GitHub reads that
+  parameter as a list, so the name was split into two labels that do not exist. Such a label is now matched locally
+  instead, which cannot look beyond the first page of results — the list says so when it is capped.
+
+- fixed: the YouTrack dialog built a broken query for a status field whose name contains a space, such as a board
+  using "Kanban State". Only the value was quoted, so the field name fell apart and the filter quietly returned the
+  wrong set.
+
+- fixed: renaming an MCP server — or a Depot connection — no longer costs you its sign-in. The token was filed
+  under the server's name, so saving a new name left the old sign-in behind: unreachable, still holding a refresh
+  token, and the row reporting "sign-in needed" over a credential that was sitting right there. A server is now
+  identified by something you can't edit, so the name is back to being just a label. Two servers pointing at the
+  same host are covered too: swapping their names used to hand each one the other's credential, which meant a token
+  could be presented to an endpoint it was never issued for. Nobody has to sign in again after updating — sign-ins
+  you already have are carried over to the new arrangement on first launch.
+
+- fixed: command output in a Linux terminal pane no longer comes out as a staircase. `ls`, `git status` and anything
+  else that ends its lines with a plain newline was drawn one row down but never back at the left edge, so each line
+  started where the previous one ended and long ones broke mid-word. The pane's terminal was being created without the
+  line disciplines a terminal is supposed to have — echo, line editing, Ctrl-C as a signal and the newline translation
+  were all switched off, and interactive shells only masked it by configuring the terminal for themselves. Windows was
+  never affected.
+
 - fixed: a pane's conversation no longer goes missing when the cockpit restarts. Panes came back after a crash, but
   resuming one was rarely on offer — starting a session wrote a blank conversation over the saved one, so the thread
   was still on disk yet unreachable, and every ordinary restart cost you the same thing. A saved conversation now

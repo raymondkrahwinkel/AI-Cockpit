@@ -18,6 +18,12 @@ internal static class PluginMcpMapping
         return new McpServerConfig
         {
             Name = contribution.Name,
+            // The plugin's own stable id when it offers one (AC-403), so a connection it renames keeps the token
+            // filed under it. A plugin that offers none keeps exactly the behaviour it had: the id the name derives
+            // to, which is the key the name-keyed store used before this existed.
+            Id = string.IsNullOrWhiteSpace(contribution.Id)
+                ? McpServerIdentity.LegacyIdFor(contribution.Name)
+                : contribution.Id.Trim(),
             Transport = McpTransport.Http,
             Scope = ToServerScope(contribution.Scope),
             Url = contribution.Url,

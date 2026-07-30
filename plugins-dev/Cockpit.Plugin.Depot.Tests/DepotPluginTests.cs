@@ -128,6 +128,52 @@ public class DepotPluginTests
     }
 
     [Fact]
+    public void GetMcpServers_Always_CarriesTheConnectionsOwnIdSoARenameKeepsItsSignIn()
+    {
+        // AC-403: the host files a server's OAuth token under the contribution's Id. Leave it unset and the host
+        // falls back to keying on the name — which for this plugin is "Depot: {Name}", built from a field the
+        // operator edits, so renaming a connection would strand its sign-in under the old name.
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com")));
+
+        var servers = plugin.GetMcpServers();
+
+        Assert.Equal("c1", Assert.Single(servers, server => server.Name == "Depot: Synvolution").Id);
+        Assert.Equal("c2", Assert.Single(servers, server => server.Name == "Depot: Wispslate").Id);
+    }
+
+    [Fact]
+    public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId()
+    {
+        // Acceptance criterion 3, the Depot half. Two connections on the same host swap names: they stay unique, so
+        // nothing refuses the save, and the derived MCP server names swap with them. If identity followed the name,
+        // each would inherit the other's token — and since McpOAuthToken.IsForResource only bounds a token to
+        // scheme/host/port, two instances on one host with different paths would pass that check too, and one
+        // connection would present the other's bearer to an endpoint it was never issued for.
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "alpha", "https://depot.example.com/alpha"),
+            new DepotConnectionRegistration("c2", "beta", "https://depot.example.com/beta")));
+
+        var before = plugin.GetMcpServers();
+
+        using var afterSwap = new DepotPlugin();
+        afterSwap.Initialize(_HostWithConnections(
+            new DepotConnectionRegistration("c1", "beta", "https://depot.example.com/alpha"),
+            new DepotConnectionRegistration("c2", "alpha", "https://depot.example.com/beta")));
+
+        var after = afterSwap.GetMcpServers();
+
+        // The names swapped; the ids did not follow them.
+        Assert.Equal("c1", Assert.Single(before, server => server.Name == "Depot: alpha").Id);
+        Assert.Equal("c1", Assert.Single(after, server => server.Name == "Depot: beta").Id);
+        Assert.Equal("c2", Assert.Single(before, server => server.Name == "Depot: beta").Id);
+        Assert.Equal("c2", Assert.Single(after, server => server.Name == "Depot: alpha").Id);
+    }
+
+    [Fact]
     public void GetMcpServers_NoArgOverload_BeforeInitialize_ReturnsEmpty()
     {
         using var plugin = new DepotPlugin();

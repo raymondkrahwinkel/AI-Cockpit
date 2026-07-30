@@ -48,7 +48,7 @@ public class ProjectStoreTests : IDisposable
             McpOverlay = new ProjectMcpOverlay
             {
                 DisabledServerNames = ["youtrack"],
-                AdditionalServers = [new McpServerConfig { Name = "project-tools", Command = "uvx" }],
+                AdditionalServers = [new McpServerConfig { Id = "id-project-tools", Name = "project-tools", Command = "uvx" }],
             },
             // In the order they were typed: it is the order the card reads them back in, and a section that came
             // back alphabetised or reversed would quietly rearrange what the operator laid out.

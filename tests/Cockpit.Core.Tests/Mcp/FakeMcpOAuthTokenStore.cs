@@ -17,22 +17,26 @@ internal sealed class FakeMcpOAuthTokenStore : IMcpOAuthTokenStore
     /// <summary>Runs right after a removal, so a test can stand in for what an authorization flow would write next.</summary>
     public Action? OnRemoved { get; set; }
 
-    public Task<McpOAuthToken?> GetAsync(string serverName, CancellationToken cancellationToken = default)
+    public Task<McpOAuthToken?> GetAsync(string serverId, CancellationToken cancellationToken = default)
     {
         Reads++;
-        return Task.FromResult(_tokens.TryGetValue(serverName, out var token) ? token : null);
+        return Task.FromResult(_tokens.TryGetValue(serverId, out var token) ? token : null);
     }
 
-    public Task SaveAsync(string serverName, McpOAuthToken token, CancellationToken cancellationToken = default)
+    public Task SaveAsync(string serverId, string serverName, McpOAuthToken token, CancellationToken cancellationToken = default)
     {
-        _tokens[serverName] = token;
+        _tokens[serverId] = token;
         return Task.CompletedTask;
     }
 
-    public Task RemoveAsync(string serverName, CancellationToken cancellationToken = default)
+    public Task RemoveAsync(string serverId, CancellationToken cancellationToken = default)
     {
-        _tokens.Remove(serverName);
+        _tokens.Remove(serverId);
         OnRemoved?.Invoke();
         return Task.CompletedTask;
     }
+
+    /// <summary>Nothing to migrate in a store that never had a name-keyed era — the real one's own tests cover it.</summary>
+    public Task AdoptLegacyEntriesAsync(IReadOnlyDictionary<string, string> idsByServerName, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

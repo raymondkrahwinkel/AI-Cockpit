@@ -24,6 +24,7 @@ public class McpOAuthOfflineAccessFlowTests
 
     private static McpServerConfig _Server(string url, string? oauthScopes = null) => new()
     {
+        Id = "depot",
         Name = "depot",
         Transport = McpTransport.Http,
         Url = url,
@@ -126,7 +127,7 @@ public class McpOAuthOfflineAccessFlowTests
         // a refresh grant once it has a client identity to present, and a fresh connect attempt (this one) starts a
         // brand-new provider with none — it restores this pairing from the stored token instead of running dynamic
         // client registration again. Standing in for what a real sign-in would have persisted alongside the token.
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "already-expired",
             RefreshToken = InProcessOAuthMcpServer.RefreshToken,

@@ -60,7 +60,7 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
             // Without this the SDK caches the token with the transport and the cockpit never sees it: the sign-in
             // would work and then be thrown away with the connection. Storing it is what lets one login serve the
             // spawned agents too, and survive a restart.
-            TokenCache = new McpOAuthTokenCache(server.Name, server.Url, tokenStore),
+            TokenCache = new McpOAuthTokenCache(server.IdentityKey, server.Name, server.Url, tokenStore),
         };
 
         // A configured client id takes precedence; otherwise let the server register us dynamically (RFC 7591).

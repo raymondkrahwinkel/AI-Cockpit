@@ -346,6 +346,17 @@ public partial class App : Application
             Program.Services.GetRequiredService<IWorkflowTemplateLibrary>(),
             Program.Services.GetRequiredService<IWorkflowTemplateRegistry>());
 
+        // AC-403: move an OAuth token an older build filed under a server's name onto the id that server is known by
+        // now. Here, at the tail of plugin phase 2, because a plugin's own connections are the only ones that need
+        // it and this is the first moment they can be asked for.
+        // Blocking, like the two settings reads at the top of this method, and for a stronger reason than either:
+        // the main window is already on screen by now, so an await here would hand the operator a window they could
+        // click in while the migration was still running — and a status read that lands in that gap says "sign-in
+        // needed" about a credential that is present and about to be moved. The UI thread is inside this method for
+        // the whole of plugin phase 2, so nothing can be clicked until it returns. It never throws (it logs), and
+        // after the launch that migrates it is one small config read that writes nothing.
+        Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync().GetAwaiter().GetResult();
+
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();

@@ -45,7 +45,7 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public async Task SignOut_AfterAnUnsavedRename_StillActsUnderTheNameTheStoreKnows()
+    public async Task SignOut_AfterAnUnsavedRename_StillActsOnWhatTheStoreHasFiled()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
@@ -61,8 +61,11 @@ public class McpAuthStatusRegressionTests
 
         await editable.SignOutCommand.ExecuteAsync(null);
 
+        // Asserted on the id rather than the name since AC-403: the credential is filed under the id, and the row's
+        // id is untouched by an unsaved rename — which is what makes "still acts on what the store has" true here
+        // without the row having to work out which name that was.
         await coordinator.Received().SignOutAsync(
-            Arg.Is<McpServerConfig>(server => server.Name == "depot"),
+            Arg.Is<McpServerConfig>(server => server.IdentityKey == McpServerIdentity.LegacyIdFor("depot")),
             Arg.Any<CancellationToken>());
     }
 

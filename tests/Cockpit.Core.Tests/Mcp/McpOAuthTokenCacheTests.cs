@@ -16,7 +16,7 @@ public class McpOAuthTokenCacheTests
     private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create(string resourceUrl = ResourceUrl)
     {
         var store = new FakeMcpOAuthTokenStore();
-        return (new McpOAuthTokenCache("depot", resourceUrl, store), store);
+        return (new McpOAuthTokenCache("depot", "depot", resourceUrl, store), store);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class McpOAuthTokenCacheTests
     public async Task StoreTokens_WithoutARefreshToken_KeepsTheOneAlreadyHeld()
     {
         var (cache, store) = _Create();
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "old-access",
             RefreshToken = "the-refresh-token",
@@ -75,7 +75,7 @@ public class McpOAuthTokenCacheTests
     public async Task StoreTokens_DoesNotInheritARefreshTokenHeldForADifferentHost()
     {
         var (cache, store) = _Create("https://depot.example/mcp");
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "old-access",
             RefreshToken = "somebody-elses-refresh-token",
@@ -101,7 +101,7 @@ public class McpOAuthTokenCacheTests
     public async Task GetTokens_ForATokenIssuedToADifferentHost_IsNull()
     {
         var (cache, store) = _Create("https://depot.example/mcp");
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "access",
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -117,7 +117,7 @@ public class McpOAuthTokenCacheTests
     public async Task GetTokens_RebasesTheRemainingLifetimeOnNow()
     {
         var (cache, store) = _Create();
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "access",
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(600),
@@ -136,7 +136,7 @@ public class McpOAuthTokenCacheTests
     public async Task GetTokens_ForAnExpiredToken_ReportsNoLifeLeft_RatherThanANegativeOne()
     {
         var (cache, store) = _Create();
-        await store.SaveAsync("depot", new McpOAuthToken
+        await store.SaveAsync("depot", "depot", new McpOAuthToken
         {
             AccessToken = "access",
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1),
