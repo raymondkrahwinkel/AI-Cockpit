@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 
 namespace Cockpit.Plugin.GitHubIssues.Tests;
 
@@ -34,6 +35,82 @@ public class GitHubIssuesClientTests : IDisposable
         Assert.Empty(issues);
         Assert.Equal(1, server.RequestCount);
         Assert.Contains("labels=in%20progress", capturedQuery);
+    }
+
+    [Fact]
+    public async Task GetOpenIssuesAsync_ALabelContainingAComma_StillFindsTheMatchingIssue()
+    {
+        // Adversarial-review defect: GitHub's REST "labels" query parameter is a documented comma-separated list —
+        // there is no quoting mechanism for a comma inside one label's own name (unlike the gh path's "label:"
+        // search qualifier, which takes one quoted string — see GitHubGhClient.LabelSearchTerm). GitHub decodes the
+        // escaped comma and splits the parameter on it, then requires an issue to carry every one of the resulting
+        // names (AND semantics) — so a label literally named "ready, honestly" sent through &labels= is read back as
+        // two filters, "ready" and "honestly", neither of which exists as its own label. This fake server plays that
+        // real splitting rule, so the test reproduces the actual defect rather than a stand-in for it: an issue
+        // whose one label contains a comma must be unreachable through that parameter no matter how the comma is
+        // escaped, which is exactly what proves this is an API limitation and not a missing escape.
+        const string body = """
+            [
+                { "number": 1, "title": "Has the comma label", "html_url": "https://x/1", "labels": [ { "name": "ready, honestly" } ] },
+                { "number": 2, "title": "Unrelated", "html_url": "https://x/2", "labels": [ { "name": "bug" } ] }
+            ]
+            """;
+        using var server = LoopbackServer.Start(request =>
+        {
+            var labelsParam = _QueryParam(request, "labels");
+            if (labelsParam is null)
+            {
+                return LoopbackServer.Json(body);
+            }
+
+            // GitHub's own rule for this parameter: split on comma, AND the parts together.
+            var wanted = labelsParam.Split(',', StringSplitOptions.TrimEntries);
+            using var document = JsonDocument.Parse(body);
+            var matching = document.RootElement.EnumerateArray()
+                .Where(issue => wanted.All(name => issue.GetProperty("labels").EnumerateArray()
+                    .Any(label => string.Equals(label.GetProperty("name").GetString(), name, StringComparison.OrdinalIgnoreCase))))
+                .Select(issue => issue.GetRawText());
+            return LoopbackServer.Json("[" + string.Join(",", matching) + "]");
+        });
+        GitHubIssuesClient.BaseUrl = server.BaseUrl;
+
+        var (issues, _) = await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None, label: "ready, honestly");
+
+        Assert.Equal([1], issues.Select(issue => issue.Number));
+    }
+
+    [Fact]
+    public async Task GetOpenIssuesAsync_ALabelContainingAComma_IsNeverSentThroughTheLabelsParameter()
+    {
+        // Half of the same fix: whatever the client does instead, it must not still hand a comma-containing name to
+        // a parameter that is documented to split on comma — that would be sending the same broken request under a
+        // different disguise.
+        string? capturedQuery = null;
+        using var server = LoopbackServer.Start(request =>
+        {
+            capturedQuery = request.Url?.Query;
+            return LoopbackServer.Json("""[]""");
+        });
+        GitHubIssuesClient.BaseUrl = server.BaseUrl;
+
+        await new GitHubIssuesClient().GetOpenIssuesAsync("octocat", "hello-world", token: null, assignedToMe: false, CancellationToken.None, label: "ready, honestly");
+
+        Assert.DoesNotContain("labels=", capturedQuery);
+    }
+
+    private static string? _QueryParam(HttpListenerRequest request, string name)
+    {
+        var query = request.Url?.Query.TrimStart('?') ?? string.Empty;
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2 && parts[0] == name)
+            {
+                return Uri.UnescapeDataString(parts[1]);
+            }
+        }
+
+        return null;
     }
 
     [Fact]

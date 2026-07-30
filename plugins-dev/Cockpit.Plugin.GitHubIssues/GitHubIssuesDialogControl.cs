@@ -18,13 +18,15 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// and a sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
 /// mode) on the left, and a details panel on the right — number, title, a repository chip, a rendered
 /// description, a fixed action toolbar and a collapsible preview of the prompt it would produce (with a copy
-/// button). The repository filter is populated from the distinct <see cref="GitHubIssue.Repository"/> values in
-/// the loaded issues plus an "All" entry; it filters the grid client-side. The label filter is populated from the
-/// labels of the repositories involved (AC-519) — not from the loaded issues, which would repeat the gap the
-/// YouTrack status filter had — and narrows the fetch itself, since filtering client-side over a page GitHub may
-/// have capped would silently miss whatever was cut off. "Add to prompt" injects into the active session; "New
-/// session" (mirroring the YouTrack dialog) hands the same prompt to the cockpit's own New-session dialog instead.
-/// Built in code; the DataGrid theme is provided app-wide by the host.
+/// button). The repository filter is populated from the owner's own repositories (gh mode) or the one repository
+/// the settings name (HTTP mode) plus an "All" entry — not from the distinct repositories among the loaded issues,
+/// which the active label filter narrows before this ever runs and would otherwise be able to drop a repository
+/// with no currently-matching issue, and its AC-317 preselection, out of the dropdown entirely; it filters the grid
+/// client-side. The label filter is populated from the labels of the repositories involved (AC-519) — not from the
+/// loaded issues, which would repeat the same gap the YouTrack status filter had — and narrows the fetch itself,
+/// since filtering client-side over a page GitHub may have capped would silently miss whatever was cut off. "Add to
+/// prompt" injects into the active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to
+/// the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
@@ -464,6 +466,27 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 ? selectedLabel
                 : null;
 
+            // The repository list is a filter aid too (AC-317), and just as independent of the issue fetch as
+            // labelOptions above — deliberately not derived from _all (found during adversarial review): _all is
+            // narrowed by the label filter chosen just above, so a repository with no open issue carrying that
+            // label would otherwise vanish from the dropdown along with its issues, taking the AC-317 preselection
+            // down with it. gh mode already has its own repository source (GitHubRepositoryField uses the same
+            // one for the project editor's repository field); HTTP mode has only ever had the one repository the
+            // settings name, whether or not it has a matching issue right now.
+            IReadOnlyList<string> repoOptions;
+            try
+            {
+                repoOptions = _settings.UseGitHubCli
+                    ? await _gh.ListRepositoriesAsync(_settings.GhOwner, CancellationToken.None)
+                    : (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo)
+                        ? []
+                        : [$"{_settings.Owner}/{_settings.Repo}"]);
+            }
+            catch
+            {
+                repoOptions = [];
+            }
+
             (_all, _possiblyTruncated) = _settings.UseGitHubCli
                 ? await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None, label is null ? null : GitHubGhClient.LabelSearchTerm(label))
                 : await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None, label);
@@ -472,7 +495,15 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             // open on it. After that the filter keeps whatever the operator chose, link or no link.
             _linkedRepository ??= await _host.GetProjectFieldValueAsync(GitHubRepositoryField.Key) ?? string.Empty;
 
-            _PopulateRepoFilter();
+            // A repository seen on a loaded issue but somehow missing from repoOptions (e.g. the repository list
+            // call above failed open to []) still belongs in the dropdown — the issue is right there in the grid.
+            var repositories = repoOptions
+                .Concat(_all.Select(issue => issue.Repository))
+                .Where(repository => !string.IsNullOrEmpty(repository))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(repository => repository, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _PopulateRepoFilter(repositories);
             _ApplyFilter();
             _ReportLoaded();
         }
@@ -507,23 +538,21 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             : baseline);
     }
 
-    // Rebuilds the repository dropdown from the distinct repositories in the freshly loaded issues, keeping
-    // the previous selection if it is still present (otherwise falls back to "All"). On the first population that
-    // is where the project's own link (AC-317) gets its one chance to be the answer — a repository the operator
+    // Rebuilds the repository dropdown from the repositories handed in — the owner's own repository list (gh mode)
+    // or the one repository the settings name (HTTP mode), not the distinct repositories among the freshly loaded
+    // issues (AC-317, fixed alongside AC-519 during adversarial review): _all is narrowed by whatever label filter
+    // is active by the time this runs, so deriving options from it would drop a repository with no
+    // currently-matching issue from the dropdown, and the AC-317 preselection below along with it. Keeps the
+    // previous selection if it is still on offer, otherwise falls back to "All". On the first population that is
+    // where the project's own link (AC-317) gets its one chance to be the answer — a repository the operator
     // linked on purpose, not a preference this dialog then keeps re-imposing. _repoOptionsPopulated, not a null
     // check on SelectedItem, is what tells first from later — see that field for why.
-    private void _PopulateRepoFilter()
+    private void _PopulateRepoFilter(IReadOnlyList<string> repositories)
     {
         var previousSelection = _repoOptionsPopulated
             ? _repoFilter.SelectedItem as string
             : (string.IsNullOrWhiteSpace(_linkedRepository) ? null : _linkedRepository);
         _repoOptionsPopulated = true;
-        var repositories = _all
-            .Select(issue => issue.Repository)
-            .Where(repository => !string.IsNullOrEmpty(repository))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(repository => repository, StringComparer.OrdinalIgnoreCase)
-            .ToList();
 
         var options = new List<string> { AllRepositoriesOption };
         options.AddRange(repositories);

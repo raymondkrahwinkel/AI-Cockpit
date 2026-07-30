@@ -392,7 +392,7 @@ public class GitHubIssuesDialogControlTests
         var harness = DialogHarness.Open("acme", repoA, repoB);
         harness.SetLinkedRepository("acme/foo");
 
-        harness.PopulateRepoFilter();
+        harness.PopulateRepoFilter("acme/foo", "acme/bar");
 
         var selected = harness.RepoFilter.SelectedItem as string;
         _out.WriteLine($"selected={selected ?? "<null>"}");
@@ -410,13 +410,40 @@ public class GitHubIssuesDialogControlTests
         var harness = DialogHarness.Open("acme", repoA, repoB);
         harness.SetLinkedRepository(string.Empty);
 
-        harness.PopulateRepoFilter();
+        harness.PopulateRepoFilter("acme/foo", "acme/bar");
 
         var selected = harness.RepoFilter.SelectedItem as string;
         _out.WriteLine($"selected={selected ?? "<null>"}");
         harness.Close();
 
         Assert.Equal("All", selected);
+    });
+
+    [Fact]
+    public void RepoFilter_ALinkedRepoWithNoLabelMatchingIssues_StillAppearsAndIsPreselected() => HeadlessAvalonia.Run(() =>
+    {
+        // Adversarial-review defect: _PopulateRepoFilter used to build its options from _all, which — by the time
+        // it runs — has already been narrowed by the server-side label filter (AC-519). A repository linked to the
+        // project (AC-317) that simply has no open issue carrying the currently selected label never made it into
+        // _all at all, so it could neither be offered in the dropdown nor preselected — silently undoing the very
+        // fix RepoFilter_PreselectsTheLinkedProjectsRepository_OnFirstPopulation proves, through a different route,
+        // the moment any label filter is picked. The fix sources repo options independently of _all (the way
+        // labelOptions already is) — proven here by planting only "acme/bar" in _all (standing in for that
+        // label-narrowed fetch) while still handing PopulateRepoFilter the full repository list "acme/foo" (the
+        // linked repo) came from separately.
+        var onlyBar = Second with { Repository = "acme/bar" };
+        var harness = DialogHarness.Open("acme", onlyBar);
+        harness.SetLinkedRepository("acme/foo");
+
+        harness.PopulateRepoFilter("acme/foo", "acme/bar");
+
+        var options = harness.RepoFilter.ItemsSource?.OfType<string>().ToList() ?? [];
+        var selected = harness.RepoFilter.SelectedItem as string;
+        _out.WriteLine($"options=[{string.Join(", ", options)}] selected={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Contains("acme/foo", options);
+        Assert.Equal("acme/foo", selected);
     });
 
     [Fact]
@@ -429,10 +456,10 @@ public class GitHubIssuesDialogControlTests
         var repoB = Second with { Repository = "acme/bar" };
         var harness = DialogHarness.Open("acme", repoA, repoB);
         harness.SetLinkedRepository("acme/foo");
-        harness.PopulateRepoFilter();
+        harness.PopulateRepoFilter("acme/foo", "acme/bar");
         harness.RepoFilter.SelectedItem = "acme/bar";
 
-        harness.PopulateRepoFilter();
+        harness.PopulateRepoFilter("acme/foo", "acme/bar");
 
         var selected = harness.RepoFilter.SelectedItem as string;
         _out.WriteLine($"selected after repopulation={selected ?? "<null>"}");
@@ -731,12 +758,20 @@ public class GitHubIssuesDialogControlTests
             field.SetValue(_dialog, repository);
         }
 
-        /// <summary>Drives the private repo-filter population directly (AC-317) — same reasoning as <see cref="PopulateLabelFilter"/>.</summary>
-        public void PopulateRepoFilter()
+        /// <summary>
+        /// Drives the private repo-filter population directly (AC-317) — same reasoning as
+        /// <see cref="PopulateLabelFilter"/>: the real fetch behind the repository list (gh's own repository list,
+        /// or the one repository HTTP mode's settings name) goes through <c>gh</c>/HTTP with no seam for a test to
+        /// hand it a fake, so the repositories are handed in directly here instead, the same way the real
+        /// <c>_LoadAsync</c> hands in a list from its own independent fetch rather than deriving it from <c>_all</c>
+        /// (the adversarial-review fix: deriving it from <c>_all</c> made a repository with no currently-matching
+        /// issue vanish from the dropdown along with its issues).
+        /// </summary>
+        public void PopulateRepoFilter(params string[] repositories)
         {
             var method = typeof(GitHubIssuesDialogControl).GetMethod("_PopulateRepoFilter", BindingFlags.Instance | BindingFlags.NonPublic)
                 ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _PopulateRepoFilter.");
-            method.Invoke(_dialog, []);
+            method.Invoke(_dialog, [(IReadOnlyList<string>)repositories]);
             Layout();
         }
 

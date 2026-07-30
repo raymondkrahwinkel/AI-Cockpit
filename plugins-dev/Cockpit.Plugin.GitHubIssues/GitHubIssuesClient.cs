@@ -48,7 +48,17 @@ internal sealed class GitHubIssuesClient
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(label))
+        // GitHub's REST "labels" parameter is a documented comma-separated list with no way to escape a comma
+        // inside one label's own name: the server decodes the escaped comma and splits on it, then requires an
+        // issue to carry every one of the resulting names (AND semantics) — so a label literally named
+        // "ready, honestly" sent through this parameter is read back as two filters, neither of which exists, and
+        // nothing ever matches (adversarial review). The gh path has no such gap — its "label:" search qualifier
+        // (GitHubGhClient.LabelSearchTerm) takes one quoted string, not a delimited list — but there is no
+        // equivalent quoting for this REST endpoint's labels= parameter. For that one case this is filtered
+        // client-side below instead, after the fetch; every other label still filters server-side exactly as
+        // before.
+        var clientSideLabel = !string.IsNullOrWhiteSpace(label) && label.Contains(',') ? label : null;
+        if (!string.IsNullOrWhiteSpace(label) && clientSideLabel is null)
         {
             // Server-side, same as the gh path's "label:x" search term (AC-519) — filtering client-side over a
             // page that may already be capped would silently miss whatever was cut off.
@@ -89,7 +99,16 @@ internal sealed class GitHubIssuesClient
             issues.Add(new GitHubIssue(number, title, htmlUrl, body, repository) { Labels = GitHubIssueLabels.Read(element) });
         }
 
-        return (issues, wasTruncated);
+        // The label the labels= parameter could not carry (see clientSideLabel above) is matched here instead,
+        // against each issue's own labels — same case-insensitive comparison the gh-mode label lookups already use.
+        // This is honestly weaker than server-side filtering: a match beyond whatever GitHub capped this page at
+        // (wasTruncated) is missed the same way any other truncated result would be, but there is no way to ask the
+        // server the real question for this one label.
+        var filtered = clientSideLabel is null
+            ? issues
+            : issues.Where(issue => issue.Labels.Contains(clientSideLabel, StringComparer.OrdinalIgnoreCase)).ToList();
+
+        return (filtered, wasTruncated);
     }
 
     /// <summary>
