@@ -13,6 +13,9 @@
     <!-- The + and the node cards are controls, and the bug they exist to prevent is a control-level one (a Button
          swallowing the pointer press). Headless Avalonia lets that be tested without a screen. -->
     <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- AC-423 added a DataGridRow selector to the host's shared Theme.axaml, loaded off disk below — the XAML
+         compiler needs DataGridRow resolvable even though this plugin has no DataGrid of its own. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
     <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
     <!-- Skia, so the canvas can actually be rendered to pixels and looked at (AC-337). Headless drawing stubs out
          text shaping and paints nothing, which is fine for "did the button eat the click?" and useless for "does

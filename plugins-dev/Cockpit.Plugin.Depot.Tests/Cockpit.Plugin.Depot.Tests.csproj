@@ -18,6 +18,10 @@
          standalone with no host to provide them, so it carries runtime copies — the same reason the FanOut and
          Autopilot plugin test projects do. -->
     <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- AC-423 added a DataGridRow selector to the host's shared Theme.axaml; this project loads that theme file
+         off disk (see the Avalonia.Markup.Xaml.Loader reference below) for the IL#9 render test, so the XAML
+         compiler needs DataGridRow resolvable even though this plugin has no DataGrid of its own. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
     <!-- IL#9 render test (AC-243): a real Skia headless platform plus the cockpit's own theme, same set the
          Workflows plugin's render tests use — see HeadlessAvalonia.cs for why headless drawing (no glyphs) is not enough. -->
     <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
