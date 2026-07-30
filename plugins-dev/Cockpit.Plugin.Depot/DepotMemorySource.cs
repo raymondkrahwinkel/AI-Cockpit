@@ -75,6 +75,13 @@ internal static class DepotMemorySource
         IReadOnlyList<DepotConnectionRegistration> connections, ICockpitHost? host = null) =>
         BuildRegistrationPairs(connections, host).Select(pair => pair.Registration).ToList();
 
+    // AC-499: Title keeps naming the connection ("Depot project — Wispslate") even though the picker's own dropdown
+    // no longer shows it once FamilyKey groups this registration under "Depot" — the instance dropdown reads
+    // InstanceTitle instead (ProjectDialogViewModel.CreateAsync). Title still has a reader that never sees
+    // FamilyKey/InstanceTitle at all: ProjectMemorySourceMapping flattens a registration to Scheme/Title/Instruction
+    // for a session's own standing instructions, so Title is the only surviving name once a session is told where
+    // its memory lives — dropping the connection name from it would make that sentence read "your memory lives in
+    // 'Depot project'" for every connection alike.
     private static ProjectMemorySourceRegistration _RegistrationFor(DepotConnectionRegistration connection, string scheme, ICockpitHost? host) =>
         new(
             scheme,
@@ -88,6 +95,8 @@ internal static class DepotMemorySource
             SignInAsync = host is null ? null : async cancellationToken =>
                 await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
             CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, value, cancellationToken),
+            FamilyKey = Scheme,
+            InstanceTitle = connection.Name,
         };
 
     /// <summary>

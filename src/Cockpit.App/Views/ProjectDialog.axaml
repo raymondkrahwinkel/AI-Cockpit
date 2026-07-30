@@ -286,6 +286,47 @@
                                                 </DataTemplate>
                                             </ComboBox.ItemTemplate>
                                         </ComboBox>
+
+                                        <!-- AC-499: the second axis — which instance (which Depot connection, say) of the family picked
+                                             above this row means — shown only once that top choice actually names a family
+                                             (ShowsMemorySourceServerRow); Folder and an ungrouped source have no second axis at all.
+                                             The dropdown itself only appears once the family has an instance to offer — with none yet,
+                                             a disabled box carrying the family's own empty hint takes its place instead, so there is
+                                             never an empty, openable-but-useless ComboBox on screen. "Servers…" is only ever shown
+                                             when the picked family actually offers somewhere to configure one (never a dead button,
+                                             the same rule "Choose…" already follows via CanBrowse), and disables itself rather than
+                                             disappearing while a previous call is still running. -->
+                                        <Grid IsVisible="{Binding ShowsMemorySourceServerRow}" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <ComboBox Grid.Column="0" IsVisible="{Binding HasFamilyInstances}"
+                                                      ItemsSource="{Binding FamilyInstanceChoices}"
+                                                      SelectedItem="{Binding SelectedFamilyInstance}"
+                                                      HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:MemorySourceChoice">
+                                                        <TextBlock Text="{Binding Label}"/>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBox Grid.Column="0" IsVisible="{Binding !HasFamilyInstances}"
+                                                     IsReadOnly="True" IsEnabled="False"
+                                                     Text="{Binding MemorySourceInstanceEmptyHint, Mode=OneWay}"/>
+                                            <Button Grid.Column="1" Content="Servers…" IsVisible="{Binding CanConfigureMemorySource}"
+                                                    IsEnabled="{Binding !IsConfiguringMemorySource}"
+                                                    ToolTip.Tip="Opens where this family's own connections are configured."
+                                                    Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).ConfigureMemorySourceCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </Grid>
+                                        <TextBlock Classes="FieldHint" Margin="0" Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                                   IsVisible="{Binding MemorySourceConfigureError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Text="{Binding MemorySourceConfigureError}"/>
+
+                                        <!-- Sits here, directly above the box it describes, rather than under the source dropdown where it
+                                             lived before AC-499. Its sentence is about the value the operator types ("the name it goes by in
+                                             the source above, not a path"), so inserting the server row between the two left the explanation
+                                             two controls away from the field it explains — visible only in a render, which is how it was
+                                             caught. Below the server row it also reads more precisely: "the source above" now lands on the
+                                             instance actually chosen ("Depot (krahwinkel-it)"), and the identifier really is scoped to that
+                                             one instance, not to the family. -->
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding ShowsMemorySourcePicker}"
                                                    Text="{Binding MemoryHint}"/>
 

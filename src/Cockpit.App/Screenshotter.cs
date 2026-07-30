@@ -81,6 +81,11 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
+        // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
+        // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog
+        // any one scene can show anyway (see _ProjectEditorWithResources's own remarks on that ceiling).
+        ["project-editor-memory-source-families"] = (_, _) => _ProjectEditorWithMemorySourceFamilies(),
         // AC-502: the "Choose…" picker itself, in the state that paints the most of its own surface — a loaded
         // list with a two-line entry (name plus its detail) — plus the two states that must never read as an empty
         // list (not signed in, and a failed load), each its own scene since only one of the four states shows at a
@@ -312,6 +317,71 @@ internal static class Screenshotter
         // Taller than the dialog opens, the way the memory-source scene already is — clamped by DialogScreenClamp
         // to 90% of the headless screen either way, but still what pushes the resource section as far above that
         // ceiling as this dialog's other sections leave room for.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>
+    /// AC-499's second axis, both of its states in one scene (Iron Law #9): a "Depot" family with two instances to
+    /// choose between (its own dropdown, populated), and a "Notes vault" family with none registered yet (its
+    /// dropdown's place taken by a disabled box carrying <see cref="ProjectMemorySourceFamily.EmptyHint"/>, with
+    /// "Servers…" sitting beside it either way). Built directly against <see cref="ProjectResourceRowViewModel"/>'s
+    /// own constructor — passing <c>familyInstanceChoicesByKey</c> straight in — rather than through
+    /// <see cref="ProjectDialogViewModel.CreateAsync"/>: <c>MemorySourceFamilyInstances</c> only has a private
+    /// setter, so a scene (outside the view model's own assembly boundary in every way but the CLR's) builds the
+    /// same shape by hand, exactly as <see cref="_ProjectEditorWithResources"/> already does for
+    /// <c>MemorySourceChoices</c> itself.
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithMemorySourceFamilies()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        // See _ProjectEditorWithMemorySourceReachability's own remarks on why the design-time sample rows are
+        // cleared here too — every bit of chrome this scene does not need earns back room under the fold.
+        viewModel.AdditionalInfo.Clear();
+
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot", Scheme: null)
+        {
+            FamilyKey = "depot",
+            EmptyHint = "No Depot server configured yet",
+            ConfigureAsync = _ => Task.CompletedTask,
+        });
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Notes vault", Scheme: null)
+        {
+            FamilyKey = "notes",
+            EmptyHint = "No Notes vault configured yet",
+            ConfigureAsync = _ => Task.CompletedTask,
+        });
+
+        var depotInstances = new List<ViewModels.MemorySourceChoice>
+        {
+            new("Depot (krahwinkel-it)", "depot"),
+            new("Depot (synvolution)", "depot.synvolution"),
+        };
+        var familyInstances = new Dictionary<string, IReadOnlyList<ViewModels.MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = depotInstances,
+            ["notes"] = [],
+        };
+
+        var withInstances = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "krahwinkel-it", "Team notes",
+            familyInstanceChoicesByKey: familyInstances)
+        {
+            SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1],
+        };
+        withInstances.SelectedFamilyInstance = depotInstances[0];
+        viewModel.ResourceRows.Add(withInstances);
+
+        var empty = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "", "Personal notes",
+            familyInstanceChoicesByKey: familyInstances)
+        {
+            SelectedMemorySourceChoice = viewModel.MemorySourceChoices[2],
+        };
+        viewModel.ResourceRows.Add(empty);
+
+        // Taller than the dialog opens, the same reason every other resource-section scene already gives: two
+        // rows' worth of picker plus server row sit well below the fold of a default-sized editor.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 

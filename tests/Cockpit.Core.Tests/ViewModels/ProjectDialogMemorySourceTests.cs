@@ -38,17 +38,26 @@ public class ProjectDialogMemorySourceTests
     private static ProjectMemorySourceRegistration DepotSource() =>
         new("depot", "Depot project", "Read it through the Depot MCP.");
 
+    /// <summary>
+    /// AC-499 review: this test used to pin the pre-AC-499 behaviour — no source registered meant
+    /// <see cref="ProjectDialogViewModel.MemorySourceChoices"/> was left empty and the picker disappeared entirely
+    /// (<see cref="ProjectResourceRowViewModel.ShowsMemorySourcePicker"/> false). That was the doorless dead end
+    /// Raymond reported: with nothing registered, a Memory row offered no way to say "this is a folder" as a
+    /// deliberate choice — it simply had no picker at all. AC-499 makes "Folder" unconditional — offered from
+    /// <c>CreateAsync</c> whether or not any plugin ever registers anything — so this now pins the corrected
+    /// behaviour instead: the picker is always shown, with exactly "Folder" in it.
+    /// </summary>
     [Fact]
-    public async Task CreateAsync_NoRegisteredSources_LeavesThePickerOutAndBehavesAsBefore()
+    public async Task CreateAsync_NoRegisteredSourcesOrFamilies_StillOffersFolderAndBehavesAsBefore()
     {
         var project = Project.Create("Cockpit") with { MemoryRef = "/home/raymond/notes" };
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
 
-        Assert.Empty(viewModel.MemorySourceChoices);
+        Assert.Equal(new[] { "Folder" }, viewModel.MemorySourceChoices.Select(choice => choice.Label));
         var row = Assert.Single(viewModel.ResourceRows);
-        Assert.False(row.ShowsMemorySourcePicker);
-        Assert.Null(row.SelectedMemorySourceChoice);
+        Assert.True(row.ShowsMemorySourcePicker);
+        Assert.Equal(viewModel.MemorySourceChoices[0], row.SelectedMemorySourceChoice);
         Assert.True(row.IsMemoryFolderMode);
         Assert.Equal("/home/raymond/notes", row.Reference);
         Assert.Equal("/home/raymond/notes", viewModel.ToProject().MemoryRef);

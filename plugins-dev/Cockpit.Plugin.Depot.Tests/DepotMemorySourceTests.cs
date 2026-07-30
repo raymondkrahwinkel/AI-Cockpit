@@ -234,6 +234,55 @@ public class DepotMemorySourceTests
         Assert.Equal("24 documents, last changed 2 hours ago", result.Detail);
     }
 
+    // --- AC-499: FamilyKey / InstanceTitle -------------------------------------------------------------------
+
+    [Fact]
+    public void FirstConnection_CarriesTheDepotFamilyKeyAndItsOwnInstanceTitle()
+    {
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
+
+        var registration = pairs.Single().Registration;
+        Assert.Equal("depot", registration.FamilyKey);
+        Assert.Equal("Synvolution", registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void EveryConnection_CarriesTheSameFamilyKey_WhateverItsOwnScheme()
+    {
+        // The scheme is per-connection (namespaced from the second connection on), but the family every connection
+        // opts into is the one "Depot" entry — FamilyKey must not drift with the scheme.
+        var pairs = DepotMemorySource.BuildRegistrationPairs([
+            Connection("c1", "Synvolution"),
+            Connection("c2", "Wispslate"),
+        ], Host());
+
+        Assert.All(pairs, pair => Assert.Equal("depot", pair.Registration.FamilyKey));
+    }
+
+    [Fact]
+    public void SecondConnection_InstanceTitleIsItsOwnName_NotTheNamespacedScheme()
+    {
+        var pairs = DepotMemorySource.BuildRegistrationPairs([
+            Connection("c1", "Synvolution"),
+            Connection("c2", "Wispslate"),
+        ], Host());
+
+        Assert.Equal("Wispslate", pairs[1].Registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void NoHostPassed_StillSetsFamilyKeyAndInstanceTitle()
+    {
+        // FamilyKey/InstanceTitle are plain data on the registration, unlike ListLocationsAsync/SignInAsync/
+        // CheckReachability which need a host to close over — a registration built without one must not silently
+        // drop them.
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+
+        var registration = pairs.Single().Registration;
+        Assert.Equal("depot", registration.FamilyKey);
+        Assert.Equal("Synvolution", registration.InstanceTitle);
+    }
+
     [Fact]
     public async Task CheckReachability_OnFailure_NeverSurfacesTheDetailField()
     {

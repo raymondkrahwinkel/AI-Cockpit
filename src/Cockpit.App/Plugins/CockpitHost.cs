@@ -192,6 +192,18 @@ internal sealed class CockpitHost(
     public IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources =>
         services.GetRequiredService<IProjectMemorySourceRegistry>().Sources;
 
+    public void AddProjectMemorySourceFamily(ProjectMemorySourceFamily family)
+    {
+        // Refused means another plugin already declared this key — agreement, not a clash, the same reason
+        // AddProjectMemorySource logs at debug rather than warning.
+        if (!services.GetRequiredService<IProjectMemorySourceRegistry>().RegisterFamily(family))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Memory source family '{MemorySourceFamilyKey}' is already declared; this registration is ignored",
+                family.Key);
+        }
+    }
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         // No pane named and none selected means there is no project to read from — not an error, just nothing to say.

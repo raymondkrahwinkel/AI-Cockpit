@@ -285,7 +285,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(
-            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources);
+            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

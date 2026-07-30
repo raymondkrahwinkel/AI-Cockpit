@@ -774,4 +774,202 @@ public class ProjectDialogResourceRowTests
         Assert.Equal(ProjectMemorySourceReachability.Confirmed, row.Reachability);
         Assert.Equal("second", row.ReachabilityDetail);
     }
+
+    // --- AC-499: the second (family instance) axis — role switches, resets, and CanBrowse/IsMemoryFolderMode -------
+    // Built directly against ProjectResourceRowViewModel's own constructor, the same way the two AC-503 reset tests
+    // above are, since what is under test here is the row's own behaviour, not CreateAsync's building of it
+    // (ProjectDialogMemorySourceFamilyTests covers that half).
+
+    private static (ObservableCollection<MemorySourceChoice> Choices, Dictionary<string, IReadOnlyList<MemorySourceChoice>> Instances) _DepotFamilyChoices()
+    {
+        var depotInstance = new MemorySourceChoice("Depot (krahwinkel-it)", "depot");
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot", EmptyHint = "No Depot server configured yet" },
+        };
+        var instances = new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = [depotInstance],
+        };
+        return (choices, instances);
+    }
+
+    [Fact]
+    public void SwitchingRoleAwayFromMemory_WithAFamilyInstancePicked_FoldsTheInstancesSchemeAndClearsTheSelection()
+    {
+        var (choices, instances) = _DepotFamilyChoices();
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit", familyInstanceChoicesByKey: instances)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+        Assert.Equal("depot", row.SelectedFamilyInstance?.Scheme); // must actually have an instance picked already
+
+        row.Role = ProjectResourceRole.Reference;
+
+        // What the picker folded away must land in the box the operator can still see.
+        Assert.Equal("depot:cockpit", row.Reference);
+        // Neither axis may keep pointing at something the box no longer names.
+        Assert.Equal(choices[0], row.SelectedMemorySourceChoice);
+        Assert.Null(row.SelectedFamilyInstance);
+    }
+
+    [Fact]
+    public void SwitchingRoleToMemory_WithAFamilyInstanceSchemeAlreadyTyped_SelectsTheFamilyAndInstanceAndShowsTheBareValue()
+    {
+        var (choices, instances) = _DepotFamilyChoices();
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Reference, "depot:cockpit", familyInstanceChoicesByKey: instances);
+
+        row.Role = ProjectResourceRole.Memory;
+
+        Assert.Equal("depot", row.SelectedMemorySourceChoice?.FamilyKey);
+        Assert.Equal("depot", row.SelectedFamilyInstance?.Scheme);
+        Assert.Equal("cockpit", row.Reference);
+    }
+
+    [Fact]
+    public void SwitchingSelectedFamilyInstance_ResetsReachability()
+    {
+        var depotInstanceA = new MemorySourceChoice("Depot (krahwinkel-it)", "depot");
+        var depotInstanceB = new MemorySourceChoice("Depot (synvolution)", "depot.synvolution");
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot" },
+        };
+        var instances = new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = [depotInstanceA, depotInstanceB],
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, "cockpit", familyInstanceChoicesByKey: instances)
+        {
+            SelectedMemorySourceChoice = choices[1],
+            Reachability = ProjectMemorySourceReachability.Confirmed,
+            ReachabilityDetail = "24 documents",
+        };
+        Assert.Equal(depotInstanceA, row.SelectedFamilyInstance); // the family's first instance, picked by default
+
+        row.SelectedFamilyInstance = depotInstanceB;
+
+        Assert.Null(row.Reachability);
+        Assert.Null(row.ReachabilityDetail);
+    }
+
+    [Fact]
+    public void SwitchingSelectedMemorySourceChoiceToADifferentFamily_ResetsSelectedFamilyInstanceToTheNewFamilysFirstInstance()
+    {
+        var depotInstance = new MemorySourceChoice("Depot (krahwinkel-it)", "depot");
+        var notesInstance = new MemorySourceChoice("Notes vault", "notes");
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot" },
+            new("Notes", Scheme: null) { FamilyKey = "notes" },
+        };
+        var instances = new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = [depotInstance],
+            ["notes"] = [notesInstance],
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, familyInstanceChoicesByKey: instances)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+        Assert.Equal(depotInstance, row.SelectedFamilyInstance);
+
+        row.SelectedMemorySourceChoice = choices[2];
+
+        Assert.Equal(notesInstance, row.SelectedFamilyInstance);
+    }
+
+    [Fact]
+    public void SwitchingSelectedMemorySourceChoiceFromAFamilyToFolder_ClearsSelectedFamilyInstance()
+    {
+        var (choices, instances) = _DepotFamilyChoices();
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, familyInstanceChoicesByKey: instances)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+        Assert.NotNull(row.SelectedFamilyInstance);
+
+        row.SelectedMemorySourceChoice = choices[0];
+
+        Assert.Null(row.SelectedFamilyInstance);
+    }
+
+    [Fact]
+    public void IsMemoryFolderMode_AFamilyPicked_IsFalse_EvenWithNoInstanceChosenYet()
+    {
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot" },
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+
+        // No instance registered under "depot" at all (an empty familyInstanceChoicesByKey), so SelectedFamilyInstance
+        // stays null — proving this reads "not a folder" from the family choice alone, not from having an instance.
+        Assert.Null(row.SelectedFamilyInstance);
+        Assert.False(row.IsMemoryFolderMode);
+    }
+
+    [Fact]
+    public void CanBrowse_AFamilyWithNoInstancePicked_IsFalse()
+    {
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot" },
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+
+        // Nothing to browse until an instance exists to browse it with.
+        Assert.False(row.CanBrowse);
+    }
+
+    [Fact]
+    public void CanBrowse_AFamilyInstanceThatCanListLocations_IsTrue()
+    {
+        var depotInstance = new MemorySourceChoice("Depot (krahwinkel-it)", "depot")
+        {
+            ListLocationsAsync = _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])),
+        };
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Depot", Scheme: null) { FamilyKey = "depot" },
+        };
+        var instances = new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = [depotInstance],
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory, familyInstanceChoicesByKey: instances)
+        {
+            SelectedMemorySourceChoice = choices[1],
+        };
+
+        Assert.True(row.CanBrowse);
+    }
+
+    [Fact]
+    public void ShowsMemorySourceServerRow_IsFalseForFolderAndForAnUngroupedSource()
+    {
+        var choices = new ObservableCollection<MemorySourceChoice>
+        {
+            new("Folder", Scheme: null),
+            new("Scratchpad", "scratch"),
+        };
+        var row = new ProjectResourceRowViewModel(choices, ProjectResourceRole.Memory);
+        Assert.False(row.ShowsMemorySourceServerRow, "Folder is selected by default on a fresh row");
+
+        row.SelectedMemorySourceChoice = choices[1];
+
+        Assert.False(row.ShowsMemorySourceServerRow, "an ungrouped source has no second axis to pick from at all");
+    }
 }

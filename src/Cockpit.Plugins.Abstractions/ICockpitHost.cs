@@ -728,6 +728,25 @@ public interface ICockpitHost
     IReadOnlyList<Projects.ProjectMemorySourceRegistration> ProjectMemorySources => [];
 
     /// <summary>
+    /// Declares a group <see cref="Projects.ProjectMemorySourceRegistration.FamilyKey"/> can opt an instance into
+    /// (AC-499) — "Depot", say, so the project editor's picker offers one "Depot" entry regardless of how many
+    /// connections are configured, rather than one row per connection. Registering a family the instant no instance
+    /// exists yet is the point, not an edge case: it is what lets the picker say "Depot" (and offer a way to
+    /// configure one) instead of staying silent about a plugin that has nothing registered right now.
+    /// <para>
+    /// A key another plugin already declared is kept as it was and this registration ignored (matched
+    /// case-insensitively), the same agreement <see cref="AddProjectMemorySource"/> makes for a scheme two plugins
+    /// both offer.
+    /// </para>
+    /// This is additive to the AC-40 contract: <see cref="AbstractionsContract.Version"/> stays 1, the same as every
+    /// other default-implemented member added here. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddProjectMemorySourceFamily(Projects.ProjectMemorySourceFamily family)
+    {
+    }
+
+    /// <summary>
     /// What the operator picked for <paramref name="key"/> on the project a session belongs to (AC-317), or
     /// <see langword="null"/> when that session has no project, the project is not linked, or nothing matches
     /// <paramref name="paneId"/>. This is the reading half of <see cref="AddProjectField"/>, and a plugin may read a

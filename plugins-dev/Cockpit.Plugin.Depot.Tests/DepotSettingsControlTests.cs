@@ -281,6 +281,158 @@ public class DepotSettingsControlTests
         Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma) && gamma.Title.Contains("Gamma"));
     }
 
+    // --- AC-499: _SyncMemorySources end-state under the widened equality (FamilyKey/InstanceTitle now included) --
+    // ProjectMemorySourceRegistration.Equals now also compares FamilyKey/InstanceTitle (AC-499), which
+    // _SyncMemorySources' before/after diff relies on. These pin the registry's actual end state — not call counts,
+    // which cannot see an ordering bug where a later Add silently loses to an earlier connection's own
+    // not-yet-retired scheme (see Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above, the
+    // same reasoning applied to FamilyKey/InstanceTitle specifically).
+
+    private static FakeMemorySourceRegistry _WireRegistry(ICockpitHost host)
+    {
+        var registry = new FakeMemorySourceRegistry();
+        host.When(cockpit => cockpit.AddProjectMemorySource(Arg.Any<ProjectMemorySourceRegistration>()))
+            .Do(call => registry.Add(call.Arg<ProjectMemorySourceRegistration>()));
+        host.When(cockpit => cockpit.RemoveProjectMemorySource(Arg.Any<string>()))
+            .Do(call => registry.Remove(call.Arg<string>()));
+        return registry;
+    }
+
+    [Fact]
+    public void Save_NewConnection_EndState_CarriesTheDepotFamilyKeyAndItsOwnInstanceTitle()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Synvolution", url: "https://depot.example.com");
+
+        view.Save();
+
+        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
+        Assert.Equal("depot", registration!.FamilyKey);
+        Assert.Equal("Synvolution", registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void Save_RenamedConnection_EndState_InstanceTitleFollowsTheRename()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+
+        view.Save();
+
+        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
+        Assert.Equal("depot", registration!.FamilyKey);
+        Assert.Equal("Synvolution (renamed)", registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void Save_SwappingTwoConnectionNames_EndState_InstanceTitlesFollowTheSwap()
+    {
+        // Same swap shape as Save_SwappingTwoConnectionNames_BothMemorySourcesSurviveInTheRegistry above, checked
+        // against InstanceTitle specifically: a name swap must not leave either row's instance dropdown label
+        // pointing at the other connection's name.
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
+                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
+                new DepotConnectionRegistration("conn-3", "Gamma", "https://gamma.example.com"),
+            ],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
+        _SetRowFields(view, index: 2, name: "Beta", url: "https://gamma.example.com");
+
+        view.Save();
+
+        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta));
+        Assert.Equal("Beta", beta!.InstanceTitle);
+        Assert.True(registry.Sources.TryGetValue("depot.gamma", out var gamma));
+        Assert.Equal("Gamma", gamma!.InstanceTitle);
+        Assert.All(registry.Sources.Values, registration => Assert.Equal("depot", registration.FamilyKey));
+    }
+
+    [Fact]
+    public void Save_RenameProducesASymbolOnlyName_EndState_FallsBackToTheIdSchemeButKeepsTheRealInstanceTitle()
+    {
+        // The name-slug fallback in DepotMemorySource._NamespacedScheme kicks in for the scheme, but the
+        // InstanceTitle shown in the picker must still read the operator's literal (symbol-only) name, not the
+        // scheme's id-based fallback.
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com"),
+                new DepotConnectionRegistration("conn-2", "Wispslate", "https://wispslate.example.com"),
+            ],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 1, name: "★★★", url: "https://wispslate.example.com");
+
+        view.Save();
+
+        Assert.True(registry.Sources.TryGetValue("depot.conn-2", out var registration));
+        Assert.Equal("depot", registration!.FamilyKey);
+        Assert.Equal("★★★", registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void Save_TwoNonPrimaryConnectionsSlugCollide_EndState_BothSurviveUnderDistinctSchemesWithTheirOwnInstanceTitles()
+    {
+        // Two connections named alike enough to slugify to the same string ("Work"/"work!") — DepotMemorySource
+        // falls the second back to its own connection id, so both still end up in the registry rather than one
+        // silently losing the "scheme already taken" race.
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _AddRow(view);
+        _SetRowFields(view, index: 1, name: "Work", url: "https://work-a.example.com");
+        _SetRowFields(view, index: 2, name: "work!", url: "https://work-b.example.com");
+
+        view.Save();
+
+        Assert.Equal(3, registry.Sources.Count);
+        Assert.True(registry.Sources.TryGetValue("depot.work", out var first));
+        Assert.Equal("Work", first!.InstanceTitle);
+        var second = registry.Sources.Values.Single(registration => registration != first && registration.Scheme != "depot");
+        Assert.Equal("work!", second.InstanceTitle);
+        Assert.Equal("depot", second.FamilyKey);
+    }
+
     [Fact]
     public void Save_BlankRow_IsDropped_AndContributesNothing()
     {

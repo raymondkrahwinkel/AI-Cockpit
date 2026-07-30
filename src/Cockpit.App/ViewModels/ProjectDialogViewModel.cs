@@ -90,6 +90,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IMcpServerCatalog mcpServerCatalog,
         IReadOnlyList<ProjectFieldRegistration>? pluginFields = null,
         IReadOnlyList<ProjectMemorySourceRegistration>? memorySources = null,
+        IReadOnlyList<ProjectMemorySourceFamily>? memorySourceFamilies = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project);
@@ -99,53 +100,84 @@ public partial class ProjectDialogViewModel : ViewModelBase
             viewModel.PluginFields.Add(new ProjectPluginFieldViewModel(registration, project?.LinkedAs(registration.Key)));
         }
 
-        // Nothing registered leaves the picker out entirely (ShowsMemorySourcePicker on every row) — a Memory row
-        // keeps looking and behaving exactly as it did before AC-166 existed, which is the default this feature
-        // must not shift.
+        // AC-499: "Folder" is offered unconditionally, not only once a plugin registered something — the doorless
+        // dead end this ticket exists to close. ShowsMemorySourcePicker is true for every Memory row from here on,
+        // whatever memorySources/memorySourceFamilies were passed.
+        viewModel.MemorySourceChoices.Add(new MemorySourceChoice("Folder", Scheme: null));
+
+        var familyInstances = new Dictionary<string, List<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
+
+        // Declared families come next, in declaration order, each its own row in the top picker regardless of how
+        // many (if any) instances it has — the empty state has to be reachable from the picker, not only once a
+        // first instance exists.
+        foreach (var family in memorySourceFamilies ?? [])
+        {
+            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(family.Title, Scheme: null)
+            {
+                FamilyKey = family.Key,
+                EmptyHint = family.EmptyHint,
+                ConfigureAsync = family.ConfigureAsync,
+            });
+            familyInstances[family.Key] = [];
+        }
+
+        // Every registration becomes either its own row (no FamilyKey — exactly the pre-AC-499 behaviour) or one
+        // instance under its family's own dropdown, never both.
         foreach (var registration in memorySources ?? [])
         {
-            if (viewModel.MemorySourceChoices.Count == 0)
-            {
-                viewModel.MemorySourceChoices.Add(new MemorySourceChoice("Folder", Scheme: null));
-            }
-
-            viewModel.MemorySourceChoices.Add(new MemorySourceChoice(registration.Title, registration.Scheme)
+            // AC-499 review: InstanceTitle's own doc comment promises "blank or null falls back to Title" — a
+            // whitespace-only value (a stray "   " a plugin's own settings UI let through untrimmed) is blank in
+            // every other sense this codebase uses the word (Register's own IsNullOrWhiteSpace checks), so a plain
+            // Length>0 test here would show a blank-looking row in the instance dropdown instead of honouring that
+            // promise. Measured directly against the built assembly (AC-499 harness) before this fix: a
+            // three-space InstanceTitle produced a three-space Label rather than falling back.
+            var instanceChoice = new MemorySourceChoice(
+                string.IsNullOrWhiteSpace(registration.InstanceTitle) ? registration.Title : registration.InstanceTitle, registration.Scheme)
             {
                 ListLocationsAsync = registration.ListLocationsAsync,
                 SignInAsync = registration.SignInAsync,
                 CheckReachability = registration.CheckReachability,
-            });
+            };
+
+            if (registration.FamilyKey is { Length: > 0 } familyKey && familyInstances.TryGetValue(familyKey, out var instances))
+            {
+                instances.Add(instanceChoice);
+            }
+            else
+            {
+                viewModel.MemorySourceChoices.Add(instanceChoice);
+            }
         }
+
+        viewModel.MemorySourceFamilyInstances = familyInstances.ToDictionary(
+            pair => pair.Key, pair => (IReadOnlyList<MemorySourceChoice>)pair.Value, StringComparer.OrdinalIgnoreCase);
 
         // Every saved resource becomes a row, in order — the whole of AC-485: what the old single Memory row (and
         // the "carried through untouched" rows behind it) used to hide is now what the operator actually edits.
         foreach (var resource in viewModel._pendingResources)
         {
             var row = new ProjectResourceRowViewModel(
-                viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions, resource.SendsContent);
+                viewModel.MemorySourceChoices, resource.Role, resource.Reference, resource.Label ?? "", resource.ReachesSessions, resource.SendsContent,
+                viewModel.MemorySourceFamilyInstances);
 
-            // Folder is the default selection the instant there is a picker at all — a plain path, a reference
-            // naming no installed source, or a role other than Memory. The match below overwrites this only when
-            // the row is a Memory row whose stored reference actually names a registered source; every other case
-            // leaves Folder selected, which is what the ComboBox must show rather than nothing at all.
-            if (viewModel.MemorySourceChoices.Count > 0)
-            {
-                row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
-            }
+            // Folder is the default selection the instant this row is built — "Folder" is always MemorySourceChoices[0]
+            // (see above). The match below overwrites this only when the row is a Memory row whose stored reference
+            // actually names a registered source; every other case leaves Folder selected, which is what the
+            // ComboBox must show rather than nothing at all.
+            row.SelectedMemorySourceChoice = viewModel.MemorySourceChoices[0];
 
             // A saved reference of the shape "<scheme>:<value>" naming a source actually offered here selects that
-            // source and shows the bare value; anything else — a path, a scheme no installed plugin registered, an
-            // empty value after the colon — leaves "Folder" selected (set above) and the reference exactly as the
-            // row stored it. That is deliberate, not merely the fallback case: a plugin that is temporarily
-            // uninstalled must not lose or garble the reference just because this dialog was opened and saved
-            // while it was gone.
+            // source (and, for a family member, the instance itself — AC-499) and shows the bare value; anything
+            // else — a path, a scheme no installed plugin registered, an empty value after the colon — leaves
+            // "Folder" selected (set above) and the reference exactly as the row stored it. That is deliberate, not
+            // merely the fallback case: a plugin that is temporarily uninstalled must not lose or garble the
+            // reference just because this dialog was opened and saved while it was gone.
             if (resource.Role == ProjectResourceRole.Memory
-                && viewModel.MemorySourceChoices.Count > 0
                 && ProjectMemoryRef.TryParse(resource.Reference, out var scheme, out var value)
-                && viewModel.MemorySourceChoices.FirstOrDefault(choice =>
-                    choice.Scheme is { } candidate && string.Equals(candidate, scheme, StringComparison.OrdinalIgnoreCase)) is { } matched)
+                && row.TryMatchMemorySourceScheme(scheme, out var top, out var instance))
             {
-                row.SelectedMemorySourceChoice = matched;
+                row.SelectedMemorySourceChoice = top;
+                row.SelectedFamilyInstance = instance;
                 row.Reference = value;
             }
 
@@ -251,12 +283,21 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     /// <summary>
     /// The memory-source picker's choices, shared by every <see cref="ProjectResourceRowViewModel"/> whose
-    /// <see cref="ProjectResourceRowViewModel.Role"/> is Memory: "Folder" plus one per contributed source, in
-    /// registration order (AC-165/166). Left empty when <c>CreateAsync</c> was given none — which is what makes the
-    /// picker disappear from every row (<see cref="ProjectResourceRowViewModel.ShowsMemorySourcePicker"/>) rather
-    /// than show a dropdown with nothing useful in it.
+    /// <see cref="ProjectResourceRowViewModel.Role"/> is Memory: "Folder", then one entry per declared family, then
+    /// every ungrouped source, in registration order (AC-165/166, AC-499). Always at least "Folder" — the picker no
+    /// longer disappears (<see cref="ProjectResourceRowViewModel.ShowsMemorySourcePicker"/> is true for every Memory
+    /// row) just because no plugin registered a source.
     /// </summary>
     public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; } = [];
+
+    /// <summary>
+    /// Every declared family's own instances (AC-499), keyed by <see cref="ProjectMemorySourceFamily.Key"/>
+    /// case-insensitively — what a row's own <see cref="ProjectResourceRowViewModel.FamilyInstanceChoices"/> reads
+    /// once its top choice names a family. Built once in <see cref="CreateAsync"/> and shared, unmutated, by every
+    /// row in the dialog, the same way <see cref="MemorySourceChoices"/> is.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> MemorySourceFamilyInstances { get; private set; } =
+        new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
     public ObservableCollection<string> Profiles { get; } = [];
@@ -379,15 +420,27 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void RemoveInfoField(ProjectInfoFieldViewModel field) => AdditionalInfo.Remove(field);
 
-    /// <summary>Appends a blank resource row (AC-485), the same shape <see cref="AddInfoField"/> already has — Folder pre-selected for it the instant there is a picker at all, matching what <c>CreateAsync</c> does for a loaded row.</summary>
+    /// <summary>
+    /// Appends a blank resource row (AC-485), the same shape <see cref="AddInfoField"/> already has — Folder
+    /// pre-selected for it, matching what <c>CreateAsync</c> does for a loaded row.
+    /// <para>
+    /// AC-499 review, defect found by <c>Cockpit.App.ViewTests.ProjectDialogMemorySourceTests</c> (which builds a
+    /// <see cref="ProjectDialogViewModel"/> directly rather than through <see cref="CreateAsync"/>, exactly the same
+    /// shape the XAML designer's own <c>&lt;Design.DataContext&gt;</c> instance uses): <c>MemorySourceChoices[0]</c>
+    /// is only guaranteed to exist once <c>CreateAsync</c> has run — it is the one place "Folder" gets added. A
+    /// <see cref="ProjectDialogViewModel"/> built any other way still starts with zero choices, and this used to
+    /// index into it unconditionally, throwing <see cref="ArgumentOutOfRangeException"/> the instant "+ Add row" was
+    /// clicked on such an instance. Guarded the same way <c>CreateAsync</c>'s own per-loaded-row selection already
+    /// is, immediately above.
+    /// </para>
+    /// </summary>
     [RelayCommand]
     private void AddResourceRow()
     {
-        var row = new ProjectResourceRowViewModel(MemorySourceChoices);
-        if (MemorySourceChoices.Count > 0)
+        var row = new ProjectResourceRowViewModel(MemorySourceChoices, familyInstanceChoicesByKey: MemorySourceFamilyInstances)
         {
-            row.SelectedMemorySourceChoice = MemorySourceChoices[0];
-        }
+            SelectedMemorySourceChoice = MemorySourceChoices.Count > 0 ? MemorySourceChoices[0] : null,
+        };
 
         _AddResourceRow(row);
         _RefreshResourceDiagnostics();
@@ -403,6 +456,55 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void PickResource(ProjectResourceRowViewModel row) => PickResourceRequested?.Invoke(row);
+
+    /// <summary>
+    /// "Servers…" on a Memory row's server row (AC-499): opens wherever the picked family's own instances are
+    /// configured. A no-op when the picked choice offers none — the button that would call this is not shown at all
+    /// in that case (<see cref="ProjectResourceRowViewModel.CanConfigureMemorySource"/>), but a command guards the
+    /// same way in case it is ever invoked another way. Also a no-op while a previous call for the same row is still
+    /// running (<see cref="ProjectResourceRowViewModel.IsConfiguringMemorySource"/>) — an impatient second click
+    /// must not start a second, overlapping call to the same plugin.
+    /// <para>
+    /// A plugin's own <c>ConfigureAsync</c> throwing costs this row a message (<see cref="ProjectResourceRowViewModel.MemorySourceConfigureError"/>),
+    /// the same "never let a plugin's own failure escape unhandled" rule <see cref="ProjectPluginFieldViewModel.LoadOptionsAsync"/>
+    /// already follows for a field's own option list — left uncaught, the exception would fault this command's own
+    /// <see cref="Task"/> with nobody awaiting it, silently doing nothing from the operator's point of view rather
+    /// than saying what went wrong.
+    /// </para>
+    /// <para>
+    /// What this does <em>not</em> do: refresh <see cref="MemorySourceFamilyInstances"/> once <c>ConfigureAsync</c>
+    /// returns. A plugin's settings screen is very often where a new connection gets added, so the instance this
+    /// call was meant to unlock may exist now and still be invisible in <see cref="ProjectResourceRowViewModel.FamilyInstanceChoices"/>
+    /// until the operator closes and reopens this dialog — <c>CreateAsync</c> is the only place that builds
+    /// <see cref="MemorySourceFamilyInstances"/>, and nothing here re-runs it. That gap is real, not merely
+    /// theoretical: AC-501's own live-refresh keeps <em>Depot's</em> settings control and this dialog in sync only
+    /// while both are open at once, which is not the case here — this dialog is what is open. Left as a known gap
+    /// rather than a refresh mechanism nobody asked this ticket to build.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfigureMemorySourceAsync(ProjectResourceRowViewModel row)
+    {
+        if (row.SelectedMemorySourceChoice?.ConfigureAsync is not { } configureAsync || row.IsConfiguringMemorySource)
+        {
+            return;
+        }
+
+        row.IsConfiguringMemorySource = true;
+        row.MemorySourceConfigureError = null;
+        try
+        {
+            await configureAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            row.MemorySourceConfigureError = exception.Message;
+        }
+        finally
+        {
+            row.IsConfiguringMemorySource = false;
+        }
+    }
 
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();
@@ -579,14 +681,17 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // run alongside the filesystem probe above rather than after it — this is a network call and the two probes
         // judge disjoint sets of rows (this one only ever looks at Memory rows; ProjectResourceProbe never does,
         // see its own class remarks), so there is nothing for the two to race over.
+        // AC-499: SelectedMemorySourceLeaf rather than SelectedMemorySourceChoice — for a family row the check
+        // delegate belongs to the picked instance, not the family placeholder, and a family with no instance picked
+        // has none to call at all.
         var reachabilityTasks = resources
             .Where(pair => pair.row.Role == ProjectResourceRole.Memory
-                && pair.row.SelectedMemorySourceChoice?.CheckReachability is not null
+                && pair.row.SelectedMemorySourceLeaf?.CheckReachability is not null
                 && !string.IsNullOrWhiteSpace(pair.row.Reference))
             .Select(pair => _RunReachabilityCheckAsync(
                 pair.row,
                 pair.row.Reference.Trim(),
-                pair.row.SelectedMemorySourceChoice!.CheckReachability!,
+                pair.row.SelectedMemorySourceLeaf!.CheckReachability!,
                 version,
                 reachabilityCancellation.Token))
             .ToList();

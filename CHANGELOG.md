@@ -852,6 +852,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   dialog-configured one gets, instead of silently connecting with no authentication and no tools; and a project-
   scoped contribution shows up only for sessions started on that project, the same way the dialog's own per-project
   servers already do.
+- added: a Memory row now asks two separate questions instead of one. The first dropdown is the kind of place the
+  memory lives — a folder, or Depot — and when you pick a plugin's entry a second line appears asking which of its
+  servers you mean, with a "Servers…" button beside it that opens that plugin's own settings. Have no servers set up
+  yet? The line says so ("No Depot server configured yet") and offers the same button, so the way to add one is in
+  front of you instead of on a screen the dialog never named.
 
 ### Changed
 
@@ -1727,6 +1732,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: "Open in browser" on a GitHub issue says so when the browser will not start, instead of silently doing
   nothing; the YouTrack side now checks the address it built from your instance URL is a web address at all
   before handing it to the desktop.
+- fixed: a Memory row now always offers a place to choose from. Until now the whole picker was hidden unless some
+  plugin had already registered a memory source, so a cockpit with none — or with the Depot plugin installed but no
+  connection set up yet — showed a bare box and no way to see that anything other than a folder was possible. "Folder"
+  is now always offered, and a plugin's entry appears beside it whether or not it has any servers configured yet.
 
 ### Removed
 
