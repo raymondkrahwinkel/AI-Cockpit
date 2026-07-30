@@ -5,10 +5,9 @@ using Avalonia.Threading;
 namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 
 /// <summary>
-/// An Avalonia runtime without a screen, so the settings view's wiring — is a placeholder documented where the
-/// operator can see it, does the template box still fit the panel — is knowable without running the cockpit and
-/// looking. The same arrangement <c>Cockpit.Plugin.GitHubIssues.Tests</c> uses (AC-521's YouTrack/GitHubIssues
-/// counterparts) and <c>Cockpit.App.ViewTests</c> uses for the host's own views.
+/// An Avalonia runtime without a screen, so IL#9's "is the stale marker faint, does the list jump" checks are
+/// knowable without running the cockpit and looking. Same arrangement as the GitHub-issues and YouTrack plugins'
+/// own test projects, and <c>Cockpit.App.ViewTests</c> for the host's own views.
 /// <para>
 /// It owns a thread, and every test body runs on it (<see cref="Run"/>). Avalonia binds its dispatcher to the
 /// thread that set it up, and xunit hands each test whichever thread it pleases: setting the platform up once and
@@ -37,13 +36,13 @@ public sealed class HeadlessAvalonia : IDisposable
             _uiThread = new Thread(() =>
             {
                 // Skia rather than headless drawing, deliberately: headless drawing stubs out text shaping, so
-                // glyphs measure without real widths — and a pixel-position measurement (AC-521 IL#9) needs real
-                // widths to mean anything.
-                AppBuilder.Configure<DialogTestApp>()
+                // glyphs measure without real widths and a layout assertion (row bounds not jumping) proves less
+                // than it appears to. Real measurement costs a Skia reference and makes it actually true.
+                AppBuilder.Configure<PullRequestsTestApp>()
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                     .UseSkia()
-                    // The app ships Inter and asks for it at startup; a harness without it measures text in whatever
-                    // font the machine offers, which is not this program and not the same on CI.
+                    // The app ships Inter and asks for it at startup; a harness without it measures text in
+                    // whatever font the machine offers, which is not this program and not the same on CI.
                     .WithInterFont()
                     .SetupWithoutStarting();
 

@@ -14,20 +14,21 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <!-- Full refs (unlike the plugin's compile-only ones): AC-521's settings-view test builds
-         GitHubPullRequestsSettingsControl for real, so the Avalonia stack needs a runtime copy present, which the
-         host would otherwise supply. Avalonia.Headless is the platform that control asks for a cursor and a font
-         from — see HeadlessAvalonia. Same set Cockpit.Plugin.GitHubIssues.Tests carries (DataGrid/MaterialIcon
-         included for parity with that recipe, even though the settings view itself uses neither — the dialog
-         control's own tests, when written, need the same DialogTestApp). -->
+    <!-- Full refs (unlike the plugin's compile-only ones): the render tests build real controls — the settings
+         view for the placeholder-help checks, and the side section/widget for the stale-marker checks — so the
+         Avalonia stack and the material icon set need a runtime copy present, which the host would otherwise
+         supply. Avalonia.Headless is the platform those controls ask for a cursor and a font from — see
+         HeadlessAvalonia. Same set the GitHub-issues plugin's test project carries. Avalonia.Controls.DataGrid is
+         needed even though none of the controls under test uses a DataGrid: Theme.axaml (loaded whole, off disk)
+         styles DataGridRow, and the XAML compiler has to resolve that type to parse the file at all. -->
     <PackageReference Include="Avalonia" Version="12.0.5" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
     <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
     <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
     <!-- Parses the host's Theme.axaml off disk (AC-338), the same way Cockpit.Plugin.GitHubIssues.Tests does: the
-         plugin cannot reference Cockpit.App, so this is the only way DialogTestApp can load the real cockpit
-         theme rather than bare Fluent. -->
+         plugin cannot reference Cockpit.App, so this is the only way a test app loads the real cockpit theme
+         rather than bare Fluent. -->
     <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

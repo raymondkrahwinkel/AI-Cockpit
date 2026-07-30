@@ -18,6 +18,7 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 {
     private MergedPullRequestWatcher? _merged;
+    private PullRequestRefreshSource? _refreshSource;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
@@ -42,15 +43,20 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 
         var settings = new GitHubPullRequestsSettings(host.Storage);
 
+        // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the
+        // views below is on screen, and every one of them subscribes to it rather than fetching for itself — the
+        // side section, every dashboard widget instance, and (per AC-517) the side-menu badge that will follow it.
+        _refreshSource = new PullRequestRefreshSource(host, settings);
+
         host.AddSettings(() => new GitHubPullRequestsSettingsControl(settings));
-        host.AddSideMenuSection("Open PRs", () => new GitHubPullRequestsSideSectionControl(settings, host));
+        host.AddSideMenuSection("Open PRs", () => new GitHubPullRequestsSideSectionControl(settings, host, _refreshSource));
 
         // The same list as a Dashboard pane (#AC-18): the side section is always under the session list, this is
         // for a workspace given over to widgets. The lambda closes over `host` so the widget can inject prompts and
         // open the dialog, and is handed each instance's own IWidgetContext for its per-pane count. The id keeps a
         // "widgets." prefix and is persisted with every placed instance, so it is an API surface — changing it would
         // orphan widgets on dashboards people have already arranged.
-        host.AddWidget(new WidgetRegistration("widgets.github-pull-requests", "GitHub Pull Requests", context => new GitHubPullRequestsWidget(settings, host, context))
+        host.AddWidget(new WidgetRegistration("widgets.github-pull-requests", "GitHub Pull Requests", context => new GitHubPullRequestsWidget(settings, host, context, _refreshSource))
         {
             IconKind = MaterialIconKind.SourcePull,
             Description = "Your open pull requests, with a configurable count.",
@@ -60,5 +66,9 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         });
     }
 
-    public void Dispose() => _merged?.Dispose();
+    public void Dispose()
+    {
+        _merged?.Dispose();
+        _refreshSource?.Dispose();
+    }
 }
