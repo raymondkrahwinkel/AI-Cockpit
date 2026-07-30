@@ -41,6 +41,12 @@ public enum DelegationAuditAction
 
     /// <summary>Another turn was sent to a task that had already answered.</summary>
     FollowUp,
+
+    /// <summary>The operator approved a per-task request to run above the profile's permission ceiling (AC-117).</summary>
+    PermissionElevated,
+
+    /// <summary>The operator was asked to approve a per-task request above the profile's ceiling and declined; the task ran clamped to the ceiling instead (AC-117). Not recorded when there was nobody to ask — that case clamps silently, as it always has.</summary>
+    PermissionElevationDenied,
 }
 
 /// <summary>One line of the delegation audit trail (#67).</summary>

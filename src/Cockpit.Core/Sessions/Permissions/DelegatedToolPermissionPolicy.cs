@@ -122,12 +122,26 @@ public static class DelegatedToolPermissionPolicy
     /// <summary>
     /// The more restrictive of two permission ceilings, ranked by how much a delegated session may do unattended:
     /// <c>bypassPermissions</c> &gt; <c>acceptEdits</c> &gt; <c>default</c>/<c>plan</c> &gt; anything unrecognised
-    /// (treated as most restrictive, so a typo or a future mode never silently widens what runs). Used to clamp a
-    /// caller's per-task requested ceiling to the profile's own (AC-117): a request can only ever narrow what the
-    /// operator already allowed, never widen it, so it is always safe to honour without a second consent.
+    /// (treated as most restrictive, so a typo or a future mode never silently widens what runs). Used to find a
+    /// caller's per-task requested ceiling that falls at or below the profile's own (AC-117): that case needs no
+    /// second consent and this is always what runs. A request ABOVE the profile's ceiling is a different path
+    /// (<c>DelegationService._EffectiveCeilingAsync</c>, gated by <see cref="IsAboveCeiling"/> rather than a string
+    /// comparison against this method's result — <c>default</c> and <c>plan</c> rank equal but are not equal
+    /// strings, and this method's tie-break would otherwise misreport a same-rank alias as an escalation) — this
+    /// method never widens on its own; honouring a genuine escalation is the operator's call, through the consent
+    /// broker.
     /// </summary>
     public static string MoreRestrictiveCeiling(string? a, string? b) =>
         _CeilingRank(a) <= _CeilingRank(b) ? a ?? string.Empty : b ?? string.Empty;
+
+    /// <summary>
+    /// Whether <paramref name="requested"/> would let a delegated session do more unattended than
+    /// <paramref name="ceiling"/> allows — the trigger for AC-117's operator-elevation consent. A strict rank
+    /// comparison, not a string comparison against <see cref="MoreRestrictiveCeiling"/>'s result: <c>default</c>
+    /// and <c>plan</c> are distinct strings at the same rank, and treating that tie as an escalation would put a
+    /// consent prompt in front of a request that asks for no more than the profile already allows.
+    /// </summary>
+    public static bool IsAboveCeiling(string? ceiling, string? requested) => _CeilingRank(requested) > _CeilingRank(ceiling);
 
     private static int _CeilingRank(string? ceiling) => ceiling switch
     {
