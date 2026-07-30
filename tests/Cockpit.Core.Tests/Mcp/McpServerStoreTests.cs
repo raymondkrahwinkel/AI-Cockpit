@@ -61,6 +61,23 @@ public class McpServerStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_ForAConfigCarryingNoIdAtAll_StillWritesOneToDisk()
+    {
+        // Nothing that reaches this store today hands it an idless config — a row read back off disk and a plugin
+        // contribution both arrive with one. This is about what lands on disk if something ever does: an entry with
+        // an empty id is a row whose identity is a function of its name again, and a rename after that is the
+        // orphaned token this ticket removes. Asserted against the file rather than a round-trip, because reading it
+        // back re-derives the id and would report success either way.
+        await new McpServerStore(_configFilePath).SaveAsync(
+            [new McpServerConfig { Name = "corp", Transport = McpTransport.Http, Url = "https://corp.example.com/mcp" }]);
+
+        Assert.Contains(
+            $"\"Id\": \"{McpServerIdentity.LegacyIdFor("corp")}\"",
+            await File.ReadAllTextAsync(_configFilePath),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SaveAsync_WritesTheDerivedIdOutForARowThatHadNone_SoALaterRenameCannotMoveIt()
     {
         // The moment that matters: the derivation is a function of the name, so it has to be pinned down before the

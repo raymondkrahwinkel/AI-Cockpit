@@ -1119,6 +1119,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: renaming an MCP server — or a Depot connection — no longer costs you its sign-in. The token was filed
+  under the server's name, so saving a new name left the old sign-in behind: unreachable, still holding a refresh
+  token, and the row reporting "sign-in needed" over a credential that was sitting right there. A server is now
+  identified by something you can't edit, so the name is back to being just a label. Two servers pointing at the
+  same host are covered too: swapping their names used to hand each one the other's credential, which meant a token
+  could be presented to an endpoint it was never issued for. Nobody has to sign in again after updating — sign-ins
+  you already have are carried over to the new arrangement on first launch.
+
 - fixed: a pane's conversation no longer goes missing when the cockpit restarts. Panes came back after a crash, but
   resuming one was rarely on offer — starting a session wrote a blank conversation over the saved one, so the thread
   was still on disk yet unreachable, and every ordinary restart cost you the same thing. A saved conversation now
