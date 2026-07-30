@@ -83,6 +83,9 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
                     : new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
                 return [ttySandbox, model];
             },
+            // AC-171: without this the host has no way to tail a Codex TTY session's rollout file, so the status
+            // dot is set to Idle once at launch and never moves — see CodexTranscriptReader's own remarks.
+            CreateTranscriptReader = _ => new CodexTranscriptReader(),
         });
     }
 
