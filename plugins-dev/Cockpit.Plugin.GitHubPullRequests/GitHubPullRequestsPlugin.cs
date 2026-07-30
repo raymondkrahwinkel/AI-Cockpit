@@ -8,23 +8,28 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// <summary>
 /// Plugin #41, mirroring the GitHub Issues plugin (#14) for pull requests: it registers a settings view
 /// (opened from the plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template)
-/// and an inline side-menu section, always visible under the session list, showing up to 5 open pull
-/// requests (across all your repos via <c>gh</c>, or one repo over HTTP) plus a button opening a dialog
-/// with every open PR. Clicking a pull request — in the section or the dialog — injects the rendered
-/// template into the active session so the agent opens and reviews it, falling back to the clipboard when
-/// there is no active session. Its settings live in the host's per-plugin storage, so
-/// <see cref="ConfigureServices"/> is empty.
+/// and a left-menu launcher button carrying a live "N / M" badge (AC-517 — your own open PR count next to
+/// how many are waiting on your review), opening a dialog with every open PR. Clicking a pull request in
+/// the dialog injects the rendered template into the active session so the agent opens and reviews it,
+/// falling back to the clipboard when there is no active session. Its settings live in the host's
+/// per-plugin storage, so <see cref="ConfigureServices"/> is empty.
+/// <para>
+/// AC-517 replaced this plugin's other half — an inline side-menu section always visible under the session
+/// list, showing up to a configurable number of pull requests inline. The dialog and its actions are
+/// unchanged; the always-visible list is now the Dashboard widget below, for a workspace given over to it.
+/// </para>
 /// </summary>
 public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 {
     private MergedPullRequestWatcher? _merged;
     private PullRequestRefreshSource? _refreshSource;
+    private PullRequestBadgeUpdater? _badgeUpdater;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
         Author: "Cockpit",
-        Description: "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog with an \"Assigned to me\" filter, and a Dashboard widget showing the same list as a resizable pane with its own item count. Left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
+        Description: "Shows how many open GitHub pull requests are yours in the left menu — a button with a live \"N / M\" badge, your own open PR count next to how many are waiting on your review — refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP. Clicking it opens a dialog listing every open PR in a searchable, sortable grid with an \"Assigned to me\" filter, plus a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). A pull request that starts waiting for your review raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -44,15 +49,18 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         var settings = new GitHubPullRequestsSettings(host.Storage);
 
         // One refresh source per plugin instance (AC-515): it polls in the background regardless of which of the
-        // views below is on screen, and every one of them subscribes to it rather than fetching for itself — the
-        // side section, every dashboard widget instance, and (per AC-517) the side-menu badge that will follow it.
+        // views below is on screen, and every one of them subscribes to it rather than fetching for itself — every
+        // dashboard widget instance, and the side-menu badge (AC-517).
         _refreshSource = new PullRequestRefreshSource(host, settings);
 
         host.AddSettings(() => new GitHubPullRequestsSettingsControl(settings));
-        host.AddSideMenuSection("Open PRs", () => new GitHubPullRequestsSideSectionControl(settings, host, _refreshSource));
 
-        // The same list as a Dashboard pane (#AC-18): the side section is always under the session list, this is
-        // for a workspace given over to widgets. The lambda closes over `host` so the widget can inject prompts and
+        // Replaces the old always-visible AddSideMenuSection (AC-517): a launcher button with a live badge,
+        // opening the same dialog the section's "View all" and the widget's "View all" already shared.
+        _badgeUpdater = new PullRequestBadgeUpdater(host, settings, _refreshSource);
+
+        // The same list as a Dashboard pane (#AC-18): the badge above shows only a count, this is for a workspace
+        // given over to seeing the list itself. The lambda closes over `host` so the widget can inject prompts and
         // open the dialog, and is handed each instance's own IWidgetContext for its per-pane count. The id keeps a
         // "widgets." prefix and is persisted with every placed instance, so it is an API surface — changing it would
         // orphan widgets on dashboards people have already arranged.
@@ -69,6 +77,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
     public void Dispose()
     {
         _merged?.Dispose();
+        _badgeUpdater?.Dispose();
         _refreshSource?.Dispose();
     }
 }

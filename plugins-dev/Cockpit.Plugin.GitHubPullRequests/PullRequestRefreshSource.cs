@@ -5,9 +5,9 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// <summary>
 /// The one place that decides "is the pull-request list fresh enough" for this plugin instance (AC-515). Built once
 /// in <see cref="GitHubPullRequestsPlugin.Initialize"/> and disposed when the plugin unloads — not per control, not
-/// per view. The side section and every dashboard widget instance subscribe to <see cref="Updated"/> and read
-/// <see cref="Current"/> instead of running their own timer or awaiting a fresh `gh` call before they can draw
-/// anything; a future consumer (the AC-517 side-menu badge) attaches the same way.
+/// per view. Every dashboard widget instance and the side-menu badge (AC-517) subscribe to <see cref="Updated"/>
+/// and read <see cref="Current"/> instead of running their own timer or awaiting a fresh `gh` call before they can
+/// show anything.
 /// <para>
 /// There was already a cache and already a timer before this existed. What made the plugin feel like it "only loads
 /// while you're looking at it" was that both lived on the control: the timer ran only while a view was attached to
