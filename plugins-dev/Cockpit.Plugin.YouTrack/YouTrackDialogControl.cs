@@ -609,7 +609,7 @@ internal sealed class YouTrackDialogControl : UserControl
             // (a failed lookup, or "All projects", #48), the state filter stays client-side over whatever page
             // comes back, exactly as before this fix — see _ApplyFilter and the fallback populate below.
             var extraFilter = _stateFieldName is { } fieldName && !string.IsNullOrEmpty(selectedState) && selectedState != AllOption
-                ? $"#Unresolved {fieldName}: {{{selectedState}}}"
+                ? $"#Unresolved {_QuotedFieldName(fieldName)}: {{{selectedState}}}"
                 : null;
 
             var fetched = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
@@ -749,12 +749,21 @@ internal sealed class YouTrackDialogControl : UserControl
     internal static string BuildSearchTerm(string? stateFieldName, string? selectedState, string query)
     {
         var stateTerm = stateFieldName is { } fieldName && !string.IsNullOrEmpty(selectedState) && selectedState != AllOption
-            ? $" {fieldName}: {{{selectedState}}}"
+            ? $" {_QuotedFieldName(fieldName)}: {{{selectedState}}}"
             : string.Empty;
 
         var escapedQuery = query.Replace("\\", "\\\\").Replace("\"", "\\\"");
         return $"#Unresolved{stateTerm} \"{escapedQuery}\"";
     }
+
+    // A YouTrack query attribute name only needs curly braces when it contains a space — a bare "State: {Ready}"
+    // already parses fine (StateFieldNames' common case, and every query this dialog has sent until now), but a
+    // two-word field like EJ's "Kanban State" would otherwise read as two tokens ("Kanban" as its own bare word,
+    // then "State: {Ready}" attached to the second) rather than the one field:value pair intended. The value
+    // (selectedState, above) is always braced regardless — that half of this query shape was never the bug this
+    // guards; only the field name was ever left unquoted.
+    private static string _QuotedFieldName(string fieldName) =>
+        fieldName.Contains(' ', StringComparison.Ordinal) ? $"{{{fieldName}}}" : fieldName;
 
     // Asks the selected project's own status field for every value it allows (YouTrackClient.GetProjectStateFieldAsync,
     // AC-518) — the same admin-API pattern _OnInstanceChangedAsync already uses for the project filter, and called at

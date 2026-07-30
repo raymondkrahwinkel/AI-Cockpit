@@ -34,6 +34,18 @@ public class YouTrackSearchTermTests
     }
 
     [Fact]
+    public void BuildSearchTerm_WithAMultiWordFieldName_BracesTheFieldNameTooNotJustTheValue()
+    {
+        // EJ's board calls its status field "Kanban State" rather than "State" (StateFieldNames, YouTrackFieldParser).
+        // Only the value was ever braced here — "Kanban State: {Ready}" reads as two query tokens ("Kanban" bare,
+        // then "State: {Ready}"), not the one field:value pair intended. The field name needs the same {…} the
+        // value already gets whenever it is not a single bare word.
+        var term = YouTrackDialogControl.BuildSearchTerm("Kanban State", "Ready", "startup");
+
+        Assert.Equal("#Unresolved {Kanban State}: {Ready} \"startup\"", term);
+    }
+
+    [Fact]
     public void BuildSearchTerm_WithSpacesInTheQuery_StaysOneQuotedPhrase()
     {
         var term = YouTrackDialogControl.BuildSearchTerm(null, null, "slow cold start");

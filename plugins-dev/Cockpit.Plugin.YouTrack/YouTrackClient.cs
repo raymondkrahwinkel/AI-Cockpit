@@ -9,11 +9,12 @@ namespace Cockpit.Plugin.YouTrack;
 /// Fetches open ("#Unresolved") issues for a single YouTrack instance over a plain <see cref="HttpClient"/>,
 /// authenticated with a permanent token — YouTrack has no local CLI equivalent to <c>gh</c>, so this plugin
 /// is HTTP-only. Mirrors the query shape from the YouTrack skill: <c>GET {instance}/issues?fields=…&amp;
-/// query=[project:{tag}] #Unresolved [extra]&amp;$top={n}</c>, where a null/empty project tag means every
-/// project on the instance (the dialog's "All" filter, #48) — the response's own <c>project.shortName</c>
-/// tells each issue which project it belongs to either way. Callers are expected to validate that the
-/// instance URL and token are set before calling — this client assumes valid input and lets HTTP/JSON
-/// failures surface as exceptions for the UI layer to report.
+/// query=[project:{tag}] [#Unresolved or extra, never both] [for: me]&amp;$top={n}</c> (see
+/// <see cref="BuildQuery"/> for why a non-empty extra filter replaces <c>#Unresolved</c> rather than joining
+/// it), where a null/empty project tag means every project on the instance (the dialog's "All" filter, #48) —
+/// the response's own <c>project.shortName</c> tells each issue which project it belongs to either way.
+/// Callers are expected to validate that the instance URL and token are set before calling — this client
+/// assumes valid input and lets HTTP/JSON failures surface as exceptions for the UI layer to report.
 /// </summary>
 internal sealed class YouTrackClient
 {

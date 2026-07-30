@@ -95,6 +95,14 @@ public class YouTrackStateFilterServerSideTests
         await _WaitForAsync(() => _Options(stateFilter!), found => found.Count > 2, TimeSpan.FromSeconds(5));
 
         var queriesBeforeChoosingState = issueQueries.Count;
+
+        // Filling the dropdown assigns ItemsSource and SelectedItem, and both raise SelectionChanged. Without the
+        // populating guard that echo is read as an operator choice and fires reloads of its own, which then race
+        // the real one. Pinning the count here is what proves the guard removes those fetches rather than merely
+        // letting a generation counter discard their answers — assert on the grid alone and the guard can be
+        // deleted with the suite still green.
+        Assert.Equal(1, queriesBeforeChoosingState);
+
         Dispatcher.UIThread.Invoke(() => stateFilter!.SelectedItem = "Ready");
 
         var newQuery = await _WaitForQueryAsync(issueQueries, queriesBeforeChoosingState, TimeSpan.FromSeconds(5));
@@ -103,6 +111,62 @@ public class YouTrackStateFilterServerSideTests
         // decode before asserting on the literal filter text rather than the wire form.
         var decoded = Uri.UnescapeDataString(newQuery);
         Assert.Contains("query=project:AC #Unresolved State: {Ready}", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChoosingAState_OnAMultiWordStatusField_BracesTheFieldNameInTheSentQuery()
+    {
+        // EJ's real project uses "Kanban State" rather than "State" (StateFieldNames, YouTrackFieldParser) — the
+        // adversarial-review defect this reproduces: only the value ever got braced ("Kanban State: {Ready}"),
+        // which YouTrack reads as two tokens rather than one field:value pair once the field name itself has a space.
+        var issueQueries = new ConcurrentQueue<string>();
+        await using var server = await LoopbackHttpServer.StartAsync(context => _AnswerWithKanbanStateAsync(context, issueQueries));
+        var instance = new YouTrackInstance("Remote", $"{server.BaseUrl}api", "perm-token", "AC");
+
+        ComboBox? stateFilter = null;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var settings = new YouTrackSettings(new InMemoryPluginStorage()) { Instances = [instance] };
+            var host = new FakeCockpitHost();
+            var links = new SessionIssueLinks(host);
+            var dialog = new YouTrackDialogControl(settings, host, links, new IssueStateChanges());
+            var window = new Window { Width = 1280, Height = 860, Content = dialog };
+            window.Show();
+
+            stateFilter = typeof(YouTrackDialogControl).GetField("_stateFilter", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(dialog) as ComboBox
+                ?? throw new InvalidOperationException("YouTrackDialogControl no longer keeps its state filter in _stateFilter.");
+        });
+
+        await _WaitForAsync(() => _Options(stateFilter!), found => found.Count > 2, TimeSpan.FromSeconds(5));
+
+        var queriesBeforeChoosingState = issueQueries.Count;
+        Dispatcher.UIThread.Invoke(() => stateFilter!.SelectedItem = "Ready");
+
+        var newQuery = await _WaitForQueryAsync(issueQueries, queriesBeforeChoosingState, TimeSpan.FromSeconds(5));
+
+        var decoded = Uri.UnescapeDataString(newQuery);
+        Assert.Contains("query=project:AC #Unresolved {Kanban State}: {Ready}", decoded, StringComparison.Ordinal);
+    }
+
+    private static Task _AnswerWithKanbanStateAsync(HttpContext context, ConcurrentQueue<string> issueQueries)
+    {
+        var path = context.Request.Path.Value;
+        if (path == "/api/issues")
+        {
+            issueQueries.Enqueue(context.Request.QueryString.Value ?? string.Empty);
+        }
+
+        var body = path switch
+        {
+            "/api/admin/projects" => """[{"shortName":"AC","name":"AI Cockpit"}]""",
+            "/api/admin/projects/AC/customFields" =>
+                """[{"field":{"name":"Kanban State"},"bundle":{"values":[{"name":"Open"},{"name":"Ready"},{"name":"Test"}]}}]""",
+            "/api/issues" =>
+                """[{"id":"1-1","idReadable":"AC-1","summary":"One row","description":null,"project":{"shortName":"AC"},"customFields":[{"name":"Kanban State","$type":"StateIssueCustomField","value":{"name":"Open"}}]}]""",
+            var other => throw new InvalidOperationException($"Unexpected request: {other}"),
+        };
+
+        return context.Response.WriteAsync(body);
     }
 
     // Reproduces the adversarial-review blocker (AC-518): _ResolveStateFieldAsync sets _stateFieldName BEFORE
@@ -142,6 +206,23 @@ public class YouTrackStateFilterServerSideTests
         // The project's status field resolves independently of the (deliberately slow) /api/issues fetches, so
         // this settles well before either the redundant "All" reload or the operator's own choice below land.
         await _WaitForAsync(() => _Options(stateFilter!), found => found.Count > 2, TimeSpan.FromSeconds(5));
+
+        // Coverage gap closed (adversarial re-review): the assertions below this point only ever proved the
+        // final GRID content, which _loadToken's generation counter alone already guarantees — removing
+        // _isPopulatingStateOptions entirely (and so letting _SetStateOptions's ComboBox mutations fire a
+        // redundant "All" reload, exactly the AC-518 blocker this test's own name describes) leaves the suite
+        // green, because the stale response still loses the _loadToken race. Pinning the REQUEST COUNT here is
+        // what actually proves the guard suppresses that redundant fetch rather than merely letting a later one
+        // win: one deliberate load (_OnInstanceChangedAsync/_OnProjectChangedAsync's explicit _LoadIssuesAsync
+        // call) should have reached the server by now, and no "echo" from the dropdown population alongside it.
+        await _WaitForQueryAsync(issueQueries, 0, TimeSpan.FromSeconds(5));
+
+        // A guard-regression's echo request is enqueued (by the server, on arrival) essentially back-to-back
+        // with the deliberate one above, not gated behind the slow path's 300ms response delay — this grace
+        // period gives it time to land before the count below is pinned, so a reintroduced redundant fetch
+        // cannot slip through as "just hasn't arrived yet".
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+        Assert.Single(issueQueries);
 
         // The operator's own real action: choose a different, real state while the population-triggered "All"
         // reload (fired off by _SetStateOptions above, before this test ever touched the dropdown) is still
