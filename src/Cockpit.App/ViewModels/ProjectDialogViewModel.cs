@@ -91,9 +91,19 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IReadOnlyList<ProjectFieldRegistration>? pluginFields = null,
         IReadOnlyList<ProjectMemorySourceRegistration>? memorySources = null,
         IReadOnlyList<ProjectMemorySourceFamily>? memorySourceFamilies = null,
+        Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
         CancellationToken cancellationToken = default)
     {
-        var viewModel = new ProjectDialogViewModel(project);
+        var viewModel = new ProjectDialogViewModel(project)
+        {
+            // AC-523: the same source CreateAsync itself reads from below, kept so a later "Servers…" call
+            // (ConfigureMemorySourceAsync) can re-read it once its own settings screen has closed, rather than
+            // rebuilding forever from the one-time snapshot memorySources/memorySourceFamilies handed to this call.
+            // Falls back to replaying that snapshot when the caller does not supply one (every existing test call
+            // site, and the design-time/previewer shape) — a rebuild from it reproduces the same dictionary, so
+            // ConfigureMemorySourceAsync's own refresh is harmless, just not live, for a caller that opts out.
+            _refreshMemorySources = refreshMemorySources ?? (() => (memorySources ?? [], memorySourceFamilies ?? [])),
+        };
 
         foreach (var registration in pluginFields ?? [])
         {
@@ -131,13 +141,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // Length>0 test here would show a blank-looking row in the instance dropdown instead of honouring that
             // promise. Measured directly against the built assembly (AC-499 harness) before this fix: a
             // three-space InstanceTitle produced a three-space Label rather than falling back.
-            var instanceChoice = new MemorySourceChoice(
-                string.IsNullOrWhiteSpace(registration.InstanceTitle) ? registration.Title : registration.InstanceTitle, registration.Scheme)
-            {
-                ListLocationsAsync = registration.ListLocationsAsync,
-                SignInAsync = registration.SignInAsync,
-                CheckReachability = registration.CheckReachability,
-            };
+            var instanceChoice = _BuildInstanceChoice(registration);
 
             if (registration.FamilyKey is { Length: > 0 } familyKey && familyInstances.TryGetValue(familyKey, out var instances))
             {
@@ -293,11 +297,23 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>
     /// Every declared family's own instances (AC-499), keyed by <see cref="ProjectMemorySourceFamily.Key"/>
     /// case-insensitively — what a row's own <see cref="ProjectResourceRowViewModel.FamilyInstanceChoices"/> reads
-    /// once its top choice names a family. Built once in <see cref="CreateAsync"/> and shared, unmutated, by every
-    /// row in the dialog, the same way <see cref="MemorySourceChoices"/> is.
+    /// once its top choice names a family. Built in <see cref="CreateAsync"/> and shared by every row in the dialog,
+    /// the same way <see cref="MemorySourceChoices"/> is — but, unlike that collection, rebuilt (AC-523, not merely
+    /// "once") by <see cref="ConfigureMemorySourceAsync"/> once its own "Servers…" call returns, and pushed back onto
+    /// every row via <see cref="ProjectResourceRowViewModel.UpdateFamilyInstanceChoices"/> so the dropdown updates
+    /// without the operator closing and reopening this dialog.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> MemorySourceFamilyInstances { get; private set; } =
         new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Re-reads the live memory-source registry (AC-523) — the same source <see cref="CreateAsync"/>'s own
+    /// <c>memorySources</c>/<c>memorySourceFamilies</c> parameters were read from, reused rather than a new
+    /// dependency injected here — so <see cref="ConfigureMemorySourceAsync"/> can rebuild <see cref="MemorySourceFamilyInstances"/>
+    /// after its "Servers…" call returns. Set once by <see cref="CreateAsync"/>; never null afterwards.
+    /// </summary>
+    private Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)> _refreshMemorySources =
+        () => ([], []);
 
     /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
     public ObservableCollection<string> Profiles { get; } = [];
@@ -472,14 +488,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// than saying what went wrong.
     /// </para>
     /// <para>
-    /// What this does <em>not</em> do: refresh <see cref="MemorySourceFamilyInstances"/> once <c>ConfigureAsync</c>
-    /// returns. A plugin's settings screen is very often where a new connection gets added, so the instance this
-    /// call was meant to unlock may exist now and still be invisible in <see cref="ProjectResourceRowViewModel.FamilyInstanceChoices"/>
-    /// until the operator closes and reopens this dialog — <c>CreateAsync</c> is the only place that builds
-    /// <see cref="MemorySourceFamilyInstances"/>, and nothing here re-runs it. That gap is real, not merely
-    /// theoretical: AC-501's own live-refresh keeps <em>Depot's</em> settings control and this dialog in sync only
-    /// while both are open at once, which is not the case here — this dialog is what is open. Left as a known gap
-    /// rather than a refresh mechanism nobody asked this ticket to build.
+    /// AC-523: once <c>ConfigureAsync</c> returns, <see cref="MemorySourceFamilyInstances"/> is rebuilt from
+    /// <see cref="_refreshMemorySources"/> — the same registry <c>CreateAsync</c> itself read <c>memorySources</c>/
+    /// <c>memorySourceFamilies</c> from — and pushed onto every row via
+    /// <see cref="ProjectResourceRowViewModel.UpdateFamilyInstanceChoices"/>. A plugin's settings screen is very
+    /// often where a connection gets added or removed, so the instance this call was meant to unlock (or the one it
+    /// just removed) shows up here without the operator closing and reopening this dialog. Every row is refreshed,
+    /// not only <paramref name="row"/>: a settings screen for one family's connections is reachable from any row
+    /// that picked it, and every other row sharing that same family must see the same answer.
     /// </para>
     /// </summary>
     [RelayCommand]
@@ -495,6 +511,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
         try
         {
             await configureAsync(CancellationToken.None).ConfigureAwait(true);
+
+            var (sources, families) = _refreshMemorySources();
+            MemorySourceFamilyInstances = _BuildFamilyInstances(sources, families);
+
+            foreach (var resourceRow in ResourceRows)
+            {
+                resourceRow.UpdateFamilyInstanceChoices(MemorySourceFamilyInstances);
+            }
         }
         catch (Exception exception)
         {
@@ -546,6 +570,49 @@ public partial class ProjectDialogViewModel : ViewModelBase
         {
             ResourceRows[i].IsLastRow = i == ResourceRows.Count - 1;
         }
+    }
+
+    /// <summary>
+    /// One family member as the picker offers it — shared by <see cref="CreateAsync"/>'s own first build and
+    /// <see cref="_BuildFamilyInstances"/>'s later rebuilds (AC-523), so both ever construct a
+    /// <see cref="MemorySourceChoice"/> for a <see cref="ProjectMemorySourceRegistration"/> the same way.
+    /// </summary>
+    private static MemorySourceChoice _BuildInstanceChoice(ProjectMemorySourceRegistration registration) =>
+        new(string.IsNullOrWhiteSpace(registration.InstanceTitle) ? registration.Title : registration.InstanceTitle, registration.Scheme)
+        {
+            ListLocationsAsync = registration.ListLocationsAsync,
+            SignInAsync = registration.SignInAsync,
+            CheckReachability = registration.CheckReachability,
+        };
+
+    /// <summary>
+    /// Rebuilds <see cref="MemorySourceFamilyInstances"/>'s shape from <paramref name="sources"/>/<paramref name="families"/>
+    /// (AC-523) — every declared family gets an entry (possibly empty), and every source whose
+    /// <see cref="ProjectMemorySourceRegistration.FamilyKey"/> names one of them becomes an instance under it, the
+    /// same rule <see cref="CreateAsync"/>'s own first build follows. Ungrouped sources are not represented here —
+    /// this ticket's scope is a family's own instances (AC-523's "Servers…" flow only ever adds or removes those),
+    /// not <see cref="MemorySourceChoices"/>'s own top-level rows.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _BuildFamilyInstances(
+        IReadOnlyList<ProjectMemorySourceRegistration>? sources,
+        IReadOnlyList<ProjectMemorySourceFamily>? families)
+    {
+        var familyInstances = new Dictionary<string, List<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var family in families ?? [])
+        {
+            familyInstances[family.Key] = [];
+        }
+
+        foreach (var registration in sources ?? [])
+        {
+            if (registration.FamilyKey is { Length: > 0 } familyKey && familyInstances.TryGetValue(familyKey, out var instances))
+            {
+                instances.Add(_BuildInstanceChoice(registration));
+            }
+        }
+
+        return familyInstances.ToDictionary(
+            pair => pair.Key, pair => (IReadOnlyList<MemorySourceChoice>)pair.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     private void _OnResourceRowChanged(object? sender, PropertyChangedEventArgs e)
