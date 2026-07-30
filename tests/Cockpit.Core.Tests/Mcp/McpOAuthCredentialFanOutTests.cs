@@ -188,8 +188,86 @@ public class McpOAuthCredentialFanOutTests
         Assert.Equal("youtrack", Assert.Single(servers).Name);
     }
 
+    [Fact]
+    public async Task SdkSession_WhenTheServerIsProxied_WritesTheLoopbackAddressAndNoTokenAtAll()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner,
+            inner.Capabilities,
+            AuthKey,
+            _CatalogOf(OAuthServer),
+            oauthCoordinator: _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken)),
+            oauthProxy: _ProxyAnswering("http://127.0.0.1:54321/mcp"));
+
+        await adapter.StartAsync();
+
+        Assert.NotNull(inner.LastMcpServers);
+        var server = Assert.Single(inner.LastMcpServers);
+
+        // AC-524: the session is pointed at the cockpit's own address, and the credential it carries is the
+        // COCKPIT_MCP_KEY env reference every cockpit-hosted endpoint uses (CockpitHosted is what makes the config
+        // writer emit that instead of a literal). So no OAuth token is written to disk at all — which also takes it
+        // out of reach of any other process on this machine that knows the config's path.
+        Assert.Equal("http://127.0.0.1:54321/mcp", server.Url);
+        Assert.True(server.CockpitHosted);
+        Assert.Null(server.BearerToken);
+    }
+
+    [Fact]
+    public async Task SdkSession_WhenTheProxyCannotBeMounted_FallsBackToTheTokenRatherThanLosingTheServer()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(
+            inner,
+            inner.Capabilities,
+            AuthKey,
+            _CatalogOf(OAuthServer),
+            oauthCoordinator: _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken)),
+            oauthProxy: _ProxyAnswering(null));
+
+        await adapter.StartAsync();
+
+        // Degraded, not broken. A listener that would not bind is a reason to write the token as before — with the
+        // session margin behind it — rather than to drop a server the operator is signed in to.
+        Assert.NotNull(inner.LastMcpServers);
+        var server = Assert.Single(inner.LastMcpServers);
+        Assert.Equal("https://depot.example/mcp", server.Url);
+        Assert.Equal(AccessToken, server.BearerToken);
+        Assert.False(server.CockpitHosted);
+    }
+
+    [Fact]
+    public void TtyLaunch_WhenTheServerIsProxied_WritesTheLoopbackAddressAndNoTokenAtAll()
+    {
+        var (adapter, inner) = _TtyAdapter(
+            _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken)),
+            _ProxyAnswering("http://127.0.0.1:54321/mcp"));
+
+        adapter.BuildLaunch(_TtyContext());
+
+        var servers = _LaunchContextOf(inner).McpServers;
+        Assert.NotNull(servers);
+        var server = Assert.Single(servers);
+        Assert.Equal("http://127.0.0.1:54321/mcp", server.Url);
+        Assert.True(server.CockpitHosted);
+        Assert.Null(server.BearerToken);
+    }
+
+    private static IMcpOAuthProxy _ProxyAnswering(string? proxyUrl)
+    {
+        var proxy = Substitute.For<IMcpOAuthProxy>();
+        proxy.MountAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(proxyUrl);
+        return proxy;
+    }
+
     private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _TtyAdapter(
         IMcpOAuthCoordinator coordinator,
+        params McpServerConfig[] servers) => _TtyAdapter(coordinator, oauthProxy: null, servers);
+
+    private static (PluginTtySessionProviderAdapter Adapter, IPluginTtyProvider Inner) _TtyAdapter(
+        IMcpOAuthCoordinator coordinator,
+        IMcpOAuthProxy? oauthProxy,
         params McpServerConfig[] servers)
     {
         var inner = Substitute.For<IPluginTtyProvider>();
@@ -201,7 +279,8 @@ public class McpOAuthCredentialFanOutTests
             inner,
             """{"Command":"claude"}""",
             _CatalogOf(servers.Length == 0 ? [OAuthServer] : servers),
-            coordinator), inner);
+            coordinator,
+            oauthProxy: oauthProxy), inner);
     }
 
     private static TtyLaunchContext _TtyContext() =>

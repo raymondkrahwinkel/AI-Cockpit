@@ -113,7 +113,10 @@ internal sealed class McpOAuthProxyForwarder(
         // anyway would put a Content-Length on a request that is defined not to have one.
         if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsDelete(context.Request.Method))
         {
-            request.Content = new StreamContent(context.Request.Body);
+            // Wrapped so the send cannot close the buffered body: HttpClient disposes the content it was given, and
+            // with it the stream inside — which would take away the one copy of the request that is left to read the
+            // JSON-RPC id from when the answer comes back refused.
+            request.Content = new StreamContent(new BorrowedStream(context.Request.Body));
         }
 
         foreach (var header in context.Request.Headers)
@@ -260,6 +263,56 @@ internal sealed class McpOAuthProxyForwarder(
             // A body this cannot parse is a body whose id cannot be known. Nothing to report here: the caller
             // already logged why the request is being answered this way, and the answer is a 202 either way.
             return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            // The request stream is gone, so there is no id to echo and nothing to be done about it. Not a reason to
+            // fail the response: 202 without an id is still better than the 401 this method exists to avoid.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Lends a stream out without lending out the right to close it. <see cref="HttpClient"/> disposes the content of
+    /// every request it sends, and this request's content is the caller's own buffered body — which still has to be
+    /// readable afterwards.
+    /// </summary>
+    private sealed class BorrowedStream(Stream inner) : Stream
+    {
+        public override bool CanRead => inner.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => inner.Length;
+
+        public override long Position
+        {
+            get => inner.Position;
+            set => inner.Position = value;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            inner.ReadAsync(buffer, cancellationToken);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            inner.ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override void Flush() => inner.Flush();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        // The whole point of the class: the borrower's Dispose does nothing, and the owner closes it when the
+        // request ends.
+        protected override void Dispose(bool disposing)
+        {
         }
     }
 }
