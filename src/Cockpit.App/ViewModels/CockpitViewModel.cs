@@ -95,6 +95,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
     private readonly IAgentMessageInbox? _agentMessages;
     private readonly IAgentResourceClaims? _agentClaims;
+    private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
     private readonly SessionStateRecorder? _sessionStateRecorder;
@@ -2493,6 +2494,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceAgentCoordinator? agentCoordinator = null,
         IAgentMessageInbox? agentMessages = null,
         IAgentResourceClaims? agentClaims = null,
+        IClaimCollisionMonitor? claimCollisionMonitor = null,
         SessionStateRecorder? sessionStateRecorder = null,
         ISessionStateStore? sessionStateStore = null,
         SessionRestorePlanner? sessionRestorePlanner = null,
@@ -2626,6 +2628,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _agentCoordinator = agentCoordinator;
         _agentMessages = agentMessages;
         _agentClaims = agentClaims;
+        _claimCollisionMonitor = claimCollisionMonitor;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
@@ -5873,6 +5876,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             _allSessionsIdleNotified = true;
             _ = _attentionNotifier?.NotifyAllSessionsIdleAsync();
+        }
+    }
+
+    /// <summary>
+    /// AC-439: recomputes which panes currently collide across a workspace boundary and stamps
+    /// <see cref="SessionPanelViewModel.HasClaimCollision"/> on every one of them — an operator-only chip, never
+    /// anything an agent's tool result carries. Driven by a timer in the view, on the same footing as the idle sweep
+    /// and the resource sampler: the view model stays free of timers, and a test can call this whenever it likes. A
+    /// no-op when no monitor was supplied (the design-time/unit-test graph), which reads as "no collisions" rather
+    /// than an error.
+    /// </summary>
+    internal void RefreshClaimCollisions()
+    {
+        if (_claimCollisionMonitor is null)
+        {
+            return;
+        }
+
+        var colliding = _claimCollisionMonitor.PanesInCollision();
+        foreach (var session in AllSessions())
+        {
+            session.HasClaimCollision = colliding.Contains(session.PaneId);
         }
     }
 

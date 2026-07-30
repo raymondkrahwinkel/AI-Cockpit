@@ -1354,4 +1354,110 @@ public sealed class AgentsMcpToolsTests : IDisposable
 
         Assert.Equal(expected, held);
     }
+
+    /// <summary>
+    /// AC-439 criterion 2 — the whole design rests on this one. A cross-desk collision is surfaced to the operator
+    /// (<c>IClaimCollisionMonitor</c>, tested separately) and nowhere else: <see cref="AgentsMcpTools"/> takes no
+    /// dependency on it at all, so pane-x's own <c>claim</c> and <c>list_claims</c> results must be identical whether
+    /// or not a pane-y exists on another desk holding a claim that collides with pane-x's on the same physical
+    /// resource. Proven by running pane-x through two completely independent stores — one where pane-y never
+    /// existed, one where it claimed a spelling of the same worktree that canonicalizes to one physical path — and
+    /// comparing what pane-x is told. Only <c>claimedAtUtc</c>/<c>heldForSeconds</c> are left out of the comparison,
+    /// since those legitimately differ by wall-clock time between the two runs even with nothing else different.
+    /// </summary>
+    [Fact]
+    public async Task Claim_And_ListClaims_ForPaneX_AreUnaffectedByAColldingPaneY_OnAnotherDesk()
+    {
+        var withoutPaneY = await _RunPaneXClaimAsync(includeCollidingPaneYOnAnotherDesk: false);
+        var withPaneY = await _RunPaneXClaimAsync(includeCollidingPaneYOnAnotherDesk: true);
+
+        Assert.Equal(withoutPaneY.ClaimShape, withPaneY.ClaimShape);
+        Assert.Equal(withoutPaneY.ListClaimsShape, withPaneY.ListClaimsShape);
+    }
+
+    private static async Task<(string ClaimShape, string ListClaimsShape)> _RunPaneXClaimAsync(bool includeCollidingPaneYOnAnotherDesk)
+    {
+        var gateway = Substitute.For<IWorkspaceAgentGateway>();
+        var coordinator = new WorkspaceAgentCoordinator();
+        var inbox = new AgentMessageInbox();
+        var claims = new AgentResourceClaims();
+        var auditPath = Path.Combine(Path.GetTempPath(), $"agent-notify-audit-{Guid.NewGuid():N}.jsonl");
+
+        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "pane-x", null, string.Empty, true)]);
+        gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
+
+        try
+        {
+            if (includeCollidingPaneYOnAnotherDesk)
+            {
+                var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "pane-y", null, string.Empty, true)]);
+                gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
+                McpRequestContext.Set("pane-y");
+                // A different spelling of the same worktree pane-x is about to claim — the resource string never
+                // matches character for character, exactly the case AC-393's own exact-match refuses to see across
+                // desks. Whether these two spellings would canonicalize to one physical resource is irrelevant to
+                // this test — the point is that pane-x cannot tell either way.
+                await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+                    .ClaimAsync("/repo/worktree-a/");
+            }
+
+            McpRequestContext.Set("pane-x");
+            var tools = new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims);
+            var claimJson = _Json(await tools.ClaimAsync("/repo/worktree-a"));
+            var listJson = _Json(await tools.ListClaimsAsync());
+
+            return (_WithoutTimestamps(claimJson), _WithoutTimestamps(listJson));
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+            if (File.Exists(auditPath))
+            {
+                File.Delete(auditPath);
+            }
+        }
+    }
+
+    /// <summary>Strips the fields that legitimately vary with wall-clock time between two otherwise-identical runs.</summary>
+    private static string _WithoutTimestamps(JsonNode json)
+    {
+        foreach (var node in _SelfAndDescendantObjects(json))
+        {
+            node.Remove("claimedAtUtc");
+            node.Remove("heldForSeconds");
+        }
+
+        return json.ToJsonString();
+    }
+
+    private static IEnumerable<JsonObject> _SelfAndDescendantObjects(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            yield return obj;
+            foreach (var child in obj)
+            {
+                if (child.Value is not null)
+                {
+                    foreach (var descendant in _SelfAndDescendantObjects(child.Value))
+                    {
+                        yield return descendant;
+                    }
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    foreach (var descendant in _SelfAndDescendantObjects(item))
+                    {
+                        yield return descendant;
+                    }
+                }
+            }
+        }
+    }
 }

@@ -31,6 +31,11 @@ public partial class CockpitView : UserControl
     // process table is not itself the thing burning the CPU.
     private static readonly TimeSpan ResourceSampleInterval = TimeSpan.FromSeconds(2);
 
+    // AC-439: how often the cross-workspace claim-collision chip is recomputed. A collision is two agents that
+    // already do not see each other reaching for the same resource — nothing about it needs sub-second latency, and
+    // a few seconds of lag before the chip appears or clears is invisible against how long a claim is actually held.
+    private static readonly TimeSpan ClaimCollisionCheckInterval = TimeSpan.FromSeconds(5);
+
     // Width of the collapsed sidebar rail — just enough for the expand chevron and a compact New session.
     private const double CollapsedRailWidth = 40;
 
@@ -38,6 +43,7 @@ public partial class CockpitView : UserControl
     private INotifyCollectionChanged? _observedSideButtons;
     private DispatcherTimer? _idleSweepTimer;
     private DispatcherTimer? _resourceTimer;
+    private DispatcherTimer? _claimCollisionTimer;
 
     public CockpitView()
     {
@@ -88,6 +94,13 @@ public partial class CockpitView : UserControl
             _resourceTimer.Tick += (_, _) => cockpit.SampleResources();
             _resourceTimer.Start();
             cockpit.SampleResources();
+
+            // AC-439: same footing as the two timers above — the arithmetic (which panes collide) lives on the view
+            // model, only the tick lives here.
+            _claimCollisionTimer = new DispatcherTimer { Interval = ClaimCollisionCheckInterval };
+            _claimCollisionTimer.Tick += (_, _) => cockpit.RefreshClaimCollisions();
+            _claimCollisionTimer.Start();
+            cockpit.RefreshClaimCollisions();
         }
     }
 
@@ -95,6 +108,9 @@ public partial class CockpitView : UserControl
     {
         _resourceTimer?.Stop();
         _resourceTimer = null;
+
+        _claimCollisionTimer?.Stop();
+        _claimCollisionTimer = null;
 
         if (_idleSweepTimer is not null)
         {

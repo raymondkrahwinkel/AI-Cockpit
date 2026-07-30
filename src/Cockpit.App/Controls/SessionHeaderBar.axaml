@@ -45,6 +45,19 @@
                 <TextBlock Text="⑂ isolated" FontSize="10" Foreground="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
             </Border>
 
+            <!-- AC-439 cross-desk claim collision chip: another agent, on a different workspace the operator can see
+                 but this session cannot, has claimed a resource that canonicalizes to the same physical thing. This
+                 is never surfaced to the agent itself — only here, to the operator watching both desks. Disappears
+                 on its own the next time the check runs after either claim is released (no dismiss action). -->
+            <Border Classes="tag" Background="{StaticResource CockpitStatusWaitingBrush}" Margin="8,0,0,0"
+                    IsVisible="{Binding HasClaimCollision}">
+                <ToolTip.Tip>
+                    <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                               Text="A resource this session has claimed is also claimed by an agent on a different workspace. Neither agent can see the other — claims are private to a desk — so this is shown to you here rather than to either of them. It clears on its own once one side releases the claim."/>
+                </ToolTip.Tip>
+                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+            </Border>
+
             <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content so it never renders past a
                  fixed cap onto the pill beside it (the badge trims its own long branch names). Hidden on a plain
                  terminal pane (AC-25), where a plugin session indicator has nothing to say; takes no space when
