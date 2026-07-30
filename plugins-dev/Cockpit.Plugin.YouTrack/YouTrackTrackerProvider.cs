@@ -113,22 +113,17 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
         }
     }
 
-    public async Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string issueId, CancellationToken cancellationToken = default)
-    {
-        if (_Instance() is not { } instance)
-        {
-            return [];
-        }
-
-        try
-        {
-            return await _client.GetLinkedIssuesAsync(instance.InstanceUrl, instance.Token, issueId, cancellationToken);
-        }
-        catch (Exception)
-        {
-            return [];
-        }
-    }
+    // AC-346 review: unlike every other method here, a read failure is NOT swallowed into an empty result — it
+    // propagates. Autopilot's epic-runner reads this to decide whether the clicked item is an epic at all; an empty
+    // list on a transient failure (network blip, 429, instance briefly down) would read as "definitely not an epic"
+    // and quietly plan the epic issue itself instead of pausing, for as long as the tracker misbehaves. The epic-runner
+    // catches the exception and pauses the chain instead. A missing/unconfigured instance is not that kind of
+    // transient failure — it is a stable "this provider cannot answer" state exactly like every other method's
+    // fail-soft default — so it still returns empty rather than throwing.
+    public async Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string issueId, CancellationToken cancellationToken = default) =>
+        _Instance() is { } instance
+            ? await _client.GetLinkedIssuesAsync(instance.InstanceUrl, instance.Token, issueId, cancellationToken)
+            : [];
 
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
     {

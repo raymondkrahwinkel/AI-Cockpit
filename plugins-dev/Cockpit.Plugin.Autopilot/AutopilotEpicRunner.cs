@@ -2,7 +2,7 @@ using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.Autopilot;
 
-/// <summary>Which of the four shapes <see cref="AutopilotEpicRunner.ResolveAsync"/> can end in.</summary>
+/// <summary>Which of the shapes <see cref="AutopilotEpicRunner.ResolveAsync"/> can end in.</summary>
 internal enum AutopilotEpicOutcomeKind
 {
     /// <summary>The clicked item has no children — an ordinary issue. The caller runs its existing, unchanged path.</summary>
@@ -11,7 +11,13 @@ internal enum AutopilotEpicOutcomeKind
     /// <summary>The next executable sub was found and Ready; <see cref="AutopilotEpicOutcome.Run"/> is what to plan.</summary>
     Ready,
 
-    /// <summary>The next sub in order is not Ready; the chain pauses — <see cref="AutopilotEpicOutcome.PausedSubId"/> and <see cref="AutopilotEpicOutcome.Reason"/> say which and why.</summary>
+    /// <summary>
+    /// The chain cannot proceed right now and pauses — <see cref="AutopilotEpicOutcome.PausedSubId"/> (when a specific
+    /// sub is the reason) and <see cref="AutopilotEpicOutcome.Reason"/> say why. Covers every "do not silently guess"
+    /// case alike: the next sub is not Ready, it is itself a nested epic, its merge status could not be determined, or
+    /// the epic's own link structure could not be read — all of these get a comment on the epic and no run, rather than
+    /// either skipping ahead or (worse) re-running something that may already be done.
+    /// </summary>
     Paused,
 
     /// <summary>Every sub is already merged into <c>origin/main</c> — the epic is done, nothing to plan.</summary>
@@ -24,7 +30,7 @@ internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, Autop
     public static AutopilotEpicOutcome NotEpic { get; } = new(AutopilotEpicOutcomeKind.NotEpic, null, null, null);
     public static AutopilotEpicOutcome Complete { get; } = new(AutopilotEpicOutcomeKind.Complete, null, null, null);
     public static AutopilotEpicOutcome Ready(AutopilotRun run) => new(AutopilotEpicOutcomeKind.Ready, run, null, null);
-    public static AutopilotEpicOutcome Paused(string subId, string reason) => new(AutopilotEpicOutcomeKind.Paused, null, subId, reason);
+    public static AutopilotEpicOutcome Paused(string? subId, string reason) => new(AutopilotEpicOutcomeKind.Paused, null, subId, reason);
 }
 
 /// <summary>
@@ -46,6 +52,15 @@ internal sealed record AutopilotEpicOutcome(AutopilotEpicOutcomeKind Kind, Autop
 /// never looks past it, so one call can never produce more than one run. Nothing outside a fresh call to this method
 /// (i.e. a fresh trigger, after the human merged) ever asks it for a second sub.
 /// </para>
+/// <para>
+/// Nested epics (AC-346 review finding): a sub that itself has "parent for" children would, if handed unchanged into
+/// the single-issue pipeline, be planned by the CEO under the existing AC-217 behaviour that pulls <em>all</em> of an
+/// epic's children into one plan — silently absorbing a whole subtree into one run and bypassing this class's
+/// one-sub-at-a-time, stop-at-merge-ready gate one level down. Rather than unroll nested epics too (out of this
+/// ticket's scope) or risk that silent bypass, a sub found to have its own children is treated as not executable —
+/// the chain pauses on it, explicitly, the same as a sub that failed the Ready gate. The safer of the two failure
+/// modes the independent review asked to choose between.
+/// </para>
 /// </summary>
 internal static class AutopilotEpicRunner
 {
@@ -58,9 +73,10 @@ internal static class AutopilotEpicRunner
     /// <summary>
     /// Resolves what a "plan" intent on <paramref name="clicked"/> should actually run. Reads <paramref name="clicked"/>'s
     /// links once; when it has no <c>"parent for"</c> children this is <see cref="AutopilotEpicOutcome.NotEpic"/> and
-    /// costs the caller nothing beyond that one read. An epic reads each child's own <c>"depends on"</c> links in turn
-    /// (bounded by the epic's own sub count — never large) to build the order, then walks that order asking
-    /// <paramref name="mergeChecker"/> whether each sub is already delivered before gating the first one that is not.
+    /// costs the caller nothing beyond that one read. An epic reads each child's own links in turn (bounded by the
+    /// epic's own sub count — never large) to build the depends-on order and to check for a nested epic, refreshes
+    /// <paramref name="mergeChecker"/> once, then walks the order asking it whether each sub is already delivered
+    /// before gating the first one that is not.
     /// </summary>
     public static async Task<AutopilotEpicOutcome> ResolveAsync(
         ITrackerProvider provider,
@@ -69,7 +85,18 @@ internal static class AutopilotEpicRunner
         IEpicSubMergeChecker mergeChecker,
         CancellationToken cancellationToken)
     {
-        var links = await provider.GetLinkedIssuesAsync(clicked.IssueId, cancellationToken);
+        IReadOnlyList<TrackerLinkedIssue> links;
+        try
+        {
+            links = await provider.GetLinkedIssuesAsync(clicked.IssueId, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // A read failure here must not be mistaken for "genuinely has no children" — that would plan the epic
+            // itself instead of a sub, quietly bypassing the whole epic-runner for as long as the tracker misbehaves.
+            return AutopilotEpicOutcome.Paused(null, $"Autopilot could not read {clicked.IssueId}'s links, so it could not tell whether this is an epic. Try again once the tracker is reachable.");
+        }
+
         var children = links
             .Where(link => link.Direction == TrackerLinkDirection.Outward && string.Equals(link.LinkType, ChildLinkType, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -89,24 +116,59 @@ internal static class AutopilotEpicRunner
         }
 
         var dependsOn = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var nestedEpics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var childId in byId.Keys)
         {
-            var childLinks = await provider.GetLinkedIssuesAsync(childId, cancellationToken);
+            IReadOnlyList<TrackerLinkedIssue> childLinks;
+            try
+            {
+                childLinks = await provider.GetLinkedIssuesAsync(childId, cancellationToken);
+            }
+            catch (Exception)
+            {
+                return AutopilotEpicOutcome.Paused(childId, $"Autopilot could not read {childId}'s links while resolving this epic's chain. Try again once the tracker is reachable.");
+            }
+
+            // A "depends on" link is read from the depending issue's own side (its target — YouTrack reports it
+            // INWARD there; the source side sees the mirrored "is required for" name instead). Confirmed against a
+            // real YouTrack instance: querying the depending sub's own links returns "depends on" under Direction ==
+            // Inward, never Outward — the combination this used to filter on (Outward) does not occur for this link
+            // type at all, which silently made the whole depends-on ordering a no-op.
             dependsOn[childId] = childLinks
-                .Where(link => link.Direction == TrackerLinkDirection.Outward
+                .Where(link => link.Direction == TrackerLinkDirection.Inward
                     && string.Equals(link.LinkType, DependsOnLinkType, StringComparison.OrdinalIgnoreCase)
                     && childIds.Contains(link.IssueId))
                 .Select(link => link.IssueId)
                 .ToList();
+
+            // A sub that itself has "parent for" children is a nested epic — see the class doc for why this pauses
+            // rather than being unrolled or handed unchanged into the single-issue pipeline.
+            if (childLinks.Any(link => link.Direction == TrackerLinkDirection.Outward && string.Equals(link.LinkType, ChildLinkType, StringComparison.OrdinalIgnoreCase)))
+            {
+                nestedEpics.Add(childId);
+            }
         }
 
         var order = EpicSubTopologicalOrder.Resolve([.. byId.Keys], dependsOn);
 
+        // One refresh for the whole resolve pass (AC-346 review): the original shape fetched origin/main once per sub,
+        // inside the loop below — up to one fetch-and-timeout per sub, serially, in the click handler.
+        await mergeChecker.RefreshAsync(cancellationToken);
+
         foreach (var subId in order)
         {
-            if (await mergeChecker.IsMergedAsync(subId, cancellationToken))
+            switch (mergeChecker.IsMerged(subId))
             {
-                continue;
+                case true:
+                    continue;
+                case null:
+                    // Cannot tell — never treat that as "not merged" and re-run a sub that may already be delivered.
+                    return AutopilotEpicOutcome.Paused(subId, $"Autopilot could not determine whether {subId} is already merged into origin/main (no working directory it could check, or a git error). Resolve that and try again.");
+            }
+
+            if (nestedEpics.Contains(subId))
+            {
+                return AutopilotEpicOutcome.Paused(subId, $"{subId} itself has subtasks (a nested epic) — Autopilot's epic-runner does not unroll nested epics. Resolve {subId}'s own subtasks first, or flatten it under the epic directly.");
             }
 
             var sub = byId[subId];
