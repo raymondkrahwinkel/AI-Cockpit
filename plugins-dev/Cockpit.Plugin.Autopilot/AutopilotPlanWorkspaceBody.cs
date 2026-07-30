@@ -835,6 +835,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             _completedRuns++;
             _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
 
+            // AC-346: this run's sub came from an epic chain (AutopilotEpicRunner stamped EpicId when it picked the
+            // sub) — one progress comment on the epic per settled step, so the epic's own comment trail stays
+            // readable without clicking into every sub. Best-effort and fire-and-forget, like every other tracker
+            // write in this plugin: a comment that fails to land never holds up the surface re-rendering below.
+            if (plan.Source is { EpicId.Length: > 0 } source)
+            {
+                _ = _PostEpicProgressAsync(source, plan, outcome, blockReason, pullRequestMissing);
+            }
+
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
             switch (outcome)
             {
@@ -864,6 +873,57 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
             _completedRuns = 0;
         }
+    }
+
+    // AC-346: the epic-runner's progress comment — one per settled sub-run, written onto the epic named by
+    // AutopilotPlanSource.EpicId rather than the sub itself. Reuses AutopilotRunReliability/AutopilotReliabilitySummary
+    // for the same reliability line the merge-ready toast above shows, so the epic's trail reads consistently with
+    // everywhere else that figure is shown rather than inventing a second wording for it — but scoped to just this
+    // epic's own settled runs (filtered on AutopilotRunRecord.EpicId), not the entire history: the ticket asks for the
+    // state of the chain, and a reliability figure blended with every unrelated run ever recorded would not answer
+    // that. Resolves the tracker provider by the source's own tracker id — provider-neutral, like every other tracker
+    // write in this plugin.
+    private async Task _PostEpicProgressAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotPlanPhase outcome, string? blockReason, bool pullRequestMissing)
+    {
+        var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            return;
+        }
+
+        var epicRuns = _history.Items.Where(record => string.Equals(record.EpicId, source.EpicId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var reliability = AutopilotRunReliability.Summarize(epicRuns);
+        var label = string.IsNullOrWhiteSpace(plan.Label) ? source.IssueId : plan.Label;
+        var comment = BuildEpicProgressComment(source.IssueId, label, outcome, blockReason, pullRequestMissing, reliability);
+
+        try
+        {
+            _ = await provider.PostCommentAsync(source.EpicId, comment);
+        }
+        catch (Exception)
+        {
+            // Fail-soft, as every other tracker write in this plugin is.
+        }
+    }
+
+    // Extracted as a pure static, same reasoning as AutopilotRunRecord.Capture: the comment's exact wording is
+    // unit-testable without a UI or a tracker fake (AC-346 review — the settle-hook comment had no test on its actual
+    // text, only on the building blocks underneath it).
+    internal static string BuildEpicProgressComment(string subIssueId, string label, AutopilotPlanPhase outcome, string? blockReason, bool pullRequestMissing, AutopilotReliabilitySummary reliability)
+    {
+        var outcomeText = outcome switch
+        {
+            // A merge-ready run that could not actually open its PR (AC-347's own warning) is not "done" from the
+            // epic's point of view either — say so, rather than reporting success on a step that still needs a human
+            // to open the PR by hand before the next sub can even be considered merged.
+            AutopilotPlanPhase.MergeReady when pullRequestMissing =>
+                "reached merge-ready but could not open its pull request — it still needs a human to open one by hand",
+            AutopilotPlanPhase.MergeReady => "reached a merge-ready PR",
+            AutopilotPlanPhase.Stopped => "was stopped by the operator",
+            _ => $"blocked — {blockReason}",
+        };
+
+        return $"Epic step {subIssueId} ({label}) {outcomeText}. {reliability.Describe()}";
     }
 
     // The planning pop-out (AC-174/AC-175): the draft plan on the left updating live as the CEO revises it, the CEO's

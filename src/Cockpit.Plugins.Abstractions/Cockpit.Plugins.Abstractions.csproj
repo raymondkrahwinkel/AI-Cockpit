@@ -276,7 +276,12 @@
          than stranding a session on "working". A driver that never raises it reads as "nothing outstanding",
          which is what every existing driver already does. Additions only — a minor; major and abstractionsVersion
          stay 1. -->
-    <Version>1.41.0</Version>
+    <!-- 1.42.0 (AC-346): added ITrackerProvider.GetLinkedIssuesAsync as a default interface method (empty list),
+         plus TrackerLinkedIssue/TrackerLinkDirection — a tracker-neutral way to read an issue's links (type,
+         direction, target id/title/stage), so the Autopilot epic-runner can read an epic's "parent for" children
+         and their "depends on" order without every existing ITrackerProvider needing a real implementation.
+         Additions only — a minor; major and abstractionsVersion stay 1. -->
+    <Version>1.42.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

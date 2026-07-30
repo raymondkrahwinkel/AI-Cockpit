@@ -170,6 +170,37 @@ public class DepotPluginTests
         Assert.Equal("https://wispslate.example.com", server.OAuthAuthority);
     }
 
+    // AC-499 regression, the measured defect: a connection already stored with a trailing /mcp of its own (Depot's
+    // own docs tell the operator to paste the full endpoint, and older builds — or storage from before this fix —
+    // kept whatever was typed) must not double into "…/mcp/mcp" every time a session asks this plugin for its
+    // servers. Normalized at this use point, not only at save time, so already-stored data is fixed without a
+    // migration.
+    [Fact]
+    public void GetMcpServers_ConnectionStoredWithATrailingMcp_DoesNotDoubleItInTheContributedUrl()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com/mcp")));
+
+        var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
+
+        Assert.Equal("https://depot.example.com/mcp", server.Url);
+        Assert.Equal("https://depot.example.com", server.OAuthAuthority);
+    }
+
+    // AC-499: OAuthAuthority is the origin (scheme+host+port) of the normalized URL, not the stored URL's own path —
+    // a subpath deployment's authority lives at the origin, not under the subpath.
+    [Fact]
+    public void GetMcpServers_ConnectionUrlHasASubpath_OAuthAuthorityIsTheOriginNotTheSubpath()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://host.example.com/depot")));
+
+        var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
+
+        Assert.Equal("https://host.example.com/depot/mcp", server.Url);
+        Assert.Equal("https://host.example.com", server.OAuthAuthority);
+    }
+
     [Fact]
     public void GetMcpServers_TwoMemoryRowsForTwoConnections_ReturnsBoth()
     {
@@ -245,5 +276,99 @@ public class DepotPluginTests
         {
             await Task.Delay(10);
         }
+    }
+
+    // --- AC-499: the family is declared unconditionally --------------------------------------------------------
+    // The bug this ticket exists to close: zero connections meant no "Depot" entry anywhere in the project editor's
+    // picker and no way to reach this plugin's settings from it. Declaring the family regardless of how many
+    // connections are configured is what fixes that — asserted at zero, one and several so a future regression that
+    // reintroduces an `if (connections.Count > 0)` guard fails here at the zero case specifically.
+
+    [Fact]
+    public void Initialize_NoConnectionsConfigured_StillDeclaresTheDepotFamily()
+    {
+        var host = _HostWithConnections();
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        host.Received(1).AddProjectMemorySourceFamily(Arg.Is<ProjectMemorySourceFamily>(family =>
+            family.Key == "depot" && family.Title == "Depot"));
+    }
+
+    [Fact]
+    public void Initialize_OneConnectionConfigured_DeclaresTheDepotFamilyExactlyOnce()
+    {
+        var host = _HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        host.Received(1).AddProjectMemorySourceFamily(Arg.Any<ProjectMemorySourceFamily>());
+    }
+
+    [Fact]
+    public void Initialize_SeveralConnectionsConfigured_DeclaresTheDepotFamilyExactlyOnce()
+    {
+        var host = _HostWithConnections(
+            new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com"),
+            new DepotConnectionRegistration("c2", "Wispslate", "https://wispslate.example.com"));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        host.Received(1).AddProjectMemorySourceFamily(Arg.Any<ProjectMemorySourceFamily>());
+    }
+
+    [Fact]
+    public void Initialize_Always_SetsTheEmptyHintNamingDepot()
+    {
+        var host = _HostWithConnections();
+        var declared = new List<ProjectMemorySourceFamily>();
+        host.When(cockpit => cockpit.AddProjectMemorySourceFamily(Arg.Any<ProjectMemorySourceFamily>()))
+            .Do(call => declared.Add(call.Arg<ProjectMemorySourceFamily>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+
+        Assert.Equal("No Depot server configured yet.", Assert.Single(declared).EmptyHint);
+    }
+
+    [Fact]
+    public async Task Family_ConfigureAsync_OpensThisPluginsOwnSettings()
+    {
+        var host = _HostWithConnections();
+        var declared = new List<ProjectMemorySourceFamily>();
+        host.When(cockpit => cockpit.AddProjectMemorySourceFamily(Arg.Any<ProjectMemorySourceFamily>()))
+            .Do(call => declared.Add(call.Arg<ProjectMemorySourceFamily>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+        var family = Assert.Single(declared);
+
+        Assert.NotNull(family.ConfigureAsync);
+        await family.ConfigureAsync!(CancellationToken.None);
+
+        await host.Received(1).ShowSettingsAsync();
+    }
+
+    [Fact]
+    public async Task Family_ConfigureAsync_CalledTwice_CallsShowSettingsAsyncExactlyTwice()
+    {
+        // Pins that ConfigureAsync does not somehow call ShowSettingsAsync more than once per invocation (e.g. a
+        // fire-and-forget left over from a refactor) — one click, one open.
+        var host = _HostWithConnections();
+        var declared = new List<ProjectMemorySourceFamily>();
+        host.When(cockpit => cockpit.AddProjectMemorySourceFamily(Arg.Any<ProjectMemorySourceFamily>()))
+            .Do(call => declared.Add(call.Arg<ProjectMemorySourceFamily>()));
+
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+        var configureAsync = Assert.Single(declared).ConfigureAsync!;
+
+        await configureAsync(CancellationToken.None);
+        await configureAsync(CancellationToken.None);
+
+        await host.Received(2).ShowSettingsAsync();
     }
 }

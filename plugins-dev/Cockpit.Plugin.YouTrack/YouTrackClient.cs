@@ -343,6 +343,72 @@ internal sealed class YouTrackClient
         throw new InvalidOperationException($"YouTrack refused the comment ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
+    /// <summary>
+    /// Reads every link an issue carries (AC-346), <c>GET /issues/{id}/links</c>: YouTrack groups an issue's links by
+    /// link type and direction — one element per (type, direction) pair, each carrying the issues on the other side —
+    /// rather than one element per linked issue, so this flattens that into one <see cref="TrackerLinkedIssue"/> per
+    /// linked issue. <c>linkType.sourceToTarget</c>/<c>targetToSource</c> are the type's own two names for its two
+    /// directions (e.g. "parent for" / "subtask of"); which one names the link <em>from the queried issue's side</em>
+    /// depends on <c>direction</c> — "OUTWARD" means the queried issue is the source, so its own name is
+    /// <c>sourceToTarget</c>, and "INWARD" the reverse. "BOTH" (a symmetric link type, e.g. "relates to") has the same
+    /// name in both directions, so either resolves to it. Never throws — a malformed or missing field on one link
+    /// group is skipped rather than failing the whole read, since a caller degrading to "fewer links than expected"
+    /// is safer than one bad group taking an epic's whole child list down.
+    /// </summary>
+    public async Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        var json = await _GetAsync(
+            $"{baseUrl}/issues/{Uri.EscapeDataString(idReadable)}/links?fields=direction,linkType(name,sourceToTarget,targetToSource),issues(idReadable,summary,customFields(name,value(name)))",
+            token,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+        var links = new List<TrackerLinkedIssue>();
+
+        foreach (var group in document.RootElement.EnumerateArray())
+        {
+            var directionText = group.TryGetProperty("direction", out var directionProperty) && directionProperty.ValueKind == JsonValueKind.String
+                ? directionProperty.GetString()
+                : null;
+            if (directionText is not { Length: > 0 })
+            {
+                continue;
+            }
+
+            if (!group.TryGetProperty("linkType", out var linkTypeElement) || linkTypeElement.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var direction = directionText.Equals("INWARD", StringComparison.OrdinalIgnoreCase) ? TrackerLinkDirection.Inward : TrackerLinkDirection.Outward;
+            var linkTypeFieldName = direction == TrackerLinkDirection.Outward ? "sourceToTarget" : "targetToSource";
+            var linkType = linkTypeElement.TryGetProperty(linkTypeFieldName, out var nameProperty) && nameProperty.ValueKind == JsonValueKind.String && nameProperty.GetString() is { Length: > 0 } named
+                ? named
+                : linkTypeElement.TryGetProperty("name", out var fallbackProperty) ? fallbackProperty.GetString() ?? string.Empty : string.Empty;
+
+            if (linkType.Length == 0 || !group.TryGetProperty("issues", out var issuesElement) || issuesElement.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var issue in issuesElement.EnumerateArray())
+            {
+                var issueId = issue.TryGetProperty("idReadable", out var idProperty) ? idProperty.GetString() ?? string.Empty : string.Empty;
+                if (issueId.Length == 0)
+                {
+                    continue;
+                }
+
+                var title = issue.TryGetProperty("summary", out var summaryProperty) ? summaryProperty.GetString() ?? string.Empty : string.Empty;
+                var stage = issue.TryGetProperty("customFields", out var fieldsElement) ? YouTrackFieldParser.ParseStateName(fieldsElement) : null;
+                links.Add(new TrackerLinkedIssue(linkType, direction, issueId, title, stage));
+            }
+        }
+
+        return links;
+    }
+
     /// <summary>Reads an issue's comments (<c>GET /issues/{id}/comments</c>), normalized to <see cref="TrackerComment"/> (YouTrack's <c>created</c> is epoch-ms).</summary>
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
     {

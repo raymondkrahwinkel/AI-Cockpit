@@ -46,13 +46,36 @@ public interface IProjectMemorySourceRegistry
 
     /// <summary>Every source registered so far, in registration order — the order the editor's picker offers them in.</summary>
     IReadOnlyList<ProjectMemorySourceRegistration> Sources { get; }
+
+    /// <summary>
+    /// Declares a family (AC-499) a source can later opt into via <see cref="ProjectMemorySourceRegistration.FamilyKey"/>.
+    /// A blank <see cref="ProjectMemorySourceFamily.Key"/> or <see cref="ProjectMemorySourceFamily.Title"/> is
+    /// refused for the same reason a blank scheme or title is refused by <see cref="Register"/> — nothing to key a
+    /// registration on, or to label the picker's own entry with. A key already declared is refused too, first one
+    /// wins, matched case-insensitively — the same agreement <see cref="Register"/>'s own scheme comparison makes.
+    /// <para>
+    /// No <c>RemoveFamily</c> counterpart to <see cref="Remove"/>: nothing in this codebase yet un-declares a
+    /// family once its plugin has registered it (a Depot connection removed by AC-501's live-refresh removes that
+    /// connection's own scheme, never the "Depot" family itself — the picker keeps offering it, empty-hint and all,
+    /// which is the whole point of declaring a family separately from its instances). Add one only once a caller
+    /// actually needs it.
+    /// </para>
+    /// </summary>
+    /// <returns>False when the key or title is blank, or another plugin already declared this key.</returns>
+    bool RegisterFamily(ProjectMemorySourceFamily family);
+
+    /// <summary>Every family declared so far, in declaration order — the order the editor's picker offers them in, ahead of any ungrouped source.</summary>
+    IReadOnlyList<ProjectMemorySourceFamily> Families { get; }
 }
 
 internal sealed class ProjectMemorySourceRegistry : IProjectMemorySourceRegistry, ISingletonService
 {
     private readonly List<ProjectMemorySourceRegistration> _sources = [];
+    private readonly List<ProjectMemorySourceFamily> _families = [];
 
     public IReadOnlyList<ProjectMemorySourceRegistration> Sources => [.. _sources];
+
+    public IReadOnlyList<ProjectMemorySourceFamily> Families => [.. _families];
 
     // Case-insensitive, unlike ProjectFieldRegistry.Register's key comparison: a project's MemoryRef is itself
     // matched case-insensitively (SessionStartDefaults), so a registry that told two plugins "depot" and "Depot"
@@ -80,6 +103,21 @@ internal sealed class ProjectMemorySourceRegistry : IProjectMemorySourceRegistry
         }
 
         _sources.RemoveAt(index);
+        return true;
+    }
+
+    // Case-insensitive, the same reason Register's own scheme comparison is: FamilyKey is matched against this key
+    // case-insensitively too (ProjectMemorySourceRegistration.FamilyKey's own doc comment).
+    public bool RegisterFamily(ProjectMemorySourceFamily family)
+    {
+        if (string.IsNullOrWhiteSpace(family.Key)
+            || string.IsNullOrWhiteSpace(family.Title)
+            || _families.Any(existing => string.Equals(existing.Key, family.Key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        _families.Add(family);
         return true;
     }
 }

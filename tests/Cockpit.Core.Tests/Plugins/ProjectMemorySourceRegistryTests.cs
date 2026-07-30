@@ -181,4 +181,99 @@ public class ProjectMemorySourceRegistryTests
 
         Assert.Equal(new[] { "notes", "depot" }, registry.Sources.Select(source => source.Scheme));
     }
+
+    // --- AC-499: RegisterFamily/Families --------------------------------------------------------------------------
+
+    private static ProjectMemorySourceFamily Family(string key, string title, string? emptyHint = null) =>
+        new(key, title) { EmptyHint = emptyHint };
+
+    [Fact]
+    public void RegisterFamily_TwoPluginsDeclaringTheSameKey_KeepsTheFirst()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+
+        Assert.True(registry.RegisterFamily(Family("depot", "Depot")));
+        Assert.False(registry.RegisterFamily(Family("depot", "Depot (second copy)")));
+
+        Assert.Equal("Depot", Assert.Single(registry.Families).Title);
+    }
+
+    [Fact]
+    public void RegisterFamily_KeysDifferingOnlyInCase_AreTheSameFamily()
+    {
+        // Matched case-insensitively, the same agreement Register's own scheme comparison makes (and the same
+        // agreement ProjectMemorySourceRegistration.FamilyKey's own doc comment promises).
+        var registry = new ProjectMemorySourceRegistry();
+
+        Assert.True(registry.RegisterFamily(Family("depot", "Depot")));
+        Assert.False(registry.RegisterFamily(Family("Depot", "Depot (again)")));
+
+        Assert.Single(registry.Families);
+    }
+
+    [Fact]
+    public void RegisterFamily_ABlankKey_IsRefused()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+
+        Assert.False(registry.RegisterFamily(Family("   ", "Nameless")));
+
+        Assert.Empty(registry.Families);
+    }
+
+    [Fact]
+    public void RegisterFamily_ABlankTitle_IsRefused()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+
+        Assert.False(registry.RegisterFamily(Family("depot", "  ")));
+
+        Assert.Empty(registry.Families);
+    }
+
+    [Fact]
+    public void Families_AreOfferedInDeclarationOrder()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+        registry.RegisterFamily(Family("notes", "Notes vault"));
+        registry.RegisterFamily(Family("depot", "Depot"));
+
+        Assert.Equal(new[] { "notes", "depot" }, registry.Families.Select(family => family.Key));
+    }
+
+    /// <summary>
+    /// AC-499: <see cref="ProjectMemorySourceFamily"/>'s own doc comment states plainly — "removing every
+    /// registration under a key never removes the family itself" — so this is a testable guarantee, not merely a
+    /// comment. <see cref="ProjectMemorySourceRegistry"/> has no <c>RemoveFamily</c> at all (by design, per that same
+    /// doc comment), so the strongest available proof is that removing the one registration under a declared
+    /// family's key leaves the family itself exactly where it was — nothing in this registry's own surface can even
+    /// attempt to take it out.
+    /// </summary>
+    [Fact]
+    public void RemovingTheLastRegistrationUnderAFamilysKey_LeavesTheFamilyDeclared()
+    {
+        var registry = new ProjectMemorySourceRegistry();
+        registry.RegisterFamily(Family("depot", "Depot"));
+        registry.Register(Source("depot", "Depot project") with { FamilyKey = "depot" });
+
+        Assert.True(registry.Remove("depot"));
+
+        Assert.Empty(registry.Sources);
+        Assert.Single(registry.Families);
+        Assert.Equal("Depot", registry.Families[0].Title);
+    }
+
+    [Fact]
+    public void ADeclaredFamilyWithNoRegistrationAtAll_IsStillOfferedFromTheStart()
+    {
+        // ProjectMemorySourceFamily's own doc comment: "Declaring a family never requires a registration to exist
+        // for it" — the empty state (EmptyHint) must be reachable the instant the family is declared, not only
+        // once a first instance shows up.
+        var registry = new ProjectMemorySourceRegistry();
+
+        registry.RegisterFamily(Family("depot", "Depot", emptyHint: "No Depot server configured yet"));
+
+        var family = Assert.Single(registry.Families);
+        Assert.Equal("No Depot server configured yet", family.EmptyHint);
+    }
 }

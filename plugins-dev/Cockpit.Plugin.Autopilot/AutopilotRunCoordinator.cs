@@ -34,6 +34,11 @@ internal sealed class AutopilotRunCoordinator(
 {
     private readonly Lock _lock = new();
 
+    /// <summary>The plan this run is driving, or null before one is bound (AC-346) — how a caller outside this run
+    /// (the "plan" intent handler's duplicate-run guard) can tell which issue an already-active run is working on
+    /// without reaching into the private controller it wraps.</summary>
+    public AutopilotPlan? Plan => plan.Plan;
+
     // Publishes a merge-ready code run's branch and opens its PR (AC-216); null in a bare test graph, where finalization
     // is skipped. The app supplies the real GitCliPrPublisher through AutopilotRunContext.
     private readonly IAutopilotPrPublisher? _prPublisher = prPublisher;

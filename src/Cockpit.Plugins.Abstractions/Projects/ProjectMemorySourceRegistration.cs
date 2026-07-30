@@ -27,10 +27,10 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// </param>
 public sealed record ProjectMemorySourceRegistration(string Scheme, string Title, string Instruction)
 {
-    // AC-502/AC-503: trailing optional members rather than widening the primary constructor further — a plugin
-    // prebuilt against an older Cockpit.Plugins.Abstractions.dll still calls this record's original 3-parameter
-    // constructor by its exact IL signature, the same binary-compat reasoning McpServerContribution's own remark
-    // gives for its init-only properties.
+    // AC-502/AC-503/AC-499: trailing optional members rather than widening the primary constructor further — a
+    // plugin prebuilt against an older Cockpit.Plugins.Abstractions.dll still calls this record's original
+    // 3-parameter constructor by its exact IL signature, the same binary-compat reasoning McpServerContribution's
+    // own remark gives for its init-only properties.
 
     /// <summary>
     /// Optionally lists the locations this source can point at (AC-502) — a Depot connection's own projects, say —
@@ -69,21 +69,52 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, CancellationToken, Task<ProjectMemorySourceReachabilityResult>>? CheckReachability { get; init; }
 
     /// <summary>
-    /// Compares only <see cref="Scheme"/>, <see cref="Title"/> and <see cref="Instruction"/> — never
-    /// <see cref="ListLocationsAsync"/>/<see cref="SignInAsync"/>/<see cref="CheckReachability"/> — deliberately
-    /// overriding the record-generated equality that would otherwise include them. Two delegates freshly built for
-    /// the very same connection (<c>DepotMemorySource.BuildRegistrationPairs</c>, say) are never reference-equal to
-    /// each other even when they close over identical data, which would make every one of that connection's own
-    /// unrelated saves look "changed" to <c>DepotSettingsControl._SyncMemorySources</c>'s before/after diff and
-    /// force an unnecessary Remove+Add of a scheme that did not actually change — the very thing that diff exists to
-    /// skip. Content identity here means the three fields a session's own standing instructions are actually built
-    /// from.
+    /// Which <see cref="ProjectMemorySourceFamily.Key"/> this instance belongs to (AC-499) — "depot", say, grouping
+    /// however many connections a plugin has configured under one "Depot" entry in the picker instead of one row
+    /// per connection. Matched case-insensitively against a declared family's own <see cref="ProjectMemorySourceFamily.Key"/>,
+    /// the same agreement <see cref="Scheme"/> makes with a project's stored reference.
     /// <para>
-    /// <see cref="Scheme"/> compares <see cref="StringComparison.OrdinalIgnoreCase"/> to agree with
-    /// <see cref="ProjectMemorySourceRegistry"/> and a project's stored <c>MemoryRef</c>, both of which resolve a
-    /// scheme case-insensitively (see <see cref="Scheme"/>'s own doc comment) — comparing it case-sensitively here
-    /// would let a pure-case rename of the same scheme read as "changed" to <c>_SyncMemorySources</c> while every
-    /// other consumer still treats it as the one source it always was.
+    /// Null (the default) is exactly today's behaviour: this registration gets its own row in the picker, the way
+    /// every registration did before AC-499 existed. A <see cref="ProjectMemorySourceFamily"/> costs a plugin
+    /// nothing to skip — a scheme that names one no <c>AddProjectMemorySourceFamily</c> call ever declared is simply
+    /// never grouped, and falls back to its own row the same as null would.
+    /// </para>
+    /// </summary>
+    public string? FamilyKey { get; init; }
+
+    /// <summary>
+    /// How this instance is named in its family's own instance dropdown (AC-499) — "Depot (krahwinkel-it)" beside a
+    /// sibling "Depot (synvolution)" — rather than the bare <see cref="Title"/> every registration under the same
+    /// family would otherwise repeat. Blank or null falls back to <see cref="Title"/>, the same "leave it alone
+    /// rather than guess" default the rest of this record follows.
+    /// </summary>
+    public string? InstanceTitle { get; init; }
+
+    /// <summary>
+    /// Compares <see cref="Scheme"/>, <see cref="Title"/>, <see cref="Instruction"/>, <see cref="FamilyKey"/> and
+    /// <see cref="InstanceTitle"/> — never <see cref="ListLocationsAsync"/>/<see cref="SignInAsync"/>/
+    /// <see cref="CheckReachability"/> — deliberately overriding the record-generated equality that would otherwise
+    /// include them. Two delegates freshly built for the very same connection (<c>DepotMemorySource.BuildRegistrationPairs</c>,
+    /// say) are never reference-equal to each other even when they close over identical data, which would make every
+    /// one of that connection's own unrelated saves look "changed" to <c>DepotSettingsControl._SyncMemorySources</c>'s
+    /// before/after diff and force an unnecessary Remove+Add of a scheme that did not actually change — the very
+    /// thing that diff exists to skip. Content identity here means the fields a session's own standing instructions,
+    /// and the picker's own labels, are actually built from.
+    /// <para>
+    /// <see cref="Scheme"/> and <see cref="FamilyKey"/> both compare <see cref="StringComparison.OrdinalIgnoreCase"/>
+    /// to agree with <see cref="ProjectMemorySourceRegistry"/>, a project's stored <c>MemoryRef</c>, and
+    /// <see cref="ProjectMemorySourceFamily.Key"/> matching, all of which resolve their own key case-insensitively —
+    /// comparing either case-sensitively here would let a pure-case rename read as "changed" to
+    /// <c>_SyncMemorySources</c> while every other consumer still treats it as the one source or family it always
+    /// was.
+    /// </para>
+    /// <para>
+    /// AC-499: <see cref="FamilyKey"/> and <see cref="InstanceTitle"/> are included deliberately, unlike the three
+    /// delegates above — both are content the operator actually sees change, not incidental wiring. Moving an
+    /// instance to a different family (or out of one) changes which row of the picker it appears under, and
+    /// renaming an instance (a Depot connection the operator retitled) changes what its own row in the instance
+    /// dropdown reads — either is exactly the kind of visible change <c>_SyncMemorySources</c>'s diff exists to
+    /// catch, the same reason a title or instruction change already does.
     /// </para>
     /// <para>
     /// Because equality ignores the delegates, a <c>with</c> expression that only replaces one of them produces a
@@ -96,8 +127,10 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
         other is not null
         && string.Equals(Scheme, other.Scheme, StringComparison.OrdinalIgnoreCase)
         && string.Equals(Title, other.Title, StringComparison.Ordinal)
-        && string.Equals(Instruction, other.Instruction, StringComparison.Ordinal);
+        && string.Equals(Instruction, other.Instruction, StringComparison.Ordinal)
+        && string.Equals(FamilyKey, other.FamilyKey, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(InstanceTitle, other.InstanceTitle, StringComparison.Ordinal);
 
     public override int GetHashCode() =>
-        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction);
+        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction, FamilyKey?.ToUpperInvariant(), InstanceTitle);
 }

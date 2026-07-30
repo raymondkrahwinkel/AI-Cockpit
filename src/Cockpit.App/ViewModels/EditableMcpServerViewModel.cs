@@ -11,10 +11,22 @@ namespace Cockpit.App.ViewModels;
 /// (#26). Args are edited as one-per-line text; transport/auth are enum selections that drive which
 /// fields the dialog shows. <see cref="ToConfig"/> turns the edits back into a config on save.
 /// <para>
-/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. They
-/// authorize against the URL and auth as currently typed — fixing a wrong authority and then signing in uses what is
-/// on screen — but always under the name this server is stored as, and they are offered only while the two agree
-/// (<see cref="IsSignInAvailable"/>).
+/// Also owns the OAuth sign-in/sign-out actions for this row (AC-355), through the injected coordinator. A token is
+/// filed under this server's stored name, so <see cref="SignInAsync"/> (AC-499) saves the whole dialog through
+/// <see cref="_saveAllForSignIn"/> — the same route the Save button uses — before it authorizes. Sign-in is
+/// offered as soon as the row is itself valid, with no manual save first. Authorization still targets the
+/// URL/auth as currently typed — fixing a wrong authority and then signing in uses what is on screen. Sign-out is
+/// narrower: it only withdraws whatever the store already has, so it needs no save of its own (see
+/// <see cref="SignOutAsync"/>).
+/// </para>
+/// <para>
+/// <see cref="_storedUnderName"/> is not read back by matching this row's own name against the store (that would be
+/// circular — the save just wrote that exact name) — it is resynced by <see cref="McpServersViewModel"/> after
+/// every dialog-wide save, matching each row against the reloaded list by <b>list position</b>, not identity: there
+/// is no id on an MCP server yet, only a name, and a save writes every row in order. That resync runs for every row
+/// in the dialog, not only the one that asked for the save, which is what makes a rename on one row safe for a
+/// sign-out on another (see <see cref="McpServersViewModel"/>'s save route). <b>AC-403</b> adds a stable id
+/// alongside the name; once that lands, matching stops depending on save order at all.
 /// </para>
 /// </summary>
 public partial class EditableMcpServerViewModel : ViewModelBase
@@ -22,13 +34,37 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
     /// <summary>
-    /// The name this server is stored under, or <see langword="null"/> for a row that has never been saved. A token
-    /// is keyed by server name, so this is the only name a sign-in or a withdrawal may act on — and a row with no
-    /// stored name has no token to act on at all, which is why both are withheld there rather than aimed at a guess.
-    /// Trimmed, because that is what a save writes: an entry a hand-edit or an older build left with a trailing space
-    /// would otherwise never match the typed name and the row would refuse both buttons for good.
+    /// Saves the whole dialog's edited list and returns what the store actually reports back afterward (AC-499) —
+    /// the route <see cref="SignInAsync"/> uses so a sign-in never has to wait for a manual save. Owned by this
+    /// row's <see cref="McpServersViewModel"/>; null for a row built without one (design-time, or a test that
+    /// constructs a row directly), in which case a sign-in has nowhere to save and does nothing.
     /// </summary>
-    private readonly string? _storedUnderName;
+    private readonly Func<Task<IReadOnlyList<McpServerConfig>?>>? _saveAllForSignIn;
+
+    /// <summary>
+    /// Whether some other row in the same dialog has a sign-in/sign-out in flight — null for a row built without an
+    /// owning <see cref="McpServersViewModel"/> (design-time, or a test that constructs a row directly), in which
+    /// case only this row's own <see cref="IsAuthBusy"/> gates it. A dialog-wide save races itself otherwise: a
+    /// second row's own save-then-authorize can overwrite the snapshot the first row is mid-resync against.
+    /// </summary>
+    private readonly Func<bool>? _isDialogBusy;
+
+    /// <summary>
+    /// Cancelled once the owning dialog is going away (Save, Cancel, or its own close button) — see
+    /// <see cref="McpServersViewModel"/>. Passed to <see cref="IMcpOAuthCoordinator.AcquireAsync"/> so an
+    /// interactive sign-in with nowhere left to land its result is told to stop rather than run on against a view
+    /// model nothing shows any more.
+    /// </summary>
+    private readonly CancellationToken _dialogClosing;
+
+    /// <summary>
+    /// The name this server is stored under, or <see langword="null"/> for a row that has never been saved. A token
+    /// is keyed by server name, so this is the only name a sign-out may act on. Set at construction (trimmed, so an
+    /// entry a hand-edit or an older build left with a trailing space still matches), and resynced after every
+    /// dialog-wide save by <see cref="ResyncAfterDialogSaveAsync"/> — see the class remarks on how that match is
+    /// made, and its limits.
+    /// </summary>
+    private string? _storedUnderName;
 
     [ObservableProperty]
     private string _name;
@@ -145,24 +181,24 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// A held token is bound to the host it was obtained for, so retyping the URL can make "signed in" false without
     /// anything else changing. The badge goes back to unknown rather than keeping a label whose reason has gone —
     /// the same failure as a warning that outlives what it warned about. Not re-read here on purpose: that would put
-    /// a storage read on every keystroke.
+    /// a storage read on every keystroke. The URL is also half of Sign in's own validity gate (AC-499), so its
+    /// availability needs the same re-check a rename gets below.
     /// </summary>
     partial void OnUrlChanged(string value)
     {
         AuthState = null;
         AuthMessage = string.Empty;
-    }
-
-    // Renaming needs no badge-clearing of its own: while the typed name differs from the stored one the buttons are
-    // simply not offered (IsSignInAvailable), which says the same thing without leaving a token unreachable — the
-    // trap in clearing the badge is that Sign out is gated on it. What a rename still breaks is the save, where the
-    // registry gets the new name and the token keeps the old; that is storage, not display, and it is AC-403.
-    partial void OnNameChanged(string value)
-    {
-        OnPropertyChanged(nameof(IsSignInAvailable));
         OnPropertyChanged(nameof(SignInUnavailableReason));
         SignInCommand.NotifyCanExecuteChanged();
-        SignOutCommand.NotifyCanExecuteChanged();
+    }
+
+    // Sign-in's own validity gate covers Name (via IsValid), so a rename re-checks just that button. Sign-out no
+    // longer depends on the typed name at all (AC-499, see SignOutAsync) — it acts on the name this row was last
+    // actually saved under, so a rename in progress does not touch its availability.
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(SignInUnavailableReason));
+        SignInCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnAuthChanged(McpServerAuth value)
@@ -183,7 +219,6 @@ public partial class EditableMcpServerViewModel : ViewModelBase
             AuthMessage = string.Empty;
         }
 
-        OnPropertyChanged(nameof(IsSignInAvailable));
         OnPropertyChanged(nameof(SignInUnavailableReason));
 
         SignInCommand.NotifyCanExecuteChanged();
@@ -198,7 +233,13 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         SignOutCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnIsAuthBusyChanged(bool value)
+    partial void OnIsAuthBusyChanged(bool value) => NotifyDialogBusyChanged();
+
+    /// <summary>
+    /// Re-checks Sign in/Sign out after a busy change — this row's own, or (called by <see cref="McpServersViewModel"/>)
+    /// another row's, since busy is dialog-wide (AC-499 review fix, finding 6).
+    /// </summary>
+    internal void NotifyDialogBusyChanged()
     {
         SignInCommand.NotifyCanExecuteChanged();
         SignOutCommand.NotifyCanExecuteChanged();
@@ -208,9 +249,21 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// Whether <paramref name="server"/> came from the store. False for a row the operator has just added, whose name
     /// is a placeholder they are about to replace — see <see cref="_storedUnderName"/>.
     /// </param>
-    public EditableMcpServerViewModel(McpServerConfig server, IMcpOAuthCoordinator? oauthCoordinator = null, bool isPersisted = true)
+    /// <param name="saveAllForSignIn">See <see cref="_saveAllForSignIn"/>.</param>
+    /// <param name="isDialogBusy">See <see cref="_isDialogBusy"/>.</param>
+    /// <param name="dialogClosing">See <see cref="_dialogClosing"/>.</param>
+    public EditableMcpServerViewModel(
+        McpServerConfig server,
+        IMcpOAuthCoordinator? oauthCoordinator = null,
+        bool isPersisted = true,
+        Func<Task<IReadOnlyList<McpServerConfig>?>>? saveAllForSignIn = null,
+        Func<bool>? isDialogBusy = null,
+        CancellationToken dialogClosing = default)
     {
         _oauthCoordinator = oauthCoordinator;
+        _saveAllForSignIn = saveAllForSignIn;
+        _isDialogBusy = isDialogBusy;
+        _dialogClosing = dialogClosing;
         _storedUnderName = isPersisted ? server.Name.Trim() : null;
         _name = server.Name;
         _transport = server.Transport;
@@ -296,38 +349,49 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Whether this row still stands for the server the store knows by that name — the condition both sign-in and
-    /// sign-out are gated on, and the reason the key can no longer drift.
-    /// <para>
-    /// A token is filed under a server's name, which the operator may retype at will. Four rounds of review on this
-    /// ticket each found the same defect one case further along, because the row was guessing which name its token
-    /// was under: the placeholder of a new row, the name at construction, the name at the moment a sign-in happened.
-    /// Refusing to act while the row and the store disagree removes the guess instead of improving it — the name is
-    /// then always the stored one, because that is the only state in which either button is offered.
-    /// </para>
+    /// Resynced after every dialog-wide save (AC-499 review fix, finding 1), for every row in the dialog — not just
+    /// the one that asked for the save. <paramref name="persisted"/> is what <see cref="McpServersViewModel"/>
+    /// found at this row's own position in the reloaded list, or null if the list came back shorter than the
+    /// dialog holds. Re-reads the auth status under whatever name that turns out to be, since a rename can leave
+    /// this row's old name pointing at somebody else's token now (see the class remarks) — a plain copy of the old
+    /// <see cref="AuthState"/> would carry that mistake forward instead of fixing it.
     /// </summary>
-    public bool IsSignInAvailable =>
-        _storedUnderName is not null && string.Equals(Name.Trim(), _storedUnderName, StringComparison.Ordinal);
+    internal async Task ResyncAfterDialogSaveAsync(McpServerConfig? persisted, CancellationToken cancellationToken = default)
+    {
+        _storedUnderName = persisted?.Name.Trim();
+        if (persisted is null)
+        {
+            AuthState = null;
+            AuthMessage = string.Empty;
+        }
 
-    /// <summary>Why the buttons are unavailable, or empty when they are not — a disabled control with no reason is a puzzle.</summary>
+        await RefreshAuthStateAsync(cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>Why Sign in is unavailable, or empty when it is offered — a disabled button with no reason is a puzzle.
+    /// Sign out needs no equivalent message: it disables itself simply because nothing is signed in, which the
+    /// status text next to it already says.</summary>
     public string SignInUnavailableReason =>
-        !IsOAuthAuth || IsSignInAvailable ? string.Empty
-        : _storedUnderName is null ? "Save this server first — signing in files the token under its name."
-        : "Save the new name first — the sign-in is filed under the name this server is stored as.";
+        !IsOAuthAuth || IsValid ? string.Empty : "Enter a name and a URL first — signing in needs both.";
 
-    private bool CanSignIn => IsOAuthAuth && !IsAuthBusy && IsSignInAvailable;
+    private bool CanSignIn =>
+        _oauthCoordinator is not null && IsOAuthAuth && !IsAuthBusy && !(_isDialogBusy?.Invoke() ?? false) && IsValid;
 
     /// <summary>
-    /// The operator's own "log me in" act (AC-355) — the one call site anywhere that asks interactively, and so the
-    /// only one allowed to open a browser. Authorizes against the URL/authority as typed, filed under the name this
-    /// server is stored as.
+    /// The operator's own "log me in" act (AC-355/AC-499) — the one call site anywhere that asks interactively, and
+    /// so the only one allowed to open a browser. A sign-in used to require a manual save first, because a token is
+    /// filed under the name the server is stored as; that requirement stayed, but the manual step did not need to.
+    /// This now saves the whole dialog through <see cref="_saveAllForSignIn"/> — the same route the Save button
+    /// uses, and which resyncs <see cref="_storedUnderName"/> for every row before it returns (see the class
+    /// remarks) — then authorizes under whatever that resync left here. Authorization still targets the URL/auth
+    /// as currently typed.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()
     {
-        // The command is gated on IsSignInAvailable, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute —
-        // so the stored name is required here too rather than assumed.
-        if (_oauthCoordinator is null || _storedUnderName is not { } storedName)
+        // The command is gated on CanSignIn, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute — so the
+        // same checks are required here too. A row with no save route (no owning dialog) cannot sign in at all.
+        if (_oauthCoordinator is null || _saveAllForSignIn is null || !IsValid)
         {
             return;
         }
@@ -336,7 +400,26 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(storedName), interactive: true).ConfigureAwait(true);
+            if (await _saveAllForSignIn().ConfigureAwait(true) is null)
+            {
+                // The save route already put why on the dialog's own status message — which may say "nothing was
+                // saved" or "saved, but the store didn't confirm it" (AC-499 review fix, finding 2); either way,
+                // authorizing on top of it would risk filing a token under a name the store never actually took.
+                AuthMessage = "Couldn't finish signing in — see the message below.";
+                return;
+            }
+
+            // The save just resynced _storedUnderName for every row in the dialog, this one included, against its
+            // own position in what the store reported back — see the class remarks for how, and its limits. Null
+            // here means this row's position was not found in that list, which should not happen for an uncontested
+            // save but is reported rather than guessed past.
+            if (_storedUnderName is not { } storedName)
+            {
+                AuthMessage = "Saved, but this server isn't in the store — try again.";
+                return;
+            }
+
+            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(storedName), interactive: true, _dialogClosing).ConfigureAwait(true);
             AuthState = access.State;
             if (access.State != McpAuthState.Authorized)
             {
@@ -359,11 +442,17 @@ public partial class EditableMcpServerViewModel : ViewModelBase
                 };
             }
         }
+        catch (OperationCanceledException)
+        {
+            // The dialog closed out from under this sign-in — Save, Cancel, or the window's own close button
+            // (AC-499 review fix, finding 6). Nothing shows this row any more, so this is a clean stop, not a
+            // failure to report.
+        }
         catch (Exception)
         {
             // Naming the URL or the OAuth settings as the cause is the same untruth the stages above exist to stop:
-            // what reaches here is whatever escaped the coordinator — a config write that failed, say — and this
-            // path has no stage to speak from and no log line of its own to point at.
+            // what reaches here is whatever escaped the save or the coordinator, and this path has no stage to speak
+            // from and no log line of its own to point at.
             AuthMessage = "Sign-in failed. Try again.";
         }
         finally
@@ -372,14 +461,26 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         }
     }
 
-    private bool CanSignOut => IsOAuthAuth && !IsAuthBusy && IsSignInAvailable && AuthState == McpAuthState.Authorized;
+    private bool CanSignOut =>
+        _oauthCoordinator is not null && IsOAuthAuth && !IsAuthBusy && !(_isDialogBusy?.Invoke() ?? false)
+        && _storedUnderName is not null && AuthState == McpAuthState.Authorized;
 
-    /// <summary>Withdraws whatever access is held for this server (AC-355) — only offered while there is something to withdraw.</summary>
+    /// <summary>
+    /// Withdraws whatever access is held for this server (AC-355) — only offered while there is something to
+    /// withdraw. Unlike sign-in, this needs no save first (AC-499): it acts on <see cref="_storedUnderName"/>, the
+    /// name this row was last actually saved under, regardless of what is typed right now. An in-progress, unsaved
+    /// rename does not change what the store has on file, and signing out undoes that — not the row's pending
+    /// edits — so gating it on the typed name matching would refuse a withdrawal the operator is entitled to make.
+    /// A row that has never been saved has no <see cref="_storedUnderName"/> and so nothing to withdraw. Nor does a
+    /// row another row's dialog-wide save has just swapped identity with (AC-499 review fix, finding 1): the resync
+    /// in <see cref="ResyncAfterDialogSaveAsync"/> updates <see cref="_storedUnderName"/> for this row too, so a
+    /// sign-out reached through this gate never acts on a name that save handed to somebody else.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignOut))]
     private async Task SignOutAsync()
     {
-        // The command is gated on IsSignInAvailable, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute —
-        // so the stored name is required here too rather than assumed.
+        // The command is gated on CanSignOut, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute — so
+        // the stored name is required here too rather than assumed.
         if (_oauthCoordinator is null || _storedUnderName is not { } storedName)
         {
             return;

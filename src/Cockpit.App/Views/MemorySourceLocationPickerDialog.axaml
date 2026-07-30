@@ -2,13 +2,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:projects="using:Cockpit.Plugins.Abstractions.Projects"
+        xmlns:conv="using:Cockpit.App.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         x:Class="Cockpit.App.Views.MemorySourceLocationPickerDialog"
         x:DataType="vm:MemorySourceLocationPickerViewModel"
         Title="Choose a location"
-        Width="440" Height="480" CanResize="False"
+        Width="440" Height="520" CanResize="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -16,17 +17,22 @@
         <vm:MemorySourceLocationPickerViewModel/>
     </Design.DataContext>
 
+    <!-- One horizontal edge for the whole window — 16, the same left/right rhythm VerifyRunnersDialog and
+         DelegatedTasksDialog already use for a header paragraph over a list. The header used it alone before;
+         the footer (14) and the list (0, nothing set) each drifted their own way, which is what read as "vast
+         tegen de kant" — not too little margin anywhere, an inconsistent one between the three bands. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Padding="16,14,16,10">
-            <StackPanel Spacing="2">
+            <StackPanel Spacing="4">
                 <TextBlock Text="{Binding SourceTitle}" FontSize="14" FontWeight="Medium"/>
-                <TextBlock Text="Pick a location by name — the field is filled with its identifier, not the name shown here." FontSize="11.5"
+                <TextBlock Text="Pick a location by name — the field is filled with its identifier, not the name shown here."
+                           FontSize="11.5" TextWrapping="Wrap"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
         </Border>
 
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="16,12">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Classes="Ghost" Content="Cancel" Command="{Binding CancelCommand}"/>
                 <Button Classes="Accent" Content="Choose" Command="{Binding PickCommand}" IsEnabled="{Binding CanPick}"/>
@@ -38,31 +44,51 @@
              them. A Grid cell overlays its children, so exactly one of the four IsVisible states shows at a time. -->
         <Grid>
             <!-- Loading (AC-502 criterion 6): the load itself never blocks this window's own thread, but the operator
-                 still needs to see something is happening rather than a bare empty list mid-fetch. -->
-            <StackPanel IsVisible="{Binding IsLoading}" Margin="16" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Text="Loading…" HorizontalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </StackPanel>
+                 still needs to see something is happening rather than a bare empty list mid-fetch.
+                 Each of these three states is wrapped in its own ScrollViewer (AC-499): squeezed to a small-screen
+                 height (DialogFooterReachabilityTests' own stress) centered content that no longer fits pushes its
+                 button past the window's bottom edge instead of scrolling to it — a real risk once the header above
+                 gained a second wrapped line of its own (point 1) and so grew taller than it used to be. -->
+            <ScrollViewer IsVisible="{Binding IsLoading}">
+                <StackPanel Margin="16" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="Loading…" HorizontalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- Not signed in (criterion 4): one action, never a list that reads as "you have nothing". -->
-            <StackPanel IsVisible="{Binding NeedsSignIn}" Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="Sign in to see this source's locations." HorizontalAlignment="Center" TextWrapping="Wrap"/>
-                <Button Classes="Accent" Content="Sign in" Command="{Binding SignInCommand}"
-                        IsVisible="{Binding CanSignIn}" IsEnabled="{Binding !IsSigningIn}" HorizontalAlignment="Center"/>
-                <TextBlock Text="Signing in…" IsVisible="{Binding IsSigningIn}" HorizontalAlignment="Center"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </StackPanel>
+            <ScrollViewer IsVisible="{Binding NeedsSignIn}">
+                <StackPanel Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="Sign in to see this source's locations." HorizontalAlignment="Center" TextWrapping="Wrap"/>
+                    <Button Classes="Accent" Content="Sign in" Command="{Binding SignInCommand}"
+                            IsVisible="{Binding CanSignIn}" IsEnabled="{Binding !IsSigningIn}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Signing in…" IsVisible="{Binding IsSigningIn}" HorizontalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- Failed (criterion 5): says what went wrong rather than showing nothing. -->
-            <StackPanel IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                        Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
-                           Foreground="{StaticResource CockpitStatusErrorBrush}"/>
-                <Button Classes="Ghost" Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Center"/>
-            </StackPanel>
+            <ScrollViewer IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <StackPanel Margin="16" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
+                               Foreground="{StaticResource CockpitStatusErrorBrush}"/>
+                    <Button Classes="Ghost" Content="Try again" Command="{Binding RetryCommand}" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- The list itself, once loaded, not signed-out and not failed — an empty ItemsSource here really does
-                 mean this source has nothing (criteria 4/5), the one case an empty list is the honest answer. -->
-            <ListBox ItemsSource="{Binding Locations}" SelectedItem="{Binding SelectedLocation}"
+                 mean this source has nothing (criteria 4/5), the one case an empty list is the honest answer.
+                 Margin="16,4,16,16": the same 16 left/right edge as the header/footer, and enough room at the
+                 bottom that the last row's own bottom edge lands inside the scroll viewport rather than the
+                 viewport ending mid-row. Padding="0,0,8,0" on the ListBox itself (not the item) opens a gap
+                 between row content and the scrollbar's track, which otherwise sits flush against the text. -->
+            <!-- AutoScrollToSelectedItem="False": Avalonia's own default auto-scroll uses the same minimal-distance
+                 algorithm ScrollIntoView does — the built-in behaviour this dialog replaces with _ScrollToWholeRows
+                 in the code-behind (AC-499) precisely because that algorithm can leave a row sliced in half at
+                 whichever edge it did not scroll to. Left on, it re-fires whenever SelectedLocation binds (on load,
+                 and after every LoadAsync/Retry) and undoes that fix a moment later. -->
+            <ListBox x:Name="LocationsList" ItemsSource="{Binding Locations}" SelectedItem="{Binding SelectedLocation}"
+                     AutoScrollToSelectedItem="False"
+                     Margin="16,4,16,16" Padding="0,0,8,0"
                      DoubleTapped="OnLocationDoubleTapped">
                 <ListBox.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -71,11 +97,44 @@
                         <Binding Path="ErrorMessage" Converter="{x:Static ObjectConverters.IsNull}"/>
                     </MultiBinding>
                 </ListBox.IsVisible>
+                <!-- Padding rather than the DataTemplate's own Margin (the item used to carry Margin="2" on top of
+                     the app-wide ListBoxItem Padding="6,5" from Theme.axaml) — that stacked two independent
+                     numbers into the row's left edge, landing at 8px against the header's 16. One number, set once,
+                     scoped to this list so it does not reach into every other ListBox in the app. -->
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="16,8"/>
+                    </Style>
+                </ListBox.Styles>
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="projects:ProjectMemorySourceLocation">
-                        <StackPanel Spacing="1" Margin="2">
-                            <TextBlock Text="{Binding Name}"/>
-                            <TextBlock Text="{Binding Detail}" FontSize="11" IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        <StackPanel Spacing="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Name}"/>
+                                <!-- AC-499: the row the operator already had when this picker opened, kept apart
+                                     from ListBoxItem's own :selected fill (a background wash on the whole row) —
+                                     a small badge instead of a second background, so clicking a *different* row
+                                     never reads as "two rows are selected". Bound to the view model's CurrentValue,
+                                     not to SelectedLocation, so this badge stays put after that click. -->
+                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                        CornerRadius="{StaticResource CockpitControlRadius}"
+                                        Padding="5,1" VerticalAlignment="Center">
+                                    <Border.IsVisible>
+                                        <MultiBinding Converter="{x:Static conv:IsCurrentLocationConverter.Instance}">
+                                            <Binding Path="Value"/>
+                                            <Binding Path="$parent[ListBox].((vm:MemorySourceLocationPickerViewModel)DataContext).CurrentValue"/>
+                                        </MultiBinding>
+                                    </Border.IsVisible>
+                                    <TextBlock Text="Current" FontSize="9.5" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </Border>
+                            </StackPanel>
+                            <!-- Always rendered, never IsVisible-collapsed: a location with no Detail (DepotMemorySource
+                                 returns null when a project has neither a kind nor a summary/role) used to leave this
+                                 line out entirely, so that row sat visibly shorter than its neighbours (point 3). A
+                                 blank second line costs nothing and keeps every row the same height; TargetNullValue
+                                 is a single space rather than empty string because an empty Text still measures to
+                                 zero height in Avalonia, which would reproduce the exact gap this line exists to close. -->
+                            <TextBlock Text="{Binding Detail, TargetNullValue=' '}" FontSize="11"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>
                     </DataTemplate>

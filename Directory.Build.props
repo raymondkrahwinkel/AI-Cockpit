@@ -8,7 +8,17 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.14.0: a plugin can now learn and drive its own MCP OAuth sign-in standing (AC-243) — new host-provided
+    <!-- 0.15.0: a plugin can now declare a memory-source *family* (AC-499) — new host-provided functionality a
+         plugin contributes to: ICockpitHost.AddProjectMemorySourceFamily, plus ProjectMemorySourceRegistration's
+         FamilyKey / InstanceTitle telling the host which family an individual source belongs to and what to call it
+         inside that family. A family is one entry in the project editor's source picker standing for however many
+         instances the operator has configured, and it is declared whether or not a single instance exists yet —
+         which is the whole point: before this, a plugin with nothing configured registered nothing, so the picker
+         could not say the plugin existed, could not offer "Folder" as a deliberate choice either, and left no route
+         to the settings screen where an instance is added. A plugin that calls it sets minHostVersion 0.15.0: an
+         older host's copy of Cockpit.Plugins.Abstractions has no such member, so the call cannot resolve at all,
+         the same failure mode every entry below this one guards against. Minor because it is additive; still 0.x.
+         0.14.0: a plugin can now learn and drive its own MCP OAuth sign-in standing (AC-243) — new host-provided
          functionality a plugin contributes to: ICockpitHost.GetMcpServerAuthStateAsync / SignInMcpServerAsync,
          added because a plugin that contributes an OAuth McpServerContribution (AC-500, 0.13.0's predecessor) had
          no way back to it — AddMcpServer is fire-and-forget, and the resulting sign-in standing lived only in the
@@ -98,9 +108,14 @@
          probe (DetectGitDirectoryStatusAsync) and the shared working-path history (GetRememberedWorkingPathsAsync).
          0.3.0 shipped sessions in a grid, TTY and SDK, plugins with a store, workflows, delegation, voice, encrypted
          credentials. Deliberately still 0.x — under 1.0.0 semver promises nothing, which is the honest state of a
-         thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself,
-         and it is what switches on the minHostVersion gate (PluginLoadPolicy). -->
-    <VersionPrefix>0.14.0</VersionPrefix>
+         thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself.
+         The last clause here used to read "and it is what switches on the minHostVersion gate (PluginLoadPolicy)".
+         That is no longer true and was corrected in 0.15.0: PluginLoadPolicy.MeetsMinHostVersion refuses whenever
+         the running host is older than a declared minHostVersion, on 0.x as much as on 1.x. Its single waiver is
+         the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
+         fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
+         gate that actually bites today, which is exactly why the entries have to stay honest. -->
+    <VersionPrefix>0.15.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

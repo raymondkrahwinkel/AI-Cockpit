@@ -190,14 +190,18 @@ public sealed class PluginManager(
     /// Phase 2 — after the container is built and the UI exists: give each loaded plugin the host built
     /// for it (via <paramref name="hostFor"/>, which carries that plugin's own storage) so it can register
     /// its contribution points. A plugin that throws here is logged and left out; the others still init.
+    /// <paramref name="hostFor"/> also receives the loaded <see cref="ICockpitPlugin"/> instance itself (AC-499) —
+    /// already sitting right here in <see cref="_loaded"/>, just not previously handed onward — so the caller can
+    /// build a host that knows its own plugin's runtime type (<c>CockpitHost.ownPluginType</c>), the identity its
+    /// MCP tool-call resolution scopes a fallback to.
     /// </summary>
-    public void Initialize(Func<DiscoveredPlugin, ICockpitHost> hostFor)
+    public void Initialize(Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> hostFor)
     {
         foreach (var (discovered, plugin) in _loaded)
         {
             try
             {
-                plugin.Initialize(hostFor(discovered));
+                plugin.Initialize(hostFor(discovered, plugin));
             }
             catch (Exception exception)
             {

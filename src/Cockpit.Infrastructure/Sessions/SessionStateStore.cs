@@ -100,30 +100,12 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
                 return;
             }
 
-            IReadOnlyDictionary<string, SessionStateRecord> latest;
-            try
+            var latest = await _TryReadLatestPerPaneAsync(cancellationToken).ConfigureAwait(false);
+            if (latest is null)
             {
-                latest = await _ReadLatestPerPaneAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                // A file that cannot be read is not one to rewrite: turning "unreadable" into "empty" here would
-                // throw away every record compaction was supposed to only fold, not lose.
-                _logger.LogWarning(ex, "Could not read the session-state log at {Path} for compaction; leaving it untouched.", _filePath);
-                return;
-            }
-
-            // Parsing nothing out of a file that has something in it is the same situation as failing to read it,
-            // and gets the same answer: leave it alone. The per-line parse never throws — a line it cannot make
-            // sense of is simply skipped — so a file this build cannot understand at all (written by a newer one,
-            // re-encoded, hand-mangled) arrives here as an empty set rather than as an error, and rewriting on
-            // that would replace every record with nothing. The read-failure branch above already refuses to turn
-            // "unreadable" into "empty"; this is the same refusal on the path that does not raise.
-            if (latest.Count == 0 && new FileInfo(_filePath).Length > 0)
-            {
-                _logger.LogWarning(
-                    "Not compacting the session-state log at {Path}: it holds data but no line in it could be read, so rewriting it would discard all of it.",
-                    _filePath);
+                // A file that cannot be read, or read to nothing, is not one to rewrite: turning that into "empty"
+                // here would throw away every record compaction was supposed to only fold, not lose. The warning
+                // was already logged by _TryReadLatestPerPaneAsync.
                 return;
             }
 
@@ -145,6 +127,55 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc cref="ISessionStateStore.TryLoadAsync"/>
+    public async Task<IReadOnlyList<SessionStateRecord>?> TryLoadAsync(CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_filePath))
+        {
+            return [];
+        }
+
+        var latest = await _TryReadLatestPerPaneAsync(cancellationToken).ConfigureAwait(false);
+        return latest is null ? null : [.. latest.Values];
+    }
+
+    /// <summary>
+    /// The read <see cref="CompactAsync"/> and <see cref="TryLoadAsync"/> share: a read failure and "the file has
+    /// bytes but no line in it parsed" both come back as <see langword="null"/> rather than an empty dictionary —
+    /// neither caller may treat "could not tell" as "there is nothing here" (see each method's own doc for why).
+    /// <see cref="LoadAsync"/> does not use this: its contract is the opposite on purpose, collapsing both into
+    /// empty for a restore that has no write to protect and nothing better to fall back on.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, SessionStateRecord>?> _TryReadLatestPerPaneAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var latest = await _ReadLatestPerPaneAsync(cancellationToken).ConfigureAwait(false);
+
+            // The per-line parse never throws — a line it cannot make sense of is simply skipped — so a file this
+            // build cannot understand at all (written by a newer one, re-encoded, hand-mangled) arrives here as an
+            // empty set rather than as an error. Parsing nothing out of a file that has something in it is the same
+            // situation as failing to read it, and gets the same answer. The length check sits inside this try
+            // rather than after it because FileInfo.Length throws for a file that has gone since File.Exists said
+            // otherwise: CompactAsync used to catch that in its own outer try, but TryLoadAsync has none, and its
+            // contract is to answer null when it cannot tell — not to throw at a caller composing a write.
+            if (latest.Count == 0 && new FileInfo(_filePath).Length > 0)
+            {
+                _logger.LogWarning(
+                    "Could not make sense of any line in the session-state log at {Path}: it holds data but nothing in it could be parsed.",
+                    _filePath);
+                return null;
+            }
+
+            return latest;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read the session-state log at {Path}.", _filePath);
+            return null;
         }
     }
 

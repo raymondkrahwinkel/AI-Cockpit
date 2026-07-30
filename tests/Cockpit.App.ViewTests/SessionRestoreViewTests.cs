@@ -20,6 +20,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -59,6 +60,7 @@ public class SessionRestoreViewTests
 
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
 
@@ -91,6 +93,7 @@ public class SessionRestoreViewTests
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
         await vm.Workspaces.InitializeAsync();
@@ -122,6 +125,7 @@ public class SessionRestoreViewTests
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
         await vm.Workspaces.InitializeAsync();
@@ -156,6 +160,7 @@ public class SessionRestoreViewTests
         workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
         await vm.Workspaces.InitializeAsync();
@@ -185,6 +190,7 @@ public class SessionRestoreViewTests
 
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
 
@@ -215,6 +221,7 @@ public class SessionRestoreViewTests
         var ttyState = state with { PaneId = "known-tty" };
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -234,6 +241,83 @@ public class SessionRestoreViewTests
         }
     }
 
+    /// <summary>
+    /// AC-513: the seam between <see cref="RestoreSessionPanesAsync"/> and <see cref="SessionStateRecorder"/> —
+    /// found on review after the recorder's own unit tests (which never exercise <c>RestoreSessionPanesAsync</c>)
+    /// and the recorder's throwaway harness (which never calls <c>Seed</c>) both stayed green while this path
+    /// still broke. Uses a real <see cref="SessionStateStore"/> made genuinely unreadable (<c>chmod 0200</c>, the
+    /// sharpest real case) and a real <see cref="SessionStateRecorder"/> wired into a real
+    /// <see cref="CockpitViewModel"/> — a substitute for either would not reproduce this, since the bug is in how
+    /// the two classes hand a load result to each other, not in either class alone.
+    /// <para>
+    /// Sequence: restore runs while the file cannot be read (must not latch the recorder onto a blank cache); a
+    /// write while it is still unreadable must not corrupt the file either (criterion 2, already covered
+    /// elsewhere, exercised here for completeness); then, once the file is readable again, a write must still
+    /// find the saved id — proving the restore's failed <c>Seed</c> left the write path free to self-heal instead
+    /// of a bad seed permanently blinding it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task RestoreSessionPanesAsync_UnreadableStateFile_DoesNotBlindTheRecorderToTheSavedConversationId()
+    {
+        // Unix-only, same as AuditTrailPermissionTests: Windows has no mode bits, so there is no way to make a
+        // file genuinely unreadable-but-appendable the way chmod 0200 does here.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"session-restore-unreadable-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var realStore = new SessionStateStore(path, NullLogger<SessionStateStore>.Instance);
+            await realStore.RecordAsync(new SessionStateRecord(
+                "pane-1", "work", "ClaudeCli", "conv-old", SessionConversationIdState.Known,
+                "/repo", null, null, "default", DateTimeOffset.UtcNow));
+
+            var pane = new WorkspacePane("pane-1", PaneKind.AiSession) { ProfileId = "work", SessionKind = PaneSessionKind.Sdk };
+            var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
+            var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+            var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+            workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+
+            var recorder = new SessionStateRecorder(realStore, new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance);
+            var vm = NewVm(workspaceStore, realStore, sessionStateRecorder: recorder);
+
+            File.SetUnixFileMode(path, UnixFileMode.UserWrite);
+            try
+            {
+                await vm.Workspaces.InitializeAsync();
+                await vm.RestoreSessionPanesAsync();
+
+                // Still unreadable: this write must be skipped (criterion 2), not compose against a blank cache.
+                await recorder.RecordPermissionModeChangedAsync("pane-1", "acceptEdits");
+            }
+            finally
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+
+            // The file is readable again — as it would be once whatever made it unreadable (a permissions
+            // hiccup, a concurrent reader) clears. A write now must find the saved id via the write path's own
+            // self-heal, which only still works if RestoreSessionPanesAsync's failed Seed left it alone.
+            await recorder.RecordPermissionModeChangedAsync("pane-1", "bypassPermissions");
+
+            var record = Assert.Single(await realStore.LoadAsync());
+            Assert.Equal("conv-old", record.ConversationId);
+            Assert.Equal(SessionConversationIdState.Known, record.ConversationState);
+            Assert.Equal("bypassPermissions", record.PermissionMode);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                File.Delete(path);
+            }
+        }
+    }
+
     /// <summary>An <see cref="SessionConversationIdState.Unsupported"/> provider hides "Resume conversation" on both pane kinds.</summary>
     [Fact]
     public async Task RestoreSessionPanesAsync_UnsupportedProvider_HidesResumeOnBothSdkAndTtyPanes()
@@ -250,6 +334,7 @@ public class SessionRestoreViewTests
         var ttyState = state with { PaneId = "unsupported-tty" };
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state, ttyState });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -286,6 +371,7 @@ public class SessionRestoreViewTests
 
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var record = new WorktreeRecord("wt-pane", "/repo", "/repo-worktrees/wt-pane", "cockpit/wt-pane", "abc123", DateTimeOffset.UtcNow);
         var worktreeManager = Substitute.For<IWorktreeManager>();
@@ -384,6 +470,7 @@ public class SessionRestoreViewTests
         var state = new SessionStateRecord("unsupported-pane", "work", "ollama", null, SessionConversationIdState.Unsupported, "/repo", null, null, null, DateTimeOffset.UtcNow);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -498,6 +585,7 @@ public class SessionRestoreViewTests
         var state = new SessionStateRecord("known-tty-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -529,6 +617,7 @@ public class SessionRestoreViewTests
         var state = new SessionStateRecord("known-pane", "work", "claude-cli", "conv-1", SessionConversationIdState.Known, "/repo", null, null, "default", DateTimeOffset.UtcNow);
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { state });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -576,6 +665,7 @@ public class SessionRestoreViewTests
         var unstartedState = startedState with { PaneId = "unstarted-pane" };
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { startedState, unstartedState });
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { startedState, unstartedState });
 
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[] { WorkProfile });
@@ -622,6 +712,7 @@ public class SessionRestoreViewTests
 
         var stateStore = Substitute.For<ISessionStateStore>();
         stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+        stateStore.TryLoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
 
         var vm = NewVm(workspaceStore, stateStore);
 
@@ -645,7 +736,8 @@ public class SessionRestoreViewTests
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeManager? worktreeManager = null,
         Func<SessionViewModel>? sessionFactory = null,
-        ISessionDialogService? dialogService = null)
+        ISessionDialogService? dialogService = null,
+        SessionStateRecorder? sessionStateRecorder = null)
     {
         dialogService ??= Substitute.For<ISessionDialogService>();
         var captureService = Substitute.For<IAudioCaptureService>();
@@ -680,6 +772,7 @@ public class SessionRestoreViewTests
             workspaceSettingsStore: workspaceSettingsStore,
             sessionStateStore: sessionStateStore,
             sessionRestorePlanner: sessionRestorePlanner,
-            worktreeManager: worktreeManager);
+            worktreeManager: worktreeManager,
+            sessionStateRecorder: sessionStateRecorder);
     }
 }

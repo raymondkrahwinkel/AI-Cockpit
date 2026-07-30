@@ -49,4 +49,38 @@ public class ProjectMemorySourceReachabilityResultTests
 
         Assert.Null(result.Detail);
     }
+
+    // --- AC-499: CheckFailed — the state a plugin reports when its check ran but the call itself failed, distinct
+    // from NotSignedIn. Its Detail carries the plugin's own account of what went wrong, so it is clamped exactly
+    // the same way Confirmed's own is: a plugin's error text is no more trusted to be short than a tool's raw
+    // response is.
+
+    [Fact]
+    public void CheckFailed_SetsStateToCheckFailed()
+    {
+        var result = ProjectMemorySourceReachabilityResult.CheckFailed("connection reset");
+
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
+    }
+
+    [Fact]
+    public void CheckFailed_ADetailFarLongerThanAnErrorSentence_IsClampedToAShortString()
+    {
+        var huge = new string('x', 20_000);
+
+        var result = ProjectMemorySourceReachabilityResult.CheckFailed(huge);
+
+        Assert.NotNull(result.Detail);
+        Assert.True(
+            result.Detail!.Length <= ProjectMemorySourceReachabilityResult.MaxDetailLength,
+            $"Detail was {result.Detail.Length} characters, expected at most {ProjectMemorySourceReachabilityResult.MaxDetailLength}.");
+    }
+
+    [Fact]
+    public void CheckFailed_NullDetail_StaysNull()
+    {
+        var result = ProjectMemorySourceReachabilityResult.CheckFailed(null);
+
+        Assert.Null(result.Detail);
+    }
 }

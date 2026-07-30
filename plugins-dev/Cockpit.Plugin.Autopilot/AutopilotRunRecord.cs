@@ -36,6 +36,13 @@ internal sealed record AutopilotRunRecord(
     /// clean regardless of how its steps were classified; see <see cref="AutopilotRunReliability.RanClean"/>.</summary>
     public bool PullRequestMissing { get; init; }
 
+    /// <summary>The epic this run's sub was picked from (AC-346), or empty for a run clicked directly on its own item —
+    /// mirrors <see cref="AutopilotRun.EpicId"/>/<see cref="AutopilotPlanSource.EpicId"/>. Lets the epic-runner's
+    /// progress comment (<c>AutopilotPlanWorkspaceBody._PostEpicProgressAsync</c>) summarize reliability over just this
+    /// epic's own settled runs rather than the whole history, which would otherwise mix in every unrelated run ever
+    /// recorded.</summary>
+    public string EpicId { get; init; } = string.Empty;
+
     /// <summary>
     /// Captures a settled run's live state into its history record — the write path itself, extracted out of
     /// <c>AutopilotPlanWorkspaceBody._RecordAndNotify</c> as a pure static factory so the mapping from
@@ -73,5 +80,6 @@ internal sealed record AutopilotRunRecord(
             Ticket = plan.Source?.IssueId ?? string.Empty,
             BlockadeAnswers = blockadeAnswers,
             PullRequestMissing = pullRequestMissing,
+            EpicId = plan.Source?.EpicId ?? string.Empty,
         };
 }

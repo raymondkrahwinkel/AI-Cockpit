@@ -2,6 +2,8 @@ using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
@@ -146,7 +148,11 @@ public class DepotMemorySourceTests
         Assert.Equal(pairs.Select(pair => pair.Registration), registrations);
     }
 
-    // --- AC-503: CheckReachability wiring ---------------------------------------------------------------------
+    // --- AC-503/AC-499: CheckReachability wiring -----------------------------------------------------------------
+    // Rebuilt for AC-499: the original "outline" probe (ProbeMcpToolAsync) was measured against a real Depot server
+    // and found to always fail — outline is a single-document tool requiring {project, path}, called here with only
+    // {project}. This now asks list_projects (the same tool ListLocationsAsync already uses) and matches the typed
+    // slug against the returned list — see DepotMemorySource._CheckReachabilityAsync's own remarks.
 
     [Fact]
     public void NoHostPassed_LeavesCheckReachabilityNull()
@@ -167,12 +173,24 @@ public class DepotMemorySourceTests
         Assert.NotNull(pairs.Single().Registration.CheckReachability);
     }
 
-    [Fact]
-    public async Task CheckReachability_CallsTheHostProbe_AgainstThisConnectionsOwnMcpServerName()
+    private static ICockpitHost _HostReturning(string content) =>
+        _HostReturning(PluginMcpToolCallResult.Success(content));
+
+    private static ICockpitHost _HostReturning(PluginMcpToolCallResult result)
     {
         var host = Substitute.For<ICockpitHost>();
-        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
-            .Returns(McpProbeResult.Success("24 documents"));
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(result));
+        return host;
+    }
+
+    private const string _TwoProjectsJson =
+        """{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project"},{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""";
+
+    [Fact]
+    public async Task CheckReachability_CallsListProjects_AgainstThisConnectionsOwnMcpServerName()
+    {
+        var host = _HostReturning(_TwoProjectsJson);
         var connection = Connection("c1", "Synvolution");
         var pairs = DepotMemorySource.BuildRegistrationPairs([connection], host);
 
@@ -180,73 +198,225 @@ public class DepotMemorySourceTests
 
         // "Depot: Synvolution" — DepotConnectionRegistration.McpServerName's own fixed prefix, so a hand-typed
         // server name here can never silently drift from the name AddMcpServer actually registered under.
-        await host.Received(1).ProbeMcpToolAsync(connection.McpServerName, Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>());
+        await host.Received(1).CallMcpToolAsync(connection.McpServerName, "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CheckReachability_PassesTheTypedValueAsAnArgument()
+    public async Task CheckReachability_RequestsWithoutTheSummaryWalk()
     {
-        var host = Substitute.For<ICockpitHost>();
-        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
-            .Returns(McpProbeResult.Success(null));
+        // Depot's own list_projects description warns includeSummary "walks each returned project's file tree
+        // server-side — for an Admin caller that is every project on the server". The picker (ListLocationsAsync)
+        // is opened once and can afford that; this check reruns on every debounced edit and must not.
+        var host = _HostReturning(_TwoProjectsJson);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
 
-        await pairs.Single().Registration.CheckReachability!("my-slug", CancellationToken.None);
+        await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
-        await host.Received(1).ProbeMcpToolAsync(
+        await host.Received(1).CallMcpToolAsync(
             Arg.Any<string>(),
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyDictionary<string, object?>>(arguments => arguments.Values.Contains("my-slug")),
+            "list_projects",
+            Arg.Is<IReadOnlyDictionary<string, object?>?>(arguments => Equals(arguments!["includeSummary"], false)),
+            Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
     }
 
-    [Theory]
-    [InlineData(McpProbeOutcome.Success, ProjectMemorySourceReachability.Confirmed)]
-    [InlineData(McpProbeOutcome.NotFound, ProjectMemorySourceReachability.NotFound)]
-    [InlineData(McpProbeOutcome.NotSignedIn, ProjectMemorySourceReachability.NotSignedIn)]
-    // Acceptance criterion 4: a probe that could not even be attempted/completed (Failed — a network hiccup, a
-    // timeout) must read the same as "not signed in", never as "not found" — that would name the wrong cause for
-    // what is really just a transient failure to reach the connection at all.
-    [InlineData(McpProbeOutcome.Failed, ProjectMemorySourceReachability.NotSignedIn)]
-    public async Task CheckReachability_MapsEveryProbeOutcome_ToTheHonestRowState(
-        McpProbeOutcome probeOutcome, ProjectMemorySourceReachability expected)
+    [Fact]
+    public async Task CheckReachability_SlugInTheList_ReturnsConfirmed()
     {
-        var host = Substitute.For<ICockpitHost>();
-        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
-            .Returns(new McpProbeResult(probeOutcome, probeOutcome == McpProbeOutcome.Success ? "some detail" : null));
+        var host = _HostReturning(_TwoProjectsJson);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
-        Assert.Equal(expected, result.State);
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, result.State);
     }
 
     [Fact]
-    public async Task CheckReachability_OnSuccess_CarriesTheProbesDetailThrough()
+    public async Task CheckReachability_SlugMatchIsCaseInsensitive()
     {
-        var host = Substitute.For<ICockpitHost>();
-        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
-            .Returns(McpProbeResult.Success("24 documents, last changed 2 hours ago"));
+        var host = _HostReturning(_TwoProjectsJson);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("COCKPIT", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, result.State);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OnConfirmed_DetailNamesTheProjectAndItsKind()
+    {
+        // AC-499: the confirmation may say what it found, since that data comes free with the same call.
+        var host = _HostReturning(_TwoProjectsJson);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("olaf", CancellationToken.None);
+
+        Assert.Equal("Olaf · Brain", result.Detail);
+    }
+
+    [Fact]
+    public async Task CheckReachability_SlugNotInTheList_ReturnsNotFound()
+    {
+        var host = _HostReturning(_TwoProjectsJson);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("no-such-project", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.NotFound, result.State);
+    }
+
+    [Fact]
+    public async Task CheckReachability_EmptyList_ReturnsNotFound()
+    {
+        var host = _HostReturning("""{"projects":[]}""");
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
-        Assert.Equal("24 documents, last changed 2 hours ago", result.Detail);
+        Assert.Equal(ProjectMemorySourceReachability.NotFound, result.State);
     }
 
     [Fact]
-    public async Task CheckReachability_OnFailure_NeverSurfacesTheDetailField()
+    public async Task CheckReachability_AuthorizationRequired_ReturnsNotSignedIn()
     {
-        // Iron Law #8, belt-and-braces: even if a future McpProbeResult.Failed ever carried a Detail (it does not
-        // today — Failed/NotSignedIn/NotFound never set one), this mapping must not forward it into a state the UI
-        // shows a fixed sentence for (ProjectMemorySourceReachabilityResult's own doc comment on Detail).
-        var host = Substitute.For<ICockpitHost>();
-        host.ProbeMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
-            .Returns(new McpProbeResult(McpProbeOutcome.Failed, "should never be shown"));
+        // The one case that actually means "go sign in" — the case Raymond's own live test found conflated with an
+        // ordinary failed call before this ticket.
+        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, result.State);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OrdinaryCallFailure_ReturnsCheckFailed_WithTheReason()
+    {
+        // AC-499: a call that reached the server and failed for some other reason must read as "the check failed",
+        // never as "not signed in" — Raymond was signed in the whole time; this is the defect the picker's own
+        // working list_projects call proved by contrast.
+        var host = _HostReturning(PluginMcpToolCallResult.Failed("connection reset"));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
+        Assert.Equal("connection reset", result.Detail);
+    }
+
+    [Fact]
+    public async Task CheckReachability_UnparsableResponse_ReturnsCheckFailed_NeverThrows()
+    {
+        var host = _HostReturning("not json");
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
+        Assert.NotNull(result.Detail);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OnAuthorizationRequired_NeverSurfacesADetail()
+    {
+        // Iron Law #8, belt-and-braces: NotSignedIn always shows its own fixed sentence — nothing plugin-supplied
+        // is ever attached here, unlike CheckFailed which deliberately does carry one.
+        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
         Assert.Null(result.Detail);
+    }
+
+    [Fact]
+    public async Task CheckReachability_OnFailure_LeavesADiagnosticLogLine_WithoutAnyTokenMaterial()
+    {
+        // AC-499: what silently told Raymond he might not be signed in — a failed check leaving zero trace anywhere
+        // grep-able — resolved via ICockpitHost.Services, the same DI seam Cockpit.App.Plugins.CockpitHost's own
+        // internal logging already uses.
+        var logger = Substitute.For<ILogger>();
+        var loggerFactory = Substitute.For<ILoggerFactory>();
+        loggerFactory.CreateLogger(Arg.Any<string>()).Returns(logger);
+        var services = new ServiceCollection().AddSingleton(loggerFactory).BuildServiceProvider();
+
+        var host = Substitute.For<ICockpitHost>();
+        host.Services.Returns(services);
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("connection reset")));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        logger.Received(1).Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(state => !state!.ToString()!.Contains("Bearer", StringComparison.OrdinalIgnoreCase)
+                && !state.ToString()!.Contains("token", StringComparison.OrdinalIgnoreCase)),
+            null,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Fact]
+    public async Task CheckReachability_NoLoggerRegistered_StillReturnsAnAnswer_NeverThrows()
+    {
+        // Most tests (and a host/test double predating this) never stub Services at all — an unconfigured
+        // Substitute.For<ICockpitHost>() answers null for it, so the logging seam must tolerate that rather than
+        // NullReferenceException-ing out of a check that otherwise has a perfectly good answer to give.
+        var host = _HostReturning(PluginMcpToolCallResult.Failed("connection reset"));
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], host);
+
+        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
+    }
+
+    // --- AC-499: FamilyKey / InstanceTitle -------------------------------------------------------------------
+
+    [Fact]
+    public void FirstConnection_CarriesTheDepotFamilyKeyAndItsOwnInstanceTitle()
+    {
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")], Host());
+
+        var registration = pairs.Single().Registration;
+        Assert.Equal("depot", registration.FamilyKey);
+        Assert.Equal("Synvolution", registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void EveryConnection_CarriesTheSameFamilyKey_WhateverItsOwnScheme()
+    {
+        // The scheme is per-connection (namespaced from the second connection on), but the family every connection
+        // opts into is the one "Depot" entry — FamilyKey must not drift with the scheme.
+        var pairs = DepotMemorySource.BuildRegistrationPairs([
+            Connection("c1", "Synvolution"),
+            Connection("c2", "Wispslate"),
+        ], Host());
+
+        Assert.All(pairs, pair => Assert.Equal("depot", pair.Registration.FamilyKey));
+    }
+
+    [Fact]
+    public void SecondConnection_InstanceTitleIsItsOwnName_NotTheNamespacedScheme()
+    {
+        var pairs = DepotMemorySource.BuildRegistrationPairs([
+            Connection("c1", "Synvolution"),
+            Connection("c2", "Wispslate"),
+        ], Host());
+
+        Assert.Equal("Wispslate", pairs[1].Registration.InstanceTitle);
+    }
+
+    [Fact]
+    public void NoHostPassed_StillSetsFamilyKeyAndInstanceTitle()
+    {
+        // FamilyKey/InstanceTitle are plain data on the registration, unlike ListLocationsAsync/SignInAsync/
+        // CheckReachability which need a host to close over — a registration built without one must not silently
+        // drop them.
+        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Synvolution")]);
+
+        var registration = pairs.Single().Registration;
+        Assert.Equal("depot", registration.FamilyKey);
+        Assert.Equal("Synvolution", registration.InstanceTitle);
     }
 }
