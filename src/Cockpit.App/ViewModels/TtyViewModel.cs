@@ -86,7 +86,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // the read-aloud tailer above so status works regardless of the read-aloud toggle. The safety timeout only
     // rescues a busy turn that went silent far past any real turn (a missed end_turn, a killed CLI).
     private static readonly TimeSpan BusySafetyTimeout = TimeSpan.FromSeconds(120);
-    private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout);
+    // AC-276: long enough to cover the gap between a turn ending and the CLI stating how many sub-agents are still
+    // running (measured p99 2634 ms), so the session does not flash Done — and fire "session finished" — in between.
+    private static readonly TimeSpan TurnSettleDelay = TimeSpan.FromSeconds(3);
+    private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout, TurnSettleDelay);
 
     // Throttles the pty-output liveness keep-alive (AC-75) to ~1 Hz — the terminal flushes at up to 30 fps.
     private DateTimeOffset _lastAliveSignalAt;
@@ -178,6 +181,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>Running token total for the session (AC-398), folded from every transcript reading that carried usage — see <see cref="SessionTranscriptActivity.Usage"/>.</summary>
     private readonly SessionUsageMeter _usage = new();
+
+    private bool _hasOutstandingBackgroundShells;
+
+    /// <inheritdoc />
+    public override bool HasOutstandingBackgroundShells => _hasOutstandingBackgroundShells;
 
     /// <summary>When this session's TUI actually came up, seeded again in <see cref="OnLaunchSucceeded"/> — mirrors <c>SessionViewModel</c>'s own <c>_startedAt</c> so a persisted snapshot measures working time, not launch setup.</summary>
     private DateTimeOffset _startedAt = DateTimeOffset.Now;
@@ -789,6 +797,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     {
                         SessionStatus = _statusTracker.OnActivity(reading.Activity, DateTimeOffset.UtcNow);
                     }
+
+                    // A backgrounded shell does not hold the status (it may be a dev server that never ends), but it
+                    // does withhold the "session finished" notification — see HasOutstandingBackgroundShells (AC-276).
+                    _hasOutstandingBackgroundShells = reading.OutstandingShells > 0;
+                    OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
 
                     // Surface the raw transcript line to the read/observe surface: it carries any output signal
                     // (a pull-request url printed by gh, a merged/closed line) as a substring regardless of which

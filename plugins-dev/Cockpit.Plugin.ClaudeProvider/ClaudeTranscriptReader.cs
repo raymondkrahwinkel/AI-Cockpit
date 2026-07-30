@@ -27,14 +27,12 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
         EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// How recently a sub-agent transcript must have been written to still count as running. Generous on purpose:
-    /// a sub-agent that pauses to think writes nothing for a while yet is still working, so a short window would
-    /// wrongly declare it finished. A <em>stopped</em> agent does not rely on this window lapsing — the main
-    /// transcript's <c>agents_killed</c> system line ends it at once — and a completed one ends when the main agent
-    /// resumes on its result, so this only has to outlast a sub-agent's own thinking pauses.
-    /// </summary>
-    private static readonly TimeSpan SubAgentActivityWindow = TimeSpan.FromSeconds(30);
+    // AC-276 replaced a 30-second mtime window over <session>/subagents/agent-*.jsonl with the count the CLI
+    // states itself on each turn's turn_duration line. The window was not merely imprecise, it was wrong most of
+    // the time: measured over 547 real sub-agent transcripts, 82.8% fell silent for longer than 30s at least once
+    // while still running (median longest silence 56s, p95 368s, max 3142s). Every one of those silences read as
+    // "finished" and dropped the session to Done until the agent wrote again — the reported flicker. A thinking
+    // pause is indistinguishable from completion by mtime alone, so no choice of window fixes it.
 
     public async IAsyncEnumerable<string> ReadAssistantTextAsync(
         string configJson,
@@ -62,14 +60,6 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             yield break;
         }
 
-        // Background sub-agents (the "Agent" tool) are recorded in a sibling directory named after the session id,
-        // not in the main transcript — <dir>/<id>.jsonl (tailed here) alongside <dir>/<id>/subagents/*.jsonl. A
-        // backgrounded agent even ends the main agent's own turn, so the session is not done while one still runs.
-        var subAgentDir = Path.Combine(
-            Path.GetDirectoryName(transcriptPath) ?? configDir,
-            Path.GetFileNameWithoutExtension(transcriptPath),
-            "subagents");
-
         await using var stream = new FileStream(
             transcriptPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         // Tail from the current end: whatever the session already wrote before this call is history,
@@ -82,6 +72,12 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var pendingLine = new StringBuilder();
         var mainTurnComplete = false;
         var lastEmitted = PluginSessionActivity.None;
+        // Work that outlives the turn (AC-276), read from two different signals because the CLI reports them
+        // differently. Sub-agents: a count it states itself on every turn_duration line, so this only ever mirrors
+        // what the provider last said. Shells: no such total exists, so those are tallied by id from their own
+        // start/end lines — see ClaudeTranscriptLineParser for why that asymmetry is safe here.
+        var pendingSubAgents = 0;
+        var outstandingShells = new HashSet<string>(StringComparer.Ordinal);
         // The CLI can write more than one transcript line for the same assistant API response (progressive
         // content-block saves) — every repeat carries the identical stop_reason/usage as the first, so treating
         // a repeat as its own turn-complete/usage reading would double (sometimes 2-3x) count one real API call.
@@ -92,19 +88,19 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             var bytesRead = await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
             if (bytesRead <= 0)
             {
-                if (_SubAgentsActive(subAgentDir))
+                if (pendingSubAgents > 0)
                 {
-                    // The main agent is quiet but a background agent is still writing — keep the session off "done"
+                    // The main agent is quiet but a sub-agent is still running — keep the session off "done"
                     // and shown as background work, re-emitted each poll so the host's safety timeout never fires.
                     lastEmitted = PluginSessionActivity.BackgroundBusy;
-                    yield return new PluginTranscriptActivity(PluginSessionActivity.BackgroundBusy, null);
+                    yield return new PluginTranscriptActivity(PluginSessionActivity.BackgroundBusy, null, null, outstandingShells.Count);
                 }
                 else if (lastEmitted == PluginSessionActivity.BackgroundBusy)
                 {
                     // The background work just ended (the agent finished or was killed); move off "working" to the
                     // main agent's own state, so the dot does not stay stuck on background after the sub-agent is gone.
                     lastEmitted = mainTurnComplete ? PluginSessionActivity.TurnComplete : PluginSessionActivity.Busy;
-                    yield return new PluginTranscriptActivity(lastEmitted, null);
+                    yield return new PluginTranscriptActivity(lastEmitted, null, null, outstandingShells.Count);
                 }
 
                 await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
@@ -152,9 +148,41 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     mainTurnComplete = false;
                 }
 
-                // A completed main turn while a background agent still runs is background work, not done — the dot
+                // A backgrounded shell opening or closing (AC-276). Tracked by id so a repeated line cannot
+                // double-count, and so an end for something never seen starting is simply ignored.
+                if (ClaudeTranscriptLineParser.TryReadBackgroundShellTransition(line, out var shellId, out var shellStarted))
+                {
+                    if (shellStarted)
+                    {
+                        outstandingShells.Add(shellId);
+                    }
+                    else
+                    {
+                        // The same notification shape closes sub-agents too, but an end naming an id this reader
+                        // never saw start is not evidence of anything: the tail begins at the end of the file, so a
+                        // session resumed mid-turn legitimately sees ends for work it never saw begin. Inferring a
+                        // sub-agent finished from that would decrement a count belonging to a different, still-live
+                        // agent — reintroducing this ticket's own flicker by another route. Sub-agents are left
+                        // entirely to the count the CLI restates each turn.
+                        outstandingShells.Remove(shellId);
+                    }
+                }
+
+                // The CLI closes each turn with its own count of sub-agents still running. It arrives just after
+                // the assistant line that ends the turn (measured: 2476 of 2476, median 1.1s later), so this is
+                // where a turn that looked complete is corrected into background work.
+                if (ClaudeTranscriptLineParser.TryReadPendingSubAgentCount(line, out var stated))
+                {
+                    pendingSubAgents = stated;
+                    if (stated > 0 && mainTurnComplete)
+                    {
+                        activity = PluginSessionActivity.BackgroundBusy;
+                    }
+                }
+
+                // A completed main turn while a sub-agent still runs is background work, not done — the dot
                 // should read "working (background)" until the agent itself ends.
-                var emit = activity == PluginSessionActivity.TurnComplete && _SubAgentsActive(subAgentDir)
+                var emit = activity == PluginSessionActivity.TurnComplete && pendingSubAgents > 0
                     ? PluginSessionActivity.BackgroundBusy
                     : activity;
                 if (emit != PluginSessionActivity.None)
@@ -162,7 +190,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                     lastEmitted = emit;
                 }
 
-                yield return new PluginTranscriptActivity(emit, line, usage);
+                yield return new PluginTranscriptActivity(emit, line, usage, outstandingShells.Count);
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
@@ -217,70 +245,6 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         catch (System.Text.Json.JsonException)
         {
             return PluginSessionActivity.None;
-        }
-    }
-
-    /// <summary>
-    /// True when a background sub-agent under <paramref name="subAgentDir"/> is still running. Each agent is a pair
-    /// <c>agent-&lt;id&gt;.jsonl</c> (its transcript) + <c>agent-&lt;id&gt;.meta.json</c> (its metadata, which carries
-    /// <c>stoppedByUser</c>). An agent counts as running when its metadata does not mark it stopped <em>and</em> its
-    /// transcript was written within <see cref="SubAgentActivityWindow"/> — the metadata ends a stopped agent at once
-    /// (stopping writes one last transcript line, so the mtime alone would linger), and the window lets a running
-    /// agent's own thinking pauses pass while a finished one lapses.
-    /// </summary>
-    private static bool _SubAgentsActive(string subAgentDir)
-    {
-        if (!Directory.Exists(subAgentDir))
-        {
-            return false;
-        }
-
-        var now = DateTime.UtcNow;
-        try
-        {
-            foreach (var transcript in Directory.EnumerateFiles(subAgentDir, "agent-*.jsonl"))
-            {
-                if (_AgentStoppedByUser(transcript))
-                {
-                    continue;
-                }
-
-                if (now - File.GetLastWriteTimeUtc(transcript) < SubAgentActivityWindow)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        catch (Exception)
-        {
-            // A sub-agent file vanishing mid-enumeration is not a status error — treat as no background activity.
-            return false;
-        }
-    }
-
-    /// <summary>True when the agent's <c>agent-&lt;id&gt;.meta.json</c> marks it <c>stoppedByUser</c> — the authoritative per-agent stop signal Claude writes when the operator kills a background agent.</summary>
-    private static bool _AgentStoppedByUser(string transcriptPath)
-    {
-        var metaPath = Path.Combine(
-            Path.GetDirectoryName(transcriptPath) ?? string.Empty,
-            Path.GetFileNameWithoutExtension(transcriptPath) + ".meta.json");
-        try
-        {
-            if (!File.Exists(metaPath))
-            {
-                return false;
-            }
-
-            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(metaPath));
-            return document.RootElement.TryGetProperty("stoppedByUser", out var stopped)
-                && stopped.ValueKind == System.Text.Json.JsonValueKind.True;
-        }
-        catch (Exception)
-        {
-            // Unreadable metadata is not proof of a stop — fall back to the transcript's own activity window.
-            return false;
         }
     }
 

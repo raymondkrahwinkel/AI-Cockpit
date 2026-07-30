@@ -394,6 +394,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public bool RequiresCloseConfirmation => SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground;
 
+    /// <summary>
+    /// True while a backgrounded shell this session started is still running (AC-276). It deliberately does not
+    /// affect <see cref="SessionStatus"/> — a dev server or a <c>tail -f</c> never ends, and holding the status on
+    /// one would strand the session on "working" forever, which is worse than the premature Done it set out to fix.
+    /// It only withholds the "session finished" notification, so a session that is still doing something is not
+    /// announced as finished. False for a session kind that cannot observe this.
+    /// </summary>
+    public virtual bool HasOutstandingBackgroundShells => false;
+
     /// <summary>Short human-readable label for <see cref="SessionStatus"/>, for the sidebar status row.</summary>
     public string SessionStatusLabel => SessionStatus switch
     {

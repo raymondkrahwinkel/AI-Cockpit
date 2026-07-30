@@ -54,13 +54,64 @@ internal static class ClaudeStreamJson
         }
     }
 
-    private static IEnumerable<PluginSessionEvent> _ParseSystem(JsonElement root, string? sessionId)
+    private static IEnumerable<PluginSessionEvent> _ParseSystem(JsonElement root, string? sessionId) =>
+        root.TryGetProperty("subtype", out var st)
+            ? st.GetString() switch
+            {
+                "init" => _ParseInit(root, sessionId),
+                "background_tasks_changed" => [_ParseBackgroundTasks(root, sessionId)],
+                _ => [],
+            }
+            : [];
+
+    /// <summary>
+    /// The CLI's own ledger of work that outlived its turn (AC-276): sub-agents still running, shells still open.
+    /// It restates the <em>complete</em> set every time rather than sending deltas, which is why the host can
+    /// build a status on it — see <see cref="PluginBackgroundTasksChanged"/>. An entry whose <c>task_type</c> this
+    /// build does not recognise maps to <see cref="PluginBackgroundTaskKind.Unknown"/> rather than being dropped,
+    /// so the set stays a faithful record of what the provider reported. Note that the host deliberately acts on
+    /// neither the status nor the notification for an unknown kind — it cannot know which weighing applies — so
+    /// this preserves the information without letting it decide anything.
+    /// </summary>
+    private static PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
     {
-        if (!root.TryGetProperty("subtype", out var st) || st.GetString() != "init")
+        var tasks = new List<PluginBackgroundTask>();
+        if (root.TryGetProperty("tasks", out var tasksProp) && tasksProp.ValueKind == JsonValueKind.Array)
         {
-            yield break;
+            foreach (var task in tasksProp.EnumerateArray())
+            {
+                if (task.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var id = _String(task, "task_id");
+                if (string.IsNullOrEmpty(id))
+                {
+                    // Without an id there is nothing to count or de-duplicate — a nameless entry would inflate the
+                    // set on every restatement.
+                    continue;
+                }
+
+                var kind = _String(task, "task_type") switch
+                {
+                    "local_agent" => PluginBackgroundTaskKind.SubAgent,
+                    "local_bash" => PluginBackgroundTaskKind.Shell,
+                    _ => PluginBackgroundTaskKind.Unknown,
+                };
+
+                // _String flattens "absent" to "" — carry that through as null, so a consumer showing the label
+                // can tell "no description" from an empty one instead of rendering a blank.
+                var description = _String(task, "description");
+                tasks.Add(new PluginBackgroundTask(id, kind, string.IsNullOrEmpty(description) ? null : description));
+            }
         }
 
+        return new PluginBackgroundTasksChanged { SessionId = sessionId, Tasks = tasks };
+    }
+
+    private static IEnumerable<PluginSessionEvent> _ParseInit(JsonElement root, string? sessionId)
+    {
         var cwd = root.TryGetProperty("cwd", out var cwdProp) ? cwdProp.GetString() : null;
         // The real model the CLI resolved this session to — the only place a session launched with no explicit
         // model (Auto/default) ever states which one it picked (AC-141). _BuildLiveOptions seeds the Model

@@ -18,7 +18,21 @@ namespace Cockpit.App.ViewModels;
 /// without a live pty. Permission/needs-action cannot be seen in the transcript, so this never reports
 /// <see cref="SessionStatus.NeedsAttention"/> — that stays an SDK-only signal.
 /// </summary>
-public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout)
+/// <param name="busySafetyTimeout">How long a busy turn may go completely silent before falling back to Done.</param>
+/// <param name="turnSettleDelay">
+/// How long a completed turn is held at Busy before it is allowed to read Done (AC-276). On this route the
+/// assistant line that ends a turn arrives before the CLI states how many sub-agents are still running: measured
+/// across 232 transcripts, the turn_duration line carrying that count follows the end_turn line by a median of
+/// 1101 ms (p99 2634 ms). Emitting Done in that gap and correcting to WorkingBackground a second later is exactly
+/// the flicker this ticket is about — and worse, it fires the "session finished" notification on the way through.
+/// Waiting it out costs a turn ending shown up to this late; announcing a session that is still working costs the
+/// operator's trust in the notification, which is the more expensive of the two.
+/// <para>
+/// This cannot instead be solved by treating turn_duration itself as the end of the turn: only 2481 of 4293
+/// turn-ending assistant lines are followed by one, so 42% of turns would never settle.
+/// </para>
+/// </param>
+public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout, TimeSpan turnSettleDelay)
 {
     private DateTimeOffset? _lastSignalAt;
     private SessionActivity _lastActivity = SessionActivity.None;
@@ -73,7 +87,12 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout)
 
         if (_lastActivity == SessionActivity.TurnComplete)
         {
-            return SessionStatus.Done;
+            // Hold the finish briefly: the count of still-running sub-agents arrives on a separate line just after
+            // this one, and reporting Done in between is what makes the pill flicker and the notification fire
+            // early. Once the delay has passed with no such correction, the turn really is over.
+            return _lastSignalAt is { } completedAt && now - completedAt < turnSettleDelay
+                ? SessionStatus.Busy
+                : SessionStatus.Done;
         }
 
         // Busy or BackgroundBusy — but a turn that went silent far past the safety timeout falls back to Done.

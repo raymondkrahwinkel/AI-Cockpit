@@ -5863,7 +5863,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(SessionPanelViewModel.SessionStatus) || sender is not SessionPanelViewModel session)
+        if (sender is not SessionPanelViewModel session)
+        {
+            return;
+        }
+
+        // The last background shell ending is the moment a session that was withheld below actually becomes
+        // finished (AC-276). Its status does not change then — it is already Done — so without this the
+        // notification would not merely be delayed but lost for good, on every session that ran one.
+        if (e.PropertyName == nameof(SessionPanelViewModel.HasOutstandingBackgroundShells))
+        {
+            if (session.SessionStatus == SessionStatus.Done && !session.HasOutstandingBackgroundShells)
+            {
+                NotifySessionFinished(session);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName != nameof(SessionPanelViewModel.SessionStatus))
         {
             return;
         }
@@ -5878,7 +5896,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // A turn just finished. Worth saying out loud only when you are not looking at that session — the
         // notifier makes that call, since it is the one that knows whether you are even at the PC.
-        if (session.SessionStatus == SessionStatus.Done && previous == SessionStatus.Busy)
+        // A session with a backgrounded shell still running is not finished, whatever the status says (AC-276):
+        // the status deliberately reaches Done there, because a dev server or a tail -f would otherwise pin it on
+        // "working" forever — but announcing it as finished while it is still doing something is the very thing
+        // this notification should not do. Sub-agents are not checked here because they never let this flank read
+        // Busy → Done in the first place: on the SDK route the task list arrives before the turn's result, and on
+        // the TTY route TtyActivityStatusTracker's settle delay holds the finish until the count that follows it
+        // has had time to arrive. Both are load-bearing for that claim — see their own tests.
+        // WorkingBackground counts as a working state here, not just Busy (AC-276). A session with sub-agents now
+        // settles Busy → WorkingBackground → Done, and matching only on Busy would silently drop the notification
+        // for exactly the sessions this ticket is about — the flicker would be gone and so would the announcement.
+        if (session.SessionStatus == SessionStatus.Done
+            && previous is SessionStatus.Busy or SessionStatus.WorkingBackground
+            && !session.HasOutstandingBackgroundShells)
         {
             NotifySessionFinished(session);
         }

@@ -129,16 +129,21 @@ public class ClaudeTranscriptReaderTests : IDisposable
         Assert.Contains("\"type\":\"assistant\"", received[1]);
     }
 
-    [Fact]
-    public async Task ReadActivityAsync_WhileASubAgentIsWriting_YieldsBackgroundBusy()
-    {
-        // The bug this guards: a Claude sub-agent (Task tool) records to a sibling <id>/subagents/ folder, not the
-        // main transcript, so the main tail goes quiet and the status used to time out to Done. The reader now sees
-        // that background activity and reports it.
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var subDir = Path.Combine(
-            Path.GetDirectoryName(transcriptPath)!, Path.GetFileNameWithoutExtension(transcriptPath), "subagents");
+    // AC-276 replaced the sub-agent mtime window with the count the CLI states on each turn_duration line. The two
+    // tests these replace drove <id>/subagents/agent-*.jsonl file timestamps; that directory is no longer read.
+    private const string EndTurnLine = """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn"}}""";
 
+    private static string TurnDurationLine(int? pendingSubAgents) => pendingSubAgents is { } count
+        ? $$"""{"type":"system","subtype":"turn_duration","durationMs":1200,"pendingBackgroundAgentCount":{{count}}}"""
+        : """{"type":"system","subtype":"turn_duration","durationMs":1200}""";
+
+    [Fact]
+    public async Task ReadActivityAsync_WhenTheTurnEndsWithSubAgentsStillPending_YieldsBackgroundBusy()
+    {
+        // The bug this guards: the main agent legitimately reaches end_turn while sub-agents it spawned keep
+        // running, which used to drop the session straight to Done. The CLI states how many are still pending on
+        // the turn_duration line that closes the turn, so that reading is what decides — not a file's timestamp.
+        var transcriptPath = _CreateEmptyTranscriptFile();
         var reader = new ClaudeTranscriptReader();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var sawBackground = false;
@@ -155,34 +160,67 @@ public class ClaudeTranscriptReaderTests : IDisposable
         });
 
         await Task.Delay(500);
-        // The main agent spawns a sub-agent (a tool_use turn) → the reader is now mid-turn.
-        await File.AppendAllTextAsync(
-            transcriptPath, """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use"}}""" + "\n");
-        // The sub-agent writes to its own folder while the main transcript stays quiet.
-        Directory.CreateDirectory(subDir);
-        await File.WriteAllTextAsync(Path.Combine(subDir, "agent-abc.jsonl"), "{}\n");
+        // The main agent's own turn ends — on its own that reads as Done ...
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
+        // ... until the turn_duration line says three sub-agents are still running.
+        await File.AppendAllTextAsync(transcriptPath, TurnDurationLine(3) + "\n");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(sawBackground, "a sub-agent writing while the main transcript is quiet is background work");
+        Assert.True(sawBackground, "a turn that ends while sub-agents are pending is background work, not done");
     }
 
     [Fact]
-    public async Task ReadActivityAsync_WhenAnAgentIsStoppedByUser_LeavesBackgroundBusy_EvenWithAFreshTranscript()
+    public async Task ReadActivityAsync_KeepsTheReportedCount_ForLaterTurnsInTheSameRun()
     {
-        // The bug this guards: stopping a background agent writes a final line to its transcript, so a pure
-        // folder-mtime check keeps reading "still running". The agent's meta.json marks it stoppedByUser at once,
-        // so the dot moves off background (here: to Done, since the main turn had completed).
+        // Caught by mutation testing: asserting only on the turn_duration line itself passes even when the count is
+        // never stored, because that line sets the activity directly. What actually has to hold is that the count
+        // *persists* — the CLI states it once per turn, and every later turn ending has to keep reading as
+        // background work until a turn_duration says otherwise. This drives a second end_turn with no turn_duration
+        // of its own, so only the remembered count can produce the right answer.
         var transcriptPath = _CreateEmptyTranscriptFile();
-        var subDir = Path.Combine(
-            Path.GetDirectoryName(transcriptPath)!, Path.GetFileNameWithoutExtension(transcriptPath), "subagents");
-        Directory.CreateDirectory(subDir);
-        var agentTranscript = Path.Combine(subDir, "agent-abc.jsonl");
-        var agentMeta = Path.Combine(subDir, "agent-abc.meta.json");
-
         var reader = new ClaudeTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var readings = new List<PluginSessionActivity>();
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.RawLine is null || reading.Activity == PluginSessionActivity.None)
+                {
+                    continue;
+                }
+
+                readings.Add(reading.Activity);
+                if (readings.Count == 3)
+                {
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");          // 1: TurnComplete
+        await File.AppendAllTextAsync(transcriptPath, TurnDurationLine(2) + "\n");  // 2: corrected to background
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");          // 3: still background
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(
+            [PluginSessionActivity.TurnComplete, PluginSessionActivity.BackgroundBusy, PluginSessionActivity.BackgroundBusy],
+            readings);
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_WhenTheNextTurnReportsNoPendingSubAgents_LeavesBackgroundBusy()
+    {
+        // The other half: the count is restated every turn, so a session that was background work returns to its
+        // own state once the CLI stops reporting pending agents. The field is absent (not zero) when none are
+        // pending — measured across 232 transcripts, no turn_duration line ever carries the value 0 — so an absent
+        // field has to read as "none left", not as "no information".
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var sawBackground = false;
-        PluginSessionActivity? afterStop = null;
+        PluginSessionActivity? afterAgentsFinished = null;
         var consumeTask = Task.Run(async () =>
         {
             await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
@@ -193,26 +231,104 @@ public class ClaudeTranscriptReaderTests : IDisposable
                 }
                 else if (sawBackground && reading.Activity != PluginSessionActivity.None)
                 {
-                    afterStop = reading.Activity;
+                    afterAgentsFinished = reading.Activity;
                     break;
                 }
             }
         });
 
         await Task.Delay(500);
-        // A running agent (no stop marker yet) while the main turn completes → downgraded to background work.
-        await File.WriteAllTextAsync(agentMeta, """{"agentType":"general-purpose","stoppedByUser":false}""");
-        await File.WriteAllTextAsync(agentTranscript, "{}\n");
-        await File.AppendAllTextAsync(
-            transcriptPath, """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn"}}""" + "\n");
-
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
+        await File.AppendAllTextAsync(transcriptPath, TurnDurationLine(1) + "\n");
         await _WaitUntilAsync(() => sawBackground);
-        // The user stops the agent — its transcript gets one last write (fresh mtime), but the metadata says stopped.
-        await File.WriteAllTextAsync(agentTranscript, "{}\n{}\n");
-        await File.WriteAllTextAsync(agentMeta, """{"agentType":"general-purpose","stoppedByUser":true}""");
 
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(PluginSessionActivity.TurnComplete, afterStop);
+        // A later turn ends with nothing pending — the field is simply absent.
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
+        await File.AppendAllTextAsync(transcriptPath, TurnDurationLine(null) + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginSessionActivity.TurnComplete, afterAgentsFinished);
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_CountsABackgroundShell_WithoutHoldingTheStatus()
+    {
+        // The regression this guards is the fix's own worst failure mode: a backgrounded shell can be a dev server
+        // or a tail -f that never ends. It must be *counted* (so the host can withhold the "session finished"
+        // notification) while the status still reaches TurnComplete — anything else pins such a session on
+        // "working" for as long as the server runs, which is worse than the premature Done this ticket is about.
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        PluginTranscriptActivity? atTurnEnd = null;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.Activity == PluginSessionActivity.TurnComplete)
+                {
+                    atTurnEnd = reading;
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(
+            transcriptPath,
+            """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":"toolu_shell1","name":"Bash","input":{"command":"npm run dev","run_in_background":true}}]}}"""
+                + "\n");
+        // The turn ends with no sub-agents pending — a never-ending shell must not stand in the way of that.
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.NotNull(atTurnEnd);
+        Assert.Equal(PluginSessionActivity.TurnComplete, atTurnEnd!.Activity);
+        Assert.Equal(1, atTurnEnd.OutstandingShells);
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_WhenAShellsNotificationArrives_StopsCountingIt()
+    {
+        // The shell ledger's end signal: the CLI queues a <task-notification> block naming the same tool_use id
+        // that started it. Without this the count would only ever grow, and a session that had run one background
+        // command would never be announced as finished again.
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var sawShell = false;
+        int? afterNotification = null;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.OutstandingShells > 0)
+                {
+                    sawShell = true;
+                }
+                else if (sawShell)
+                {
+                    afterNotification = reading.OutstandingShells;
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(
+            transcriptPath,
+            """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":"toolu_shell1","name":"Bash","input":{"command":"sleep 90","run_in_background":true}}]}}"""
+                + "\n");
+        await _WaitUntilAsync(() => sawShell);
+
+        await File.AppendAllTextAsync(
+            transcriptPath,
+            """{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>b5ddh99hr</task-id>\n<tool-use-id>toolu_shell1</tool-use-id>\n<status>completed</status>\n</task-notification>"}"""
+                + "\n");
+        await File.AppendAllTextAsync(transcriptPath, EndTurnLine + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, afterNotification);
     }
 
     [Fact]

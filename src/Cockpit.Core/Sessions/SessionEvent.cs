@@ -194,6 +194,37 @@ public sealed record RateLimitInfo : SessionEvent
 }
 
 /// <summary>
+/// What kind of outstanding work a <see cref="BackgroundTask"/> is. The host weighs the two differently (AC-276):
+/// a sub-agent keeps the session off "done", a shell only holds back the "session finished" notification — a
+/// dev server or <c>tail -f</c> would otherwise pin a session on "working" for as long as it runs.
+/// </summary>
+public enum BackgroundTaskKind
+{
+    /// <summary>A kind this build does not know. Ordinal 0 so an unmapped value is the least authoritative one.</summary>
+    Unknown,
+
+    /// <summary>A nested agent (the Task tool) — work the operator is waiting on.</summary>
+    SubAgent,
+
+    /// <summary>A backgrounded shell command that outlived the turn that started it.</summary>
+    Shell,
+}
+
+/// <summary>One piece of work that outlived its turn — see <see cref="BackgroundTasksChanged"/>.</summary>
+public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description);
+
+/// <summary>
+/// The set of work outliving its turn changed (AC-276). <see cref="Tasks"/> is the <em>complete</em> set as of
+/// this event and never a delta — a dropped event self-corrects on the next one, where a start/stop ledger would
+/// strand the session on "working" the first time an end went missing.
+/// </summary>
+public sealed record BackgroundTasksChanged : SessionEvent
+{
+    /// <summary>Everything still outstanding. Empty when the last of it finished.</summary>
+    public required IReadOnlyList<BackgroundTask> Tasks { get; init; }
+}
+
+/// <summary>
 /// Something went wrong in the session driver itself (process failure, parse failure, ...).
 /// This is a driver-level event, not a wire event.
 /// </summary>
