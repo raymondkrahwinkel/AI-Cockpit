@@ -13,7 +13,8 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitHubPullRequests;
 
 /// <summary>
-/// The "GitHub Pull Requests" dialog opened from the side section's "View all open PRs" button: a search
+/// The "GitHub Pull Requests" dialog opened from the side-menu badge (AC-517) or the widget's "View all open
+/// PRs" button: a search
 /// box and a sortable <see cref="DataGrid"/> of open pull requests (across all repos in GitHub CLI mode, or
 /// one repo in HTTP mode) on the left, and a details panel on the right showing the selected pull request's
 /// title, repository, author, body, a link, and a preview of the prompt it would produce (with a copy

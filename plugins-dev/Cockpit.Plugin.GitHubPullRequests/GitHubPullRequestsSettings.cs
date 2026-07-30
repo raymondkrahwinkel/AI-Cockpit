@@ -46,17 +46,6 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         set => storage.Set("template", value);
     }
 
-    /// <summary>How many pull requests the inline section shows (1–20; default 5). The dialog always lists them all.</summary>
-    public int MaxItems
-    {
-        get
-        {
-            var stored = storage.Get<int>("maxItems");
-            return stored is >= 1 and <= 20 ? stored : 5;
-        }
-        set => storage.Set("maxItems", Math.Clamp(value, 1, 20));
-    }
-
     /// <summary>Whether a pull request that starts waiting for your review raises a toast (default on). GitHub CLI mode only — the single-repo HTTP mode has no review-requested search.</summary>
     public bool NotifyOnReviewRequests
     {

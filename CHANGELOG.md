@@ -883,6 +883,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the GitHub Pull Requests plugin's always-visible list under the session list is now a left-menu button
+  with a live badge — your own open PR count next to how many are waiting on your review ("3 / 2"). Clicking it
+  opens the same dialog listing every open PR as before; the always-visible list still exists as the Dashboard
+  widget, for a workspace given over to it. The "how many pull requests inline" setting is gone with the list it
+  configured — the widget already has its own, per-pane count.
 - changed: the usage-history trail no longer grows without bound. Once it reaches 8 MB it rolls over to a single
   backup file, so a long-lived install no longer accumulates hundreds of MB of usage records over time. Recent-usage
   views still read seamlessly across a rollover; the consent and delegation trails are unaffected and keep every

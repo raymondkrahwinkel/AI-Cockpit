@@ -6,9 +6,9 @@ namespace Cockpit.Plugin.GitHubPullRequests.Tests;
 /// <summary>
 /// AC-515: refreshing has to run independent of any view, never make a caller wait on a miss, survive a restart
 /// with the previous list marked old, and not cost more `gh` calls per unit time than before. Every test here
-/// drives <see cref="PullRequestRefreshSource"/> directly — no <see cref="GitHubPullRequestsSideSectionControl"/>
-/// or <see cref="GitHubPullRequestsWidget"/> involved — via a fake load function (no `gh`, no network), which is
-/// exactly what acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
+/// drives <see cref="PullRequestRefreshSource"/> directly — no <see cref="GitHubPullRequestsWidget"/> or the
+/// AC-517 side-menu badge involved — via a fake load function (no `gh`, no network), which is exactly what
+/// acceptance criterion 2 asks for ("aantoonbaar met een test op de verversingsbron, niet op een control").
 /// </summary>
 public class PullRequestRefreshSourceTests
 {
@@ -27,8 +27,8 @@ public class PullRequestRefreshSourceTests
             },
             pollInterval: TimeSpan.FromMilliseconds(30));
 
-        // Nothing here ever builds a SideSectionControl, a Widget, or attaches anything to a visual tree — the
-        // background poll firing more than once is entirely the source's own doing.
+        // Nothing here ever builds a Widget or a badge, or attaches anything to a visual tree — the background
+        // poll firing more than once is entirely the source's own doing.
         var sawMultipleTicks = await _WaitUntilAsync(() => Volatile.Read(ref calls) >= 3, TimeSpan.FromSeconds(2));
 
         source.Dispose();

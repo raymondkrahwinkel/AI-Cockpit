@@ -3,7 +3,7 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// <summary>
 /// One load of the pull-request feed (<see cref="PullRequestFeed"/>): the open pull requests, ordered and
 /// repository-filtered, plus the subset that is waiting on <em>your</em> review — kept separate because a
-/// review request is styled and (in the side section) announced, not just counted.
+/// review request is styled, counted separately in the side-menu badge (AC-517), and announced, not just counted.
 /// </summary>
 /// <param name="PullRequests">Open pull requests, newest activity first, after the optional repository filter.</param>
 /// <param name="ReviewRequested">The open pull requests awaiting your review (empty in single-repo HTTP mode, which has no such search).</param>

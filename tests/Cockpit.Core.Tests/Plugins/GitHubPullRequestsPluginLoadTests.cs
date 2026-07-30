@@ -11,10 +11,10 @@ namespace Cockpit.Core.Tests.Plugins;
 /// End-to-end loader proof (#41), mirroring <see cref="GitHubIssuesPluginLoadTests"/>: loads the real
 /// compiled GitHub Pull Requests plugin through the actual <see cref="PluginActivator"/> /
 /// <see cref="PluginLoadContext"/> and asserts type-identity holds (the plugin's ICockpitPlugin resolves to
-/// the host's copy — the cast would be null otherwise), its metadata is right, and its Options-tab + inline
-/// side-menu-section contributions register (no side-menu button — the section itself hosts the "view all"
-/// entry point). The test project builds the plugin (a ReferenceOutputAssembly=false project reference), so
-/// its output is always present.
+/// the host's copy — the cast would be null otherwise), its metadata is right, and its Options-tab + badged
+/// side-menu-button contributions register (AC-517 — no plain side-menu section any more, the badged button
+/// is the "view all" entry point). The test project builds the plugin (a ReferenceOutputAssembly=false
+/// project reference), so its output is always present.
 /// </summary>
 public class GitHubPullRequestsPluginLoadTests
 {
@@ -46,7 +46,8 @@ public class GitHubPullRequestsPluginLoadTests
 
         Assert.Equal(1, host.SettingsRegistered);
         Assert.Empty(host.SideButtons);
-        Assert.Equal("Open PRs", Assert.Single(host.SideSections));
+        Assert.Empty(host.SideSections);
+        Assert.Equal("Open PRs", Assert.Single(host.BadgedSideButtons));
 
         plugin.Dispose();
     }
@@ -80,6 +81,8 @@ public class GitHubPullRequestsPluginLoadTests
 
         public List<string> SideSections { get; } = [];
 
+        public List<string> BadgedSideButtons { get; } = [];
+
         public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
 
         public ICockpitActions Actions { get; } = new NoActions();
@@ -92,7 +95,16 @@ public class GitHubPullRequestsPluginLoadTests
 
         public void AddSideMenuSection(string title, Func<Control> createView) => SideSections.Add(title);
 
+        public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
+        {
+            BadgedSideButtons.Add(title);
+            return new SideMenuButtonBadge();
+        }
+
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
+
+        public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
+            Task.CompletedTask;
     }
 
     private sealed class NoActions : ICockpitActions
