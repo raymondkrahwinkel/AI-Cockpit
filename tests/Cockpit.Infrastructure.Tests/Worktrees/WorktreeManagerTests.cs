@@ -373,6 +373,57 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveAsync_RepositoryGoneAndWorktreeFolderEmpty_DropsTheEmptyFolderWithoutANotice()
+    {
+        // The other half of the same shape: the repository is gone, but there is genuinely nothing left in the
+        // worktree folder to tell the operator about — an empty shell must not manufacture a notice out of it.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        _ClearCheckout(record.Path);
+        TestGitDirectory.Remove(second);
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.False(Directory.Exists(record.Path), "an empty leftover shell is swept, same as the repository-present path");
+        Assert.Null(notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_RepositoryRootIsAFolderButNoLongerAGitRepository_StillReportsTheLeftoverFolder()
+    {
+        // Code review finding: `Directory.Exists(record.RepositoryRoot)` alone cannot tell "gone" from "still a
+        // folder but its .git was corrupted or removed" — a repository whose grandparent worktree vanished while the
+        // middle folder itself survives, say. Both shapes leave git unable to answer anything about the worktree and
+        // must report the same way: a notice whenever something on disk survives the drop, regardless of which
+        // reason the drop happened for.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        File.WriteAllText(Path.Combine(record.Path, "uncommitted.txt"), "work nobody pushed anywhere\n");
+
+        // The repository root folder itself survives, but stops being a repository — the worktree's own gitdir
+        // link resolves nowhere just the same as if the whole folder had gone.
+        Directory.Delete(Path.Combine(second, ".git"), recursive: true);
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(Directory.Exists(record.Path), "the worktree folder is never touched");
+        Assert.True(File.Exists(Path.Combine(record.Path, "uncommitted.txt")));
+        Assert.NotNull(notice);
+    }
+
+    [Fact]
     public async Task ReattachAsync_RepositoryGone_StillReownsTheWorktreeInsteadOfThrowing()
     {
         // AC-507 defect 3: the re-lock used to run unguarded, so a git that could not even start (repository folder

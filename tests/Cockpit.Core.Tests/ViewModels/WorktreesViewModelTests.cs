@@ -175,6 +175,26 @@ public class WorktreesViewModelTests
         await manager.Received(1).RemoveAsync(shell.Record, false, Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task CleanUpFinished_TwoLeaveNoticesBehind_BothLandOnTheAggregatedNotice()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var first = _Row(isOwnerLive: false, branch: "cockpit/first");
+        var second = _Row(isOwnerLive: false, branch: "cockpit/second");
+        manager.RemoveAsync(first.Record, false, Arg.Any<CancellationToken>()).Returns("left first's folder behind");
+        manager.RemoveAsync(second.Record, false, Arg.Any<CancellationToken>()).Returns("left second's folder behind");
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+        viewModel.Worktrees.Add(first);
+        viewModel.Worktrees.Add(second);
+
+        await viewModel.CleanUpFinishedCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasRemoveNotice);
+        Assert.Contains("left first's folder behind", viewModel.RemoveNotice);
+        Assert.Contains("left second's folder behind", viewModel.RemoveNotice);
+    }
+
     private static IWorktreeManager _RefusingManager(string message)
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -193,9 +213,9 @@ public class WorktreesViewModelTests
         return dialogs;
     }
 
-    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true, bool workingCopyMissing = false)
+    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true, bool workingCopyMissing = false, string branch = "cockpit/x")
     {
-        var record = new WorktreeRecord("session", "/repo", "/state/worktrees/ab/cockpit-x", "cockpit/x", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
+        var record = new WorktreeRecord("session", "/repo", $"/state/worktrees/ab/{branch.Replace('/', '-')}", branch, "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
         var status = new WorktreeStatus(record, exists, HasUncommittedChanges: false, StrandableCommits: 0) { WorkingCopyMissing = workingCopyMissing };
 
         return new ManagedWorktreeRowViewModel(status, isOwnerLive);

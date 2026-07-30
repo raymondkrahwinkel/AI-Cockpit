@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -61,6 +62,26 @@ public class WorktreesDialogRemoveFailureTests
         Assert.Contains("no longer managed by the cockpit", line.Text);
         Assert.True(line.Bounds.Height > 0, "an invisible notice defeats the point of showing it");
         Assert.Empty(_FailureLines(window));
+    });
+
+    // Both can be on screen at once (a CleanUpFinished sweep that both refused one row and left another's folder
+    // behind) — proves the two are actually styled apart, not just bound to different properties that happen to
+    // carry the same look.
+    [Fact]
+    public void BothAFailureAndANotice_RenderWithDifferentColours() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new WorktreesViewModel();
+        var window = new WorktreesDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        viewModel.RemoveFailure = "Could not remove 'cockpit/first' — fatal: 'wt' is not a working tree";
+        viewModel.RemoveNotice = "The repository behind 'cockpit/second' no longer exists and its folder was left on disk.";
+        window.UpdateLayout();
+
+        var failure = Assert.Single(_FailureLines(window));
+        var notice = Assert.Single(_NoticeLines(window));
+        Assert.NotEqual(((ISolidColorBrush)failure.Foreground!).Color, ((ISolidColorBrush)notice.Foreground!).Color);
     });
 
     private static List<TextBlock> _FailureLines(WorktreesDialog window) =>
