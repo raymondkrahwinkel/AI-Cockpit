@@ -1220,11 +1220,30 @@
                 </Grid>
             </DockPanel>
 
-            <!-- Startup banners: plugin failures (#14) and pending approvals (AC-208) stack top-down in a StackPanel
-                 rather than each sitting at a fixed Margin — either can be one or two lines depending on how many
-                 plugins are named, and a fixed offset would either overlap or leave a gap. Both can show at once:
-                 the two states are unrelated (a plugin can fail to load while a different one awaits approval). -->
+            <!-- Startup banners: safe mode (AC-478), plugin failures (#14) and pending approvals (AC-208) stack
+                 top-down in a StackPanel rather than each sitting at a fixed Margin — any of them can be one or two
+                 lines, and a fixed offset would either overlap or leave a gap. More than one can show at once: e.g.
+                 a plugin can fail to load while a different one awaits approval. -->
             <StackPanel VerticalAlignment="Top" Margin="12,12,12,0" Spacing="8">
+                <!-- Safe-mode banner (AC-478): not dismissible, unlike the two below — it describes how this whole
+                     run was started, not a one-off event to acknowledge. "Restart" reuses the same RestartAppCommand
+                     the Voice options page offers (AppRestartService), which always drops the safe-mode launch
+                     argument on the way out (see AppRestartService.BuildLaunchArguments), so this is the one button
+                     back to a normal, fully-plugged-in cockpit. -->
+                <Border IsVisible="{Binding IsSafeMode}"
+                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusErrorBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Classes="Accent" Padding="10,4"
+                                Command="{Binding RestartAppCommand}"
+                                IsEnabled="{Binding CanRestartApp}"
+                                Content="Restart"/>
+                        <TextBlock Text="{Binding SafeModeBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   Foreground="{StaticResource CockpitStatusErrorBrush}" FontSize="12"/>
+                    </DockPanel>
+                </Border>
+
                 <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->
                 <Border IsVisible="{Binding HasPluginFailures}"
                         Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
