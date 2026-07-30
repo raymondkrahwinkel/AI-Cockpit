@@ -156,6 +156,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _voiceLlmRefreshing;
     private bool _voiceLlmRefreshQueued;
     private readonly PluginDiagnostics? _pluginDiagnostics;
+    private readonly bool _safeMode;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
 
@@ -450,6 +451,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>True while the pending-approval banner should be shown.</summary>
     [ObservableProperty]
     private bool _hasPendingApprovals;
+
+    /// <summary>
+    /// Whether this run was started with <see cref="PluginManager.SafeModeArgument"/> (AC-478) — no plugin was
+    /// instantiated, so the safe-mode banner and its "Restart" affordance (<see cref="RestartAppCommand"/>, which
+    /// exits safe mode on any restart — see <c>AppRestartService.BuildLaunchArguments</c>) stay on screen for the
+    /// whole run, never dismissed like the failure/pending-approval banners above: it describes the run itself,
+    /// not a one-off event to acknowledge.
+    /// </summary>
+    public bool IsSafeMode => _safeMode;
+
+    /// <summary>The safe-mode banner's text (AC-478); empty (and so invisible, see <see cref="IsSafeMode"/>) on an ordinary run.</summary>
+    public string SafeModeBanner => _safeMode
+        ? "Safe mode — no plugins were loaded. Plugin manager still works: disable the one that is crashing, then restart."
+        : string.Empty;
 
     /// <summary>
     /// Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes,
@@ -2499,6 +2514,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionStateStore? sessionStateStore = null,
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeReconcileGate? worktreeReconcileGate = null,
+        PluginManager? pluginManager = null,
         ILogger<CockpitViewModel>? logger = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
@@ -2534,6 +2550,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
         _appRestart = appRestartService;
+        // AC-478: whether this process was launched with PluginManager.SafeModeArgument, read off the same
+        // singleton Program.cs constructed the switch on — not a second source of truth for a fact that must
+        // agree with what actually happened to plugin loading.
+        _safeMode = pluginManager?.SafeMode ?? false;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
         _sessionStateRecorder = sessionStateRecorder;
