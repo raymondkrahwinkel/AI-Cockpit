@@ -1097,6 +1097,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a worktree whose repository folder had disappeared (a rare case, but one with no workaround once it
+  happened) could no longer be removed from Managed worktrees — Remove failed with "Could not run 'git' — is it
+  installed and on PATH?", a diagnosis that sent you checking your git install for a problem that was never there.
+  Remove now drops it from the list; its folder is left on disk untouched and you're told so if it still held
+  anything, so "removed" is never mistaken for "discarded". Reattaching such a worktree to a new session no longer
+  fails either.
 - fixed: an OAuth-protected MCP server (Depot, for example) used to need a fresh browser sign-in about once an
   hour, even at the start of a brand-new session — the server never handed out a refresh token, so there was
   nothing to renew with once the access token expired. The cockpit now asks for a refresh token whenever the

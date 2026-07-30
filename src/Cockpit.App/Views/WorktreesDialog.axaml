@@ -51,6 +51,12 @@
                    Margin="0,10,0,0" FontSize="11.5" TextWrapping="Wrap"
                    Foreground="{StaticResource CockpitStatusErrorBrush}"/>
 
+        <!-- What a successful removal left behind — the repository was gone, so the worktree folder could not be
+             handed back to git and was simply abandoned on disk (AC-507). Not an error: the removal went through. -->
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding RemoveNotice}" IsVisible="{Binding HasRemoveNotice}"
+                   Margin="0,10,0,0" FontSize="11.5" TextWrapping="Wrap"
+                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+
         <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitPanelRadius}" Padding="4">
 

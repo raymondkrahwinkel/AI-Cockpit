@@ -333,9 +333,119 @@ public sealed class WorktreeManagerTests : IDisposable
         TestGitDirectory.Remove(record.Path);
         TestGitDirectory.Remove(second);
 
-        await _manager.RemoveAsync(record);
+        var notice = await _manager.RemoveAsync(record);
 
         Assert.Empty((await _manager.ListAsync()));
+        // Both are gone, so there is nothing left to mention — this is the plain "there was never anything to lose"
+        // path, distinct from the case below where the worktree folder survives its repository.
+        Assert.Null(notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_RepositoryGoneButItsWorktreeFolderSurvives_DropsTheEntryLeavesTheFolderAndSaysSo()
+    {
+        // AC-507's actual production shape: the repository a worktree forked from disappeared (it was itself another
+        // worktree whose parent went away), but the four orphaned worktree folders themselves were still on disk,
+        // still holding their checkouts — not the "both gone" shape RemoveAsync already handled above. Before the
+        // fix, git could not even be asked (its working directory does not exist) — the old guard's misdiagnosis
+        // ("is it installed and on PATH?") — and the record.Path check that was meant to catch this asks git a
+        // question it cannot answer either, once the repository behind the worktree is gone.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        File.WriteAllText(Path.Combine(record.Path, "uncommitted.txt"), "work nobody pushed anywhere\n");
+
+        // The repository moves away; the worktree folder — and the uncommitted file in it — is untouched.
+        TestGitDirectory.Remove(second);
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(Directory.Exists(record.Path), "the worktree folder is never touched when its repository is gone");
+        Assert.True(File.Exists(Path.Combine(record.Path, "uncommitted.txt")), "content left behind must survive, not be silently discarded");
+        Assert.NotNull(notice);
+        Assert.Contains(record.Branch, notice);
+        Assert.Contains(record.Path, notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_RepositoryGoneAndWorktreeFolderEmpty_DropsTheEmptyFolderWithoutANotice()
+    {
+        // The other half of the same shape: the repository is gone, but there is genuinely nothing left in the
+        // worktree folder to tell the operator about — an empty shell must not manufacture a notice out of it.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        _ClearCheckout(record.Path);
+        TestGitDirectory.Remove(second);
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.False(Directory.Exists(record.Path), "an empty leftover shell is swept, same as the repository-present path");
+        Assert.Null(notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_RepositoryRootIsAFolderButNoLongerAGitRepository_StillReportsTheLeftoverFolder()
+    {
+        // Code review finding: `Directory.Exists(record.RepositoryRoot)` alone cannot tell "gone" from "still a
+        // folder but its .git was corrupted or removed" — a repository whose grandparent worktree vanished while the
+        // middle folder itself survives, say. Both shapes leave git unable to answer anything about the worktree and
+        // must report the same way: a notice whenever something on disk survives the drop, regardless of which
+        // reason the drop happened for.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        File.WriteAllText(Path.Combine(record.Path, "uncommitted.txt"), "work nobody pushed anywhere\n");
+
+        // The repository root folder itself survives, but stops being a repository — the worktree's own gitdir
+        // link resolves nowhere just the same as if the whole folder had gone.
+        Directory.Delete(Path.Combine(second, ".git"), recursive: true);
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(Directory.Exists(record.Path), "the worktree folder is never touched");
+        Assert.True(File.Exists(Path.Combine(record.Path, "uncommitted.txt")));
+        Assert.NotNull(notice);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_RepositoryGone_StillReownsTheWorktreeInsteadOfThrowing()
+    {
+        // AC-507 defect 3: the re-lock used to run unguarded, so a git that could not even start (repository folder
+        // gone) took the whole reattach down with it before the re-own — the part that actually has to land — ever
+        // ran. A crashed session's worktree whose repository has since vanished must still be handed to the new
+        // session, not left stuck on a misleading "is it installed and on PATH?" from a lock that was only ever
+        // best-effort.
+        var second = Path.Combine(_tempRoot, "second-repo");
+        Directory.CreateDirectory(second);
+        _Git(second, "init", "-b", "main");
+        _Git(second, "config", "user.email", "test@example.com");
+        _Git(second, "config", "user.name", "Test");
+        _Commit(second, "README.md", "hello\n");
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "wt-second", second);
+        TestGitDirectory.Remove(second);
+        var newSession = Guid.NewGuid().ToString("n");
+
+        var reattached = await _manager.ReattachAsync(record.Path, newSession);
+
+        Assert.NotNull(reattached);
+        Assert.Equal(newSession, reattached!.SessionId);
+        Assert.Equal(newSession, Assert.Single((await _manager.ListAsync())).SessionId);
     }
 
     [Fact]

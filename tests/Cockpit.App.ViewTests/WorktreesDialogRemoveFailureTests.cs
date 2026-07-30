@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -42,9 +43,56 @@ public class WorktreesDialogRemoveFailureTests
         Assert.True(line.Bounds.Height > 0, "an invisible explanation is the bug this fixes");
     });
 
+    // AC-507: a removal that went through but left an unmanaged folder on disk (its repository was gone) is
+    // information, not a failure — it must render, but distinct from the error-styled RemoveFailure line above.
+    [Fact]
+    public void AfterARemovalThatLeftAFolderBehind_TheNoticeIsOnScreen() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new WorktreesViewModel();
+        var window = new WorktreesDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        viewModel.RemoveNotice =
+            "The repository behind 'ac-438-focus-visible' no longer exists at 'worktrees/d8bcc995e0e5/cockpit-default'. " +
+            "Its worktree folder was left on disk at 'worktrees/302ed4db7cc9/ac-438-focus-visible' and is no longer managed by the cockpit.";
+        window.UpdateLayout();
+
+        var line = Assert.Single(_NoticeLines(window));
+        Assert.Contains("no longer managed by the cockpit", line.Text);
+        Assert.True(line.Bounds.Height > 0, "an invisible notice defeats the point of showing it");
+        Assert.Empty(_FailureLines(window));
+    });
+
+    // Both can be on screen at once (a CleanUpFinished sweep that both refused one row and left another's folder
+    // behind) — proves the two are actually styled apart, not just bound to different properties that happen to
+    // carry the same look.
+    [Fact]
+    public void BothAFailureAndANotice_RenderWithDifferentColours() => HeadlessAvalonia.Run(() =>
+    {
+        var viewModel = new WorktreesViewModel();
+        var window = new WorktreesDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        viewModel.RemoveFailure = "Could not remove 'cockpit/first' — fatal: 'wt' is not a working tree";
+        viewModel.RemoveNotice = "The repository behind 'cockpit/second' no longer exists and its folder was left on disk.";
+        window.UpdateLayout();
+
+        var failure = Assert.Single(_FailureLines(window));
+        var notice = Assert.Single(_NoticeLines(window));
+        Assert.NotEqual(((ISolidColorBrush)failure.Foreground!).Color, ((ISolidColorBrush)notice.Foreground!).Color);
+    });
+
     private static List<TextBlock> _FailureLines(WorktreesDialog window) =>
         window.GetVisualDescendants()
             .OfType<TextBlock>()
             .Where(block => block.IsVisible && block.Text?.StartsWith("Could not remove", StringComparison.Ordinal) == true)
+            .ToList();
+
+    private static List<TextBlock> _NoticeLines(WorktreesDialog window) =>
+        window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(block => block.IsVisible && block.Text?.StartsWith("The repository behind", StringComparison.Ordinal) == true)
             .ToList();
 }

@@ -128,6 +128,42 @@ public class WorktreeToolsTests
     }
 
     [Fact]
+    public async Task Remove_RepositoryGoneButLeavesAFolderBehind_RelaysTheNoticeInTheResponse()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("gone-pane", "/wt/gone");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
+        manager.RemoveAsync(record, false, Arg.Any<CancellationToken>())
+            .Returns("its worktree folder was left on disk and is no longer managed by the cockpit");
+        var live = Substitute.For<ILiveSessionRegistry>();
+        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
+        var tools = new WorktreeTools(manager, live);
+
+        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
+
+        Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("no longer managed by the cockpit", result.RootElement.GetProperty("notice").GetString());
+    }
+
+    [Fact]
+    public async Task Remove_PlainSuccess_NoticeIsNull()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("gone-pane", "/wt/gone");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
+        manager.RemoveAsync(record, false, Arg.Any<CancellationToken>()).Returns((string?)null);
+        var live = Substitute.For<ILiveSessionRegistry>();
+        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
+        var tools = new WorktreeTools(manager, live);
+
+        using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/gone"));
+
+        Assert.Equal(JsonValueKind.Null, result.RootElement.GetProperty("notice").ValueKind);
+    }
+
+    [Fact]
     public async Task Remove_DirtyWorktree_ConsentApproved_RemovesWithForce()
     {
         var manager = Substitute.For<IWorktreeManager>();

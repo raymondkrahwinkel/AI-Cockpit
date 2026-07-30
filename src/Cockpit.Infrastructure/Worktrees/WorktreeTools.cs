@@ -94,7 +94,7 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_remove")]
-    [Description("Remove a git worktree the cockpit created — for example when a task is done. A clean worktree is removed right away; a worktree that still holds uncommitted changes or untracked files is removed only after the operator approves a consent prompt (which discards them — any committed history stays on the branch). Refuses a worktree a live session is still running in. Use worktree_list to get the path.")]
+    [Description("Remove a git worktree the cockpit created — for example when a task is done. A clean worktree is removed right away; a worktree that still holds uncommitted changes or untracked files is removed only after the operator approves a consent prompt (which discards them — any committed history stays on the branch). Refuses a worktree a live session is still running in. The response carries `notice` when the removal left something behind that the repository could no longer be asked about — its worktree folder is never deleted in that case, only untracked from the cockpit — worth relaying rather than treating as a bare success. Use worktree_list to get the path.")]
     public async Task<string> RemoveAsync(
         [Description("The worktree's path, as returned by worktree_create or worktree_list.")] string path)
     {
@@ -150,8 +150,8 @@ internal sealed class WorktreeTools
 
         try
         {
-            await _worktreeManager.RemoveAsync(record, force: dirty);
-            return _Serialize(new { ok = true });
+            var notice = await _worktreeManager.RemoveAsync(record, force: dirty);
+            return _Serialize(new { ok = true, notice });
         }
         catch (Exception exception)
         {

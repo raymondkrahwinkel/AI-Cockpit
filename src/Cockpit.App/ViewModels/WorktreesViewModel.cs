@@ -53,6 +53,16 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 
     public bool HasRemoveFailure => RemoveFailure is not null;
 
+    /// <summary>
+    /// What a successful removal left behind (AC-507) — for example a worktree folder abandoned on disk because its
+    /// repository was gone. Distinct from <see cref="RemoveFailure"/>: the removal went through, this is information
+    /// about it, not a reason it failed. Null when the last removal had nothing to mention.
+    /// </summary>
+    [ObservableProperty]
+    private string? _removeNotice;
+
+    public bool HasRemoveNotice => RemoveNotice is not null;
+
     /// <summary>Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.</summary>
     public Func<IReadOnlySet<string>>? LiveSessionIds { get; set; }
 
@@ -66,6 +76,8 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     }
 
     partial void OnRemoveFailureChanged(string? value) => OnPropertyChanged(nameof(HasRemoveFailure));
+
+    partial void OnRemoveNoticeChanged(string? value) => OnPropertyChanged(nameof(HasRemoveNotice));
 
     /// <summary>The cheap refresh for the status-bar counter: how many worktrees exist, without asking git about each one's state.</summary>
     public async Task RefreshCountAsync()
@@ -128,7 +140,9 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 
         try
         {
-            await _manager.RemoveAsync(row.Record, force: row.Status.HasUncommittedChanges);
+            RemoveNotice = await _manager.RemoveAsync(row.Record, force: row.Status.HasUncommittedChanges) is { } notice
+                ? _OneLine(notice)
+                : null;
             RemoveFailure = null;
         }
         catch (Exception exception)
@@ -137,6 +151,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
             // says so, rather than leaving the operator with a button that appears to do nothing. The refresh below
             // still shows the row's real current state rather than pretending it went.
             RemoveFailure = _OneLine($"Could not remove '{row.Branch}' — {exception.Message}");
+            RemoveNotice = null;
         }
 
         await RefreshAsync();
@@ -170,11 +185,15 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         // nothing about a tree that is not there can be measured — which is why NothingToKeep is named here rather
         // than folded into that meaning.
         List<string> refusals = [];
+        List<string> notices = [];
         foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || worktree.Status.NothingToKeep) && !worktree.IsOwnerLive).ToList())
         {
             try
             {
-                await _manager.RemoveAsync(row.Record, force: false);
+                if (await _manager.RemoveAsync(row.Record, force: false) is { } notice)
+                {
+                    notices.Add(notice);
+                }
             }
             catch (Exception exception)
             {
@@ -187,6 +206,7 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         RemoveFailure = refusals.Count > 0
             ? _OneLine($"Could not remove {refusals.Count} of them: {string.Join("; ", refusals)}")
             : null;
+        RemoveNotice = notices.Count > 0 ? _OneLine(string.Join(" ", notices)) : null;
 
         await RefreshAsync();
     }
