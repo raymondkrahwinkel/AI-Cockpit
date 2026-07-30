@@ -2,6 +2,7 @@ using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -83,6 +84,63 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             if (!_RequireCeoProfile(host, settings))
             {
                 return new Dictionary<string, string> { ["status"] = "no-ceo-profile", ["issue"] = run.IssueId };
+            }
+
+            // AC-346: before the stage gate below, find out whether the clicked item is an epic (has "parent for"
+            // children) rather than a single issue. Same caller/tracker guard as _RefuseAsync's tracker-write below —
+            // an epic click reads the epic's own links and, on a pause, writes a comment onto it, so only the tracker
+            // plugin that owns the item gets to trigger that read/write, never an arbitrary caller naming someone
+            // else's issue. A non-epic item (children.Count == 0) costs one link lookup and falls straight through to
+            // the unchanged single-issue path below — ResolveAsync returns NotEpic and run is never replaced.
+            if (!string.IsNullOrWhiteSpace(run.IssueId) && string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase)
+                && host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase)) is { } provider)
+            {
+                // The repository the merge check runs git in (AC-346 review): the operator's chosen directory is not
+                // known yet at this point (no plan/session exists until planning starts), so this uses the same
+                // fallback tier AutopilotWorkingDirectory.Resolve does for that same case — the active session's
+                // directory — with the cockpit's own working directory as the very last resort, never the only source.
+                // Should neither resolve to a real repository, GitEpicSubMergeChecker.RefreshAsync leaves its state
+                // empty and IsMerged answers null for every sub, which AutopilotEpicRunner turns into a paused chain
+                // with a comment rather than silently treating every sub as unmerged and restarting from the first one.
+                var repositoryDirectory = host.Sessions.ActiveSessionWorkingDirectory is { Length: > 0 } active
+                    ? active
+                    : Directory.GetCurrentDirectory();
+
+                var epicOutcome = await AutopilotEpicRunner.ResolveAsync(
+                    provider,
+                    run,
+                    settings.ExecutableStage(run.Tracker),
+                    new GitEpicSubMergeChecker(repositoryDirectory),
+                    CancellationToken.None);
+
+                switch (epicOutcome.Kind)
+                {
+                    case AutopilotEpicOutcomeKind.Paused:
+                        await _PauseEpicAsync(provider, run.IssueId, epicOutcome.PausedSubId, epicOutcome.Reason!);
+                        return new Dictionary<string, string> { ["status"] = "epic-paused", ["issue"] = run.IssueId, ["sub"] = epicOutcome.PausedSubId ?? string.Empty };
+                    case AutopilotEpicOutcomeKind.Complete:
+                        return new Dictionary<string, string> { ["status"] = "epic-complete", ["issue"] = run.IssueId };
+                    case AutopilotEpicOutcomeKind.Ready:
+                        // Replace the clicked epic with the sub the epic-runner picked — everything below plans that
+                        // sub exactly as if it had been clicked directly, including the (already-passed) Ready gate.
+                        run = epicOutcome.Run!;
+                        break;
+                    case AutopilotEpicOutcomeKind.NotEpic:
+                    default:
+                        break;
+                }
+            }
+
+            // AC-346: a sub the epic-runner picked may already be mid-run — approved and executing (manager.Active),
+            // staged behind others (queue), or still on the shared planning draft (planController, not yet approved).
+            // Without this, a second click on the epic while its current sub is merge-ready but not yet merged (or
+            // MaxConcurrentRuns allows more than one run at once) would start a second worktree and a second PR on the
+            // very same ticket. Scoped to tracker+issue rather than only epic subs — the same double-click risk exists
+            // for a plain issue — but never blocks a deliberate replan of a sub that already settled: only an
+            // in-flight (not yet settled) run counts.
+            if (_HasRunInFlight(planController, queue, manager, run.Tracker, run.IssueId))
+            {
+                return new Dictionary<string, string> { ["status"] = "already-running", ["issue"] = run.IssueId };
             }
 
             // The stage gate (AC-345), ahead of the CEO's own scoping judgement: what the tracker says beats what the
@@ -178,5 +236,53 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         {
             // Fail-soft, as the run coordinator's tracker writes are.
         }
+    }
+
+    // AC-346: the epic-runner's chain paused — a sub not Ready, a nested epic, an undeterminable merge status, or the
+    // epic's own link structure could not be read (subId is null only for that last case, before any sub is even
+    // known). Written onto the epic, not the sub, since it is the epic the operator clicked and the epic's comment
+    // trail is where the DoD wants "which sub, and why" to be readable without opening the sub. Best effort, like
+    // every other tracker write here — a comment that fails to land does not change that the chain already paused;
+    // the caller's returned status already says so.
+    private static async Task _PauseEpicAsync(ITrackerProvider provider, string epicId, string? subId, string reason)
+    {
+        var text = subId is { Length: > 0 }
+            ? $"Autopilot paused this epic's chain at {subId}: {reason}"
+            : $"Autopilot paused this epic's chain: {reason}";
+
+        try
+        {
+            _ = await provider.PostCommentAsync(epicId, text);
+        }
+        catch (Exception)
+        {
+            // Fail-soft, as the run coordinator's tracker writes are.
+        }
+    }
+
+    // AC-346: whether a run on this exact tracker+issue is already in flight — not yet settled — across every place
+    // one can currently be: the shared planning draft (still being shaped or awaiting approval), the queue (approved,
+    // waiting for a free slot), and the active runs a manager is executing right now. A settled run (merge-ready,
+    // blocked, stopped) never counts — only a genuinely still-running one blocks a second start, so a deliberate
+    // replan of something that already finished is never refused by this guard.
+    internal static bool _HasRunInFlight(AutopilotPlanController planController, AutopilotRunQueue queue, AutopilotRunManager manager, string tracker, string issueId)
+    {
+        bool Matches(AutopilotPlanSource? source) =>
+            source is not null
+            && string.Equals(source.Tracker, tracker, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(source.IssueId, issueId, StringComparison.OrdinalIgnoreCase);
+
+        if (planController.Phase is AutopilotPlanPhase.Planning or AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator
+            && Matches(planController.Plan?.Source))
+        {
+            return true;
+        }
+
+        if (queue.Items.Any(plan => Matches(plan.Source)))
+        {
+            return true;
+        }
+
+        return manager.Active.Any(coordinator => Matches(coordinator.Plan?.Source));
     }
 }

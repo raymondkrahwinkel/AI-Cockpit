@@ -112,6 +112,28 @@ public class AutopilotRunCaptureTests
     }
 
     [Fact]
+    public void Capture_CarriesTheSourcesEpicId_ForAnEpicPickedSubRun()
+    {
+        // AC-346: the epic-progress comment filters history down to just this epic's own runs by this field — a
+        // mutation that dropped it would leave every epic's progress comment blended with the whole run history.
+        var plan = new AutopilotPlan("goal", new AutopilotPlanSource("youtrack", "AC-2", "t") { EpicId = "AC-EPIC" }, [Step("1", "Step", attempts: 1, reworks: 0)]);
+
+        var record = AutopilotRunRecord.Capture(plan, AutopilotPlanPhase.MergeReady, null, "run-1", 0, false, FinishedAt);
+
+        Assert.Equal("AC-EPIC", record.EpicId);
+    }
+
+    [Fact]
+    public void Capture_ForARunClickedDirectly_LeavesEpicIdEmpty()
+    {
+        var plan = new AutopilotPlan("goal", new AutopilotPlanSource("youtrack", "AC-2", "t"), [Step("1", "Step", attempts: 1, reworks: 0)]);
+
+        var record = AutopilotRunRecord.Capture(plan, AutopilotPlanPhase.MergeReady, null, "run-1", 0, false, FinishedAt);
+
+        Assert.Equal(string.Empty, record.EpicId);
+    }
+
+    [Fact]
     public void Capture_KeepsStepOrderAndTitles()
     {
         var plan = new AutopilotPlan("goal", null,

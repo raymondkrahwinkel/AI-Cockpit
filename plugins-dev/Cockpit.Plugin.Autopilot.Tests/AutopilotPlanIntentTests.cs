@@ -29,9 +29,28 @@ public class AutopilotPlanIntentTests
 
     private sealed class RecordingTracker : ITrackerProvider
     {
+        private readonly Dictionary<string, List<TrackerLinkedIssue>> _links = new(StringComparer.OrdinalIgnoreCase);
+
         public string TrackerId => "youtrack";
 
         public List<(string IssueId, string Comment)> Comments { get; } = [];
+
+        public void AddChild(string epicId, string childId, string title, string stage) =>
+            _Add(epicId, new TrackerLinkedIssue("parent for", TrackerLinkDirection.Outward, childId, title, stage));
+
+        private void _Add(string issueId, TrackerLinkedIssue link)
+        {
+            if (!_links.TryGetValue(issueId, out var list))
+            {
+                list = [];
+                _links[issueId] = list;
+            }
+
+            list.Add(link);
+        }
+
+        public Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string issueId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TrackerLinkedIssue>>(_links.TryGetValue(issueId, out var list) ? list : []);
 
         public Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default)
         {
@@ -139,5 +158,56 @@ public class AutopilotPlanIntentTests
         var result = await handler(Plan("Ready", title: "[Brainstorm] should the CEO validate twice?"));
 
         Assert.Equal("not-ready", result["status"]);
+    }
+
+    // AC-346: an epic click (the same "plan" intent, on an item that turns out to have "parent for" children) never
+    // reaches the pipeline as the epic itself — AutopilotEpicRunner swaps it for the sub it picked before the stage
+    // gate above ever runs.
+
+    [Fact]
+    public async Task Plan_OnAnEpicWithAReadySub_GoesThroughToPlanningOnTheSub_NotTheEpic()
+    {
+        var (handler, tracker) = Started();
+        // A ticket id that cannot possibly already sit on this repo's own origin/main: the wired GitEpicSubMergeChecker
+        // runs against Directory.GetCurrentDirectory() (the test process's own working directory, this repo's
+        // worktree), so a plausible-looking id like "AC-1" could actually match a real commit and read as "already
+        // merged" — flaking the test on the ambient repository's history rather than the epic-runner's own logic
+        // (which AutopilotEpicRunnerTests already covers against a fake merge checker).
+        tracker.AddChild("AC-345", "ZZ-999901", "The first sub", "Ready");
+
+        var result = await handler(Plan("Backlog")); // the epic's own stage is irrelevant — only the sub's is checked
+
+        Assert.Equal("planning", result["status"]);
+        Assert.Equal("ZZ-999901", result["issue"]);
+        Assert.Empty(tracker.Comments);
+    }
+
+    [Fact]
+    public async Task Plan_OnAnEpicWhoseNextSubIsNotReady_PausesTheChainAndCommentsOnTheEpic_NotTheSub()
+    {
+        var (handler, tracker) = Started();
+        tracker.AddChild("AC-345", "ZZ-999902", "The first sub", "Backlog");
+
+        var result = await handler(Plan("Backlog"));
+
+        Assert.Equal("epic-paused", result["status"]);
+        Assert.Equal("AC-345", result["issue"]);
+        Assert.Equal("ZZ-999902", result["sub"]);
+        var (commentedId, comment) = Assert.Single(tracker.Comments);
+        Assert.Equal("AC-345", commentedId);
+        Assert.Contains("ZZ-999902", comment);
+    }
+
+    [Fact]
+    public async Task Plan_OnAnItemWithNoChildren_IsUnaffectedByTheEpicCheck()
+    {
+        // Regression: AC-345's behaviour for a plain issue is untouched by the AC-346 epic lookup ahead of it.
+        var (handler, tracker) = Started();
+
+        var result = await handler(Plan("Ready"));
+
+        Assert.Equal("planning", result["status"]);
+        Assert.Equal("AC-345", result["issue"]);
+        Assert.Empty(tracker.Comments);
     }
 }
