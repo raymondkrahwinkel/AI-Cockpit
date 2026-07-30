@@ -8,7 +8,17 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.15.0: a plugin can now declare a memory-source *family* (AC-499) — new host-provided functionality a
+    <!-- 0.16.0: a plugin's left-menu launcher button can now carry a live counter/badge (AC-516) — new host-provided
+         functionality a plugin contributes to: ICockpitHost.AddSideMenuButtonWithBadge, returning a
+         SideMenuButtonBadge the plugin updates (Primary, and optionally a second Secondary count — "3 / 2") after
+         registering, without calling the method again; the host follows the badge's Changed event and re-renders
+         without polling. The existing AddSideMenuButton(string, Action) is completely untouched — no parameter
+         added, no default parameter — precisely so a plugin compiled against an older SDK keeps loading unchanged;
+         verified empirically with a mini-plugin built against an older Cockpit.Plugins.Abstractions and loaded
+         against this host's copy (AC-500's own lesson: a green suite is not evidence here, only a cross-version
+         load is). A plugin that calls the new method sets minHostVersion 0.16.0: an older host's copy of the SDK
+         has no such member, so the call cannot resolve at all. Minor because it is additive; still 0.x.
+         0.15.0: a plugin can now declare a memory-source *family* (AC-499) — new host-provided functionality a
          plugin contributes to: ICockpitHost.AddProjectMemorySourceFamily, plus ProjectMemorySourceRegistration's
          FamilyKey / InstanceTitle telling the host which family an individual source belongs to and what to call it
          inside that family. A family is one entry in the project editor's source picker standing for however many
@@ -115,7 +125,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.15.0</VersionPrefix>
+    <VersionPrefix>0.16.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

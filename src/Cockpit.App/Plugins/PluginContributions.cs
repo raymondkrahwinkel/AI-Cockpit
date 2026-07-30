@@ -8,8 +8,15 @@ namespace Cockpit.App.Plugins;
 /// <summary>A left-menu accordion section a plugin contributes, shown under the session list: which plugin it came from (#72 — the operator orders and hides the menu per plugin), its title, and a factory that builds the section content.</summary>
 public sealed record PluginSideSection(string PluginId, string Title, Func<Control> CreateView);
 
-/// <summary>A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run on click (typically opening a dialog).</summary>
-public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke);
+/// <summary>
+/// A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run
+/// on click (typically opening a dialog). <paramref name="Badge"/> (AC-516) is the live counter handle the plugin
+/// got back from <see cref="ICockpitHost.AddSideMenuButtonWithBadge"/>, or null for a button added through the
+/// plain <see cref="ICockpitHost.AddSideMenuButton"/> — trailing and defaulted rather than inserted, because this
+/// record is host-internal (never crosses the plugin ABI boundary), but its one construction site
+/// (<c>CockpitViewModel</c>) still only ever needs to name what changed.
+/// </summary>
+public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke, SideMenuButtonBadge? Badge = null);
 
 /// <summary>A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).</summary>
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
@@ -42,6 +49,16 @@ public interface IPluginContributionSink
     void AddPluginSideSection(string pluginId, string title, Func<Control> createView);
 
     void AddPluginSideButton(string pluginId, string title, Action onInvoke);
+
+    /// <summary>
+    /// Same as <see cref="AddPluginSideButton(string, string, Action)"/>, carrying the badge handle (AC-516) the
+    /// plugin got back from <see cref="ICockpitHost.AddSideMenuButtonWithBadge"/>. A default overload — rather than
+    /// widening the mandatory one above — so the many existing <see cref="IPluginContributionSink"/> fakes across
+    /// this repo's tests keep compiling untouched; it forwards to the badge-less member, so a sink that does not
+    /// override this simply renders the button without ever wiring up the badge.
+    /// </summary>
+    void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
+        AddPluginSideButton(pluginId, title, onInvoke);
 
     /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
     void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);

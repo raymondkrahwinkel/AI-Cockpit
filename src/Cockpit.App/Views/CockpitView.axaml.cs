@@ -276,7 +276,7 @@ public partial class CockpitView : UserControl
 
             Control control = entry switch
             {
-                { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings),
+                { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge),
                 { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
                 _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
             };
