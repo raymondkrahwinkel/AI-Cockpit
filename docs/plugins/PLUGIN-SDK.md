@@ -678,7 +678,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
-| `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. |
+| `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
 
 ## Project setup
@@ -743,6 +743,40 @@ built against a newer SDK than it ships, **loads it anyway but says so loudly** 
 banner and against the plugin's row in the manager — rather than letting it fail silently. It is, in effect, an
 auto-derived `minHostVersion`; keep the manifest's `minHostVersion` honest too, since that one *refuses* rather
 than warns.
+
+### Theme tokens and control classes: declare them, nothing derives them for you
+
+The auto-derivation above only covers `Cockpit.Plugins.Abstractions` — a compiled reference the host can
+inspect. A theme resource key (`{DynamicResource CockpitTextOnStatusBrush}`, `TryFindResource("Border.tag")`)
+or a control style class (`Classes="Accent"`, `Classes="Ghost"`) is neither: it is looked up by string, at
+runtime, against the *host's* `Styles/Theme.axaml`, which a plugin never compiles against (see "prefer code
+over XAML" below — a plugin does not ship or merge its own copy of the host's styles). Nothing about that
+lookup fails loudly on an older host. It fails the way AC-416 found ten plugins failing: a missing key
+returns null and the caller's own `_Brush(key, fallbackHex)` helper falls back to a hex that still looks
+plausible, and a missing class styles nothing — the control just draws unstyled. No exception, no startup
+warning, nobody notices until a screenshot looks slightly wrong. That silence is exactly why this gate cannot
+be automatic the way `abstractionsVersion` is: **if your plugin names a host theme resource key or a host
+control style class, you raise `minHostVersion` by hand**, to the host version that first shipped it — the
+same rule as any other member, just without a compiler to catch you if you forget.
+
+Read off *which* host version that is from `Directory.Build.props`'s own history comment at the top of the
+file — it is written in commit order, oldest capability at the bottom — the same way you would for an
+`ICockpitHost` member. A theme resource does **not** get its own line there the way an abstractions member
+does (it isn't part of the plugin/host binary contract), so for these you may have to walk `git log -S
+"<the resource key or class name>"` and cross-reference the commit date against when `Directory.Build.props`'s
+`VersionPrefix` changed, the way AC-416 had to. Do not assume the version another plugin happens to declare is
+right for yours — AC-416 exists because eight plugins carried a `minHostVersion` that was only correct by
+coincidence (an unrelated, later feature bump), and the other two still pointed at a host from before the
+tokens they use even existed.
+
+Known floor from the AC-334/335/336/337 repaint (AC-416): `Button.Ghost`, `Border.tag`, `CheckBox.Switch`,
+`CockpitTextOnStatusBrush`, the retemplated `Button`/`ComboBox`/`TextBox` controls, and the current
+`CockpitControlRadius`/`CockpitPanelRadius` values all first shipped together inside host **`0.8.0`** — the
+version `Directory.Build.props` was bumped to immediately after the last of those commits landed (there was
+no dedicated version bump for the repaint itself, so 0.8.0 is the first version number that can honestly be
+said to postdate all of it). A plugin whose code names any of these needs `minHostVersion 0.8.0` at minimum.
+A plugin depending on a token or class added *after* that point needs whatever later floor covers it, derived
+the same way.
 
 ### Building views: prefer code over XAML
 
