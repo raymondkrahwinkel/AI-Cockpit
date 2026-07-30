@@ -61,6 +61,43 @@ public class SessionRestorePlannerTests
         Assert.NotNull(plan.Profile);
     }
 
+    /// <summary>
+    /// AC-513 criterion 4: a pane that genuinely never had a conversation id — no <c>SessionStateRecord</c> was
+    /// ever written for it at all (a crash before the session got far enough to report anything) — must not just
+    /// carry <see cref="SessionRestoreAvailability.Unknown"/>, the banner has to be able to say why in words. This
+    /// was already true before AC-513 (<see cref="SessionRestorePlanner.ComposeAsync"/>'s no-state branch has
+    /// always set an explanation); pinned here as a regression test rather than left implicit.
+    /// </summary>
+    [Fact]
+    public async Task ComposeAsync_NoSavedStateForThePane_NamesTheReasonInWords()
+    {
+        var planner = Build(WorkProfile);
+
+        var plan = await planner.ComposeAsync(Pane(), state: null);
+
+        Assert.False(string.IsNullOrWhiteSpace(plan.Explanation));
+        Assert.Contains("conversation", plan.Explanation, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The other shape of "never had an id": a <c>SessionStateRecord</c> exists (the session did start, and a
+    /// pane record was written) but its <c>ConversationState</c> never moved past <see cref="SessionConversationIdState.Unknown"/> —
+    /// the session crashed before its provider ever reported one. Distinct from the no-record case above; both
+    /// must still name the reason.
+    /// </summary>
+    [Fact]
+    public async Task ComposeAsync_ARecordWhoseConversationWasNeverReported_YieldsUnknownWithAReason()
+    {
+        var planner = Build(WorkProfile);
+        var state = new SessionStateRecord("pane-1", "work", "ClaudeCli", null, SessionConversationIdState.Unknown, "/repo", null, null, null, DateTimeOffset.UtcNow);
+
+        var plan = await planner.ComposeAsync(Pane(), state);
+
+        Assert.Equal(SessionRestoreAvailability.Unknown, plan.Availability);
+        Assert.False(string.IsNullOrWhiteSpace(plan.Explanation));
+        Assert.Contains("conversation", plan.Explanation, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ComposeAsync_AKnownConversationId_YieldsKnown()
     {
