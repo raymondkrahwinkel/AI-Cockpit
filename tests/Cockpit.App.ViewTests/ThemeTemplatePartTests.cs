@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.VisualTree;
 
 namespace Cockpit.App.ViewTests;
@@ -45,6 +46,12 @@ public partial class ThemeTemplatePartTests
         ["ListBox.subnav ListBoxItem"] = () => (
             new ListBox { Classes = { "subnav" }, ItemsSource = new[] { "a" }, SelectedIndex = 0 },
             host => host.GetVisualDescendants().OfType<ListBoxItem>().First()),
+        ["DataGridRow"] = () =>
+        {
+            var grid = new DataGrid { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+            grid.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new Binding(".") });
+            return ((Control)grid, host => host.GetVisualDescendants().OfType<DataGridRow>().First());
+        },
     };
 
     [Fact]

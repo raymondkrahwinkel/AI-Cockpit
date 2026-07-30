@@ -1,8 +1,11 @@
 using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Shapes;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Xunit.Abstractions;
 
@@ -47,6 +50,28 @@ public class GitHubIssuesDialogControlTests
         harness.Close();
 
         Assert.Equal(First.Number, selectedNumber);
+    });
+
+    [Fact]
+    public void ASelectedRow_TintsWithTheCockpitAccent_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-423: DataGridRow's Fluent control theme fills its selection Rectangle (Rectangle#BackgroundRectangle,
+        // /template/ Fill) with Avalonia's own system accent (#0078d7) at every :selected state — this repo's own
+        // Theme.axaml named nothing for that part before this fix, so the row painted a colour no token accounted
+        // for (found by the AC-338 palette baseline). CockpitAccentSelectionColor is the theme's own accent tint,
+        // already used for the same purpose in a ComboBox's open dropdown.
+        var harness = DialogHarness.Open(First, Second);
+        harness.Select(First);
+
+        var row = harness.Grid.GetVisualDescendants().OfType<DataGridRow>().First(candidate => Equals(candidate.DataContext, First));
+        var rectangle = row.GetVisualDescendants().OfType<Rectangle>().First(candidate => candidate.Name == "BackgroundRectangle");
+        var fill = (rectangle.Fill as ISolidColorBrush)?.Color;
+        var token = (Color)(Application.Current?.FindResource("CockpitAccentSelectionColor")
+            ?? throw new InvalidOperationException("The theme has no CockpitAccentSelectionColor."));
+
+        harness.Close();
+
+        Assert.Equal(token, fill);
     });
 
     [Fact]
