@@ -1097,6 +1097,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a pane's conversation no longer goes missing when the cockpit restarts. Panes came back after a crash, but
+  resuming one was rarely on offer — starting a session wrote a blank conversation over the saved one, so the thread
+  was still on disk yet unreachable, and every ordinary restart cost you the same thing. A saved conversation now
+  survives any restart, crash or clean, and keeps surviving until the newly started session reports one of its own,
+  so reaching for "Start fresh" by mistake no longer throws the old thread away. It is let go only when the new
+  session runs under a different profile or working directory, where resuming it would have meant reopening a
+  conversation somewhere it never ran.
 - fixed: a Codex TTY session's status dot no longer gets stuck reading "idle" for the whole session — it now
   moves between busy and done as Codex actually works, the same as Claude's already did. The read-aloud feature
   also no longer speaks Codex's in-progress commentary, only its settled answer.

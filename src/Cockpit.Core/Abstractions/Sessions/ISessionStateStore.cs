@@ -24,8 +24,24 @@ public interface ISessionStateStore
     /// The latest record per pane, read forward across the whole file (last one for a given pane wins). Never
     /// throws: a missing or unreadable file, or one with a half-written last line, yields whatever could be parsed
     /// — empty in the worst case — with a warning logged, not an exception.
+    /// <para>
+    /// This collapses "the file has no state" and "the file could not be read" into the same empty result, which is
+    /// the right answer for a restore that has no other fallback (see <see cref="TryLoadAsync"/> for a caller that
+    /// needs to tell them apart).
+    /// </para>
     /// </summary>
     Task<IReadOnlyList<SessionStateRecord>> LoadAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same read as <see cref="LoadAsync"/>, but keeps "no state" and "could not tell" apart instead of collapsing
+    /// them: returns <see langword="null"/> when the file could not be read or nothing in it could be parsed, and a
+    /// (possibly empty) list only when the read genuinely succeeded. Empty on a missing file — that is a real
+    /// answer, not a failure. For a caller composing a write on top of the result (AC-513's
+    /// <c>SessionStateRecorder</c>), treating a failed read as "empty" would let that write bury whatever the file
+    /// actually holds under a blank record; <see cref="LoadAsync"/>'s collapse is only safe for a caller, like a
+    /// restore, that has no write to protect and nothing better to fall back on than "no state".
+    /// </summary>
+    Task<IReadOnlyList<SessionStateRecord>?> TryLoadAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Rewrites the file to hold at most one record per pane, folding a pane's older records into its latest one.

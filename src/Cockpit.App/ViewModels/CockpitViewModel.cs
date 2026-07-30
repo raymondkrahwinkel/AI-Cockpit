@@ -5548,18 +5548,42 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await _worktreeReconcileGate.WaitAsync(cancellationToken);
         }
 
-        IReadOnlyList<SessionStateRecord> states;
+        IReadOnlyList<SessionStateRecord>? loadedStates;
         try
         {
-            states = await _sessionStateStore.LoadAsync(cancellationToken);
+            // AC-513: TryLoadAsync, not LoadAsync — this result also feeds Seed() below, and LoadAsync's own
+            // "unreadable looks like empty" collapse is exactly wrong for that call: an empty Seed() latches the
+            // recorder onto a blank cache for the rest of the process (Seed only runs once; see its own doc), so
+            // a read failure must not be indistinguishable from "this pane genuinely has no saved state" here the
+            // way it legitimately is for the pane-restore loop a few lines down.
+            loadedStates = await _sessionStateStore.TryLoadAsync(cancellationToken);
         }
         catch (Exception exception)
         {
-            // ISessionStateStore.LoadAsync's own contract says it never throws, but a restore that somehow still
-            // fails here must not take the rest of startup down with it — nothing restores this run, same as an
-            // empty state file. Logged so "no panes came back" leaves a trail rather than silence.
+            // ISessionStateStore.TryLoadAsync's own contract says it never throws, but a restore that somehow
+            // still fails here must not take the rest of startup down with it — nothing restores this run, same
+            // as an empty state file. Logged so "no panes came back" leaves a trail rather than silence.
             _logger?.LogWarning(exception, "Could not load session state; no AI-session panes will be restored this run.");
             return;
+        }
+
+        // The pane-restore loop below has no fallback beyond "no saved state" either way, so a read failure and a
+        // genuinely empty file are the same answer for it — same reasoning LoadAsync itself uses, just applied
+        // here instead of inside the store.
+        var states = loadedStates ?? [];
+
+        if (loadedStates is not null)
+        {
+            // AC-513: hands the recorder the very list just read off disk, so its own in-memory cache — empty on
+            // every process start — is primed before any session can start and write through it. Avoids a second
+            // file read on this, the common, path; SessionStateRecorder still self-heals if a write reaches it
+            // first (a race this fire-and-forget restore cannot fully close), so this call is an optimization,
+            // not the guarantee. Skipped entirely on a read failure: Seed() latches _seedTask on whatever it is
+            // handed, so seeding it with an empty list here — indistinguishable from "no saved state" — would
+            // permanently blind the write path's own self-heal to a file that might still be readable moments
+            // later, the same loss criterion 2 exists to prevent, just reached through this call instead of the
+            // write path's own lazy load.
+            _sessionStateRecorder?.Seed(loadedStates);
         }
 
         var activeWorkspaceId = Workspaces.Active?.Id;
