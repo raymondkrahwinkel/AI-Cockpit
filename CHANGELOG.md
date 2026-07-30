@@ -1097,6 +1097,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: command output in a Linux terminal pane no longer comes out as a staircase. `ls`, `git status` and anything
+  else that ends its lines with a plain newline was drawn one row down but never back at the left edge, so each line
+  started where the previous one ended and long ones broke mid-word. The pane's terminal was being created without the
+  line disciplines a terminal is supposed to have — echo, line editing, Ctrl-C as a signal and the newline translation
+  were all switched off, and interactive shells only masked it by configuring the terminal for themselves. Windows was
+  never affected.
+
 - fixed: a pane's conversation no longer goes missing when the cockpit restarts. Panes came back after a crash, but
   resuming one was rarely on offer — starting a session wrote a blank conversation over the saved one, so the thread
   was still on disk yet unreachable, and every ordinary restart cost you the same thing. A saved conversation now
