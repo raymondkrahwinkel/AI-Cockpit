@@ -75,10 +75,11 @@ public class DepotSettingsControlTests
     }
 
     // The guard this pins: two rows saved under the same name would leave the registry unable to tell them apart —
-    // keep the first and drop the rest, the same first-one-wins rule BuildRegistrationPairs applies to a colliding
-    // scheme.
+    // Save() refuses the whole batch rather than keep one and drop the other (mirrors McpServersViewModel.Save's own
+    // duplicate-name refusal in the host dialog), so a same-named pair of brand-new rows leaves storage exactly as
+    // empty as it started, not holding whichever row happened to sort first.
     [Fact]
-    public void Save_TwoRowsWithTheSameName_KeepsOnlyTheFirst()
+    public void Save_TwoRowsWithTheSameName_RefusesTheWholeSave_AndWritesNothing()
     {
         var host = Substitute.For<ICockpitHost>();
         var settings = new DepotSettings(new FakePluginStorage());
@@ -87,10 +88,30 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
         _SetRowFields(view, index: 1, name: "Work", url: "https://second.example.com");
 
-        view.Save();
+        var saved = view.Save();
 
-        Assert.Single(settings.Connections);
-        Assert.Equal("https://first.example.com", settings.Connections.Single().Url);
+        Assert.False(saved);
+        Assert.Empty(settings.Connections);
+    }
+
+    // Case-insensitive on purpose (Ordinal → OrdinalIgnoreCase): ProjectMemorySourceRegistration.Register (the
+    // memory-source registry a save also writes to) refuses a colliding scheme case-insensitively, so "Work"/"work"
+    // would already collide one layer down even though Depot's own McpServerName comparison used to let them both
+    // through as two distinct "Depot: Work"/"Depot: work" entries.
+    [Fact]
+    public void Save_TwoRowsWithNamesDifferingOnlyByCase_RefusesTheWholeSave_AndWritesNothing()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
+        _SetRowFields(view, index: 1, name: "work", url: "https://second.example.com");
+
+        var saved = view.Save();
+
+        Assert.False(saved);
+        Assert.Empty(settings.Connections);
     }
 
     // AC-501: memory sources sync the same save a connection's MCP contribution does, live, without an app restart.
@@ -447,6 +468,151 @@ public class DepotSettingsControlTests
         _ = host.DidNotReceive().AddMcpServer(Arg.Any<McpServerContribution>());
     }
 
+    // --- AC-499: a row's own Sign-in action saves through this same Save() route before signing in ---------------
+
+    [Fact]
+    public async Task SignInAsync_RenamedRow_SignsInUnderTheNewStoredName_NotTheOldOne()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.SignInMcpServerAsync("Depot: Work (renamed)", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Work (renamed)", url: "https://depot.example.com");
+        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
+
+        await row.SignInAsync();
+
+        _ = host.Received(1).SignInMcpServerAsync("Depot: Work (renamed)", Arg.Any<CancellationToken>());
+        _ = host.DidNotReceive().SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>());
+        Assert.Equal("Work (renamed)", settings.Connections.Single().Name);
+        // The save that ran before sign-in reclaims the old registry entry through the existing route.
+        _ = host.Received(1).RemoveMcpServer("Depot: Work");
+    }
+
+    // The gamble AC-499 exists to remove: a row whose own typed name collides with another row's already-kept one
+    // must never sign in under its own ToRegistration().McpServerName, because Save() refused the whole batch, not
+    // silently kept the other row and dropped this one — signing in under that computed name would authorize the
+    // *other* row's connection under this row's belief.
+    [Fact]
+    public async Task SignInAsync_RowCollidesOnName_NeverSignsIn_AndLeavesBothRowsUnsaved()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var settings = new DepotSettings(new FakePluginStorage());
+        var view = new DepotSettingsControl(host, settings);
+        _AddRow(view);
+        _SetRowFields(view, index: 0, name: "Work", url: "https://first.example.com");
+        _SetRowFields(view, index: 1, name: "Work", url: "https://second.example.com");
+        var collidingRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
+
+        await collidingRow.SignInAsync();
+
+        _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // Neither row made it to storage — refusing the batch, not just dropping the second row.
+        Assert.Empty(settings.Connections);
+    }
+
+    // Fix 2's actual failure scenario: two connections already stored and signed in before, one renamed into a
+    // collision with the other. Pins the full end state a call-counting assert on "did not sign in" alone would
+    // miss — both the stored connection list and the memory-source registry must come out exactly as they went in,
+    // not with the colliding row's old entry silently reclaimed.
+    [Fact]
+    public async Task SignInAsync_RenameCollidesWithAnAlreadyStoredRow_RefusesTheWholeSave_AndLeavesStorageAndMemorySourcesUntouched()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com"),
+                new DepotConnectionRegistration("conn-2", "Work2", "https://work2.example.com"),
+            ],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 1, name: "Work", url: "https://work2.example.com");
+        var renamedRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
+
+        await renamedRow.SignInAsync();
+
+        _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _ = host.DidNotReceive().RemoveMcpServer(Arg.Any<string>());
+        Assert.Equal(2, settings.Connections.Count);
+        Assert.Contains(settings.Connections, connection => connection.Id == "conn-1" && connection.Name == "Work");
+        Assert.Contains(settings.Connections, connection => connection.Id == "conn-2" && connection.Name == "Work2");
+        Assert.Equal(2, registry.Sources.Count);
+        Assert.True(registry.Sources.ContainsKey("depot"));
+        Assert.True(registry.Sources.ContainsKey("depot.work2"));
+        Assert.Contains("Work", _AuthStatusText(renamedRow), StringComparison.Ordinal);
+    }
+
+    // AC-499 fix: _originalConnections must become each successful save's new reality, or a rename-then-rename-back
+    // across two separate Sign-in saves on the same open view diffs the second save against the dialog's *opening*
+    // snapshot instead of the first save's actual result — losing track of which scheme the connection now holds.
+    [Fact]
+    public async Task SignInAsync_TwoConsecutiveSaves_RenameThenRenameBack_EndStateHasOnlyTheCurrentScheme()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections =
+            [
+                new DepotConnectionRegistration("conn-1", "Alpha", "https://alpha.example.com"),
+                new DepotConnectionRegistration("conn-2", "Beta", "https://beta.example.com"),
+            ],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 1, name: "Gamma", url: "https://beta.example.com");
+        var betaRow = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().ElementAt(1);
+        await betaRow.SignInAsync();
+
+        _SetRowFields(view, index: 1, name: "Beta", url: "https://beta.example.com");
+        await betaRow.SignInAsync();
+
+        Assert.Equal(2, registry.Sources.Count);
+        Assert.True(registry.Sources.TryGetValue("depot.beta", out var beta));
+        Assert.Equal("Beta", beta!.InstanceTitle);
+        Assert.False(registry.Sources.ContainsKey("depot.gamma"));
+    }
+
+    // AC-499: the MCP-registry reclaim and memory-source sync that live in Save() run identically whether Save is
+    // triggered by the host's own Save button or by a row's Sign-in click — checked here on the registry's actual
+    // end state (FakeMemorySourceRegistry), the same reasoning Save_SwappingTwoConnectionNames_* above documents
+    // for why a call-counting substitute cannot be trusted for this.
+    [Fact]
+    public async Task SignInAsync_RenamedRow_EndState_MemorySourceInstanceTitleFollowsTheRename()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var registry = _WireRegistry(host);
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Synvolution", "https://depot.example.com")],
+        };
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
+        {
+            registry.Add(pair.Registration);
+        }
+        var view = new DepotSettingsControl(host, settings);
+        _SetRowFields(view, index: 0, name: "Synvolution (renamed)", url: "https://depot.example.com");
+        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
+
+        await row.SignInAsync();
+
+        Assert.True(registry.Sources.TryGetValue("depot", out var registration));
+        Assert.Equal("Synvolution (renamed)", registration!.InstanceTitle);
+    }
+
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached
     // tree has no realised visual children to walk, the same reason CanvasThemeRenderTests always shows a window
     // before it starts pulling controls out of one.
@@ -467,6 +633,9 @@ public class DepotSettingsControlTests
         window.Show();
         window.UpdateLayout();
     }
+
+    private static string? _AuthStatusText(DepotConnectionRowControl row) =>
+        row.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Opacity == 0.8).Text;
 
     private static void _SetRowFields(DepotSettingsControl view, int index, string name, string url)
     {

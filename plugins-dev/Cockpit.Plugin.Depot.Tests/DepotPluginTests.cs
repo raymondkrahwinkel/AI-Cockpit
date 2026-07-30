@@ -170,6 +170,37 @@ public class DepotPluginTests
         Assert.Equal("https://wispslate.example.com", server.OAuthAuthority);
     }
 
+    // AC-499 regression, the measured defect: a connection already stored with a trailing /mcp of its own (Depot's
+    // own docs tell the operator to paste the full endpoint, and older builds — or storage from before this fix —
+    // kept whatever was typed) must not double into "…/mcp/mcp" every time a session asks this plugin for its
+    // servers. Normalized at this use point, not only at save time, so already-stored data is fixed without a
+    // migration.
+    [Fact]
+    public void GetMcpServers_ConnectionStoredWithATrailingMcp_DoesNotDoubleItInTheContributedUrl()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://depot.example.com/mcp")));
+
+        var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
+
+        Assert.Equal("https://depot.example.com/mcp", server.Url);
+        Assert.Equal("https://depot.example.com", server.OAuthAuthority);
+    }
+
+    // AC-499: OAuthAuthority is the origin (scheme+host+port) of the normalized URL, not the stored URL's own path —
+    // a subpath deployment's authority lives at the origin, not under the subpath.
+    [Fact]
+    public void GetMcpServers_ConnectionUrlHasASubpath_OAuthAuthorityIsTheOriginNotTheSubpath()
+    {
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Synvolution", "https://host.example.com/depot")));
+
+        var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
+
+        Assert.Equal("https://host.example.com/depot/mcp", server.Url);
+        Assert.Equal("https://host.example.com", server.OAuthAuthority);
+    }
+
     [Fact]
     public void GetMcpServers_TwoMemoryRowsForTwoConnections_ReturnsBoth()
     {

@@ -873,6 +873,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   This is a deliberate move away from the accent shown in the app's earlier mockups, made for readability. The
   quieter ring on a field you clicked into is a tint of that accent, so it moved with it — it had been left behind
   on the old hue, which made the two blues on a focused field disagree by a shade nobody chose.
+- changed: signing in to an MCP server in the MCP servers dialog no longer requires saving it by hand first. Sign in
+  is offered as soon as the row itself is filled in — a name, plus a command or a URL — and clicking it now saves
+  the whole dialog before it opens the browser, so a server you just added, or one you just renamed, signs in on
+  the first click. That save is real: Cancel afterward will not undo it, and every other server you have changed in
+  the dialog goes out with it too. Signing out is unaffected by an unsaved rename — it withdraws whatever access is
+  already on file, under the name the server was last actually saved as, regardless of what you are mid-typing over
+  it.
 
 - changed: the Autopilot side-menu entry and workspace title now read "Autopilot" instead of "Autopilot (CEO)" —
   the suffix didn't distinguish anything and only added noise.
