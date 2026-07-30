@@ -9,7 +9,9 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
@@ -58,6 +60,13 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     /// <summary>Tears down the worktrees a finished task made for itself (AC-106). Absent in a test graph that does not exercise worktrees; the startup reconcile is the net then, as it was before.</summary>
     private readonly IWorktreeManager? _worktrees;
 
+    /// <summary>
+    /// The operator's Approve/Deny gate (#AC-47), asked when a per-task <see cref="DelegationRequest.RequestedPermission"/>
+    /// exceeds the profile's ceiling (AC-117). Absent in a test graph or an off-path caller with no UI listening — that
+    /// degrades to the old behaviour, a silent clamp to the ceiling, never a widen nobody was there to approve.
+    /// </summary>
+    private readonly IConsentBroker? _consent;
+
     private readonly Func<int, TimeSpan> _timeout;
     private readonly TimeSpan _idleWindow;
     private readonly List<DelegatedTaskEntry> _tasks = [];
@@ -71,8 +80,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         ISessionWorkspaces workspaces,
         IPluginProviderRegistry? providerRegistry = null,
         ISessionProjectResolver? projects = null,
-        IWorktreeManager? worktrees = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees)
+        IWorktreeManager? worktrees = null,
+        IConsentBroker? consent = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent)
     {
     }
 
@@ -88,7 +98,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IPluginProviderRegistry? providerRegistry = null,
         ISessionProjectResolver? projects = null,
         IWorktreeManager? worktrees = null,
-        TimeSpan? idleWindow = null)
+        TimeSpan? idleWindow = null,
+        IConsentBroker? consent = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -100,6 +111,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _worktrees = worktrees;
         _timeout = timeout;
         _idleWindow = idleWindow ?? IdleSessionWindow;
+        _consent = consent;
     }
 
     /// <summary>
@@ -605,8 +617,24 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
     private async Task _StartAsync(DelegatedTaskEntry entry)
     {
+        // See TryClaimStart: while the consent wait below is in flight, entry.Status is still Queued, so the queue
+        // drainer must not be allowed to pick this same entry a second time and start it twice.
+        if (!entry.TryClaimStart())
+        {
+            return;
+        }
+
         try
         {
+            // A delegated session has no human to answer a permission prompt itself, so it runs under the profile's
+            // ceiling by default — never bypass, never a mode that would block waiting for a click that cannot come.
+            // A caller may cap this one task lower still, always honoured outright (AC-117). A request ABOVE the
+            // ceiling is no longer silently clamped away when someone IS there to ask: see _EffectiveCeilingAsync.
+            // Resolved before anything is created or marked running: the wait for an operator's answer is unbounded
+            // from this method's own view, and a task sitting at Running with no session yet would occupy this
+            // profile's concurrency slot and confuse a follow-up sent while nobody has answered yet.
+            var effectiveCeiling = await _EffectiveCeilingAsync(entry);
+
             var runtime = _sessionManager.Create(entry.Profile);
             entry.Attach(runtime);
 
@@ -618,15 +646,6 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             TasksChanged?.Invoke();
 
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
-
-            // A delegated session has no human to answer a permission prompt, so it runs under the profile's
-            // ceiling — never bypass, never a mode that would block waiting for a click that cannot come. A caller
-            // may cap this one task lower still (AC-117): the effective ceiling is the more restrictive of the two,
-            // so a per-task request can only narrow what the operator allowed, never widen it.
-            var effectiveCeiling = string.IsNullOrWhiteSpace(entry.RequestedPermission)
-                ? entry.Profile.DelegationPolicy.PermissionCeiling
-                : DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(
-                    entry.Profile.DelegationPolicy.PermissionCeiling, entry.RequestedPermission);
 
             await runtime.StartAsync(
                 entry.Profile,
@@ -685,6 +704,71 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             await _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, ex.Message, entry);
         }
     }
+
+    /// <summary>
+    /// The permission ceiling this task's session actually runs under (AC-117). A per-task
+    /// <see cref="DelegatedTaskEntry.RequestedPermission"/> that asks for no more than the profile's own
+    /// <see cref="DelegationPolicy.PermissionCeiling"/> is honoured outright — narrowing what the operator already
+    /// allowed needs nobody's further say-so.
+    /// <para>
+    /// A request ABOVE the ceiling used to be clamped away with nobody the wiser. Now, with the operator's
+    /// Approve/Deny gate attached (#AC-47), it is put to them instead: a one-time consent to run this profile above
+    /// its configured ceiling for this one task. Classed <see cref="ConsentRisk.Dangerous"/> and never remembered —
+    /// this is exactly the "starting or steering a session with the operator's rights" case that risk class exists
+    /// for, and a delegated agent can be prompt-injected into asking for it, so one approval must never become a
+    /// standing permission it (or a later task on the same profile) can ride again. Denied, or with no gate to ask
+    /// (a headless delegation chain, or no UI open), it falls back to the clamp: the profile's ceiling wins
+    /// whenever nobody was there to say otherwise. Bounded by the profile's own <see cref="DelegationPolicy.TimeoutMinutes"/>
+    /// so an unanswered prompt cannot hold this task's slot, and this pane's whole consent channel, open forever.
+    /// </para>
+    /// </summary>
+    private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry)
+    {
+        var requested = entry.RequestedPermission;
+        var profileCeiling = entry.Profile.DelegationPolicy.PermissionCeiling;
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return profileCeiling;
+        }
+
+        var clamped = DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(profileCeiling, requested);
+        if (!DelegatedToolPermissionPolicy.IsAboveCeiling(profileCeiling, requested) || _consent is null)
+        {
+            return clamped;
+        }
+
+        var minutes = entry.Profile.DelegationPolicy.TimeoutMinutes;
+        using var timeoutCts = minutes > 0 ? new CancellationTokenSource(_timeout(minutes)) : null;
+
+        var decision = await _consent
+            .RequestConsentAsync(_ElevationPrompt(entry, profileCeiling, requested), timeoutCts?.Token ?? default)
+            .ConfigureAwait(false);
+        await _Audit(
+            decision.IsApproved ? DelegationAuditAction.PermissionElevated : DelegationAuditAction.PermissionElevationDenied,
+            entry.Profile.Label,
+            entry.TaskId,
+            request: null,
+            reason: decision.IsApproved
+                ? $"Approved to run at '{requested}' instead of the profile ceiling '{profileCeiling}'."
+                : $"Not approved; the task ran clamped to the profile ceiling '{clamped}'.",
+            entry);
+
+        return decision.IsApproved ? requested : clamped;
+    }
+
+    // The prompt names the one thing being asked for: the permission jump, and the working directory the elevated
+    // session would act on (the one concrete fact that makes "bypassPermissions" mean something) — never the task's
+    // own caller-controlled prompt or label, which is untrusted text a prompt-injected agent chooses.
+    private static ConsentRequest _ElevationPrompt(DelegatedTaskEntry entry, string profileCeiling, string requested) =>
+        new(
+            "A delegated task wants to run above its profile's permission ceiling",
+            $"Profile '{entry.Profile.Label}' asked to run a task at permission '{requested}' — above its configured " +
+            $"ceiling '{profileCeiling}'{(entry.WorkingDirectory is { Length: > 0 } dir ? $", in '{dir}'" : string.Empty)}. " +
+            $"Approving lets this one task run at '{requested}'; denying clamps it to '{profileCeiling}'.",
+            new ConsentSource(entry.OwnerPaneId, null, "Orchestrator"),
+            $"delegation.permission:{entry.Profile.Label}",
+            ConsentRisk.Dangerous,
+            AllowRemember: false);
 
     /// <summary>
     /// Closes a finished task's session once nobody has followed up on it for <see cref="IdleSessionWindow"/>. Without

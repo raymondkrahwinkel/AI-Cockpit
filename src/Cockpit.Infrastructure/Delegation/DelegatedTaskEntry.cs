@@ -34,7 +34,7 @@ internal sealed class DelegatedTaskEntry
 
     public string? WorkingDirectory { get; }
 
-    /// <summary>The caller's optional per-task least-privilege cap (AC-117), clamped to the profile ceiling when the session starts. Null runs at the profile's own ceiling.</summary>
+    /// <summary>The caller's optional per-task permission request (AC-117). At or below the profile's ceiling it is honoured outright; above it, it is put to the operator as a one-time approval to run higher, and clamped to the ceiling if declined or nobody is there to ask. Null runs at the profile's own ceiling.</summary>
     public string? RequestedPermission { get; }
 
     /// <summary>The caller's optional per-task MCP-server narrowing (AC-136), validated to a subset of what the profile allows before the task is accepted. Null runs with the profile's full allowed set.</summary>
@@ -88,6 +88,7 @@ internal sealed class DelegatedTaskEntry
     public bool IsFinished => Status is DelegatedTaskStatus.Completed or DelegatedTaskStatus.Failed or DelegatedTaskStatus.Stopped;
 
     private int _worktreeReleaseClaimed;
+    private int _startClaimed;
 
     /// <summary>
     /// Claims the one worktree release this task gets (AC-106), so only the first caller performs it. The paths that
@@ -96,6 +97,15 @@ internal sealed class DelegatedTaskEntry
     /// started again, so one release is all there is to hand out.
     /// </summary>
     public bool TryClaimWorktreeRelease() => Interlocked.Exchange(ref _worktreeReleaseClaimed, 1) == 0;
+
+    /// <summary>
+    /// Claims the one start this task gets (AC-117). <c>Status</c> stays <see cref="DelegatedTaskStatus.Queued"/>
+    /// until after an operator-elevation consent wait resolves, so a task's own start can now await for a while
+    /// before it flips to <see cref="DelegatedTaskStatus.Running"/> — a window in which the queue drainer, seeing
+    /// the same still-Queued entry and a slot some other task just freed, could otherwise call
+    /// <c>DelegationService._StartAsync</c> on it a second time and spawn two sessions for one task.
+    /// </summary>
+    public bool TryClaimStart() => Interlocked.Exchange(ref _startClaimed, 1) == 0;
 
     public void Attach(ISessionRuntime runtime)
     {
