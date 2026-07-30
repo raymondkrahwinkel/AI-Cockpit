@@ -19,12 +19,12 @@ public class RealWorkflowsTests
     }
 
     [Fact]
-    public void CiHasExactlyTwoLocallyRunnableJobs()
+    public void CiHasExactlyThreeLocallyRunnableJobs()
     {
         var verdicts = _VerdictsFor("ci.yml");
 
-        Assert.Equal(2, verdicts.Count(verdict => verdict.CanRunLocally));
-        Assert.Equal(["build", "plugins"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
+        Assert.Equal(3, verdicts.Count(verdict => verdict.CanRunLocally));
+        Assert.Equal(["build", "plugins", "plugin-versions"], verdicts.Where(v => v.CanRunLocally).Select(v => v.JobId));
     }
 
     [Theory]
@@ -45,11 +45,25 @@ public class RealWorkflowsTests
     [InlineData("release.yml", "gate")]
     [InlineData("release.yml", "finalize")]
     [InlineData("publish-plugin.yml", "publish")]
+    [InlineData("publish-updated-plugins.yml", "discover")]
     public void PlainLinuxJobsInThisRepositoryCanRunLocally(string workflow, string jobId)
     {
         var verdict = _VerdictsFor(workflow).Single(v => v.JobId == jobId);
 
         Assert.True(verdict.CanRunLocally, verdict.Reason);
+    }
+
+    /// <summary>
+    /// The first job in this repository that calls another workflow instead of carrying steps of its own. It is
+    /// pinned here because a job with no <c>steps:</c> is the shape a classifier is most likely to wave through by
+    /// accident — reading "nothing here refuses it" as "it can run" — and act cannot run one at all.
+    /// </summary>
+    [Fact]
+    public void AJobThatCallsAnotherWorkflowIsRefused()
+    {
+        var verdict = _VerdictsFor("publish-updated-plugins.yml").Single(v => v.JobId == "publish");
+
+        Assert.False(verdict.CanRunLocally);
     }
 
     private static IReadOnlyList<JobVerdict> _VerdictsFor(string fileName)
