@@ -1151,10 +1151,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   server and all its tools out of the session for good. As a side effect no access token is written into a session's
   config file any more.
 - fixed: a session could start on a token that was minutes from expiring and lose that server minutes later. A
-  session now starts on a token that will outlast the sitting, renewing it first when it will not.
-- changed: when a server cannot be used, the cockpit says so once, with the cause and what to do about it, instead
-  of repeating a generic "sign in again". A server that is simply unreachable no longer sends you through a sign-in
-  that cannot help, and a server you never signed in to is not described as one whose sign-in expired.
+  session now starts on a token that will outlast the sitting, renewing it first when it will not. If a server's
+  tokens are simply too short-lived for that and the local address could not be set up either, it is left out with
+  the reason rather than added and lost while you are working.
+- fixed: a server rejecting the cockpit's credential — a sign-in revoked at the other end, or two sessions racing to
+  refresh — used to leave that credential in place, so every later call presented it again and the server was gone
+  for the rest of the session. A rejection now renews the credential and sends the call once more.
+- changed: when a server cannot be used, the cockpit now shows you a notification saying what is wrong and what to
+  do about it — once, when it happens, rather than repeating on every call. A server that is simply unreachable no
+  longer sends you through a sign-in that cannot help, a server you never signed in to is not described as one whose
+  sign-in expired, and a server whose tokens are too short-lived says exactly that instead of asking you to sign in
+  again for another one just like it.
 - fixed: several sessions starting at once could each renew the same sign-in, which on a server that issues one-use
   refresh tokens can invalidate the authorization outright. One renewal now runs at a time and the others use its
   result.

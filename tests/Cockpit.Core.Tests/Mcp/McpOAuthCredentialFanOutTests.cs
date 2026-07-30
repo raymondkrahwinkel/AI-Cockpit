@@ -264,16 +264,20 @@ public class McpOAuthCredentialFanOutTests
     [Fact]
     public async Task SdkSession_WhenTheProxyIsGoneAndTheTokensAreTooShortLived_LeavesTheServerOutRatherThanBakingInAFailure()
     {
+        // Port 1 refuses instantly, so the connect after the renewal fails fast; the address has to be the one the
+        // stored token names, or the origin check discards the token and this measures "never signed in" instead of
+        // the short-lifetime rule it is here for.
+        var server = OAuthServer with { Url = "http://127.0.0.1:1/mcp" };
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync(
-            OAuthServer.IdentityKey,
-            OAuthServer.Name,
+            server.IdentityKey,
+            server.Name,
             new McpOAuthToken
             {
                 AccessToken = "about-to-die",
                 RefreshToken = "refresh",
                 ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
-                ResourceUrl = OAuthServer.Url,
+                ResourceUrl = server.Url,
             });
 
         // The real coordinator, deliberately: a substitute that always answers "Authorized" cannot reach this path
@@ -289,7 +293,7 @@ public class McpOAuthCredentialFanOutTests
             inner,
             inner.Capabilities,
             AuthKey,
-            _CatalogOf(OAuthServer with { Url = "http://127.0.0.1:1/mcp" }),
+            _CatalogOf(server),
             oauthCoordinator: coordinator,
             oauthProxy: _ProxyAnswering(null));
 
@@ -301,6 +305,21 @@ public class McpOAuthCredentialFanOutTests
         // while the operator is working.
         Assert.NotNull(inner.LastMcpServers);
         Assert.Empty(inner.LastMcpServers);
+
+        // The check that this measured the right thing: with the proxy present the very same setup keeps the server,
+        // because there the ten-minute lifetime is irrelevant. Without this, an origin mismatch or a missing token
+        // would produce the assertion above just as well.
+        var withProxy = new FakePluginSessionDriver();
+        await new PluginSessionDriverAdapter(
+            withProxy,
+            withProxy.Capabilities,
+            AuthKey,
+            _CatalogOf(server),
+            oauthCoordinator: coordinator,
+            oauthProxy: _ProxyAnswering("http://127.0.0.1:54321/mcp")).StartAsync();
+
+        Assert.NotNull(withProxy.LastMcpServers);
+        Assert.Equal("http://127.0.0.1:54321/mcp", Assert.Single(withProxy.LastMcpServers).Url);
     }
 
     [Fact]

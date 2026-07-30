@@ -372,13 +372,15 @@ public class McpOAuthProxyTests
     {
         await using var upstream = await InProcessUpstreamServer.StartAsync(async (context, _) =>
         {
+            // Promises far more than it delivers and then stops. The far side dying while its answer is already
+            // going out is the one departure on this path that cannot be answered, because the response headers are
+            // long gone — and this is the deterministic way to stage it. Aborting the connection outright would
+            // stage it too, but it also tears down the agent's side, and then which of the two the proxy notices
+            // first is a race: "the agent hung up" is silent by design, so the test would be asserting a coin flip.
+            context.Response.Headers.ContentLength = 5000;
             context.Response.ContentType = "text/event-stream";
             await context.Response.WriteAsync("data: first\n\n");
             await context.Response.Body.FlushAsync();
-
-            // The far side dies while its answer is already going out — the one departure on this path that cannot
-            // be answered, because the response headers are long gone.
-            context.Abort();
         });
 
         var logs = new CapturingLoggerFactory();
