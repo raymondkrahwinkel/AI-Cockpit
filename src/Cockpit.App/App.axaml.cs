@@ -320,7 +320,7 @@ public partial class App : Application
         // contribution failure recorded here reaches both without a second source of truth to keep in sync.
         var diagnostics = Program.Services.GetRequiredService<PluginDiagnostics>();
 
-        pluginManager.Initialize(discovered => new CockpitHost(
+        pluginManager.Initialize((discovered, plugin) => new CockpitHost(
             discovered.FolderId,
             discovered.Manifest.Name,
             Program.Services,
@@ -333,7 +333,11 @@ public partial class App : Application
             // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
             // handing them to the host lets a dashboard export drop them too, which is the third place a
             // declared secret has to be honoured.
-            discovered.Manifest.SecretKeys));
+            discovered.Manifest.SecretKeys,
+            // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
+            // apart from every other plugin's when it resolves a tool call's caller-scoped fallback — see
+            // CockpitHost's own parameter doc.
+            plugin.GetType()));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.

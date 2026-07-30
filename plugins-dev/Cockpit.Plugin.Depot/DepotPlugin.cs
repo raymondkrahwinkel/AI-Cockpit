@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugin.Depot.Settings;
 using Cockpit.Plugin.Depot.Ui;
 
@@ -50,6 +51,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         _settings = settings;
         _host = host;
         host.AddSettings(() => new DepotSettingsControl(host, settings));
+
+        // AC-499: declared unconditionally, even with zero connections — this is the doorless-dead-end bug itself:
+        // zero connections meant no "Depot" option anywhere in the project editor's picker and no way to reach this
+        // plugin's settings from it. The family is what lets the picker say "Depot" (and offer ConfigureAsync as
+        // the way to add a first connection) regardless of how many are configured right now.
+        host.AddProjectMemorySourceFamily(new ProjectMemorySourceFamily(DepotMemorySource.Scheme, "Depot")
+        {
+            EmptyHint = "No Depot server configured yet.",
+            ConfigureAsync = _ => host.ShowSettingsAsync(),
+        });
 
         // No connections configured yet means no memory source at all (AC-501) — the row behaves exactly as it did
         // before this plugin existed, rather than always offering a fixed "Depot project" nothing points at yet.
@@ -107,11 +118,22 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             .ToList();
     }
 
-    private static McpServerContribution _ContributionFor(Model.DepotConnectionRegistration connection) =>
-        new(Name: connection.McpServerName, Url: $"{connection.Url}/mcp")
+    // AC-499: connection.Url is already the normalized base by the time it gets here — DepotConnectionRowControl
+    // .ToRegistration normalizes on save, and DepotSettings migrates any value stored before this fix existed,
+    // exactly once, on load. This only appends /mcp; it must not call DepotUrlNormalizer.Normalize again, because
+    // that call is no longer safe to repeat (see DepotUrlNormalizer's own doc comment) — a base whose deployment
+    // path genuinely ends in /mcp would lose that segment on a second pass.
+    private static McpServerContribution _ContributionFor(Model.DepotConnectionRegistration connection)
+    {
+        return new(Name: connection.McpServerName, Url: $"{connection.Url}/mcp")
         {
-            OAuthAuthority = connection.Url,
+            // Scheme+host+port of the stored base URL, not its own path — Depot's protected-resource metadata
+            // names the origin as its authorization_servers entry, not a subpath. Falls back to the base URL
+            // itself on the (defensive-only; the row's own validation already requires an absolute http(s) URL
+            // before Sign-in is offered) chance it is not a parseable absolute URL.
+            OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,
         };
+    }
 
     public void Dispose()
     {

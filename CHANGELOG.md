@@ -51,12 +51,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   existing project link.
 - added: the project editor's "Choose…" button next to a Depot memory row now opens a picker of your Depot
   projects by name, instead of staying disabled and asking you to type a slug you can't see anywhere. Not signed in
-  yet? One "Sign in" button, not an empty list. Couldn't reach Depot? It says so.
+  yet? One "Sign in" button, not an empty list. Couldn't reach Depot? It says so. Each entry also now says whether
+  it's a Depot project or a Depot brain, so the two are no longer indistinguishable by name alone.
 - added: a Memory row pointed at Depot now confirms the project you typed actually exists, the same way a broken
-  file path is already flagged under a Reference row. Type a Depot project slug and, a moment later, you'll see
-  either a green confirmation, a red "could not be found" (also shown for one you don't have access to — Depot can't
-  yet tell the two apart), or an amber "not signed in / unreachable" when the connection itself needs attention
-  first. Nothing is shown while the field is empty or while you're still typing.
+  file path is already flagged under a Reference row. Type a Depot project slug and, a moment later, you'll see a
+  green confirmation naming what was found (with its kind), a red "could not be found" (also shown for one you
+  don't have access to — Depot can't yet tell the two apart), an amber "not signed in" only when that's actually
+  true, or a separate amber message when the check itself couldn't complete — network trouble, say — so you're
+  never told to sign in again when you already are. Nothing is shown while the field is empty or while you're still
+  typing.
 - changed: a session on a project linked to a Depot connection is now offered only that connection's MCP server,
   not every configured Depot instance — and a project with no Depot connection gets none at all. It shows up
   ticked in the New-session checklist like any other plugin-offered server, so you still have the last word on
@@ -852,6 +855,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   dialog-configured one gets, instead of silently connecting with no authentication and no tools; and a project-
   scoped contribution shows up only for sessions started on that project, the same way the dialog's own per-project
   servers already do.
+- added: a Memory row now asks two separate questions instead of one. The first dropdown is the kind of place the
+  memory lives — a folder, or Depot — and when you pick a plugin's entry a second line appears asking which of its
+  servers you mean, with a "Servers…" button beside it that opens that plugin's own settings. Have no servers set up
+  yet? The line says so ("No Depot server configured yet") and offers the same button, so the way to add one is in
+  front of you instead of on a screen the dialog never named.
 
 ### Changed
 
@@ -868,6 +876,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   This is a deliberate move away from the accent shown in the app's earlier mockups, made for readability. The
   quieter ring on a field you clicked into is a tint of that accent, so it moved with it — it had been left behind
   on the old hue, which made the two blues on a focused field disagree by a shade nobody chose.
+- changed: signing in to an MCP server in the MCP servers dialog no longer requires saving it by hand first. Sign in
+  is offered as soon as the row itself is filled in — a name, plus a command or a URL — and clicking it now saves
+  the whole dialog before it opens the browser, so a server you just added, or one you just renamed, signs in on
+  the first click. That save is real: Cancel afterward will not undo it, and every other server you have changed in
+  the dialog goes out with it too. Signing out is unaffected by an unsaved rename — it withdraws whatever access is
+  already on file, under the name the server was last actually saved as, regardless of what you are mid-typing over
+  it.
 
 - changed: the Autopilot side-menu entry and workspace title now read "Autopilot" instead of "Autopilot (CEO)" —
   the suffix didn't distinguish anything and only added noise.
@@ -1111,6 +1126,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   so reaching for "Start fresh" by mistake no longer throws the old thread away. It is let go only when the new
   session runs under a different profile or working directory, where resuming it would have meant reopening a
   conversation somewhere it never ran.
+- fixed: clicking "Choose…" next to a Depot memory row to pick a project could fail with `No enabled MCP server
+  named "Depot: Depot"` even while signed in and with connections configured — picking a project (and the same
+  reachability check a typed slug already got) now reaches a plugin's own server the same way the picker's
+  acceptance check already did, without waiting for the project to be saved first.
 - fixed: a Codex TTY session's status dot no longer gets stuck reading "idle" for the whole session — it now
   moves between busy and done as Codex actually works, the same as Claude's already did. The read-aloud feature
   also no longer speaks Codex's in-progress commentary, only its settled answer.
@@ -1727,6 +1746,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: "Open in browser" on a GitHub issue says so when the browser will not start, instead of silently doing
   nothing; the YouTrack side now checks the address it built from your instance URL is a web address at all
   before handing it to the desktop.
+- fixed: a Memory row now always offers a place to choose from. Until now the whole picker was hidden unless some
+  plugin had already registered a memory source, so a cockpit with none — or with the Depot plugin installed but no
+  connection set up yet — showed a bare box and no way to see that anything other than a folder was possible. "Folder"
+  is now always offered, and a plugin's entry appears beside it whether or not it has any servers configured yet.
 
 ### Removed
 

@@ -10,7 +10,12 @@ namespace Cockpit.Plugin.Depot.Model;
 /// </summary>
 /// <param name="Id">Stable id, independent of <see cref="Name"/> so a rename does not orphan the contributed MCP server registered under the old name.</param>
 /// <param name="Name">Operator-chosen label for this connection, shown in the settings row and used to derive the contributed MCP server's display name.</param>
-/// <param name="Url">The Depot instance's base URL, e.g. <c>https://depot.example.com</c> — no trailing slash, no <c>/mcp</c> suffix (the plugin appends that when contributing the server).</param>
+/// <param name="Url">
+/// The Depot instance's base URL, e.g. <c>https://depot.example.com</c> — no trailing slash, no <c>/mcp</c> suffix
+/// (the plugin appends that when contributing the server). Not merely a convention: <c>Ui.DepotConnectionRowControl
+/// .ToRegistration</c> runs whatever the operator typed through <c>DepotUrlNormalizer.Normalize</c> before it lands
+/// here, since Depot's own docs tell the operator to paste the full endpoint including <c>/mcp</c>.
+/// </param>
 public sealed record DepotConnectionRegistration(string Id, string Name, string Url)
 {
     /// <summary>

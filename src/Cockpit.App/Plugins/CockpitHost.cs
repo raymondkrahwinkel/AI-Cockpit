@@ -41,6 +41,19 @@ namespace Cockpit.App.Plugins;
 /// the dialog helper. Built per plugin (each gets its own storage and its settings keyed by
 /// <paramref name="pluginId"/>), so <see cref="Storage"/> and any settings view are scoped to this plugin.
 /// </summary>
+/// <param name="ownPluginType">
+/// The runtime type of the <see cref="ICockpitPlugin"/> instance this host was built for (AC-499), or
+/// <see langword="null"/> for a host built without one (most tests). The only thing it drives is
+/// <see cref="_OwnMcpServerContributions"/>: which of the container-wide <see cref="IPluginMcpProvider"/>
+/// registrations belong to <em>this</em> plugin rather than some other one. <c>services</c> is the whole app's
+/// shared provider — every plugin's <c>ConfigureServices</c> adds its own <see cref="IPluginMcpProvider"/> into
+/// the same collection — so there is no per-plugin scope to resolve against; type identity against the plugin's
+/// own concrete type is what stands in for it. This matches how the one plugin that needs it registers today
+/// (<c>services.AddSingleton&lt;IPluginMcpProvider&gt;(this)</c> — Depot), so its own provider's <c>GetType()</c>
+/// is literally the plugin's own type. A plugin that instead contributed a separate <see cref="IPluginMcpProvider"/>
+/// class would not match here and would need this check broadened, not the type swapped for a laxer one — see
+/// <see cref="CallMcpToolAsync"/>'s own remarks on why "any provider" is deliberately not the default any more.
+/// </param>
 internal sealed class CockpitHost(
     string pluginId,
     string pluginName,
@@ -51,7 +64,8 @@ internal sealed class CockpitHost(
     IPluginDialogHost dialogHost,
     ICockpitSessionObserver sessions,
     PluginDiagnostics diagnostics,
-    IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
+    IReadOnlyList<string>? declaredSecretKeys = null,
+    Type? ownPluginType = null) : ICockpitHost
 {
     public IServiceProvider Services => services;
 
@@ -191,6 +205,18 @@ internal sealed class CockpitHost(
 
     public IReadOnlyList<ProjectMemorySourceRegistration> ProjectMemorySources =>
         services.GetRequiredService<IProjectMemorySourceRegistry>().Sources;
+
+    public void AddProjectMemorySourceFamily(ProjectMemorySourceFamily family)
+    {
+        // Refused means another plugin already declared this key — agreement, not a clash, the same reason
+        // AddProjectMemorySource logs at debug rather than warning.
+        if (!services.GetRequiredService<IProjectMemorySourceRegistry>().RegisterFamily(family))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogDebug(
+                "Memory source family '{MemorySourceFamilyKey}' is already declared; this registration is ignored",
+                family.Key);
+        }
+    }
 
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
@@ -563,6 +589,17 @@ internal sealed class CockpitHost(
     /// those carry no plugin's consent and go through no permission gate a session's own connect applies, and
     /// neither the registry nor <see cref="IPluginMcpProvider"/> ever lists them.
     /// </para>
+    /// <para>
+    /// AC-499: <em>this</em> check (whether the name is known at all) still accepts any plugin's provider, unchanged
+    /// from AC-504 — but the invoker's own resolution used to be stricter, only the project-scoped catalog, so a
+    /// server this plugin delivers per-project (Depot) could pass this check and still fail to resolve inside
+    /// <see cref="IMcpToolInvoker.InvokeAsync"/> whenever the calling project had not yet been saved with the row
+    /// that would put it in that catalog. <see cref="_OwnMcpServerContributions"/> closes that gap by handing the
+    /// invoker a caller-scoped fallback list — deliberately narrower than this accept check: only <em>this</em>
+    /// plugin's own contributions, never another plugin's, because a project-agnostic fallback that let any caller
+    /// reach any plugin's server would turn "not saved yet" into "no scoping at all". This accept check staying lax
+    /// is pre-existing AC-504 behaviour and out of this fix's scope, not a second inconsistency introduced here.
+    /// </para>
     /// </summary>
     public async Task<PluginMcpToolCallResult> CallMcpToolAsync(
         string name,
@@ -583,7 +620,7 @@ internal sealed class CockpitHost(
 
         try
         {
-            var result = await invoker.InvokeAsync(name, toolName, arguments, projectId, cancellationToken).ConfigureAwait(false);
+            var result = await invoker.InvokeAsync(name, toolName, arguments, projectId, _OwnMcpServerContributions(), cancellationToken).ConfigureAwait(false);
             return result.Outcome switch
             {
                 McpToolInvocationOutcome.Success => PluginMcpToolCallResult.Success(result.Content ?? string.Empty),
@@ -665,11 +702,40 @@ internal sealed class CockpitHost(
     }
 
     /// <summary>
+    /// This plugin's own MCP servers, project-agnostic (the same <see cref="IPluginMcpProvider.GetMcpServers()"/>
+    /// overload <see cref="_ResolveOAuthServerAsync"/> already falls back to), mapped to <see cref="McpServerConfig"/>
+    /// and handed to <see cref="IMcpToolInvoker.InvokeAsync"/>/<see cref="IMcpToolProbe.ProbeAsync"/> as their own
+    /// additive fallback candidate list (AC-499). Scoped by <paramref name="ownPluginType"/> (see this class's own
+    /// parameter doc) to <em>only</em> the <see cref="IPluginMcpProvider"/> instance(s) whose concrete type is this
+    /// plugin's own — never the whole container-wide <c>services.GetServices&lt;IPluginMcpProvider&gt;()</c> set —
+    /// so this method can never hand a caller a fallback into some other plugin's server. Empty when no plugin
+    /// instance was supplied (most tests) or when this plugin registers no matching provider.
+    /// </summary>
+    private IReadOnlyList<McpServerConfig> _OwnMcpServerContributions()
+    {
+        if (ownPluginType is null)
+        {
+            return [];
+        }
+
+        return services.GetServices<IPluginMcpProvider>()
+            .Where(provider => provider.GetType() == ownPluginType)
+            .SelectMany(_SafeContributionsOf)
+            .Select(PluginMcpMapping.ToServerConfig)
+            .ToList();
+    }
+
+    /// <summary>
     /// Delegates to <see cref="IMcpToolProbe"/> (AC-503) and maps its Core-level <see cref="McpToolProbeResult"/>
     /// onto the plugin-facing <see cref="McpProbeResult"/> — the same isolation seam <see cref="GetMcpServerAuthStateAsync"/>
     /// and <see cref="SignInMcpServerAsync"/> already keep between <c>Cockpit.Core</c>'s own vocabulary and the
     /// plugin SDK's. A host with no probe registered (a test fake, an older host) answers <see cref="McpProbeResult.Failed"/>
     /// without attempting anything.
+    /// <para>
+    /// AC-499: also hands the probe <see cref="_OwnMcpServerContributions"/> as its caller-scoped fallback — this
+    /// call takes no project id, so a plugin whose servers never land in the shared registry (Depot, AC-504) would
+    /// otherwise be unprobeable regardless of whether the project row that would put it in the catalog exists yet.
+    /// </para>
     /// </summary>
     public async Task<McpProbeResult> ProbeMcpToolAsync(
         string serverName,
@@ -684,7 +750,7 @@ internal sealed class CockpitHost(
 
         try
         {
-            var result = await probe.ProbeAsync(serverName, toolName, arguments, cancellationToken).ConfigureAwait(false);
+            var result = await probe.ProbeAsync(serverName, toolName, arguments, _OwnMcpServerContributions(), cancellationToken).ConfigureAwait(false);
             return result.Outcome switch
             {
                 McpToolProbeOutcome.NotSignedIn => McpProbeResult.NotSignedIn,

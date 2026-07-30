@@ -45,7 +45,7 @@ public class CockpitHostCallMcpToolTests
         var result = await host.CallMcpToolAsync("cockpit-terminal", "run_command");
 
         Assert.Equal(PluginMcpToolCallOutcome.Unavailable, result.Outcome);
-        await invoker.DidNotReceive().InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        await invoker.DidNotReceive().InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class CockpitHostCallMcpToolTests
         // rather than pushed via AddMcpServer — this bridge has to reach those too, the same way OAuth sign-in
         // resolution already does.
         var invoker = Substitute.For<IMcpToolInvoker>();
-        invoker.InvokeAsync("Depot: Wispslate", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        invoker.InvokeAsync("Depot: Wispslate", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolInvocationResult.Success("""{"projects":[]}"""));
         var provider = Substitute.For<IPluginMcpProvider>();
         provider.GetMcpServers().Returns([new McpServerContribution("Depot: Wispslate", "https://depot.example.com/mcp")]);
@@ -82,7 +82,7 @@ public class CockpitHostCallMcpToolTests
     public async Task InvokerSucceeds_CarriesTheContentThroughVerbatim()
     {
         var invoker = Substitute.For<IMcpToolInvoker>();
-        invoker.InvokeAsync("Depot: Work", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        invoker.InvokeAsync("Depot: Work", "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolInvocationResult.Success("""{"projects":[]}"""));
         var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
 
@@ -96,7 +96,7 @@ public class CockpitHostCallMcpToolTests
     public async Task InvokerReportsAuthorizationRequired_IsCarriedThroughVerbatim()
     {
         var invoker = Substitute.For<IMcpToolInvoker>();
-        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolInvocationResult.AuthorizationRequired);
         var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
 
@@ -109,7 +109,7 @@ public class CockpitHostCallMcpToolTests
     public async Task InvokerFails_CarriesTheErrorThroughVerbatim()
     {
         var invoker = Substitute.For<IMcpToolInvoker>();
-        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolInvocationResult.Failed("no such server"));
         var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker);
 
@@ -123,7 +123,7 @@ public class CockpitHostCallMcpToolTests
     public async Task WhenTheInvokerThrows_AnswersFailed_AndRecordsAFailure_RatherThanCrashing()
     {
         var invoker = Substitute.For<IMcpToolInvoker>();
-        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        invoker.InvokeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns<Task<McpToolInvocationResult>>(_ => throw new InvalidOperationException("connect blew up"));
         var diagnostics = new PluginDiagnostics();
         var host = await _BuildHostWithRegisteredServerAsync("Depot: Work", invoker, diagnostics);

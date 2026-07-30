@@ -65,38 +65,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         }
 
         var view = createView();
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        var close = new Button { Content = "Close" };
-        close.Click += (_, _) => window.Close();
-        buttons.Children.Add(close);
-
-        // The Save button appears only when the view opts in; it persists via the view and closes on success.
-        if (view is IPluginSettingsView settingsView)
-        {
-            var save = new Button { Content = "Save", Classes = { "Accent" } };
-            save.Click += (_, _) =>
-            {
-                if (settingsView.Save())
-                {
-                    onSaved?.Invoke();
-                    window.Close();
-                }
-            };
-            buttons.Children.Add(save);
-        }
-
-        // The same band the window's title bar sits on (AC-335), not the rail colour it used to use: the two are
-        // the top and bottom edge of one window, and a footer a shade darker than its own header reads as a
-        // different surface stuck to the bottom.
-        var footer = new Border
-        {
-            Padding = new Thickness(14, 12),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Background = _Brush("CockpitChromeBgBrush"),
-            BorderBrush = _Brush("CockpitHairlineSoftBrush"),
-            Child = buttons,
-        };
+        var footer = BuildSettingsFooter(window, view, onSaved);
         DockPanel.SetDock(footer, Dock.Bottom);
 
         var root = new DockPanel();
@@ -116,6 +85,84 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
         CockpitWindowChrome.Apply(window, title);
         await surfaces.ShowAsync(key, window, owner);
+    }
+
+    /// <summary>
+    /// The Save/Close footer every plugin settings dialog gets. Extracted so the failure branch below is directly
+    /// testable without the rest of <see cref="ShowSettingsDialogAsync"/>'s <c>Application.Current.ApplicationLifetime</c>
+    /// dependency (owner/sizing, in <see cref="_TryCreateWindow"/>) — this only touches the window and view it is handed.
+    /// <para>
+    /// <b>On a refused save (AC-499 review fix, follow-up finding):</b> <see cref="IPluginSettingsView.Save"/> answers
+    /// only <see langword="true"/>/<see langword="false"/>, with no channel back for a reason — a deliberate ABI-safe
+    /// surface every published plugin (11+ in this repo alone, plus whatever a third party has built against it)
+    /// implements today. Until AC-499 no settings view ever returned <see langword="false"/> for anything but "the
+    /// operator has not filled the form in yet" (silently doing nothing was tolerable there), so the gap was never
+    /// visible. Depot's own save now refuses the whole batch on a name collision instead of silently dropping one
+    /// row — a real, occupied failure that this footer used to say nothing about at all: the operator's click just
+    /// did not do anything.
+    /// </para>
+    /// <para>
+    /// Two ways to close that gap were weighed. <b>Widening <see cref="IPluginSettingsView"/></b> (even additively —
+    /// a default-implemented member, never a changed signature) would only help a plugin that adopts it; every
+    /// existing prebuilt plugin, and every plugin published before the widening, keeps answering with a bare bool and
+    /// the operator is back to a silent click until each one is rebuilt. A generic host-level line, chosen here
+    /// instead, helps every plugin the moment this ships — including the ones already out there — at the cost of not
+    /// being able to name the specific reason. A plugin that wants to say more (Depot's own per-row detail, e.g.
+    /// <c>DepotConnectionRowControl</c>'s "'\"{name}\" is used by another row above'") still can, in its own view —
+    /// this line only promises that a refusal is never silent, not that it is the operator's only answer.
+    /// </para>
+    /// </summary>
+    internal static Border BuildSettingsFooter(Window window, Control view, Action? onSaved)
+    {
+        var status = new TextBlock
+        {
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsVisible = false,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+        var close = new Button { Content = "Close" };
+        close.Click += (_, _) => window.Close();
+        buttons.Children.Add(close);
+
+        // The Save button appears only when the view opts in; it persists via the view and closes on success.
+        if (view is IPluginSettingsView settingsView)
+        {
+            var save = new Button { Content = "Save", Classes = { "Accent" } };
+            save.Click += (_, _) =>
+            {
+                if (settingsView.Save())
+                {
+                    onSaved?.Invoke();
+                    window.Close();
+                    return;
+                }
+
+                status.Text = "This screen could not save its changes — see the screen itself for the reason.";
+                status.IsVisible = true;
+            };
+            buttons.Children.Add(save);
+        }
+
+        var content = new DockPanel();
+        DockPanel.SetDock(buttons, Dock.Right);
+        content.Children.Add(buttons);
+        content.Children.Add(status);
+
+        // The same band the window's title bar sits on (AC-335), not the rail colour it used to use: the two are
+        // the top and bottom edge of one window, and a footer a shade darker than its own header reads as a
+        // different surface stuck to the bottom.
+        return new Border
+        {
+            Padding = new Thickness(14, 12),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Background = _Brush("CockpitChromeBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineSoftBrush"),
+            Child = content,
+        };
     }
 
     // No key means no folding: a fresh object matches nothing, so every ask opens its own window. Keys are

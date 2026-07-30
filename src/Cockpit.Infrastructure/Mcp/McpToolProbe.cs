@@ -34,6 +34,7 @@ internal sealed class McpToolProbe(
         string serverName,
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments,
+        IReadOnlyList<McpServerConfig>? callerFallbackServers = null,
         CancellationToken cancellationToken = default)
     {
         McpServerConfig? server;
@@ -52,8 +53,16 @@ internal sealed class McpToolProbe(
             return McpToolProbeResult.Failed;
         }
 
-        // Unknown to the registry: not this call's to guess at, and not a claim about the value being checked —
-        // see IMcpToolProbe.ProbeAsync's own remarks on why this is Failed rather than NotFound.
+        // AC-499: this call has no project id to resolve a plugin-delivered server through — a plugin whose servers
+        // never land in the registry (Depot, AC-504) would otherwise be unprobeable no matter what. The host scopes
+        // this list to the calling plugin's own contributions before it ever reaches here (see
+        // ICockpitHost.ProbeMcpToolAsync's own remarks), so this is not a broadening of what an arbitrary caller can
+        // reach — only what this specific caller was already entitled to.
+        server ??= callerFallbackServers?.FirstOrDefault(candidate => string.Equals(candidate.Name, serverName, StringComparison.Ordinal));
+
+        // Unknown to the registry and to the caller's own fallback: not this call's to guess at, and not a claim
+        // about the value being checked — see IMcpToolProbe.ProbeAsync's own remarks on why this is Failed rather
+        // than NotFound.
         if (server is null)
         {
             return McpToolProbeResult.Failed;

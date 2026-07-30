@@ -47,7 +47,7 @@ public class PluginManagerTests
         var manager = _Manager();
         manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => plugin);
 
-        manager.Initialize(_ => host);
+        manager.Initialize((_, _) => host);
 
         Assert.Equal(1, plugin.InitializeCount);
         Assert.Same(host, plugin.ReceivedHost);
@@ -64,7 +64,7 @@ public class PluginManagerTests
 
         manager.LoadAndConfigure([faulty, healthy], new ServiceCollection(),
             candidate => candidate.FolderId == "faulty" ? faultyPlugin : healthyPlugin);
-        manager.Initialize(_ => Substitute.For<ICockpitHost>());
+        manager.Initialize((_, _) => Substitute.For<ICockpitHost>());
 
         Assert.Equal(1, faultyPlugin.DisposeCount);
         Assert.Equal(0, faultyPlugin.InitializeCount);
@@ -175,7 +175,7 @@ public class PluginManagerTests
         // The host still calls Initialize (phase 2) unconditionally after the container is built — safe mode
         // must not turn that into a crash on a plugin set that simply has nothing in it.
         var hostRequests = 0;
-        manager.Initialize(_ =>
+        manager.Initialize((_, _) =>
         {
             hostRequests++;
             return Substitute.For<ICockpitHost>();

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
@@ -23,6 +24,14 @@ public partial class McpServersViewModel : ViewModelBase
     /// </summary>
     private readonly IMcpOAuthCoordinator? _oauthCoordinator;
 
+    /// <summary>
+    /// Cancelled once the dialog is going away by any route — a successful Save, Cancel, or the window's own close
+    /// button (<see cref="OnWindowClosed"/>) — so a row's in-flight interactive sign-in has somewhere to hear that
+    /// there is no view model left to report back to (AC-499 review fix, finding 6). Handed to every row as
+    /// <see cref="EditableMcpServerViewModel"/>'s <c>dialogClosing</c> constructor argument.
+    /// </summary>
+    private readonly CancellationTokenSource _dialogLifetime = new();
+
     public event Action? CloseRequested;
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
@@ -37,8 +46,12 @@ public partial class McpServersViewModel : ViewModelBase
     {
         _internalProviders = [];
         var sample = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "filesystem", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem", "."] });
+            new McpServerConfig { Name = "filesystem", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+            saveAllForSignIn: _SaveAllForSignInAsync,
+            isDialogBusy: _IsAnyRowBusy,
+            dialogClosing: _dialogLifetime.Token);
         Servers.Add(sample);
+        _AttachRow(sample);
         SelectedServer = sample;
     }
 
@@ -67,10 +80,19 @@ public partial class McpServersViewModel : ViewModelBase
         var servers = await _store.LoadAsync();
         var hidden = servers.Where(server => internalNames.Contains(server.Name.Trim())).ToList();
 
+        foreach (var existing in Servers)
+        {
+            _DetachRow(existing);
+        }
+
         Servers.Clear();
         foreach (var server in servers.Where(server => !internalNames.Contains(server.Name.Trim())))
         {
-            Servers.Add(new EditableMcpServerViewModel(server, _oauthCoordinator));
+            var row = new EditableMcpServerViewModel(
+                server, _oauthCoordinator, saveAllForSignIn: _SaveAllForSignInAsync,
+                isDialogBusy: _IsAnyRowBusy, dialogClosing: _dialogLifetime.Token);
+            Servers.Add(row);
+            _AttachRow(row);
         }
 
         SelectedServer = Servers.FirstOrDefault();
@@ -111,8 +133,12 @@ public partial class McpServersViewModel : ViewModelBase
         var added = new EditableMcpServerViewModel(
             new McpServerConfig { Name = _UnusedServerName(), Command = "npx" },
             _oauthCoordinator,
-            isPersisted: false);
+            isPersisted: false,
+            saveAllForSignIn: _SaveAllForSignInAsync,
+            isDialogBusy: _IsAnyRowBusy,
+            dialogClosing: _dialogLifetime.Token);
         Servers.Add(added);
+        _AttachRow(added);
         SelectedServer = added;
     }
 
@@ -145,26 +171,88 @@ public partial class McpServersViewModel : ViewModelBase
         }
 
         var index = Servers.IndexOf(SelectedServer);
+        _DetachRow(SelectedServer);
         Servers.Remove(SelectedServer);
         SelectedServer = Servers.Count == 0 ? null : Servers[Math.Min(index, Servers.Count - 1)];
+    }
+
+    /// <summary>Whether any row's sign-in/sign-out is in flight — busy is dialog-wide (AC-499 review fix, finding
+    /// 6), because two rows racing their own save-then-authorize can overwrite each other's resync snapshot (see
+    /// <see cref="_SaveAllForSignInAsync"/>). Handed to each row as its <c>isDialogBusy</c> constructor argument.</summary>
+    private bool _IsAnyRowBusy() => Servers.Any(server => server.IsAuthBusy);
+
+    private void _AttachRow(EditableMcpServerViewModel row) => row.PropertyChanged += _OnRowPropertyChanged;
+
+    private void _DetachRow(EditableMcpServerViewModel row) => row.PropertyChanged -= _OnRowPropertyChanged;
+
+    // Nobody re-evaluates a CanExecute on its own — a row going busy has to say so to every command that reads
+    // _IsAnyRowBusy: Save, Cancel, and every other row's own Sign in/Sign out (AC-499 review fix, finding 6).
+    private void _OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(EditableMcpServerViewModel.IsAuthBusy))
+        {
+            return;
+        }
+
+        SaveCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+        foreach (var server in Servers)
+        {
+            server.NotifyDialogBusyChanged();
+        }
     }
 
     private bool HasSelectedServer => SelectedServer is not null;
 
     partial void OnSelectedServerChanged(EditableMcpServerViewModel? value) => RemoveServerCommand.NotifyCanExecuteChanged();
 
-    [RelayCommand]
+    /// <summary>Save and Cancel are refused while any row is mid sign-in/sign-out (AC-499 review fix, finding 6) —
+    /// closing the dialog then would abandon an interactive browser round trip whose result and errors would land
+    /// on a discarded view model, and a second Save would race the first row's own save-then-authorize.</summary>
+    private bool CanSaveOrCancel => !_IsAnyRowBusy();
+
+    [RelayCommand(CanExecute = nameof(CanSaveOrCancel))]
     private async Task SaveAsync()
+    {
+        if (await _SaveAllForSignInAsync() is not null)
+        {
+            _dialogLifetime.Cancel();
+            CloseRequested?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Validates and persists the whole edited list without closing the dialog (AC-499) — the one save route, shared
+    /// by the Save button and a row's own sign-in (<see cref="EditableMcpServerViewModel.SignInAsync"/> saves through
+    /// this before it authorizes, so a token is never filed under a name the operator has not actually saved). Only
+    /// the Save button closes the dialog on success; a sign-in needs the dialog to stay open.
+    /// <para>
+    /// On a successful write this also resyncs every row's stored name and auth status against the reloaded list
+    /// (<see cref="_ResyncRowsAfterDialogSaveAsync"/>) — not just the row that asked for the save — and clears
+    /// <see cref="StatusMessage"/>, since whatever it said before (a validation refusal, a hidden-servers notice
+    /// this save just acted on) no longer describes the dialog. Returns what <see cref="IMcpServerStore.LoadAsync"/>
+    /// reports back on success. Returns null on failure, with <see cref="StatusMessage"/> set to why — except from
+    /// the parameterless design-time constructor's <c>_store is null</c> guard just below, which no real dialog ever
+    /// reaches (there is no store to have failed, so there is nothing to say).
+    /// </para>
+    /// <para>
+    /// A write that succeeds but cannot be read back afterward is reported as exactly that — "saved, but not
+    /// confirmed" — never folded into the same wording as "nothing was saved" (AC-499 review fix, finding 2): the
+    /// two are different facts for whoever is about to sign in on top of this, and only one of them is safe to
+    /// treat as "try again from scratch".
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<McpServerConfig>?> _SaveAllForSignInAsync()
     {
         if (_store is null)
         {
-            return;
+            return null;
         }
 
         if (Servers.Any(server => !server.IsValid))
         {
             StatusMessage = "Every server needs a name, plus a command (stdio) or a URL (http).";
-            return;
+            return null;
         }
 
         // Names have to be unique because everything downstream treats one as an identity: the credential store files
@@ -173,7 +261,7 @@ public partial class McpServersViewModel : ViewModelBase
         if (Servers.GroupBy(server => server.Name.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } duplicate)
         {
             StatusMessage = $"Two servers are called \"{duplicate.Key}\". Names identify a server to the agents, so each one needs its own.";
-            return;
+            return null;
         }
 
         // The cockpit's own loopback servers and a plugin's endpoints are not in this list — they are filtered out of
@@ -184,13 +272,75 @@ public partial class McpServersViewModel : ViewModelBase
         if (Servers.FirstOrDefault(server => reserved.Contains(server.Name.Trim())) is { } clash)
         {
             StatusMessage = $"\"{clash.Name.Trim()}\" is a name the cockpit already uses for one of its own servers. Pick another, or it will quietly lose to that one.";
-            return;
+            return null;
         }
 
-        await _store.SaveAsync(Servers.Select(server => server.ToConfig()).ToList());
+        try
+        {
+            await _store.SaveAsync(Servers.Select(server => server.ToConfig()).ToList());
+        }
+        catch (Exception)
+        {
+            // A sign-in relies on this to tell it a save did not happen (AC-499) — without a caught failure here it
+            // would go on to authorize a token under a name the store never received.
+            StatusMessage = "Couldn't save. Try again.";
+            return null;
+        }
+
+        try
+        {
+            var reloaded = await _store.LoadAsync();
+            await _ResyncRowsAfterDialogSaveAsync(reloaded);
+            StatusMessage = string.Empty;
+            return reloaded;
+        }
+        catch (Exception)
+        {
+            // The write above already happened — this only failed to confirm it back, which used to escape this
+            // method uncaught (AC-499 review fix, finding 2): a sign-in's own outer catch turned that into "Sign-in
+            // failed. Try again." even though the write had gone through, and the Save button's [RelayCommand]
+            // rethrew it into the CommunityToolkit default (an async-void continuation on the UI dispatcher) with
+            // nothing telling the operator anything landed on disk.
+            StatusMessage = "Saved, but couldn't read the servers back to confirm. Try again to check.";
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resyncs every row against its own position in <paramref name="reloaded"/> (AC-499 review fix, finding 1) —
+    /// not just the row whose sign-in triggered this save. A dialog-wide save writes every row's <c>ToConfig()</c>
+    /// in list order and <see cref="IMcpServerStore"/> round-trips that order unchanged, so index N in
+    /// <see cref="Servers"/> and index N in <paramref name="reloaded"/> are the same server; a row past the end of
+    /// a shorter-than-expected <paramref name="reloaded"/> resyncs against null. See
+    /// <see cref="EditableMcpServerViewModel"/>'s remarks for why this is positional rather than identity-based,
+    /// and AC-403 for the fix that removes the need for it to be.
+    /// <para>
+    /// Without this, only the row that asked for the save updated its own stored name — every other row kept
+    /// whatever it last knew, which a swapped rename between two rows could leave pointing at what is now a
+    /// different server's token. A sign-out from that stale row would withdraw someone else's freshly issued
+    /// credential while its own badge still read "signed in".
+    /// </para>
+    /// </summary>
+    private async Task _ResyncRowsAfterDialogSaveAsync(IReadOnlyList<McpServerConfig> reloaded)
+    {
+        var resyncs = Servers.Select((server, index) =>
+            server.ResyncAfterDialogSaveAsync(index < reloaded.Count ? reloaded[index] : null));
+        await Task.WhenAll(resyncs).ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSaveOrCancel))]
+    private void Cancel()
+    {
+        _dialogLifetime.Cancel();
         CloseRequested?.Invoke();
     }
 
-    [RelayCommand]
-    private void Cancel() => CloseRequested?.Invoke();
+    /// <summary>
+    /// Called from the dialog window's own Closed handler — the one close route (the OS close button, Escape) that
+    /// never runs <see cref="SaveCommand"/> or <see cref="CancelCommand"/>, and so would otherwise leave
+    /// <see cref="_dialogLifetime"/> live under a view model nothing shows any more (AC-499 review fix, finding 6).
+    /// Idempotent: <see cref="CancellationTokenSource.Cancel()"/> on an already-cancelled source is a no-op, so this
+    /// is safe to call after Save or Cancel already cancelled it too.
+    /// </summary>
+    internal void OnWindowClosed() => _dialogLifetime.Cancel();
 }

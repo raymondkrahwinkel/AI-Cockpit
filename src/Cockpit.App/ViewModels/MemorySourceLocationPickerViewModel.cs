@@ -20,6 +20,15 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
     private readonly Func<CancellationToken, Task<ProjectMemorySourceLocationsResult>> _listLocationsAsync;
     private readonly Func<CancellationToken, Task<bool>>? _signInAsync;
 
+    /// <summary>
+    /// The row's own <c>Reference</c> at the moment this picker opened (AC-499) — bare, the same shape
+    /// <see cref="ProjectMemorySourceLocation.Value"/> is in, never a scheme-prefixed <c>ProjectMemoryRef</c>. Compared
+    /// ordinal against every loaded location's <see cref="ProjectMemorySourceLocation.Value"/> so the "Current" badge
+    /// in the list (bound to <see cref="CurrentValue"/> itself, not to <see cref="SelectedLocation"/>) never moves
+    /// off the row the operator actually came in on, even after they click a different one.
+    /// </summary>
+    private readonly string? _currentValue;
+
     // Review fix: LoadAsync has no re-entrancy guard of its own — SignIn calls it after a successful sign-in, Retry
     // calls it from the error state, and the window itself fires one on open, so two overlapping calls are
     // reachable (a fast SignIn success racing a slow first load, say). Without this, whichever call's result lands
@@ -61,6 +70,9 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
 
     public bool CanPick => SelectedLocation is not null;
 
+    /// <summary>Bound by the "Current" badge in the list's <c>DataTemplate</c> — see <see cref="_currentValue"/>.</summary>
+    public string? CurrentValue => _currentValue;
+
     /// <summary>Design-time constructor for the Avalonia previewer.</summary>
     public MemorySourceLocationPickerViewModel()
         : this("Depot project — Synvolution", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])))
@@ -70,11 +82,13 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
     public MemorySourceLocationPickerViewModel(
         string sourceTitle,
         Func<CancellationToken, Task<ProjectMemorySourceLocationsResult>> listLocationsAsync,
-        Func<CancellationToken, Task<bool>>? signInAsync = null)
+        Func<CancellationToken, Task<bool>>? signInAsync = null,
+        string? currentValue = null)
     {
         SourceTitle = sourceTitle;
         _listLocationsAsync = listLocationsAsync;
         _signInAsync = signInAsync;
+        _currentValue = currentValue is { Length: > 0 } ? currentValue : null;
     }
 
     /// <summary>Runs the source's own listing and settles into exactly one of the states above. Safe to call again (Retry, after sign-in).</summary>
@@ -122,6 +136,15 @@ public partial class MemorySourceLocationPickerViewModel : ViewModelBase
                     {
                         Locations.Add(location);
                     }
+
+                    // AC-499: pre-select the row the operator already has, so opening this list shows where they
+                    // came from instead of a blank slate. Ordinal because Value is an opaque identifier (a slug,
+                    // not display text), never culture-compared. Deliberately no match => no selection: a stale or
+                    // mistyped Reference must read as "not in this list", not as a fabricated pick of whatever
+                    // happens to be first (the same "no selection is honest" rule NeedsSignIn/ErrorMessage follow).
+                    SelectedLocation = _currentValue is null
+                        ? null
+                        : Locations.FirstOrDefault(location => string.Equals(location.Value, _currentValue, StringComparison.Ordinal));
 
                     break;
                 case ProjectMemorySourceLocationsOutcome.AuthorizationRequired:

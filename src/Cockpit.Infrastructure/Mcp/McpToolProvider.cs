@@ -147,10 +147,20 @@ internal sealed class McpToolProvider(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
         string? projectId = null,
+        IReadOnlyList<McpServerConfig>? callerFallbackServers = null,
         CancellationToken cancellationToken = default)
     {
         var registry = await catalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
         var server = registry.FirstOrDefault(candidate =>
+            candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
+
+        // AC-499: the catalog only carries a plugin-delivered server once some project points at it (a Memory row
+        // whose stored scheme the catalog can resolve, AC-504). A caller that is itself entitled to that server —
+        // this is scoped by the host to the calling plugin's own contributions before it ever reaches here, see
+        // ICockpitHost.CallMcpToolAsync's own remarks — can still reach it through callerFallbackServers, the exact
+        // asymmetry CockpitHost's acceptance check (_IsKnownMcpServerNameAsync) already tolerated while this
+        // resolution alone stayed strict.
+        server ??= callerFallbackServers?.FirstOrDefault(candidate =>
             candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
         if (server is null)

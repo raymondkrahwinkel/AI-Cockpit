@@ -4,11 +4,12 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 /// <param name="State">What the check found.</param>
 /// <param name="Detail">
 /// Shown under the row on <see cref="ProjectMemorySourceReachability.Confirmed"/> in place of a fixed sentence —
-/// "24 documents, last changed 2 hours ago", say. Null falls back to a fixed confirmation sentence. Ignored for any
-/// other <see cref="State"/>: <see cref="ProjectMemorySourceReachability.NotSignedIn"/> and
-/// <see cref="ProjectMemorySourceReachability.NotFound"/> each show their own fixed sentence, the same as the
-/// existing broken-reference hint does — nothing plugin-supplied is shown for those, so a plugin cannot accidentally
-/// leak connection detail into a state meant to read as a plain, honest "no".
+/// "24 documents, last changed 2 hours ago", say — and, since AC-499, on <see cref="ProjectMemorySourceReachability.CheckFailed"/>
+/// in place of its own fixed sentence, carrying what actually went wrong rather than a generic "could not check".
+/// Null falls back to each state's fixed sentence. Ignored for <see cref="ProjectMemorySourceReachability.NotSignedIn"/>
+/// and <see cref="ProjectMemorySourceReachability.NotFound"/>, which always show their own fixed sentence, the same
+/// as the existing broken-reference hint does — nothing plugin-supplied is shown for those, so a plugin cannot
+/// accidentally leak connection detail into a state meant to read as a plain, honest "no".
 /// </param>
 public sealed record ProjectMemorySourceReachabilityResult(ProjectMemorySourceReachability State, string? Detail = null)
 {
@@ -35,6 +36,15 @@ public sealed record ProjectMemorySourceReachabilityResult(ProjectMemorySourceRe
     /// </summary>
     public static ProjectMemorySourceReachabilityResult Confirmed(string? detail = null) =>
         new(ProjectMemorySourceReachability.Confirmed, _Clamp(detail));
+
+    /// <summary>
+    /// The check ran but could not complete (AC-499) — <paramref name="detail"/> is the plugin's own account of what
+    /// went wrong (a tool's error text, an exception message), clamped the same way <see cref="Confirmed"/>'s own
+    /// detail is: never raw and unbounded, never a bearer token or other credential (Iron Law #8) — a plugin's own
+    /// error text is not itself trusted to be short or safe to show verbatim.
+    /// </summary>
+    public static ProjectMemorySourceReachabilityResult CheckFailed(string? detail = null) =>
+        new(ProjectMemorySourceReachability.CheckFailed, _Clamp(detail));
 
     private static string? _Clamp(string? detail)
     {

@@ -42,7 +42,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_CoreOutcomeNotSignedIn_MapsToThePluginFacingNotSignedIn()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolProbeResult.NotSignedIn);
         var host = _BuildHost(probe);
 
@@ -55,7 +55,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_CoreOutcomeNotFound_MapsToThePluginFacingNotFound()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolProbeResult.NotFound);
         var host = _BuildHost(probe);
 
@@ -68,7 +68,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_CoreOutcomeSuccess_MapsToThePluginFacingSuccess_CarryingTheDetailThrough()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolProbeResult.Success("24 documents, last changed 2 hours ago"));
         var host = _BuildHost(probe);
 
@@ -82,7 +82,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_CoreOutcomeFailed_MapsToThePluginFacingFailed()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolProbeResult.Failed);
         var host = _BuildHost(probe);
 
@@ -98,7 +98,7 @@ public class CockpitHostProbeMcpToolTests
         // future addition to McpToolProbeOutcome the mapping was not updated for) must land on the safest reading,
         // the same ordinal-zero guarantee McpToolProbeOutcomeTests already pins for the type itself.
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(new McpToolProbeResult((McpToolProbeOutcome)99));
         var host = _BuildHost(probe);
 
@@ -113,7 +113,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_DelegatesExactlyOnce_WithNoOwnInteractiveOrSignInLogic()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns(McpToolProbeResult.Success(null));
         var host = _BuildHost(probe);
         var arguments = new Dictionary<string, object?> { ["project"] = "cockpit" };
@@ -125,7 +125,9 @@ public class CockpitHostProbeMcpToolTests
         // token this method itself was given — this host method does no OAuth work, opens no connection, and asks
         // nothing else; every one of those responsibilities belongs to the IMcpToolProbe implementation, which is
         // where the non-interactive sign-in-first guarantee is actually proven (McpToolProbeTests, Infrastructure).
-        await probe.Received(1).ProbeAsync("Depot: Work", "outline", arguments, cts.Token);
+        // The fallback-servers argument is not this test's concern (CockpitHostProbeMcpToolFallbackTests covers
+        // its scoping) — Arg.Any lets it match whatever this host built without pinning that here too.
+        await probe.Received(1).ProbeAsync("Depot: Work", "outline", arguments, Arg.Any<IReadOnlyList<McpServerConfig>?>(), cts.Token);
     }
 
     // --- The exception path: caught, reported as Failed, and (Iron Law #8) never a leaked detail on the result ------
@@ -134,7 +136,7 @@ public class CockpitHostProbeMcpToolTests
     public async Task ProbeMcpToolAsync_WhenTheProbeThrows_AnswersFailed_AndRecordsAFailure()
     {
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns<Task<McpToolProbeResult>>(_ => throw new InvalidOperationException("connection refused"));
         var diagnostics = new PluginDiagnostics();
         var host = _BuildHost(probe, diagnostics);
@@ -164,7 +166,7 @@ public class CockpitHostProbeMcpToolTests
         // introducing or fixing anything new, per the explicit instruction not to redesign this precedent.
         const string fakeTokenLikeMessage = "Unauthorized: Bearer fake-token-should-never-leak-abc123";
         var probe = Substitute.For<IMcpToolProbe>();
-        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<CancellationToken>())
+        probe.ProbeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>>(), Arg.Any<IReadOnlyList<McpServerConfig>?>(), Arg.Any<CancellationToken>())
             .Returns<Task<McpToolProbeResult>>(_ => throw new InvalidOperationException(fakeTokenLikeMessage));
         var diagnostics = new PluginDiagnostics();
         var host = _BuildHost(probe, diagnostics);

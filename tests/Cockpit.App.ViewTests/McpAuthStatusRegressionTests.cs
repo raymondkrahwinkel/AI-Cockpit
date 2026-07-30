@@ -8,11 +8,14 @@ using NSubstitute;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// What the sign-in surface got wrong about a server's identity (AC-355), each case found by review rather than by a
-/// green suite. They share one root: a token is filed under a name the operator may retype, and the row kept trying
-/// to work out which name that was. Five review rounds moved that guess rather than removing it — a dialog that would
-/// not open, a withdrawal that withdrew nothing, a token filed under a placeholder — until the guess was taken away
-/// instead, by only offering the actions while the row and the store agree on the name.
+/// What the sign-in surface got wrong about a server's identity (AC-355/AC-499), each case found by review rather
+/// than by a green suite. They share one root: a token is filed under a name the operator may retype, and the row
+/// kept trying to work out which name that was. Five review rounds moved that guess rather than removing it — a
+/// dialog that would not open, a withdrawal that withdrew nothing, a token filed under a placeholder — until the
+/// guess was taken away by requiring a manual save before either action was offered (AC-355). AC-499 removed that
+/// manual step in turn: a sign-in now saves itself and reads back the real stored name, so the guess still cannot
+/// come back, but the operator no longer has to save by hand first. Sign-out kept the AC-355 shape — it still needs
+/// a real stored name, just not one that matches what is currently typed.
 /// </summary>
 public class McpAuthStatusRegressionTests
 {
@@ -24,8 +27,25 @@ public class McpAuthStatusRegressionTests
         Auth = McpServerAuth.OAuth,
     };
 
+    /// <summary>An <see cref="IMcpServerStore"/> substitute that actually remembers what it was told to save — the
+    /// tests below need Sign in's save-then-reread-the-store step (AC-499) to see its own write, not a static stub.</summary>
+    private static IMcpServerStore _RecordingStore(IEnumerable<McpServerConfig>? seed = null)
+    {
+        var backing = seed?.ToList() ?? [];
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => (IReadOnlyList<McpServerConfig>)backing.ToList());
+        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                backing.Clear();
+                backing.AddRange(callInfo.ArgAt<IReadOnlyList<McpServerConfig>>(0));
+                return Task.CompletedTask;
+            });
+        return store;
+    }
+
     [Fact]
-    public async Task SignOut_EvenIfDrivenPastItsGate_ActsUnderTheNameTheStoreKnows()
+    public async Task SignOut_AfterAnUnsavedRename_StillActsUnderTheNameTheStoreKnows()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
@@ -33,11 +53,12 @@ public class McpAuthStatusRegressionTests
         await editable.RefreshAuthStateAsync();
 
         editable.Name = "depot-renamed";
-        Assert.False(editable.SignOutCommand.CanExecute(null));
 
-        // The gate is what the operator meets, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute — so
-        // the body has to hold the line on its own. Withdrawing under the newly typed name removed nothing while
-        // reporting the access as gone; the bearer stayed in cockpit.json behind a reassuring badge.
+        // AC-499: sign-out is a narrower act than sign-in — it withdraws whatever the store already has filed, which
+        // does not change just because the row is mid-rename and not yet saved. Gating it on the typed name matching
+        // (the pre-AC-499 behavior) would refuse a withdrawal the operator is entitled to make.
+        Assert.True(editable.SignOutCommand.CanExecute(null));
+
         await editable.SignOutCommand.ExecuteAsync(null);
 
         await coordinator.Received().SignOutAsync(
@@ -46,8 +67,12 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public async Task ARowThatWasNeverSaved_ReachesTheCoordinatorForNeither_EvenIfDrivenPastItsGate()
+    public async Task ARowBuiltWithNoSaveRoute_ReachesTheCoordinatorForNeither_EvenIfDrivenPastItsGate()
     {
+        // This row is constructed directly, the way a test does but the real dialog never would — so it has no
+        // save-all delegate to sign in through. The Sign in button itself now looks enabled (the row is valid,
+        // AC-499), which is exactly why the body still has to hold the line: a row with nowhere to save cannot
+        // reach the coordinator under any name, guessed or otherwise.
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         var editable = new EditableMcpServerViewModel(
             new McpServerConfig { Name = "new server", Command = "npx" }, coordinator, isPersisted: false);
@@ -56,28 +81,26 @@ public class McpAuthStatusRegressionTests
         editable.Url = "https://depot.example/mcp";
         editable.Auth = McpServerAuth.OAuth;
 
+        Assert.True(editable.SignInCommand.CanExecute(null));
+        Assert.False(editable.SignOutCommand.CanExecute(null));
+
         await editable.SignInCommand.ExecuteAsync(null);
         await editable.SignOutCommand.ExecuteAsync(null);
 
-        // The gate is what the operator meets; ExecuteAsync walks past it, so the bodies hold the line themselves.
-        // Without that, a row with no stored name reaches the coordinator under whatever is typed — which is the
-        // guess this ticket spent five review rounds removing.
         await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await coordinator.DidNotReceive().SignOutAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task ARowStoredWithATrailingSpace_StillOffersItsSignIn()
+    public async Task RefreshAuthState_ForARowStoredWithATrailingSpace_LooksItUpByTheTrimmedName()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
 
-        // A hand-edited config, or one an older build wrote before saving started trimming. Comparing the stored name
-        // untrimmed against the typed one meant the gate could never open, and the reason shown blamed a rename that
-        // never happened — the last untrimmed name comparison in a family the rest of this ticket already trimmed.
+        // A hand-edited config, or one an older build wrote before saving started trimming.
         var editable = new EditableMcpServerViewModel(_OAuthServer("depot "), coordinator);
 
-        Assert.True(editable.IsSignInAvailable);
+        Assert.True(editable.SignInCommand.CanExecute(null));
         Assert.Empty(editable.SignInUnavailableReason);
         await editable.RefreshAuthStateAsync();
         await coordinator.Received().GetStateAsync(
@@ -88,10 +111,13 @@ public class McpAuthStatusRegressionTests
     [Fact]
     public async Task SignIn_AfterEditingTheUrl_AuthorizesAgainstWhatIsTypedUnderTheStoredName()
     {
+        var store = _RecordingStore([_OAuthServer()]);
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(McpOAuthAccess.Authorized("token"));
-        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+        var editable = viewModel.Servers.Single();
 
         editable.Url = "https://depot.example/mcp/v2";
         await editable.SignInCommand.ExecuteAsync(null);
@@ -102,6 +128,149 @@ public class McpAuthStatusRegressionTests
             Arg.Is<McpServerConfig>(server => server.Name == "depot" && server.Url == "https://depot.example/mcp/v2"),
             true,
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignIn_OnANeverSavedServer_SavesThenSignsInInOneClick()
+    {
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+
+        viewModel.AddServerCommand.Execute(null);
+        var row = viewModel.Servers.Single();
+        row.Name = "depot";
+        row.Transport = McpTransport.Http;
+        row.Url = "https://depot.example/mcp";
+        row.Auth = McpServerAuth.OAuth;
+
+        // AC-499: no manual Save first — one click on Sign in saves the row and then authorizes it.
+        await row.SignInCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<McpServerConfig>>(list => list.Any(server => server.Name == "depot")),
+            Arg.Any<CancellationToken>());
+        await coordinator.Received(1).AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot"), true, Arg.Any<CancellationToken>());
+        Assert.Equal(McpAuthState.Authorized, row.AuthState);
+    }
+
+    [Fact]
+    public async Task SignIn_AfterARename_SignsInUnderTheNewStoredName_NotTheOld()
+    {
+        var store = _RecordingStore([_OAuthServer()]);
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+        var row = viewModel.Servers.Single();
+
+        // A rename no longer withdraws the offer (AC-499) — Sign in stays available and, when clicked, saves the
+        // rename first and authorizes under the name that lands in the store, not the one it replaced.
+        row.Name = "depot-vault";
+        Assert.True(row.SignInCommand.CanExecute(null));
+
+        await row.SignInCommand.ExecuteAsync(null);
+
+        await coordinator.Received(1).AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot-vault"), true, Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().AcquireAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "depot"), true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignIn_WithAnotherInvalidRowInTheList_BlocksWithTheValidationReason_AndDoesNotSignIn()
+    {
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+
+        viewModel.AddServerCommand.Execute(null);
+        var oauthRow = viewModel.Servers.Single();
+        oauthRow.Name = "depot";
+        oauthRow.Transport = McpTransport.Http;
+        oauthRow.Url = "https://depot.example/mcp";
+        oauthRow.Auth = McpServerAuth.OAuth;
+
+        viewModel.AddServerCommand.Execute(null);
+        var invalidRow = viewModel.Servers.Last();
+        invalidRow.Name = string.Empty;
+        invalidRow.Command = string.Empty;
+
+        // AC-499: the store is one list, so a sign-in's own save carries every row along — an unrelated invalid row
+        // blocks it the same way it would block the Save button, and the row asking to sign in has to say why.
+        await oauthRow.SignInCommand.ExecuteAsync(null);
+
+        Assert.Contains("name", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(oauthRow.AuthMessage);
+        await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignIn_WhenTheStoreThrowsOnSave_DoesNotSignIn_AndSaysSoOnTheRow()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>());
+        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new IOException("disk full"));
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+
+        viewModel.AddServerCommand.Execute(null);
+        var row = viewModel.Servers.Single();
+        row.Name = "depot";
+        row.Transport = McpTransport.Http;
+        row.Url = "https://depot.example/mcp";
+        row.Auth = McpServerAuth.OAuth;
+
+        await row.SignInCommand.ExecuteAsync(null);
+
+        await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        Assert.NotEmpty(row.AuthMessage);
+        Assert.DoesNotContain("disk full", row.AuthMessage);
+    }
+
+    [Fact]
+    public async Task SignIn_ClickedTwiceQuickly_SavesAndSignsInOnlyOnce()
+    {
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var acquireGate = new TaskCompletionSource<McpOAuthAccess>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ => acquireGate.Task);
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+
+        viewModel.AddServerCommand.Execute(null);
+        var row = viewModel.Servers.Single();
+        row.Name = "depot";
+        row.Transport = McpTransport.Http;
+        row.Url = "https://depot.example/mcp";
+        row.Auth = McpServerAuth.OAuth;
+
+        // A real button checks CanExecute before invoking Execute (ICommand.Execute itself does not) — that is what
+        // makes a double-click safe: IsAuthBusy flips true synchronously before the first save even starts, so the
+        // second click's own CanExecute check should already see it and skip.
+        if (row.SignInCommand.CanExecute(null))
+        {
+            row.SignInCommand.Execute(null);
+        }
+
+        if (row.SignInCommand.CanExecute(null))
+        {
+            row.SignInCommand.Execute(null);
+        }
+
+        acquireGate.SetResult(McpOAuthAccess.Authorized("token"));
+        await row.SignInCommand.ExecutionTask!;
+
+        await store.Received(1).SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+        await coordinator.Received(1).AcquireAsync(Arg.Any<McpServerConfig>(), true, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -213,48 +382,22 @@ public class McpAuthStatusRegressionTests
     }
 
     [Fact]
-    public void ARowThatWasNeverSaved_OffersNoSignIn()
+    public void ARowMissingAUrl_OffersNoSignIn_AndSaysWhy()
     {
+        // AC-499 replaced the "save first" gate with a plain validity one: a row still needs a name and, for http,
+        // a URL — the fields SignInUnavailableReason names — before Sign in does anything.
         var editable = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = "new server", Command = "npx" },
+            new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Auth = McpServerAuth.OAuth },
             Substitute.For<IMcpOAuthCoordinator>(),
             isPersisted: false);
-        editable.Name = "depot";
-        editable.Transport = McpTransport.Http;
-        editable.Url = "https://depot.example/mcp";
-        editable.Auth = McpServerAuth.OAuth;
 
-        // A sign-in is filed under a server's name, and this row has no name in the store yet — whatever it is called
-        // right now is what the operator is still typing. Four rounds of review each found the same defect one case
-        // further along because the row guessed which name its token was under; not acting until there is a name to
-        // file under removes the guess instead of refining it.
-        Assert.False(editable.IsSignInAvailable);
         Assert.False(editable.SignInCommand.CanExecute(null));
         Assert.False(editable.SignOutCommand.CanExecute(null));
         Assert.NotEmpty(editable.SignInUnavailableReason);
-    }
 
-    [Fact]
-    public async Task RenamingAServer_WithdrawsTheOfferUntilTheNameIsPutBack()
-    {
-        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.GetStateAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(McpAuthState.Authorized);
-        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
-        await editable.RefreshAuthStateAsync();
+        editable.Url = "https://depot.example/mcp";
+
         Assert.True(editable.SignInCommand.CanExecute(null));
-
-        editable.Name = "vault";
-
-        // While the typed name and the stored one disagree, neither action has a name it could honestly act on. Said
-        // rather than left as a dead button — and reversible, because putting the name back is all it takes.
-        Assert.False(editable.IsSignInAvailable);
-        Assert.False(editable.SignOutCommand.CanExecute(null));
-        Assert.NotEmpty(editable.SignInUnavailableReason);
-
-        editable.Name = "depot";
-
-        Assert.True(editable.IsSignInAvailable);
-        Assert.True(editable.SignOutCommand.CanExecute(null));
         Assert.Empty(editable.SignInUnavailableReason);
     }
 
@@ -312,7 +455,7 @@ public class McpAuthStatusRegressionTests
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns<McpOAuthAccess>(_ => throw new InvalidOperationException("boom: token=super-secret-value"));
-        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+        var editable = _RowWithWiredSave(coordinator);
 
         await editable.SignInCommand.ExecuteAsync(null);
 
@@ -394,7 +537,7 @@ public class McpAuthStatusRegressionTests
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns<McpOAuthAccess>(_ => throw new IOException("the config file could not be written"));
-        var editable = new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+        var editable = _RowWithWiredSave(coordinator);
 
         await editable.SignInCommand.ExecuteAsync(null);
 
@@ -412,6 +555,242 @@ public class McpAuthStatusRegressionTests
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(McpOAuthAccess.AuthorizationRequired with { SignInStage = reached });
 
-        return new EditableMcpServerViewModel(_OAuthServer(), coordinator);
+        return _RowWithWiredSave(coordinator);
+    }
+
+    /// <summary>A single already-saved OAuth row with a real save-all delegate wired (AC-499) — what a sign-in
+    /// needs to actually reach the coordinator, since the row no longer calls it directly on its own.</summary>
+    private static EditableMcpServerViewModel _RowWithWiredSave(IMcpOAuthCoordinator coordinator)
+    {
+        var store = _RecordingStore([_OAuthServer()]);
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return viewModel.Servers.Single();
+    }
+
+    // AC-499 review-fix regression tests below (host half). Each pins one of the findings from the adversarial
+    // review of AC-499's "save first, then sign in" dance — the common root, spelled out in the ticket, is that a
+    // successful dialog-wide save used to leave the dialog open without bringing every row back in line with the
+    // store, not just the row that clicked.
+
+    [Fact]
+    public async Task DialogWideSave_ResyncsEveryRowsStoredName_NotJustTheOneThatSignedIn()
+    {
+        // Finding 1 (BLOCKER): two rows swap names in one edit — still unique, so nothing blocks the save. Alpha
+        // becomes Beta and signs in there; Beta becomes Alpha and must not be left thinking it still owns "Beta",
+        // or its own Sign out would withdraw the token Alpha just acquired.
+        var store = _RecordingStore([_OAuthServer("Alpha"), _OAuthServer("Beta")]);
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.GetStateAsync(Arg.Is<McpServerConfig>(server => server.Name == "Alpha"), Arg.Any<CancellationToken>())
+            .Returns(McpAuthState.Authorized);
+        coordinator.GetStateAsync(Arg.Is<McpServerConfig>(server => server.Name == "Beta"), Arg.Any<CancellationToken>())
+            .Returns(McpAuthState.Authorized);
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+        var rowA = viewModel.Servers[0];
+        var rowB = viewModel.Servers[1];
+
+        rowA.Name = "Beta";
+        rowB.Name = "Alpha";
+
+        await rowA.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(rowB.SignOutCommand.CanExecute(null));
+        await rowB.SignOutCommand.ExecuteAsync(null);
+
+        await coordinator.Received().SignOutAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "Alpha"), Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().SignOutAsync(
+            Arg.Is<McpServerConfig>(server => server.Name == "Beta"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignIn_WhenTheStoreThrowsOnLoadAfterASuccessfulSave_DoesNotClaimNothingWasSaved()
+    {
+        // Finding 2A: the write already happened — LoadAsync just could not confirm it. The old message ("Sign-in
+        // failed. Try again.") reads as "nothing was saved", which is a different, false claim.
+        var store = Substitute.For<IMcpServerStore>();
+        var loadCall = 0;
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => loadCall++ == 0
+            ? Task.FromResult<IReadOnlyList<McpServerConfig>>(new List<McpServerConfig>())
+            : throw new IOException("disk hiccup"));
+        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+
+        viewModel.AddServerCommand.Execute(null);
+        var row = viewModel.Servers.Single();
+        row.Name = "depot";
+        row.Transport = McpTransport.Http;
+        row.Url = "https://depot.example/mcp";
+        row.Auth = McpServerAuth.OAuth;
+
+        await row.SignInCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain("Sign-in failed", row.AuthMessage, StringComparison.Ordinal);
+        Assert.Contains("Saved", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Save_WhenTheStoreThrowsOnLoadAfterASuccessfulSave_DoesNotThrowAndDoesNotClose()
+    {
+        // Finding 2B: LoadAsync used to sit outside every try/catch in _SaveAllForSignInAsync, so this exact
+        // scenario propagated all the way out of the Save button's own [RelayCommand] method.
+        var store = Substitute.For<IMcpServerStore>();
+        var loadCall = 0;
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => loadCall++ == 0
+            ? Task.FromResult<IReadOnlyList<McpServerConfig>>(new List<McpServerConfig>())
+            : throw new IOException("disk hiccup"));
+        store.SaveAsync(Arg.Any<IReadOnlyList<McpServerConfig>>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var viewModel = new McpServersViewModel(store, []);
+        await viewModel.LoadAsync();
+
+        viewModel.AddServerCommand.Execute(null);
+        var closed = false;
+        viewModel.CloseRequested += () => closed = true;
+
+        // Awaiting the command's own task is what would surface an exception that escaped the [RelayCommand]
+        // method uncaught — a real button click does not await it, which is exactly how this used to go unnoticed.
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);
+        Assert.Contains("Saved", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SignIn_ClearsAStaleHiddenServersNotice_TheSaveJustActedOnIt()
+    {
+        // Finding 3a: the notice names servers this Sign in's own save is about to drop from the store — true when
+        // it was written, false the moment the save it warns about has actually run.
+        var store = _RecordingStore([
+            _OAuthServer("mine"),
+            new McpServerConfig { Name = "plugin-server", Transport = McpTransport.Http, Url = "https://ours.example/mcp" },
+        ]);
+        var provider = Substitute.For<ICockpitInternalMcpProvider>();
+        provider.GetServers().Returns([new McpServerConfig { Name = "plugin-server", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" }]);
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+
+        var viewModel = new McpServersViewModel(store, [provider], coordinator);
+        await viewModel.LoadAsync();
+        Assert.Contains("plugin-server", viewModel.StatusMessage);
+
+        await viewModel.Servers.Single().SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SignIn_ClearsAnEarlierValidationFailure_OnceItSucceeds()
+    {
+        // Finding 3b: unreachable before AC-499 (a successful save always closed the dialog); now the operator can
+        // fix the problem and sign in without the earlier refusal still sitting under the success.
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(McpOAuthAccess.Authorized("token"));
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+        await viewModel.LoadAsync();
+
+        viewModel.AddServerCommand.Execute(null);
+        var oauthRow = viewModel.Servers.Single();
+        oauthRow.Name = "depot";
+        oauthRow.Transport = McpTransport.Http;
+        oauthRow.Url = "https://depot.example/mcp";
+        oauthRow.Auth = McpServerAuth.OAuth;
+
+        viewModel.AddServerCommand.Execute(null);
+        var invalidRow = viewModel.Servers.Last();
+        invalidRow.Name = string.Empty;
+        invalidRow.Command = string.Empty;
+
+        await oauthRow.SignInCommand.ExecuteAsync(null);
+        Assert.NotEmpty(viewModel.StatusMessage);
+
+        invalidRow.Name = "second";
+        invalidRow.Command = "npx";
+        await oauthRow.SignInCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SignIn_OnOneRow_DisablesAnotherRowsSignIn_AndSaveAndCancel()
+    {
+        // Finding 6: busy used to be per row while the save it triggers is dialog-wide — a second row's own Sign in
+        // could fire a second save-then-authorize while the first was still mid-flight.
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var acquireGate = new TaskCompletionSource<McpOAuthAccess>();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ => acquireGate.Task);
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+
+        viewModel.AddServerCommand.Execute(null);
+        var rowA = viewModel.Servers.Single();
+        rowA.Name = "depot-a";
+        rowA.Transport = McpTransport.Http;
+        rowA.Url = "https://a.example/mcp";
+        rowA.Auth = McpServerAuth.OAuth;
+
+        viewModel.AddServerCommand.Execute(null);
+        var rowB = viewModel.Servers.Last();
+        rowB.Name = "depot-b";
+        rowB.Transport = McpTransport.Http;
+        rowB.Url = "https://b.example/mcp";
+        rowB.Auth = McpServerAuth.OAuth;
+
+        var signInTask = rowA.SignInCommand.ExecuteAsync(null);
+
+        Assert.False(rowB.SignInCommand.CanExecute(null));
+        Assert.False(viewModel.SaveCommand.CanExecute(null));
+        Assert.False(viewModel.CancelCommand.CanExecute(null));
+
+        acquireGate.SetResult(McpOAuthAccess.Authorized("token"));
+        await signInTask;
+
+        Assert.True(rowB.SignInCommand.CanExecute(null));
+        Assert.True(viewModel.SaveCommand.CanExecute(null));
+        Assert.True(viewModel.CancelCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task ClosingTheDialog_WhileASignInIsInFlight_CancelsTheAcquireCall()
+    {
+        // Finding 6: AcquireAsync used to get no CancellationToken at all, so a dialog closed mid-sign-in (the OS
+        // close button, here simulated through OnWindowClosed) left the call running with nowhere to land.
+        var store = _RecordingStore();
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var acquireStarted = new TaskCompletionSource();
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                acquireStarted.SetResult();
+                await Task.Delay(Timeout.Infinite, callInfo.ArgAt<CancellationToken>(2));
+                return McpOAuthAccess.Authorized("token"); // unreachable
+            });
+        var viewModel = new McpServersViewModel(store, [], coordinator);
+
+        viewModel.AddServerCommand.Execute(null);
+        var row = viewModel.Servers.Single();
+        row.Name = "depot";
+        row.Transport = McpTransport.Http;
+        row.Url = "https://depot.example/mcp";
+        row.Auth = McpServerAuth.OAuth;
+
+        var signInTask = row.SignInCommand.ExecuteAsync(null);
+        await acquireStarted.Task;
+
+        viewModel.OnWindowClosed();
+
+        var completed = await Task.WhenAny(signInTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(signInTask, completed);
     }
 }

@@ -5,6 +5,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
@@ -81,6 +82,11 @@ internal static class Screenshotter
         // one state the operator sees differently is the one state that cannot be looked at.
         ["project-editor-memory-source"] = (_, _) => _ProjectEditorWithMemorySource(),
         ["project-editor-resources"] = (_, _) => _ProjectEditorWithResources(),
+        // AC-499: the server row's own two states — a family with instances to pick from (its dropdown), and a
+        // family with none yet (its empty hint plus "Servers…" in the dropdown's place) — staged together since
+        // only one row of each is needed to prove both render, and DialogScreenClamp caps how much of this dialog
+        // any one scene can show anyway (see _ProjectEditorWithResources's own remarks on that ceiling).
+        ["project-editor-memory-source-families"] = (_, _) => _ProjectEditorWithMemorySourceFamilies(),
         // AC-502: the "Choose…" picker itself, in the state that paints the most of its own surface — a loaded
         // list with a two-line entry (name plus its detail) — plus the two states that must never read as an empty
         // list (not signed in, and a failed load), each its own scene since only one of the four states shows at a
@@ -88,6 +94,15 @@ internal static class Screenshotter
         ["memory-source-location-picker"] = (_, _) => _MemorySourceLocationPicker(),
         ["memory-source-location-picker-sign-in"] = (_, _) => _MemorySourceLocationPickerSignIn(),
         ["memory-source-location-picker-error"] = (_, _) => _MemorySourceLocationPickerError(),
+        // AC-499: the row the operator already had, pre-selected and marked — a longer list (ten locations, one
+        // without a Detail line) than the plain scene above so the current row (seventh) needs an actual scroll
+        // into view, and the ragged-row-height question (a Detail-less row among Detail-carrying ones) is on
+        // screen rather than assumed away.
+        ["memory-source-location-picker-current"] = (_, _) => _MemorySourceLocationPickerCurrent(),
+        // AC-499: the other half of the same case — a Reference the picker's list does not contain (removed,
+        // mistyped, no longer visible to this login). Nothing selected; see the view model's own remarks on why a
+        // stale value never falls back to picking something else.
+        ["memory-source-location-picker-current-missing"] = (_, _) => _MemorySourceLocationPickerCurrentMissing(),
         // AC-503: the three states a Memory row's own reachability check can land on — confirmed, not found, and
         // not signed in/unreachable — staged directly (see _ProjectEditorWithMemorySourceReachability's own
         // remarks on why this scene sets Reachability rather than going through a real check delegate).
@@ -123,6 +138,12 @@ internal static class Screenshotter
         ["restore-offer"] = (width, height) => _RestorePane(width, height, degraded: false),
         ["restore-offer-degraded"] = (width, height) => _RestorePane(width, height, degraded: true),
         ["mcp-servers"] = (_, _) => _McpServers(),
+        // AC-499: Sign in's three new states, each its own scene because only the selected row's detail panel
+        // renders at a time — a list with rows in different states never puts more than one of these on screen
+        // together. See _McpServersSignInUnsaved's own remarks for what each state replaced.
+        ["mcp-servers-signin-unsaved"] = (_, _) => _McpServersSignInUnsaved(),
+        ["mcp-servers-signin-invalid"] = (_, _) => _McpServersSignInInvalid(),
+        ["mcp-servers-signin-busy"] = (_, _) => _McpServersSignInBusy(),
         ["plugin-update-badge"] = (_, _) => _PluginUpdateBadge(),
         ["toolbar-actions"] = (_, _) => _ToolbarActions(),
         // The windows that had no scene at all (AC-414). Each is staged in the state that paints the most of
@@ -315,16 +336,84 @@ internal static class Screenshotter
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
+    /// <summary>
+    /// AC-499's second axis, both of its states in one scene (Iron Law #9): a "Depot" family with two instances to
+    /// choose between (its own dropdown, populated), and a "Notes vault" family with none registered yet (its
+    /// dropdown's place taken by a disabled box carrying <see cref="ProjectMemorySourceFamily.EmptyHint"/>, with
+    /// "Servers…" sitting beside it either way). Built directly against <see cref="ProjectResourceRowViewModel"/>'s
+    /// own constructor — passing <c>familyInstanceChoicesByKey</c> straight in — rather than through
+    /// <see cref="ProjectDialogViewModel.CreateAsync"/>: <c>MemorySourceFamilyInstances</c> only has a private
+    /// setter, so a scene (outside the view model's own assembly boundary in every way but the CLR's) builds the
+    /// same shape by hand, exactly as <see cref="_ProjectEditorWithResources"/> already does for
+    /// <c>MemorySourceChoices</c> itself.
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithMemorySourceFamilies()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        // See _ProjectEditorWithMemorySourceReachability's own remarks on why the design-time sample rows are
+        // cleared here too — every bit of chrome this scene does not need earns back room under the fold.
+        viewModel.AdditionalInfo.Clear();
+
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot", Scheme: null)
+        {
+            FamilyKey = "depot",
+            EmptyHint = "No Depot server configured yet",
+            ConfigureAsync = _ => Task.CompletedTask,
+        });
+        viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Notes vault", Scheme: null)
+        {
+            FamilyKey = "notes",
+            EmptyHint = "No Notes vault configured yet",
+            ConfigureAsync = _ => Task.CompletedTask,
+        });
+
+        var depotInstances = new List<ViewModels.MemorySourceChoice>
+        {
+            new("Depot (krahwinkel-it)", "depot"),
+            new("Depot (synvolution)", "depot.synvolution"),
+        };
+        var familyInstances = new Dictionary<string, IReadOnlyList<ViewModels.MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["depot"] = depotInstances,
+            ["notes"] = [],
+        };
+
+        var withInstances = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "krahwinkel-it", "Team notes",
+            familyInstanceChoicesByKey: familyInstances)
+        {
+            SelectedMemorySourceChoice = viewModel.MemorySourceChoices[1],
+        };
+        withInstances.SelectedFamilyInstance = depotInstances[0];
+        viewModel.ResourceRows.Add(withInstances);
+
+        var empty = new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Memory, "", "Personal notes",
+            familyInstanceChoicesByKey: familyInstances)
+        {
+            SelectedMemorySourceChoice = viewModel.MemorySourceChoices[2],
+        };
+        viewModel.ResourceRows.Add(empty);
+
+        // Taller than the dialog opens, the same reason every other resource-section scene already gives: two
+        // rows' worth of picker plus server row sit well below the fold of a default-sized editor.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
     // AC-502: a loaded picker, two locations so the list itself (not just a single row) is verifiable — one with
     // a detail line, one without, since ProjectMemorySourceLocation.Detail is optional and both must render cleanly.
+    // AC-499: the two also carry different kinds (Project/Brain) in that same detail line — DepotMemorySource's own
+    // _DetailFor puts the kind first — so the picker's own "which sort of place is this" distinction (Raymond's own
+    // krahwinkel-it instance mixes Depot projects and Depot brains under one connection) is actually on screen.
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
             "Depot project — Synvolution",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "21 documents · updated 26 Jul 2026"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("depot", "Depot"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
             ])));
         // Loaded synchronously rather than left to the window's own fire-and-forget OnDataContextChanged call: a
         // static screenshot needs the list settled before the frame is captured, not racing a dispatcher tick.
@@ -355,15 +444,64 @@ internal static class Screenshotter
         return new MemorySourceLocationPickerDialog { DataContext = viewModel };
     }
 
+    // AC-499: ten locations (Raymond's own krahwinkel-it instance mixes this many Depot projects and brains), the
+    // seventh carrying the Reference the row already had — proves the pre-selection, its "Current" badge, the
+    // scroll into view (this list does not fit the window's own resting height), and — via the one entry with no
+    // Detail line — whether a Detail-less row still sits noticeably shorter than its neighbours.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrent()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — krahwinkel-it",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+            [
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("synvolution", "Synvolution", "Project · 8 documents · updated 20 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ai-hub", "AI-Hub", "Project · 5 documents · updated 18 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("zyra", "Zyra", "Brain"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("moneybird-toolbox", "Moneybird-Toolbox", "Project · 3 documents · updated 12 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("eve-workbench", "EVE Workbench", "Project · 42 documents · updated 29 Jul 2026"),
+                // No Detail — right after the pre-selected row, so both land in the same scrolled-into-view
+                // viewport and a height difference between them (point 3) is actually on screen, not assumed away.
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ddd-template", "DDD-Template"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("payroll-processor", "PayrollProcessor", "Project · 14 documents · updated 22 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("vacancy-manager", "VacancyManager", "Project · 6 documents · updated 15 Jul 2026"),
+            ])),
+            currentValue: "eve-workbench");
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
+    // AC-499: the Reference the row carries in ("moved-away") does not match any location this login can see —
+    // removed, mistyped, or from a login that no longer has access. Nothing here should be selected; see the
+    // view model's own remarks on why a miss never falls back to picking something else.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrentMissing()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — Synvolution",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+            [
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
+            ])),
+            currentValue: "moved-away");
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
     /// <summary>
-    /// AC-503, Iron Law #9: the three states a Memory row's own reachability check can land on, one row each —
-    /// confirmed, not found, and not signed in/unreachable — so all three are actually visible on screen rather
-    /// than only asserted in a test. <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly
-    /// rather than through a real <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a
-    /// live dialog run, the same shortcut <see cref="_ProjectEditorWithResources"/> already takes for
-    /// <c>IsBroken</c>/<c>IsMachineBound"</c>: what this scene exists to prove is the view's own three-state
-    /// rendering, not the plugin/host wiring behind it, which the ViewModel and Depot-plugin test suites already
-    /// cover on their own.
+    /// AC-503, Iron Law #9: three of the four states a Memory row's own reachability check can land on, one row
+    /// each — confirmed, not found, and not signed in — so they are actually visible on screen rather than only
+    /// asserted in a test. AC-499 added a fourth (<c>CheckFailed</c> — the check ran but the call itself failed,
+    /// kept apart from NotSignedIn precisely so a signed-in operator is never told to sign in again); not staged
+    /// here too, only for the same fold reason the remark below already gives for not fitting a third row's full
+    /// text — <see cref="ProjectResourceRowViewModel.IsCheckFailed"/>'s own XAML binding shares its brush
+    /// (<c>CockpitStatusWaitingBrush</c>) with NotSignedIn, already proven legible by this very scene.
+    /// <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly rather than through a real
+    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a live dialog run, the same
+    /// shortcut <see cref="_ProjectEditorWithResources"/> already takes for <c>IsBroken</c>/<c>IsMachineBound"</c>:
+    /// what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it,
+    /// which the ViewModel and Depot-plugin test suites already cover on their own.
     /// </summary>
     private static ProjectDialog _ProjectEditorWithMemorySourceReachability()
     {
@@ -372,7 +510,7 @@ internal static class Screenshotter
         // each carrying their own picker and hint already push this scene's own fold further down than
         // _ProjectEditorWithResources's two rows do, and DialogScreenClamp still caps the window at 90% of the
         // headless screen no matter what Height this scene asks for (BuildTraps.md's own note on this) — every bit
-        // of chrome this scene does not need earns back room for the three states it exists to show.
+        // of chrome this scene does not need earns back room for the states it exists to show.
         viewModel.AdditionalInfo.Clear();
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));
@@ -583,6 +721,75 @@ internal static class Screenshotter
         server.Headers.Add(new McpHeaderRowViewModel("X-Tenant", "cockpit"));
 
         return new McpServersDialog { DataContext = viewModel };
+    }
+
+    // The state Sign in used to be dead in (AC-499): a row the operator just added and filled in, never saved.
+    // Before this ticket the button stayed disabled here with "Save this server first"; now it is offered, and
+    // clicking it saves the whole dialog before it authorizes.
+    private static McpServersDialog _McpServersSignInUnsaved()
+    {
+        var viewModel = new McpServersViewModel();
+        viewModel.Servers.Clear();
+        var server = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = "https://depot.example/mcp", Auth = McpServerAuth.OAuth },
+            NoOpOAuthCoordinator.Instance,
+            isPersisted: false);
+        viewModel.Servers.Add(server);
+        viewModel.SelectedServer = server;
+
+        // Taller than the dialog opens, the way the profiles/project-editor scenes already are: the sign-in block
+        // sits below the fold of a default-sized dialog, and DialogScreenClamp still caps the actual render at 90%
+        // of the headless screen regardless of this number — it only pushes the block as high as that ceiling allows.
+        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // A row that is not valid yet (AC-499) — a name but no URL — so Sign in stays refused, and
+    // SignInUnavailableReason now names what is missing instead of asking for a save that is no longer the gate.
+    private static McpServersDialog _McpServersSignInInvalid()
+    {
+        var viewModel = new McpServersViewModel();
+        viewModel.Servers.Clear();
+        var server = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "vault", Transport = McpTransport.Http, Auth = McpServerAuth.OAuth },
+            NoOpOAuthCoordinator.Instance,
+            isPersisted: false);
+        viewModel.Servers.Add(server);
+        viewModel.SelectedServer = server;
+
+        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    // Mid-flight (AC-499): IsAuthBusy now covers the save this row's own sign-in does first, not just the
+    // coordinator round trip, so both buttons stay disabled and "Working…" shows for the whole of it.
+    private static McpServersDialog _McpServersSignInBusy()
+    {
+        var viewModel = new McpServersViewModel();
+        viewModel.Servers.Clear();
+        var server = new EditableMcpServerViewModel(
+            new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = "https://depot.example/mcp", Auth = McpServerAuth.OAuth },
+            NoOpOAuthCoordinator.Instance)
+        {
+            IsAuthBusy = true,
+        };
+        viewModel.Servers.Add(server);
+        viewModel.SelectedServer = server;
+
+        return new McpServersDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>A coordinator that never does anything, for the three sign-in scenes above — they only need Sign
+    /// in's own gate to see a non-null coordinator, never an actual call.</summary>
+    private sealed class NoOpOAuthCoordinator : IMcpOAuthCoordinator
+    {
+        public static readonly NoOpOAuthCoordinator Instance = new();
+
+        public Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default) =>
+            Task.FromResult(McpOAuthAccess.NotRequired);
+
+        public Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
+            Task.FromResult(McpAuthState.AuthorizationRequired);
+
+        public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's

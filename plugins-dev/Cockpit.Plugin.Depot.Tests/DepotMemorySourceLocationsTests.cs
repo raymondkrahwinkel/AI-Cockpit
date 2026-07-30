@@ -48,6 +48,51 @@ public class DepotMemorySourceLocationsTests
         Assert.Contains("2 documents", location.Detail);
     }
 
+    // --- AC-499: kind (Project/Brain) shown in the picker's own detail line ---------------------------------------
+
+    [Fact]
+    public async Task ListLocationsAsync_AProjectWithASummary_ShowsKindBeforeTheDocumentCount()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
+                """{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project","summary":{"documentCount":2}}]}""")));
+
+        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+
+        Assert.Equal("Project · 2 documents", Assert.Single(result.Locations).Detail);
+    }
+
+    [Fact]
+    public async Task ListLocationsAsync_ABrainWithNoSummaryOrRole_ShowsJustTheKind()
+    {
+        // Raymond's own account mixes Depot projects and Depot brains under one connection (olaf, testy, vex) —
+        // list_projects returns both with no summary requested (includeSummary: true is still sent, but a Brain's
+        // own summary may legitimately be absent), so kind alone must still be visible rather than an empty line.
+        var host = Substitute.For<ICockpitHost>();
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
+                """{"projects":[{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""")));
+
+        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+
+        Assert.Equal("Brain", Assert.Single(result.Locations).Detail);
+    }
+
+    [Fact]
+    public async Task ListLocationsAsync_NoKindField_FallsBackToTheDocumentSummaryAlone()
+    {
+        // An older Depot server that predates the kind field — the picker must not regress to showing nothing.
+        var host = Substitute.For<ICockpitHost>();
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(
+                """{"projects":[{"slug":"cockpit","name":"Cockpit","summary":{"documentCount":2}}]}""")));
+
+        var result = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+
+        Assert.Equal("2 documents", Assert.Single(result.Locations).Detail);
+    }
+
     [Fact]
     public async Task ListLocationsAsync_EmptyProjectList_IsSuccessWithNoLocations()
     {
