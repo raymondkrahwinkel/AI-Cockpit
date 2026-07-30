@@ -145,19 +145,24 @@ public class McpOAuthProxyTests
 
             using var client = new HttpClient();
             using var request = _Post(proxyUrl, """{"jsonrpc":"2.0","id":1,"method":"tools/call"}""", key);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-            await using var stream = await response.Content.ReadAsStreamAsync();
+
+            // The deadline goes on the send, not only on the reads. A proxy that buffers the whole upstream response
+            // holds its own response headers back until the server is done — so the reads below would still succeed,
+            // just half a minute late, and a test that timed only the reads would call that streaming.
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             using var reader = new StreamReader(stream);
 
             // Read while the server is still holding the stream open. This is the assertion: the first event has to
             // be readable before the response has ended, or an MCP session over SSE simply hangs.
-            var first = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            var first = await reader.ReadLineAsync(deadline.Token);
             Assert.Equal("data: first", first);
             Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
 
             secondEventReleased.Release();
-            Assert.Equal(string.Empty, await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
-            Assert.Equal("data: second", await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal(string.Empty, await reader.ReadLineAsync(deadline.Token));
+            Assert.Equal("data: second", await reader.ReadLineAsync(deadline.Token));
         }
     }
 
