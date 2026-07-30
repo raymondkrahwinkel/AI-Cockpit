@@ -554,8 +554,8 @@ public class ProjectDialogResourceRowTests
     public async Task RegressionTest_ASourceWithNoCheckDelegate_LeavesTheRowExactlyAsBeforeAC503()
     {
         // A registration a plugin built before AC-503 existed (or one whose author simply never implemented a
-        // check) carries CheckReachability = null — this proves such a row shows none of the three new states,
-        // the same as today.
+        // check) carries CheckReachability = null — this proves such a row shows none of the four states, the
+        // same as today.
         var depotSource = new ProjectMemorySourceRegistration("depot", "Depot project", "Read it through the Depot MCP.");
         var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
 
@@ -566,10 +566,11 @@ public class ProjectDialogResourceRowTests
         Assert.False(row.IsConfirmedReachable);
         Assert.False(row.IsNotFoundReachable);
         Assert.False(row.IsNotSignedIn);
+        Assert.False(row.IsCheckFailed);
     }
 
     [Fact]
-    public async Task EmptyField_ShowsNoneOfTheThreeStates_AndNeverCallsTheCheckAtAll()
+    public async Task EmptyField_ShowsNoneOfTheFourStates_AndNeverCallsTheCheckAtAll()
     {
         var calls = 0;
         var depotSource = _DepotSourceWithCheck((_, _) =>
@@ -591,6 +592,7 @@ public class ProjectDialogResourceRowTests
         Assert.False(row.IsConfirmedReachable);
         Assert.False(row.IsNotFoundReachable);
         Assert.False(row.IsNotSignedIn);
+        Assert.False(row.IsCheckFailed);
     }
 
     [Fact]
@@ -607,6 +609,7 @@ public class ProjectDialogResourceRowTests
         Assert.True(row.IsConfirmedReachable);
         Assert.False(row.IsNotFoundReachable);
         Assert.False(row.IsNotSignedIn);
+        Assert.False(row.IsCheckFailed);
         Assert.Equal("24 documents for cockpit", row.ReachabilityDetail);
     }
 
@@ -623,6 +626,7 @@ public class ProjectDialogResourceRowTests
         Assert.True(row.IsNotFoundReachable);
         Assert.False(row.IsConfirmedReachable);
         Assert.False(row.IsNotSignedIn);
+        Assert.False(row.IsCheckFailed);
     }
 
     [Fact]
@@ -638,30 +642,54 @@ public class ProjectDialogResourceRowTests
         Assert.True(row.IsNotSignedIn);
         Assert.False(row.IsConfirmedReachable);
         Assert.False(row.IsNotFoundReachable);
+        Assert.False(row.IsCheckFailed);
     }
 
     [Fact]
-    public async Task ACheckDelegateThatThrows_MapsToNotSignedIn_NeverToNotFound()
+    public async Task ACheckFailedValue_SetsReachabilityAndShowsTheDetail()
     {
-        // AC-503 acceptance criterion 4: a plugin's own check delegate failing (a hiccup in its host call, an
-        // unhandled edge case) is exactly the same kind of ambiguous failure a network/timeout error at the host
-        // probe layer is — it must never read as "this does not exist", which would name the wrong cause.
+        // AC-499: a source whose call ran but failed for a reason other than "needs sign-in" — kept apart from
+        // NotSignedIn precisely so this never reads as "go sign in again" for a check that already reached the
+        // connection.
+        var depotSource = _DepotSourceWithCheck((_, _) =>
+            Task.FromResult(ProjectMemorySourceReachabilityResult.CheckFailed("connection reset")));
+        var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
+        var row = viewModel.ResourceRows.Single();
+
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, row.Reachability);
+        Assert.True(row.IsCheckFailed);
+        Assert.False(row.IsConfirmedReachable);
+        Assert.False(row.IsNotFoundReachable);
+        Assert.False(row.IsNotSignedIn);
+        Assert.Equal("connection reset", row.ReachabilityDetail);
+    }
+
+    [Fact]
+    public async Task ACheckDelegateThatThrows_MapsToCheckFailed_NeverToNotFoundOrNotSignedIn()
+    {
+        // AC-499: a plugin's own check delegate failing (a hiccup in its host call, an unhandled edge case) is the
+        // check itself failing to run, not a "needs sign-in" answer — CheckFailed is what exists for exactly this,
+        // and it must still never read as "this does not exist" (AC-503 acceptance criterion 4), which would name
+        // the wrong cause.
         var depotSource = _DepotSourceWithCheck((_, _) => throw new InvalidOperationException("boom"));
         var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog(), memorySources: [depotSource]);
         var row = viewModel.ResourceRows.Single();
 
-        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, row.Reachability);
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, row.Reachability);
+        Assert.Equal("boom", row.ReachabilityDetail);
     }
 
     [Fact]
-    public async Task IronLaw8_ANonConfirmedResultsDetail_NeverSurfacesOnTheRow_EvenIfThePluginSetOne()
+    public async Task IronLaw8_ANotSignedInResultsDetail_NeverSurfacesOnTheRow_EvenIfThePluginSetOne()
     {
-        // Belt-and-braces: even if a plugin's own check mistakenly attached a Detail to a non-Confirmed result —
-        // here standing in for what a leaked credential fragment would look like — the row must never show it.
-        // ProjectMemorySourceReachabilityResult's own doc comment already says Detail is ignored for any state but
-        // Confirmed; this proves the dialog's own mapping actually honours that rather than merely documenting it.
+        // Belt-and-braces: even if a plugin's own check mistakenly attached a Detail to a NotSignedIn result — here
+        // standing in for what a leaked credential fragment would look like — the row must never show it.
+        // ProjectMemorySourceReachabilityResult's own doc comment already says Detail is ignored for NotSignedIn/
+        // NotFound; this proves the dialog's own mapping actually honours that rather than merely documenting it.
         var depotSource = _DepotSourceWithCheck((_, _) =>
             Task.FromResult(new ProjectMemorySourceReachabilityResult(ProjectMemorySourceReachability.NotSignedIn, "Bearer fake-token-should-never-be-shown")));
         var project = Project.Create("Cockpit") with { Resources = [new ProjectResource("depot:cockpit", ProjectResourceRole.Memory)] };

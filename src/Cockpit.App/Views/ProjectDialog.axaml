@@ -354,9 +354,9 @@
 
                                         <!-- AC-503: the plugin-resource counterpart to the two hints above — a Memory row whose picked source
                                              can confirm a typed value gets the same visible confirmation/error treatment a broken Reference row
-                                             already has. Exactly one of the three is ever visible at once (the three IsXxx bools on the row are
-                                             mutually exclusive, all gated on Role == Memory and a non-blank Reference), so there is no ordering
-                                             concern between them. -->
+                                             already has. Exactly one of the four (AC-499 added the fourth) is ever visible at once (the IsXxx bools
+                                             on the row are mutually exclusive, all gated on Role == Memory and a non-blank Reference), so there is
+                                             no ordering concern between them. -->
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsConfirmedReachable}"
                                                    Foreground="{StaticResource CockpitStatusDoneBrush}"
                                                    Text="{Binding ReachabilityDetail, TargetNullValue='Confirmed — this location was found.'}"/>
@@ -365,7 +365,15 @@
                                                    Text="This location could not be found, or is not visible with the current sign-in."/>
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsNotSignedIn}"
                                                    Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                                                   Text="Not signed in, or this connection could not be reached — sign in to confirm this location."/>
+                                                   Text="Not signed in — sign in to confirm this location."/>
+                                        <!-- AC-499: the check ran and reached the connection but could not complete —
+                                             kept apart from IsNotSignedIn above so a signed-in operator is never told
+                                             to sign in again for a call that already proved sign-in was not the
+                                             problem. Same waiting/amber treatment: this is not a claim about the
+                                             value either way, only that nothing could be confirmed this time. -->
+                                        <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsCheckFailed}"
+                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   Text="{Binding ReachabilityDetail, TargetNullValue='This location could not be checked right now.'}"/>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>

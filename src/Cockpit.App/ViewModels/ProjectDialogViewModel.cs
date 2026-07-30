@@ -739,13 +739,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // as the filesystem probe's own version check answers for its slower-but-uncancellable path.
             return;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // A plugin's own check delegate threw before it could decide anything — treated exactly like a network
-            // failure at the host-probe layer (Cockpit.Plugins.Abstractions.Mcp.McpProbeOutcome.Failed): never
-            // NotFound for a failure this ambiguous (AC-503 acceptance criterion 4), which would name the wrong
-            // cause for what might simply be a hiccup in the plugin's own check.
-            result = ProjectMemorySourceReachabilityResult.NotSignedIn;
+            // A plugin's own check delegate threw before it could decide anything (AC-499: CheckFailed, not
+            // NotSignedIn — the delegate ran and blew up, which is exactly what CheckFailed exists to report,
+            // distinct from an actual "needs sign-in" answer). Never NotFound for a failure this ambiguous (AC-503
+            // acceptance criterion 4), which would name the wrong cause for what might simply be a hiccup in the
+            // plugin's own check.
+            result = ProjectMemorySourceReachabilityResult.CheckFailed(exception.Message);
         }
 
         if (version != _resourceDiagnosticsRefreshVersion)
@@ -754,7 +755,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
 
         row.Reachability = result.State;
-        row.ReachabilityDetail = result.State == ProjectMemorySourceReachability.Confirmed ? result.Detail : null;
+        row.ReachabilityDetail = result.State is ProjectMemorySourceReachability.Confirmed or ProjectMemorySourceReachability.CheckFailed
+            ? result.Detail
+            : null;
     }
 
     private static string? _NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

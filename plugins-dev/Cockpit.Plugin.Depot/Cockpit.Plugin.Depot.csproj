@@ -28,6 +28,13 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- AC-499: resolved from ICockpitHost.Services (the app's own shared container already carries an
+         ILoggerFactory registration — see Program.cs) so a failed reachability check leaves a line in the same
+         dev log every other host-side failure does, rather than nowhere at all. Compile-only, like the reference
+         above: the host's own already-loaded copy answers this type at runtime. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -94,6 +94,15 @@ internal static class Screenshotter
         ["memory-source-location-picker"] = (_, _) => _MemorySourceLocationPicker(),
         ["memory-source-location-picker-sign-in"] = (_, _) => _MemorySourceLocationPickerSignIn(),
         ["memory-source-location-picker-error"] = (_, _) => _MemorySourceLocationPickerError(),
+        // AC-499: the row the operator already had, pre-selected and marked — a longer list (ten locations, one
+        // without a Detail line) than the plain scene above so the current row (seventh) needs an actual scroll
+        // into view, and the ragged-row-height question (a Detail-less row among Detail-carrying ones) is on
+        // screen rather than assumed away.
+        ["memory-source-location-picker-current"] = (_, _) => _MemorySourceLocationPickerCurrent(),
+        // AC-499: the other half of the same case — a Reference the picker's list does not contain (removed,
+        // mistyped, no longer visible to this login). Nothing selected; see the view model's own remarks on why a
+        // stale value never falls back to picking something else.
+        ["memory-source-location-picker-current-missing"] = (_, _) => _MemorySourceLocationPickerCurrentMissing(),
         // AC-503: the three states a Memory row's own reachability check can land on — confirmed, not found, and
         // not signed in/unreachable — staged directly (see _ProjectEditorWithMemorySourceReachability's own
         // remarks on why this scene sets Reachability rather than going through a real check delegate).
@@ -394,14 +403,17 @@ internal static class Screenshotter
 
     // AC-502: a loaded picker, two locations so the list itself (not just a single row) is verifiable — one with
     // a detail line, one without, since ProjectMemorySourceLocation.Detail is optional and both must render cleanly.
+    // AC-499: the two also carry different kinds (Project/Brain) in that same detail line — DepotMemorySource's own
+    // _DetailFor puts the kind first — so the picker's own "which sort of place is this" distinction (Raymond's own
+    // krahwinkel-it instance mixes Depot projects and Depot brains under one connection) is actually on screen.
     private static MemorySourceLocationPickerDialog _MemorySourceLocationPicker()
     {
         var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
             "Depot project — Synvolution",
             _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
             [
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "21 documents · updated 26 Jul 2026"),
-                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("depot", "Depot"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
             ])));
         // Loaded synchronously rather than left to the window's own fire-and-forget OnDataContextChanged call: a
         // static screenshot needs the list settled before the frame is captured, not racing a dispatcher tick.
@@ -432,15 +444,64 @@ internal static class Screenshotter
         return new MemorySourceLocationPickerDialog { DataContext = viewModel };
     }
 
+    // AC-499: ten locations (Raymond's own krahwinkel-it instance mixes this many Depot projects and brains), the
+    // seventh carrying the Reference the row already had — proves the pre-selection, its "Current" badge, the
+    // scroll into view (this list does not fit the window's own resting height), and — via the one entry with no
+    // Detail line — whether a Detail-less row still sits noticeably shorter than its neighbours.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrent()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — krahwinkel-it",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+            [
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("synvolution", "Synvolution", "Project · 8 documents · updated 20 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ai-hub", "AI-Hub", "Project · 5 documents · updated 18 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("zyra", "Zyra", "Brain"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("moneybird-toolbox", "Moneybird-Toolbox", "Project · 3 documents · updated 12 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("eve-workbench", "EVE Workbench", "Project · 42 documents · updated 29 Jul 2026"),
+                // No Detail — right after the pre-selected row, so both land in the same scrolled-into-view
+                // viewport and a height difference between them (point 3) is actually on screen, not assumed away.
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("ddd-template", "DDD-Template"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("payroll-processor", "PayrollProcessor", "Project · 14 documents · updated 22 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("vacancy-manager", "VacancyManager", "Project · 6 documents · updated 15 Jul 2026"),
+            ])),
+            currentValue: "eve-workbench");
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
+    // AC-499: the Reference the row carries in ("moved-away") does not match any location this login can see —
+    // removed, mistyped, or from a login that no longer has access. Nothing here should be selected; see the
+    // view model's own remarks on why a miss never falls back to picking something else.
+    private static MemorySourceLocationPickerDialog _MemorySourceLocationPickerCurrentMissing()
+    {
+        var viewModel = new ViewModels.MemorySourceLocationPickerViewModel(
+            "Depot project — Synvolution",
+            _ => Task.FromResult(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+            [
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("cockpit", "Cockpit", "Project · 21 documents · updated 26 Jul 2026"),
+                new Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocation("olaf", "Olaf", "Brain"),
+            ])),
+            currentValue: "moved-away");
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new MemorySourceLocationPickerDialog { DataContext = viewModel };
+    }
+
     /// <summary>
-    /// AC-503, Iron Law #9: the three states a Memory row's own reachability check can land on, one row each —
-    /// confirmed, not found, and not signed in/unreachable — so all three are actually visible on screen rather
-    /// than only asserted in a test. <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly
-    /// rather than through a real <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a
-    /// live dialog run, the same shortcut <see cref="_ProjectEditorWithResources"/> already takes for
-    /// <c>IsBroken</c>/<c>IsMachineBound"</c>: what this scene exists to prove is the view's own three-state
-    /// rendering, not the plugin/host wiring behind it, which the ViewModel and Depot-plugin test suites already
-    /// cover on their own.
+    /// AC-503, Iron Law #9: three of the four states a Memory row's own reachability check can land on, one row
+    /// each — confirmed, not found, and not signed in — so they are actually visible on screen rather than only
+    /// asserted in a test. AC-499 added a fourth (<c>CheckFailed</c> — the check ran but the call itself failed,
+    /// kept apart from NotSignedIn precisely so a signed-in operator is never told to sign in again); not staged
+    /// here too, only for the same fold reason the remark below already gives for not fitting a third row's full
+    /// text — <see cref="ProjectResourceRowViewModel.IsCheckFailed"/>'s own XAML binding shares its brush
+    /// (<c>CockpitStatusWaitingBrush</c>) with NotSignedIn, already proven legible by this very scene.
+    /// <see cref="ProjectResourceRowViewModel.Reachability"/> is staged directly rather than through a real
+    /// <see cref="ProjectMemorySourceRegistration.CheckReachability"/> delegate and a live dialog run, the same
+    /// shortcut <see cref="_ProjectEditorWithResources"/> already takes for <c>IsBroken</c>/<c>IsMachineBound"</c>:
+    /// what this scene exists to prove is the view's own state rendering, not the plugin/host wiring behind it,
+    /// which the ViewModel and Depot-plugin test suites already cover on their own.
     /// </summary>
     private static ProjectDialog _ProjectEditorWithMemorySourceReachability()
     {
@@ -449,7 +510,7 @@ internal static class Screenshotter
         // each carrying their own picker and hint already push this scene's own fold further down than
         // _ProjectEditorWithResources's two rows do, and DialogScreenClamp still caps the window at 90% of the
         // headless screen no matter what Height this scene asks for (BuildTraps.md's own note on this) — every bit
-        // of chrome this scene does not need earns back room for the three states it exists to show.
+        // of chrome this scene does not need earns back room for the states it exists to show.
         viewModel.AdditionalInfo.Clear();
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Folder", Scheme: null));
         viewModel.MemorySourceChoices.Add(new ViewModels.MemorySourceChoice("Depot project", "depot"));

@@ -3,6 +3,8 @@ using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot;
 
@@ -46,7 +48,8 @@ internal static class DepotMemorySource
     /// <param name="connections">The configured connections.</param>
     /// <param name="host">
     /// Wires each registration's <see cref="ProjectMemorySourceRegistration.CheckReachability"/> to this connection's
-    /// own MCP server (AC-503) via <c>host.ProbeMcpToolAsync</c>. Null (the default, and what every existing test of
+    /// own MCP server (AC-503, rebuilt AC-499) via <c>host.CallMcpToolAsync</c>'s <c>list_projects</c> — see
+    /// <see cref="_CheckReachabilityAsync"/>'s own remarks. Null (the default, and what every existing test of
     /// this method already passes) leaves <c>CheckReachability</c> unset — a row behaves exactly as it does today,
     /// nothing shown under it. Optional rather than a second required parameter so this stays the same host-free type
     /// the class remarks describe: a test can still build registrations and assert on them without standing up an
@@ -131,31 +134,69 @@ internal static class DepotMemorySource
 
     private static ProjectMemorySourceLocationsResult _ParseLocations(string json)
     {
+        if (!_TryParseProjects(json, out var projects, out var error))
+        {
+            return ProjectMemorySourceLocationsResult.Failed(error!);
+        }
+
+        var locations = projects
+            .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
+            .Select(project => new ProjectMemorySourceLocation(
+                project.Slug!,
+                string.IsNullOrWhiteSpace(project.Name) ? project.Slug! : project.Name!,
+                _DetailFor(project)))
+            .ToList();
+
+        return ProjectMemorySourceLocationsResult.Success(locations);
+    }
+
+    /// <summary>
+    /// Deserializes <c>list_projects</c>' own response shape, shared by the picker's own listing
+    /// (<see cref="_ParseLocations"/>) and the AC-499 reachability check (<see cref="_CheckReachabilityAsync"/>) —
+    /// one parse, two readers, rather than the same try/catch duplicated for each.
+    /// </summary>
+    private static bool _TryParseProjects(string json, out List<_ListProjectsProject> projects, out string? error)
+    {
         try
         {
             var payload = JsonSerializer.Deserialize<_ListProjectsPayload>(json, _SerializerOptions);
-            if (payload?.Projects is not { } projects)
+            if (payload?.Projects is not { } parsed)
             {
-                return ProjectMemorySourceLocationsResult.Failed("Depot's project list came back in an unexpected shape.");
+                projects = [];
+                error = "Depot's project list came back in an unexpected shape.";
+                return false;
             }
 
-            var locations = projects
-                .Where(project => !string.IsNullOrWhiteSpace(project.Slug))
-                .Select(project => new ProjectMemorySourceLocation(
-                    project.Slug!,
-                    string.IsNullOrWhiteSpace(project.Name) ? project.Slug! : project.Name!,
-                    _DetailFor(project)))
-                .ToList();
-
-            return ProjectMemorySourceLocationsResult.Success(locations);
+            projects = parsed;
+            error = null;
+            return true;
         }
         catch (JsonException exception)
         {
-            return ProjectMemorySourceLocationsResult.Failed($"Couldn't read Depot's project list: {exception.Message}");
+            projects = [];
+            error = $"Couldn't read Depot's project list: {exception.Message}";
+            return false;
         }
     }
 
+    // AC-499: kind is shown first, then whatever else this project has to say — the same " · " separator the
+    // document-count/updated pair below already uses, so a Brain among a picker full of Projects (Raymond's own
+    // krahwinkel-it instance mixes both) reads apart at a glance rather than only being distinguishable by name.
     private static string? _DetailFor(_ListProjectsProject project)
+    {
+        var kind = project.Kind is { Length: > 0 } value ? value : null;
+        var rest = _SummaryOrRoleFor(project);
+
+        return (kind, rest) switch
+        {
+            (not null, not null) => $"{kind} · {rest}",
+            (not null, null) => kind,
+            (null, not null) => rest,
+            (null, null) => null,
+        };
+    }
+
+    private static string? _SummaryOrRoleFor(_ListProjectsProject project)
     {
         if (project.Summary is not { } summary)
         {
@@ -166,6 +207,17 @@ internal static class DepotMemorySource
         return summary.LastModifiedAt is { } lastModified
             ? $"{documents} · updated {lastModified.ToLocalTime():d MMM yyyy}"
             : documents;
+    }
+
+    // AC-499: what a Confirmed reachability result shows under the row — the project's own name and kind, since
+    // that data comes free with the same list_projects call the match itself needed. Deliberately not the document
+    // summary _DetailFor also carries: this call runs on every debounced edit (see its own remarks on
+    // includeSummary: false), so nothing here should invite a plugin to wish it had asked the server to walk a
+    // project's file tree just to fill this line in.
+    private static string _ReachabilityDetailFor(_ListProjectsProject project)
+    {
+        var name = project.Name is { Length: > 0 } value ? value : project.Slug ?? string.Empty;
+        return project.Kind is { Length: > 0 } kind ? $"{name} · {kind}" : name;
     }
 
     private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -183,6 +235,12 @@ internal static class DepotMemorySource
         public string? Slug { get; set; }
         public string? Name { get; set; }
         public string? Role { get; set; }
+
+        // AC-499: "Project" or "Brain" — Depot's list_projects returns both kinds mixed together for a caller whose
+        // account has any, and nothing before this told the operator apart which was which in this plugin's own
+        // picker or reachability confirmation.
+        public string? Kind { get; set; }
+
         public _ListProjectsSummary? Summary { get; set; }
     }
 
@@ -193,43 +251,79 @@ internal static class DepotMemorySource
     }
 
     /// <summary>
-    /// The AC-503 reachability check for one Depot connection: confirms the slug the operator typed by asking this
-    /// connection's own MCP server, through the host's out-of-session probe, rather than opening a session-owned
-    /// connection this settings view has no business holding.
+    /// The AC-503 reachability check for one Depot connection, rebuilt under AC-499 after being measured against a
+    /// real Depot server: the original guess — a tool named <c>"outline"</c> called with only <c>{"project": value}"</c>
+    /// — was wrong. Depot's own <c>outline</c> is a single-<em>document</em> tool (<c>required: ["project", "path"]</c>);
+    /// called without <c>path</c> it always failed, and that failure mapped onto <see cref="ProjectMemorySourceReachability.NotSignedIn"/>,
+    /// so a fully signed-in operator kept reading "sign in to confirm this location" for a check that could never
+    /// have succeeded regardless of sign-in state.
     /// <para>
-    /// Tool name: <c>"outline"</c> — chosen without live access to a running Depot instance to verify it against
-    /// (this plugin has no test fixture that stands one up), so this is a plausible guess, not a confirmed fact.
-    /// <b>Verify the actual tool name/schema against a real Depot MCP server before this ships</b> — if it differs,
-    /// every call here answers <see cref="McpProbeOutcome.Failed"/> (an unrecognised tool name is exactly the kind
-    /// of ambiguous server error <see cref="McpProbeOutcome.Failed"/> exists for), which reads to the operator as
-    /// "not signed in / unreachable" rather than the wrong tool being called — safe, per AC-503 acceptance criterion
-    /// 4, but not informative until the name is confirmed. A single string argument named <c>"project"</c> carrying
-    /// the typed slug is this method's other guess, for the same reason.
+    /// This calls <c>list_projects</c> instead — the same tool <see cref="_ListLocationsAsync"/> already uses for
+    /// the picker, and the one Depot tool that actually answers "does this slug exist and can this operator see it":
+    /// <c>project_info(project)</c> was measured as unusable for this (a nonexistent slug answers 200 with every
+    /// field null rather than an error), so a slug lookup against the operator's own visible project list is the
+    /// only reliable "exists and I can see it" this server offers. <c>includeSummary: false</c> — unlike the
+    /// picker's own call — because Depot's own tool description warns that flag "walks each returned project's file
+    /// tree server-side"; the picker is opened once, but this check reruns on every debounced edit, and nothing it
+    /// needs (only slug/name/kind) requires that walk.
     /// </para>
     /// </summary>
-    private const string ReachabilityToolName = "outline";
-
     private static async Task<ProjectMemorySourceReachabilityResult> _CheckReachabilityAsync(
         ICockpitHost host, DepotConnectionRegistration connection, string value, CancellationToken cancellationToken)
     {
-        var probe = await host.ProbeMcpToolAsync(
+        var result = await host.CallMcpToolAsync(
             connection.McpServerName,
-            ReachabilityToolName,
-            new Dictionary<string, object?> { ["project"] = value },
+            "list_projects",
+            new Dictionary<string, object?> { ["includeSummary"] = false },
+            // Same reasoning as _ListLocationsAsync: a Depot connection is shared, not project-scoped.
+            projectId: null,
             cancellationToken).ConfigureAwait(false);
 
-        // AC-503 acceptance criteria 3/4: NotSignedIn covers both "no sign-in" and "reaching it failed" (Failed) —
-        // a transient network hiccup must never read as "this project does not exist", which would name the wrong
-        // cause. NotFound is the one case the tool itself actually said so; DEP-136 (not yet built) is what would
-        // let "does not exist" and "exists but this token cannot see it" be told apart, so both share this one
-        // honest state until then — see ProjectMemorySourceReachability's own remarks.
-        return probe.Outcome switch
+        switch (result.Outcome)
         {
-            McpProbeOutcome.Success => ProjectMemorySourceReachabilityResult.Confirmed(probe.Detail),
-            McpProbeOutcome.NotFound => ProjectMemorySourceReachabilityResult.NotFound,
-            _ => ProjectMemorySourceReachabilityResult.NotSignedIn,
-        };
+            case PluginMcpToolCallOutcome.AuthorizationRequired:
+                // The one case that actually means "go sign in" — see ProjectMemorySourceReachability's own remarks
+                // on why this is no longer also where an ordinary failed call lands.
+                return ProjectMemorySourceReachabilityResult.NotSignedIn;
+            case PluginMcpToolCallOutcome.Success:
+                return _MatchReachability(result.Content ?? string.Empty, value, host, connection);
+            default:
+                var reason = result.Error ?? "Depot did not return a list of projects.";
+                _LogCheckFailure(host, connection, value, reason);
+                return ProjectMemorySourceReachabilityResult.CheckFailed(result.Error);
+        }
     }
+
+    private static ProjectMemorySourceReachabilityResult _MatchReachability(
+        string json, string value, ICockpitHost host, DepotConnectionRegistration connection)
+    {
+        if (!_TryParseProjects(json, out var projects, out var error))
+        {
+            _LogCheckFailure(host, connection, value, error!);
+            return ProjectMemorySourceReachabilityResult.CheckFailed(error);
+        }
+
+        // Case-insensitive: a slug the operator typed with different casing than Depot stores it is still the same
+        // project, not a reason to say "not found" for what a human would call an exact match.
+        var match = projects.FirstOrDefault(project => string.Equals(project.Slug, value, StringComparison.OrdinalIgnoreCase));
+        return match is null
+            ? ProjectMemorySourceReachabilityResult.NotFound
+            : ProjectMemorySourceReachabilityResult.Confirmed(_ReachabilityDetailFor(match));
+    }
+
+    /// <summary>
+    /// AC-499: the trace this check left nowhere before — grepping the dev log for this probe found nothing, which
+    /// is exactly how a defect that silently told a signed-in operator to sign in again stayed unnoticed. Resolved
+    /// from <see cref="ICockpitHost.Services"/>, the same shared container <c>Cockpit.App.Plugins.CockpitHost</c>'s
+    /// own internal logging already resolves <c>ILoggerFactory</c> from — no new host member, just the DI seam every
+    /// plugin already has. Null on a host/test double with no logging registered (most tests): a missing log line is
+    /// not a failure this check itself needs to report on. Iron Law #8: only the connection's own (non-secret) name,
+    /// the typed slug and the plugin's own error text ever land here — never a token, never anything this call used
+    /// to authenticate.
+    /// </summary>
+    private static void _LogCheckFailure(ICockpitHost host, DepotConnectionRegistration connection, string slug, string reason) =>
+        host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
+            .LogWarning("Depot reachability check for '{Slug}' against connection '{Connection}' failed: {Reason}", slug, connection.Name, reason);
 
     private static string _NamespacedScheme(DepotConnectionRegistration connection, ISet<string> taken)
     {

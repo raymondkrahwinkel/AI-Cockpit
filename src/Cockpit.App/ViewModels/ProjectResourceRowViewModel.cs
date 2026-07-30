@@ -33,12 +33,14 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
+    [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
     private ProjectResourceRole _role;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
+    [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
     private string _reference;
 
     [ObservableProperty]
@@ -157,13 +159,15 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsConfirmedReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotFoundReachable))]
     [NotifyPropertyChangedFor(nameof(IsNotSignedIn))]
+    [NotifyPropertyChangedFor(nameof(IsCheckFailed))]
     private ProjectMemorySourceReachability? _reachability;
 
     /// <summary>
-    /// The confirmation text to show under a <see cref="ProjectMemorySourceReachability.Confirmed"/> row — the
-    /// plugin's own <see cref="ProjectMemorySourceReachabilityResult.Detail"/>, or null to fall back to a fixed
-    /// sentence. Ignored for any other <see cref="Reachability"/>, the same restraint that result type's own doc
-    /// comment describes.
+    /// The text to show under a <see cref="ProjectMemorySourceReachability.Confirmed"/> or (AC-499)
+    /// <see cref="ProjectMemorySourceReachability.CheckFailed"/> row — the plugin's own
+    /// <see cref="ProjectMemorySourceReachabilityResult.Detail"/>, or null to fall back to each state's own fixed
+    /// sentence. Ignored for <see cref="ProjectMemorySourceReachability.NotSignedIn"/>/<see cref="ProjectMemorySourceReachability.NotFound"/>,
+    /// the same restraint that result type's own doc comment describes.
     /// </summary>
     [ObservableProperty]
     private string? _reachabilityDetail;
@@ -378,10 +382,10 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// <summary>
     /// Whether to show a confirmation under this Memory row (AC-503) — the counterpart to <see cref="IsBroken"/> for
     /// a plugin-registered source rather than a filesystem path. Gated on <see cref="Role"/> and a non-blank typed
-    /// value the same way <see cref="IsNotFoundReachable"/>/<see cref="IsNotSignedIn"/> are, so a blank field never
-    /// shows any of the three (AC-503 acceptance criterion 6) whatever <see cref="Reachability"/> last held from
-    /// before the field was cleared — clearing the field itself already resets it (see
-    /// <see cref="OnReferenceChanged"/>), but this gate is the belt to that braces.
+    /// value the same way <see cref="IsNotFoundReachable"/>/<see cref="IsNotSignedIn"/>/<see cref="IsCheckFailed"/>
+    /// are, so a blank field never shows any of the four (AC-503 acceptance criterion 6, AC-499) whatever
+    /// <see cref="Reachability"/> last held from before the field was cleared — clearing the field itself already
+    /// resets it (see <see cref="OnReferenceChanged"/>), but this gate is the belt to that braces.
     /// </summary>
     public bool IsConfirmedReachable =>
         Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.Confirmed;
@@ -390,9 +394,13 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     public bool IsNotFoundReachable =>
         Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.NotFound;
 
-    /// <summary>The AC-503 "not signed in / unreachable" state — see <see cref="IsConfirmedReachable"/>'s own remarks on the shared gating.</summary>
+    /// <summary>The AC-503 "not signed in" state — see <see cref="IsConfirmedReachable"/>'s own remarks on the shared gating.</summary>
     public bool IsNotSignedIn =>
         Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.NotSignedIn;
+
+    /// <summary>The AC-499 "the check itself failed" state — see <see cref="IsConfirmedReachable"/>'s own remarks on the shared gating.</summary>
+    public bool IsCheckFailed =>
+        Role == ProjectResourceRole.Memory && !string.IsNullOrWhiteSpace(Reference) && Reachability == ProjectMemorySourceReachability.CheckFailed;
 
     /// <summary>
     /// Whether "Send along" is offered for this row at all (AC-486) — <see cref="ProjectResourceRole.Instructions"/>

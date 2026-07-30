@@ -206,4 +206,67 @@ public class MemorySourceLocationPickerViewModelTests
 
         Assert.Null(closedWith);
     }
+
+    // AC-499: the row's own Reference at the moment the picker opened pre-selects the matching location, so the
+    // operator sees where they came from instead of a blank list — see the four cases below.
+    private static readonly ProjectMemorySourceLocation Olaf = new("olaf", "Olaf", "Brain");
+
+    [Fact]
+    public async Task LoadAsync_CurrentValueMatchesALocation_PreselectsIt()
+    {
+        var viewModel = new MemorySourceLocationPickerViewModel(
+            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([Cockpit, Olaf])),
+            currentValue: "olaf");
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal(Olaf, viewModel.SelectedLocation);
+    }
+
+    [Fact]
+    public async Task LoadAsync_CurrentValueMatchesNoLocation_SelectsNothing_RatherThanFabricatingAPick()
+    {
+        // A stale/removed/mistyped Reference must read as "not in this list" — never a fallback to whatever
+        // happens to load first, which would silently misrepresent what the row actually points at.
+        var viewModel = new MemorySourceLocationPickerViewModel(
+            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([Cockpit, Olaf])),
+            currentValue: "moved-away");
+
+        await viewModel.LoadAsync();
+
+        Assert.Null(viewModel.SelectedLocation);
+    }
+
+    [Fact]
+    public async Task LoadAsync_NoCurrentValue_SelectsNothing()
+    {
+        var viewModel = new MemorySourceLocationPickerViewModel(
+            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([Cockpit, Olaf])));
+
+        await viewModel.LoadAsync();
+
+        Assert.Null(viewModel.SelectedLocation);
+    }
+
+    [Fact]
+    public async Task LoadAsync_CurrentValueMatch_IsOrdinal_NotCaseInsensitive()
+    {
+        var viewModel = new MemorySourceLocationPickerViewModel(
+            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([Cockpit, Olaf])),
+            currentValue: "OLAF");
+
+        await viewModel.LoadAsync();
+
+        Assert.Null(viewModel.SelectedLocation);
+    }
+
+    [Fact]
+    public void CurrentValue_ExposesWhatTheConstructorWasGiven_ForTheListsCurrentBadgeBinding()
+    {
+        var viewModel = new MemorySourceLocationPickerViewModel(
+            "Depot project", _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([])),
+            currentValue: "olaf");
+
+        Assert.Equal("olaf", viewModel.CurrentValue);
+    }
 }

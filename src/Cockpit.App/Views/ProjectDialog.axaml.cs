@@ -60,7 +60,7 @@ public partial class ProjectDialog : Window
         if (row is { Role: ProjectResourceRole.Memory, IsMemoryFolderMode: false }
             && row.SelectedMemorySourceLeaf is { ListLocationsAsync: { } listLocationsAsync } choice)
         {
-            var pickerViewModel = new MemorySourceLocationPickerViewModel(choice.Label, listLocationsAsync, choice.SignInAsync);
+            var pickerViewModel = new MemorySourceLocationPickerViewModel(choice.Label, listLocationsAsync, choice.SignInAsync, row.Reference);
             var picked = await new MemorySourceLocationPickerDialog { DataContext = pickerViewModel }.ShowDialog<string?>(this);
             if (picked is { Length: > 0 })
             {
