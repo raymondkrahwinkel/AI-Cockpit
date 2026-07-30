@@ -377,22 +377,219 @@ public class GitHubIssuesDialogControlTests
         Assert.True(string.IsNullOrEmpty(preview), "whatever is in the preview is what Add to prompt injects");
     });
 
+    [Fact]
+    public void RepoFilter_PreselectsTheLinkedProjectsRepository_OnFirstPopulation() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-317, diagnosed alongside AC-519: the doc comment on _PopulateRepoFilter claims "on the first
+        // population there is no selection yet, and that is where the project's own link gets its one chance to
+        // be the answer" — but _repoFilter is constructed with SelectedIndex = 0, and a ComboBox resolves that to
+        // a real (non-null) SelectedItem synchronously, before any load ever runs (measured the same way AC-519's
+        // _labelOptionsPopulated guard was: a throwaway diagnostic, not kept). So "_repoFilter.SelectedItem as
+        // string ?? linkedRepository" never reaches the right-hand side — this proves whether that costs the
+        // operator the preselection AC-317 promises.
+        var repoA = First with { Repository = "acme/foo" };
+        var repoB = Second with { Repository = "acme/bar" };
+        var harness = DialogHarness.Open("acme", repoA, repoB);
+        harness.SetLinkedRepository("acme/foo");
+
+        harness.PopulateRepoFilter();
+
+        var selected = harness.RepoFilter.SelectedItem as string;
+        _out.WriteLine($"selected={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("acme/foo", selected);
+    });
+
+    [Fact]
+    public void RepoFilter_WithNoLinkedRepository_FallsBackToAll() => HeadlessAvalonia.Run(() =>
+    {
+        // The other half of the same fix: an unset link must not somehow end up selecting a repository at random.
+        var repoA = First with { Repository = "acme/foo" };
+        var repoB = Second with { Repository = "acme/bar" };
+        var harness = DialogHarness.Open("acme", repoA, repoB);
+        harness.SetLinkedRepository(string.Empty);
+
+        harness.PopulateRepoFilter();
+
+        var selected = harness.RepoFilter.SelectedItem as string;
+        _out.WriteLine($"selected={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("All", selected);
+    });
+
+    [Fact]
+    public void SelectingARepo_KeepsTheOperatorsChoice_AcrossARepopulation() => HeadlessAvalonia.Run(() =>
+    {
+        // Mirrors SelectingALabel_KeepsTheOperatorsChoice_AcrossARepopulation (AC-519): the fix for the first
+        // population must not turn every later one back into re-imposing the linked repository over a choice the
+        // operator already made.
+        var repoA = First with { Repository = "acme/foo" };
+        var repoB = Second with { Repository = "acme/bar" };
+        var harness = DialogHarness.Open("acme", repoA, repoB);
+        harness.SetLinkedRepository("acme/foo");
+        harness.PopulateRepoFilter();
+        harness.RepoFilter.SelectedItem = "acme/bar";
+
+        harness.PopulateRepoFilter();
+
+        var selected = harness.RepoFilter.SelectedItem as string;
+        _out.WriteLine($"selected after repopulation={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("acme/bar", selected);
+    });
+
+    [Fact]
+    public void LabelFilter_OffersARepoLabel_ThatNoLoadedIssueCarries() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-519's whole point: the label filter has to show labels from the repositories themselves, not the
+        // labels that happen to appear on the (possibly capped) loaded issues — the exact gap the YouTrack status
+        // filter had. Neither First nor Second carries any label at all.
+        var harness = DialogHarness.Open(First, Second);
+
+        harness.PopulateLabelFilter("docs", "triage");
+
+        var options = harness.LabelFilter.ItemsSource?.OfType<string>().ToList() ?? [];
+        _out.WriteLine($"options=[{string.Join(", ", options)}]");
+        harness.Close();
+
+        Assert.Contains("docs", options);
+        Assert.Contains("triage", options);
+    });
+
+    [Fact]
+    public void LabelFilter_PreselectsTheSettingsInProgressLabel_WhenItIsAmongTheRepoLabels() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-519 step 5: reuses the existing "which label means in-progress" setting as the preselected/highlighted
+        // option, rather than a second setting for the same thing.
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { InProgressLabel = "in progress" };
+        var harness = DialogHarness.Open(settings, "octocat", First, Second);
+
+        harness.PopulateLabelFilter("bug", "in progress", "docs");
+
+        var selected = harness.LabelFilter.SelectedItem as string;
+        _out.WriteLine($"selected={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("in progress", selected);
+    });
+
+    [Fact]
+    public void LabelFilter_WithoutAMatchingInProgressLabel_FallsBackToAllLabels() => HeadlessAvalonia.Run(() =>
+    {
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { InProgressLabel = "in progress" };
+        var harness = DialogHarness.Open(settings, "octocat", First, Second);
+
+        // This repo set does not have the operator's "in progress" label at all.
+        harness.PopulateLabelFilter("bug", "docs");
+
+        var selected = harness.LabelFilter.SelectedItem as string;
+        _out.WriteLine($"selected={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("All labels", selected);
+    });
+
+    [Fact]
+    public void SelectingALabel_KeepsTheOperatorsChoice_AcrossARepopulation() => HeadlessAvalonia.Run(() =>
+    {
+        // Mirrors _PopulateRepoFilter's own rule: once the operator has chosen, a later population (another load)
+        // must not silently revert them to the preselected default.
+        var harness = DialogHarness.Open(First, Second);
+        harness.PopulateLabelFilter("bug", "docs");
+        harness.LabelFilter.SelectedItem = "docs";
+
+        harness.PopulateLabelFilter("bug", "docs");
+
+        var selected = harness.LabelFilter.SelectedItem as string;
+        _out.WriteLine($"selected after repopulation={selected ?? "<null>"}");
+        harness.Close();
+
+        Assert.Equal("docs", selected);
+    });
+
+    [Fact]
+    public void StatusLine_AtExactlyThePageLimit_WarnsTheListMayBeIncomplete() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-519 AC3: the one boundary worth proving to the exact number — the constant itself, not a round number
+        // above it — since the notice's whole premise is "the result came back at exactly the page size".
+        var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToArray();
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
+        var harness = DialogHarness.Open(settings, "octocat", issues);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.Contains("may be incomplete", status);
+        Assert.Contains(GitHubGhClient.IssueSearchLimit.ToString(), status);
+    });
+
+    [Fact]
+    public void StatusLine_OneShortOfThePageLimit_DoesNotWarn() => HeadlessAvalonia.Run(() =>
+    {
+        var issues = Enumerable.Range(1, GitHubGhClient.IssueSearchLimit - 1)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToArray();
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = true };
+        var harness = DialogHarness.Open(settings, "octocat", issues);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.DoesNotContain("may be incomplete", status);
+    });
+
+    [Fact]
+    public void StatusLine_InHttpMode_AlsoWarnsAtItsOwnPageLimit() => HeadlessAvalonia.Run(() =>
+    {
+        // The two paths have their own constants (AC-519, criterion 4 — a test per pad), currently both 100, which
+        // means a count-based assertion cannot tell "read GitHubIssuesClient.IssuePageLimit" apart from "read
+        // GitHubGhClient.IssueSearchLimit by mistake" — the two happen to agree. What this does prove: the ternary's
+        // HTTP-mode branch runs and warns at its own boundary rather than only ever exercising the gh one.
+        var issues = Enumerable.Range(1, GitHubIssuesClient.IssuePageLimit)
+            .Select(number => new GitHubIssue(number, $"Issue {number}", $"https://x/{number}", null, "octocat/hello-world"))
+            .ToArray();
+        var settings = new GitHubIssuesSettings(new InMemoryPluginStorage()) { UseGitHubCli = false };
+        var harness = DialogHarness.Open(settings, "octocat", issues);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.Contains("may be incomplete", status);
+    });
+
     /// <summary>
     /// One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
     /// kept to hand.
     /// </summary>
     private sealed class DialogHarness
     {
-        private DialogHarness(Window window, GitHubIssuesDialogControl dialog, FakeCockpitHost host, SessionIssueLinks links)
+        private DialogHarness(Window window, GitHubIssuesDialogControl dialog, GitHubIssuesSettings settings, FakeCockpitHost host, SessionIssueLinks links)
         {
             _window = window;
             _dialog = dialog;
+            Settings = settings;
             Host = host;
             Links = links;
         }
 
         private readonly Window _window;
         private readonly GitHubIssuesDialogControl _dialog;
+
+        public GitHubIssuesSettings Settings { get; }
 
         public FakeCockpitHost Host { get; }
 
@@ -401,6 +598,15 @@ public class GitHubIssuesDialogControlTests
         public FakeSessionObserver Observer => Host.Observer;
 
         public DataGrid Grid => _window.GetVisualDescendants().OfType<DataGrid>().First();
+
+        /// <summary>The AC-519 label filter — named so it is found reliably alongside the repository filter, the other <see cref="ComboBox"/> in the same bar.</summary>
+        public ComboBox LabelFilter => _window.GetVisualDescendants().OfType<ComboBox>().First(combo => combo.Name == "labelFilter");
+
+        /// <summary>The AC-317 repository filter.</summary>
+        public ComboBox RepoFilter => _window.GetVisualDescendants().OfType<ComboBox>().First(combo => combo.Name == "repoFilter");
+
+        /// <summary>The window-level status line — what a load's outcome (including the AC-519 truncation notice) is reported through.</summary>
+        public string? StatusText => _window.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.Name == "status")?.Text;
 
         public static DialogHarness Open(params GitHubIssue[] issues) => Open("octocat", issues);
 
@@ -413,8 +619,13 @@ public class GitHubIssuesDialogControlTests
             // Settings on their defaults: the CLI is off and no repository is set, so the dialog's own load
             // short-circuits on "No repository set" before any call goes out — nothing is fetched, and the issue
             // set under test is the one planted below.
-            var storage = new InMemoryPluginStorage();
-            var settings = new GitHubIssuesSettings(storage);
+            var settings = new GitHubIssuesSettings(new InMemoryPluginStorage());
+            return Open(settings, filter, issues);
+        }
+
+        /// <summary>Opens with settings the caller configured first — e.g. an <see cref="GitHubIssuesSettings.InProgressLabel"/> to prove the label filter's preselection (AC-519).</summary>
+        public static DialogHarness Open(GitHubIssuesSettings settings, string filter, params GitHubIssue[] issues)
+        {
             var host = new FakeCockpitHost();
             var links = new SessionIssueLinks(host);
             var dialog = new GitHubIssuesDialogControl(settings, host, links);
@@ -423,10 +634,48 @@ public class GitHubIssuesDialogControlTests
             window.Show();
             window.UpdateLayout();
 
-            var harness = new DialogHarness(window, dialog, host, links);
+            var harness = new DialogHarness(window, dialog, settings, host, links);
             harness._PlantLoadedIssues(issues);
             harness.Type(filter);
             return harness;
+        }
+
+        /// <summary>
+        /// Drives the private label-filter population directly (AC-519) — the real fetch behind it goes through
+        /// <c>gh</c>/HTTP with no seam for a test to hand it a fake, so this proves the rendering/preselection half
+        /// of the feature the way <see cref="_PlantLoadedIssues"/> already proves the issue-list half.
+        /// </summary>
+        public void PopulateLabelFilter(params string[] labels)
+        {
+            var method = typeof(GitHubIssuesDialogControl).GetMethod("_PopulateLabelFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _PopulateLabelFilter.");
+            method.Invoke(_dialog, [(IReadOnlyList<string>)labels]);
+            Layout();
+        }
+
+        /// <summary>Drives the private post-load status composition directly (AC-519) — proves the exact-limit truncation notice without a live fetch.</summary>
+        public void ReportLoaded()
+        {
+            var method = typeof(GitHubIssuesDialogControl).GetMethod("_ReportLoaded", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _ReportLoaded.");
+            method.Invoke(_dialog, []);
+        }
+
+        /// <summary>Plants what AC-317 would have resolved from the linked project's own repository field, bypassing <c>_host.GetProjectFieldValueAsync</c> (there is no live session/project here).</summary>
+        public void SetLinkedRepository(string repository)
+        {
+            var field = typeof(GitHubIssuesDialogControl).GetField("_linkedRepository", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _linkedRepository.");
+            field.SetValue(_dialog, repository);
+        }
+
+        /// <summary>Drives the private repo-filter population directly (AC-317) — same reasoning as <see cref="PopulateLabelFilter"/>.</summary>
+        public void PopulateRepoFilter()
+        {
+            var method = typeof(GitHubIssuesDialogControl).GetMethod("_PopulateRepoFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("GitHubIssuesDialogControl no longer has _PopulateRepoFilter.");
+            method.Invoke(_dialog, []);
+            Layout();
         }
 
         public void Select(GitHubIssue issue)
