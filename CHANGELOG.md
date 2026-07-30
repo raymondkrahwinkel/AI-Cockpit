@@ -32,6 +32,26 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the YouTrack dialog's status filter now lists every stage the project actually has, instead of only the ones
+  that happened to appear in the first hundred issues it loaded. Picking a status also searches the whole project
+  rather than filtering the loaded page, so a ticket that never made it into that page is still found. Stages that
+  mean "finished" are left out, because the dialog only ever lists open work and offering one would always come back
+  empty.
+- added: searching in the YouTrack dialog reaches past the loaded page. When the list is capped, typing a search and
+  pressing Enter (or clicking away) asks the server instead of filtering what is already on screen — so a ticket
+  beyond the first hundred is findable rather than apparently missing.
+- added: both the YouTrack and the GitHub Issues dialog now say when the list they show is capped, so "nothing found"
+  cannot quietly mean "nothing found in the first hundred".
+- added: the GitHub Issues dialog has a label filter, filled from the labels the repositories actually define rather
+  than the labels that happen to appear in the loaded issues, and filtering by one searches all open issues instead
+  of narrowing an already shortened list.
+- added: the prompt-template and branch-name settings now say what each placeholder produces and show an example,
+  in YouTrack, GitHub Issues, GitHub Pull Requests and Autopilot. The names were listed before; what they stand for
+  was not — and two of them look alike and behave nothing alike.
+- added: the open pull-request list keeps refreshing in the background, whether or not you are looking at it, and a
+  view now draws the last known list immediately instead of waiting for a fetch. The list survives a restart, marked
+  as older until the fresh one arrives.
+- added: a plugin's left-menu button can carry a live counter, updated after registration without re-registering.
 - added: Autopilot can now be started on an epic (an issue with subtasks), not just on a single issue. It reads the
   "depends on" order between the subtasks, picks the next one that's actually ready to work and not already merged,
   and runs the existing single-issue pipeline on just that one — stopping at a merge-ready PR exactly like before.
@@ -1119,6 +1139,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: opening the GitHub Issues dialog from a project that is linked to a repository now actually opens on that
+  repository. It always fell back to showing every repository instead, so the link made no difference to what you saw.
 - fixed: a pane's conversation no longer goes missing when the cockpit restarts. Panes came back after a crash, but
   resuming one was rarely on offer — starting a session wrote a blank conversation over the saved one, so the thread
   was still on disk yet unreachable, and every ordinary restart cost you the same thing. A saved conversation now
@@ -1753,6 +1775,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Removed
 
+- removed: the Git status button in the left menu and the dialog it opened, which tracked a hand-maintained list of
+  repositories. The status indicator on each session — the one that follows the folder that session works in — stays
+  exactly as it was, and the repository list in the plugin's settings is gone with the dialog it fed.
 - removed: the collapsible "Thinking…" step is no longer shown in the chat transcript. The pulsing indicator
   above the message box already shows the model is working, so a separate reasoning line in the transcript
   added little.
