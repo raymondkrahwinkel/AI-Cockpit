@@ -109,7 +109,7 @@ public class McpSignInStageTests
     }
 
     [Fact]
-    public async Task Acquire_RenewingWithoutTheOperator_StaysAtInformation()
+    public async Task Acquire_RenewingWithoutTheOperator_KeepsTheFailureItselfAtInformation()
     {
         var store = new FakeMcpOAuthTokenStore();
         await store.SaveAsync("depot", "depot", _StaleToken());
@@ -118,10 +118,49 @@ public class McpSignInStageTests
 
         await new McpOAuthCoordinator(store, authorizer, logger).AcquireAsync(_OAuthServer(), interactive: false);
 
-        // The other half of the split, and the reason the split exists rather than promoting the whole catch: a
-        // renewal that cannot happen without a person is the expected outcome on every session start, and raising it
-        // to Warning would fill the log with a non-event.
+        // The other half of the split, and the reason the split exists rather than promoting the whole catch: the
+        // renewal attempt failing is the expected outcome on every session start, so its own line stays at
+        // Information. Exactly one Warning sits next to it (AC-524) — the sentence that tells the operator what is
+        // wrong and what to do — and the next test proves that one does not repeat.
         Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Information);
-        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Acquire_WhenTheSameFailureRepeats_TellsTheOperatorOnlyOnce()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", _StaleToken());
+        var logger = new CapturingLogger<McpOAuthCoordinator>();
+        var coordinator = new McpOAuthCoordinator(store, new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store), logger);
+
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
+        var afterFirst = logger.Entries.Count(entry => entry.Level == LogLevel.Warning);
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
+        await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
+
+        // AC-524: the loopback proxy runs this path on every single request an agent makes, so a line per failure is
+        // an instruction the operator learns to scroll past — which is how the useful one gets missed. It is written
+        // on the way into the state and not again while nothing has changed.
+        Assert.Equal(1, afterFirst);
+        Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Acquire_WhenTheServerCannotBeReached_DoesNotTellTheOperatorToSignInAgain()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        await store.SaveAsync("depot", "depot", _StaleToken());
+        var logger = new CapturingLogger<McpOAuthCoordinator>();
+        var coordinator = new McpOAuthCoordinator(store, new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store), logger);
+
+        var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
+
+        // Port 1 refuses the connection, so nothing answered — as opposed to something answering with a refusal.
+        // Signing in again cannot fix a server that is down, and advice that cannot work is worse than none: it
+        // sends the operator through a browser flow that will fail for the same reason.
+        Assert.Equal(McpOAuthAttentionReason.ServerUnreachable, access.Reason);
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("press Sign in", StringComparison.Ordinal));
+        Assert.Contains(logger.Messages, message => message.Contains("could not be reached", StringComparison.Ordinal));
     }
 }

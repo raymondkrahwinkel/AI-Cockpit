@@ -30,7 +30,8 @@ internal sealed class PluginTtySessionProviderAdapter(
     IMcpServerCatalog? mcpServerCatalog = null,
     IMcpOAuthCoordinator? oauthCoordinator = null,
     ILogger<PluginTtySessionProviderAdapter>? logger = null,
-    ISessionConversationSink? conversationSink = null) : ITtySessionProvider
+    ISessionConversationSink? conversationSink = null,
+    IMcpOAuthProxy? oauthProxy = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
@@ -111,7 +112,7 @@ internal sealed class PluginTtySessionProviderAdapter(
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
+                if (_ToPluginMcpServer(server, access.AccessToken, _ProxyUrl(server, budget.Token)) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -158,7 +159,9 @@ internal sealed class PluginTtySessionProviderAdapter(
             // not resume while GetResult() is holding it, and a budget cannot lift a deadlock — the operation would
             // finish and the continuation would still be waiting for the thread that is waiting for it. Cockpit's own
             // chain configures away from the context throughout, but the MCP client's does not answer to us.
-            access = Task.Run(() => oauthCoordinator.AcquireAsync(server, interactive: false, budget), budget)
+            // AcquireForSessionAsync, not AcquireAsync (AC-524): what this returns is written into a config the CLI
+            // reads once and then holds for the whole session, so it is asked for with the margin that says so.
+            access = Task.Run(() => oauthCoordinator.AcquireForSessionAsync(server, budget), budget)
                 .GetAwaiter()
                 .GetResult();
         }
@@ -172,20 +175,61 @@ internal sealed class PluginTtySessionProviderAdapter(
 
         if (access.State == McpAuthState.AuthorizationRequired)
         {
-            logger?.LogWarning(
-                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
-                server.Name);
+            // Information for the same reason as on the SDK route: the coordinator already said it once, at the
+            // moment it became true, and a launch is not a new fact.
+            logger?.LogInformation(
+                "This session starts without MCP server {Name}: {Guidance}",
+                server.Name,
+                McpOAuthSignInGuidance.For(server.Name, access.Reason));
         }
 
         return access;
     }
 
-    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the credential this server needs (a static API
-    // key, or the token from the cockpit's own OAuth sign-in — AC-353), plus a CockpitHosted flag for a cockpit
-    // loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here — AC-40); stdio → command/args. A
-    // server missing its transport target is dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken) => server.Transport switch
+    /// <summary>
+    /// The loopback address that stands in for an OAuth server (AC-524), resolved inside the same launch budget as
+    /// the credential above and blocking for the same reason — this spawn path is synchronous out to the launcher.
+    /// Binding a loopback listener is local and quick, but it shares the budget rather than getting one of its own:
+    /// the budget is the window in which the application stops repainting, and it is the launch's in total.
+    /// <para>
+    /// Anything that goes wrong answers <see langword="null"/>, which falls back to writing the token into the
+    /// config — degraded, and no worse than before this existed.
+    /// </para>
+    /// </summary>
+    private string? _ProxyUrl(McpServerConfig server, CancellationToken budget)
     {
+        if (oauthProxy is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Task.Run(() => oauthProxy.MountAsync(server, budget), budget).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            logger?.LogWarning(
+                "Opening the loopback endpoint for MCP server {Name} took longer than the launch waits for; its access token is written into the session config instead.",
+                server.Name);
+            return null;
+        }
+    }
+
+    // Mirrors PluginSessionDriverAdapter's mapping: an OAuth server the cockpit proxies is addressed at that
+    // loopback endpoint with no literal token (AC-524); otherwise HTTP → url with the credential this server needs
+    // (a static API key, or the token from the cockpit's own OAuth sign-in — AC-353), plus a CockpitHosted flag for
+    // a cockpit loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here — AC-40); stdio →
+    // command/args. A server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
+    {
+        McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
+        {
+            Name = server.Name,
+            Url = oauthProxyUrl,
+            Headers = McpAgentHeaders.For(server, null),
+            CockpitHosted = true,
+        },
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,

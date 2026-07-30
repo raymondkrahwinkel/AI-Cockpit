@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Authentication;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -18,12 +19,17 @@ namespace Cockpit.Infrastructure.Mcp;
 /// <param name="serverName">The server's current name, written alongside the token purely as a label.</param>
 /// <param name="resourceUrl">The address the token is being obtained for, so a record cannot be used at another one.</param>
 /// <param name="store">Where the token lands.</param>
-internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store) : ITokenCache
+/// <param name="logger">Where a renewal leaves its trace (AC-524) — this class used to write nothing at all, which
+/// made an expiry an anecdote instead of an event anyone could go and look up.</param>
+internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store, ILogger logger) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(token.AccessToken))
         {
+            // Worth a line: this is the SDK reporting a token exchange that produced nothing usable, and it is
+            // otherwise indistinguishable from a renewal that never ran.
+            logger.LogWarning("MCP server {Server} returned a token response with no access token; nothing was stored.", serverName);
             return;
         }
 
@@ -59,6 +65,15 @@ internal sealed class McpOAuthTokenCache(string serverId, string serverName, str
                 AuthorizationServer = token.AuthorizationServer,
             },
             cancellationToken).ConfigureAwait(false);
+
+        // The expiry and whether a renewal is still possible — never the token, in any form, not even abbreviated
+        // (Iron Law #8). Between this line and the coordinator's, a session that lost a server has a trail: when the
+        // credential was issued, when it runs out, and whether it can renew itself again.
+        logger.LogInformation(
+            "Stored a new access token for MCP server {Server}; it expires at {ExpiresAt} and {RefreshState}.",
+            serverName,
+            _ExpiresAt(token),
+            string.IsNullOrWhiteSpace(refreshToken) ? "carries no refresh token, so it cannot renew itself" : "can renew itself");
     }
 
     public async ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken = default)

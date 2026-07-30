@@ -1,5 +1,6 @@
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Authentication;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -16,7 +17,7 @@ public class McpOAuthTokenCacheTests
     private static (McpOAuthTokenCache Cache, FakeMcpOAuthTokenStore Store) _Create(string resourceUrl = ResourceUrl)
     {
         var store = new FakeMcpOAuthTokenStore();
-        return (new McpOAuthTokenCache("depot", "depot", resourceUrl, store), store);
+        return (new McpOAuthTokenCache("depot", "depot", resourceUrl, store, NullLogger.Instance), store);
     }
 
     [Fact]

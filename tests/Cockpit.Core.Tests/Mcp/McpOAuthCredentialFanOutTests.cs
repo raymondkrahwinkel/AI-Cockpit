@@ -50,9 +50,13 @@ public class McpOAuthCredentialFanOutTests
         return catalog;
     }
 
+    // Both spawn routes ask through AcquireForSessionAsync (AC-524) — the entry point that keeps the wide margin a
+    // session needs. AcquireAsync is stubbed alongside it so a route that regressed to the per-request entry point
+    // fails on the assertion that names it, rather than on a substitute answering "NotRequired" for free.
     private static IMcpOAuthCoordinator _CoordinatorAnswering(McpOAuthAccess access)
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.AcquireForSessionAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>()).Returns(access);
         coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(access);
         return coordinator;
     }
@@ -97,7 +101,7 @@ public class McpOAuthCredentialFanOutTests
     }
 
     [Fact]
-    public async Task SdkSession_AsksNonInteractively_SoStartingASessionNeverOpensABrowser()
+    public async Task SdkSession_AsksThroughTheSessionEntryPoint_SoTheTokenIsNotOneThatDiesMinutesIn()
     {
         var inner = new FakePluginSessionDriver();
         var coordinator = _CoordinatorAnswering(McpOAuthAccess.Authorized(AccessToken));
@@ -105,7 +109,12 @@ public class McpOAuthCredentialFanOutTests
 
         await adapter.StartAsync();
 
-        await coordinator.Received().AcquireAsync(Arg.Any<McpServerConfig>(), false, Arg.Any<CancellationToken>());
+        // AC-524: the per-request entry point keeps a two-minute margin, which is right for a token spent
+        // immediately and wrong for one a session holds for hours. Asking through the session entry point is what
+        // makes the difference, and it is never interactive — so this also carries the old promise that starting a
+        // session never opens a browser.
+        await coordinator.Received().AcquireForSessionAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -120,6 +129,7 @@ public class McpOAuthCredentialFanOutTests
         Assert.NotNull(inner.LastMcpServers);
         Assert.Equal("yt-pat-value", Assert.Single(inner.LastMcpServers).BearerToken);
         await coordinator.DidNotReceive().AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await coordinator.DidNotReceive().AcquireForSessionAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -155,9 +165,8 @@ public class McpOAuthCredentialFanOutTests
         // This path is synchronous out to the launcher and is reached from the UI thread, so an unbounded wait is a
         // frozen application. A cancellable token is the evidence that a budget was put on it; CancellationToken.None
         // would mean the launch is willing to wait forever.
-        coordinator.Received().AcquireAsync(
+        coordinator.Received().AcquireForSessionAsync(
             Arg.Any<McpServerConfig>(),
-            false,
             Arg.Is<CancellationToken>(token => token.CanBeCanceled));
     }
 
@@ -165,7 +174,7 @@ public class McpOAuthCredentialFanOutTests
     public void TtyLaunch_WhenTheRenewalOutlastsTheBudget_LeavesOutOnlyThatServer()
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
-        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        coordinator.AcquireForSessionAsync(Arg.Any<McpServerConfig>(), Arg.Any<CancellationToken>())
             .Returns<Task<McpOAuthAccess>>(_ => throw new OperationCanceledException());
         var (adapter, inner) = _TtyAdapter(coordinator, OAuthServer, ApiKeyServer);
 

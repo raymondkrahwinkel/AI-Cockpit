@@ -786,6 +786,9 @@ internal static class Screenshotter
         public Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default) =>
             Task.FromResult(McpOAuthAccess.NotRequired);
 
+        public Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
+            Task.FromResult(McpOAuthAccess.NotRequired);
+
         public Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
             Task.FromResult(McpAuthState.AuthorizationRequired);
 
