@@ -22,6 +22,35 @@ public interface IMcpOAuthCoordinator
     Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The credential to bake into a session's config (AC-524). Never interactive, and it keeps a far wider margin
+    /// than <see cref="AcquireAsync"/> does: that one answers a single request, this one is read once at session
+    /// start and then held for as long as the session lives, so a token with minutes on the clock is a session whose
+    /// tools disappear minutes in.
+    /// <para>
+    /// Separate entry point rather than a flag on <see cref="AcquireAsync"/> on purpose: the TTY spawn path passes
+    /// its cancellation token positionally, so a parameter slid in before it is a trap that compiles.
+    /// </para>
+    /// </summary>
+    Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reports that <paramref name="rejectedAccessToken"/> was turned away by the server itself, and answers with
+    /// whatever replaces it (AC-524).
+    /// <para>
+    /// This exists because the cockpit decides on its own clock whether a token is still good, and the server is the
+    /// only one who actually knows. A grant revoked at the far end, or a rotation race lost to another session,
+    /// leaves a token that looks healthy here for another forty minutes and is dead everywhere that matters — and
+    /// without this every later call would present the same dead token and get the same refusal.
+    /// </para>
+    /// <para>
+    /// Renewing is at most one round trip no matter how many callers report the same refusal at once: a caller whose
+    /// rejected token is no longer the stored one is simply given the current one, and the rest coalesce onto the one
+    /// renewal.
+    /// </para>
+    /// </summary>
+    Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Where the cockpit stands with <paramref name="server"/>, for showing rather than for using (AC-355). Reads
     /// what is stored and nothing else: no network, no browser, no renewal. That restraint is the point — a status
     /// is drawn for every server in a list, and a status that connected somewhere would make opening a dialog an

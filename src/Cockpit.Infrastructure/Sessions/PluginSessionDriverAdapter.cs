@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, IMcpOAuthCoordinator? oauthCoordinator = null, ISessionConversationSink? conversationSink = null, IMcpOAuthProxy? oauthProxy = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -308,17 +308,25 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             var servers = new List<PluginMcpServer>();
             foreach (var server in eligible)
             {
-                var access = await _AcquireCredentialAsync(server, cancellationToken).ConfigureAwait(false);
+                // The endpoint first, because it changes what has to be asked for. Behind it the session never holds
+                // a token at all, so it only has to be established that a sign-in exists; without it the token goes
+                // into the config and has to outlast the whole sitting.
+                var proxyUrl = await _ProxyUrlAsync(server, cancellationToken).ConfigureAwait(false);
+                var access = await _AcquireCredentialAsync(server, proxyUrl is null, cancellationToken).ConfigureAwait(false);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
-                    // Left out rather than handed over bare: a server the agent cannot authenticate to is not a
-                    // server it can use, and passing the address along only moves the refusal one hop further out —
-                    // into the agent's own client, where nothing can be said about it. The warning above is what the
-                    // operator gets instead.
+                    // Left out rather than handed over bare, and this is the one place where that choice is made.
+                    // Handing it over anyway would not save it: the CLI runs its initialize the moment the session
+                    // starts, that call would meet the same refusal, and the server would be reported as failing
+                    // instead of as absent — a worse answer, because it also asks the operator to distinguish a
+                    // broken server from an unauthorized one. What they get instead is the coordinator's single line
+                    // naming the cause and the action, and the Information line below naming this session. The case
+                    // this ticket exists for — a sign-in that dies while the session runs — is not this one, and is
+                    // handled at the endpoint above, where a call can still be answered.
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken) is { } mapped)
+                if (_ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -374,30 +382,61 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
     /// point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
     /// </summary>
-    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, CancellationToken cancellationToken)
+    /// <param name="theSessionWillHoldIt">
+    /// Whether the credential goes into the config and stays there. It does when nothing stands in front of the
+    /// server, and then it has to outlast the session — a token with minutes left is a session that loses this
+    /// server minutes in, which is the defect this ticket was opened for. Behind the loopback endpoint the answer is
+    /// only ever used to establish that a sign-in exists, because the endpoint asks again on every call.
+    /// </param>
+    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken cancellationToken)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
             return McpOAuthAccess.NotRequired;
         }
 
-        var access = await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
+        var access = theSessionWillHoldIt
+            ? await oauthCoordinator.AcquireForSessionAsync(server, cancellationToken).ConfigureAwait(false)
+            : await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
         if (access.State == McpAuthState.AuthorizationRequired)
         {
-            logger?.LogWarning(
-                "MCP server {Name} has no sign-in the cockpit can use, so this session starts without it. Connect to it from a session that uses the cockpit's own tools to sign in.",
-                server.Name);
+            // Information, not a warning: the coordinator raises the operator's line once, on the transition into
+            // this state, and repeating it at every session start is the nagging that made the last one easy to
+            // ignore. This one records which session lost which server, and carries the same advice.
+            logger?.LogInformation(
+                "This session starts without MCP server {Name}: {Guidance}",
+                server.Name,
+                McpOAuthSignInGuidance.For(server.Name, access.Reason));
         }
 
         return access;
     }
 
+    /// <summary>
+    /// The loopback address that stands in for an OAuth server (AC-524), or <see langword="null"/> to keep the old
+    /// behaviour. Null covers three things on purpose — no proxy wired (a unit test), a server this does not apply
+    /// to, and a listener that would not bind — because all three mean the same thing here: write the token.
+    /// </summary>
+    private async Task<string?> _ProxyUrlAsync(McpServerConfig server, CancellationToken cancellationToken) =>
+        oauthProxy is null ? null : await oauthProxy.MountAsync(server, cancellationToken).ConfigureAwait(false);
+
     // HTTP → url with the credential this server needs (a static API key, or the token from the cockpit's own OAuth
     // sign-in — AC-353), plus a CockpitHosted flag for a cockpit loopback endpoint (whose auth rides the
     // COCKPIT_MCP_KEY env var, not a literal here — AC-40); stdio → command/args. A server missing its transport
     // target is dropped.
-    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken) => server.Transport switch
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
     {
+        // An OAuth server the cockpit put a loopback endpoint in front of (AC-524) is addressed there instead, and
+        // carries no literal token at all: its auth is the same COCKPIT_MCP_KEY env reference every cockpit-hosted
+        // endpoint uses, and the real credential is put on each request as it passes through. The session's config
+        // file therefore holds no OAuth token to go stale — or to be read by another process on this machine.
+        McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
+        {
+            Name = server.Name,
+            Url = oauthProxyUrl,
+            Headers = McpAgentHeaders.For(server, null),
+            CockpitHosted = true,
+        },
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,

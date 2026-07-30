@@ -11,10 +11,15 @@ namespace Cockpit.Core.Mcp;
 /// How far a sign-in got on the way to this answer (AC-457). A stage and nothing else: an exception would carry
 /// detail the operator must not be shown, while a stage is enough to stop the UI naming a window that never opened.
 /// </param>
+/// <param name="Reason">
+/// What is wrong (AC-524), so the caller can say what the operator should do about it rather than guess.
+/// <see cref="McpOAuthAttentionReason.None"/> when nothing is.
+/// </param>
 public readonly record struct McpOAuthAccess(
     McpAuthState State,
     string? AccessToken,
-    McpSignInStage SignInStage = McpSignInStage.NoBrowserLaunched)
+    McpSignInStage SignInStage = McpSignInStage.NoBrowserLaunched,
+    McpOAuthAttentionReason Reason = McpOAuthAttentionReason.None)
 {
     /// <summary>The server needs nothing from the OAuth machinery.</summary>
     public static McpOAuthAccess NotRequired { get; } = new(McpAuthState.NotRequired, null);
@@ -32,5 +37,5 @@ public readonly record struct McpOAuthAccess(
     public override string ToString() =>
         $"{nameof(McpOAuthAccess)} {{ {nameof(State)} = {State}, "
         + $"{nameof(AccessToken)} = {(string.IsNullOrEmpty(AccessToken) ? "null" : "***")}, "
-        + $"{nameof(SignInStage)} = {SignInStage} }}";
+        + $"{nameof(SignInStage)} = {SignInStage}, {nameof(Reason)} = {Reason} }}";
 }
