@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -90,6 +91,15 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // The most recent turn's token breakdown (#45 D3), attached to the next turn/completed so the host's token
     // meter folds it in. Updated by thread/tokenUsage/updated, which arrives around the end of the turn.
     private PluginTokenUsage? _lastTurnUsage;
+
+    // AC-126: Codex's own wire protocol carries the assistant's answer only as item/agentMessage/delta chunks —
+    // turn/completed has no "final text" field of its own, unlike Claude's stream-json result. Folded here as the
+    // deltas arrive and handed to the turn's PluginTurnCompleted.Result, mirroring how OpenAiCompatPluginSessionDriver
+    // accumulates its own deltas. Without this, get_task_result and SessionRuntime.LastAssistantText saw only the
+    // delta events (never a completed text block) and turn/completed's Result stayed null — a text-only Codex
+    // delegation looked "finished" but handed back nothing. Read and reset only from the single-threaded
+    // notification pump, so it needs no lock of its own.
+    private readonly StringBuilder _turnText = new();
 
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
     {
@@ -332,7 +342,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "turn/started":
                 // A new turn starts fresh on usage: clear any leftover so a turn that reports no tokenUsage carries
                 // none, rather than the previous turn's totals leaking into it and double-counting in the meter.
+                // The text accumulator (AC-126) starts fresh for the same reason — a turn with no message of its
+                // own (pure tool-use) must not inherit the previous turn's answer as its Result.
                 _lastTurnUsage = null;
+                _turnText.Clear();
                 if (_TryGetNestedString(notification.Params, "turn", "id", out var turnId))
                 {
                     _currentTurnId = turnId;
@@ -343,6 +356,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/agentMessage/delta":
                 if (_TryGetString(notification.Params, "delta", out var delta))
                 {
+                    _turnText.Append(delta);
                     _events.Publish(new PluginAssistantTextDelta { SessionId = _threadId, BlockIndex = 0, Text = delta });
                 }
 
@@ -431,16 +445,22 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var status = _TryGetNestedString(parameters, "turn", "status", out var turnStatus) ? turnStatus : "completed";
         var isInterrupted = string.Equals(status, "interrupted", StringComparison.OrdinalIgnoreCase);
         var isError = !isInterrupted && !string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+        // AC-126: the text this turn's agentMessage deltas accumulated (or null for a turn that produced none —
+        // pure tool-use, or a failed turn with no answer), not the hardcoded null this used to carry.
         _events.Publish(new PluginTurnCompleted
         {
             SessionId = _threadId,
             Subtype = status,
-            Result = null,
+            Result = _turnText.Length > 0 ? _turnText.ToString() : null,
             IsError = isError,
             StopReason = isInterrupted ? "interrupt" : null,
             Usage = _lastTurnUsage,
         });
         _currentTurnId = null;
+
+        // Belt-and-braces alongside the turn/started reset above: a missed turn/started (an app-server build that
+        // skips it, a resume replay) or a duplicate turn/completed must not hand this turn's text to the next one.
+        _turnText.Clear();
     }
 
     // thread/tokenUsage/updated carries how full the context window is: the last turn's footprint (falling back to

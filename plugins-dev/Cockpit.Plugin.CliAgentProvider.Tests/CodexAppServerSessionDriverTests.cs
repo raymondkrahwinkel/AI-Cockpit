@@ -142,7 +142,56 @@ public class CodexAppServerSessionDriverTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         Assert.Equal("Hello, world!", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
-        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        var completed = Assert.Single(events.OfType<PluginTurnCompleted>());
+        Assert.False(completed.IsError);
+        // AC-126: turn/completed carries no "final text" of its own on the wire — Result must be the deltas this
+        // driver folded, not null, or get_task_result/LastAssistantText see a "finished" turn with no answer.
+        Assert.Equal("Hello, world!", completed.Result);
+    }
+
+    // AC-126: a turn that never streamed a message (pure tool-use, or a failed turn before any text) must report
+    // Result:null rather than an empty string — an empty StringBuilder is not an answer to fold in as one.
+    [Fact]
+    public async Task SendUserMessage_WithNoAgentMessage_CompletesWithANullResult()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("run the tests");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.Null(Assert.Single(events.OfType<PluginTurnCompleted>()).Result);
+    }
+
+    // AC-126: the accumulator is per-turn, not per-session — a second turn's Result must be only its own text, not
+    // the first turn's answer prepended to it (which turn/started's reset guards against).
+    [Fact]
+    public async Task SendUserMessage_OnASecondTurn_DoesNotCarryOverTheFirstTurnsText()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("one");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"first answer","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
+        await _CollectUntilTurnCompletedAsync(driver);
+
+        await driver.SendUserMessageAsync("two");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-2"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"second answer","itemId":"i2","threadId":"thread-1","turnId":"turn-2"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-2","status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Equal("second answer", Assert.Single(events.OfType<PluginTurnCompleted>()).Result);
     }
 
     [Fact]
@@ -233,6 +282,47 @@ public class CodexAppServerSessionDriverTests
         var completed = Assert.Single(events.OfType<PluginTurnCompleted>());
         Assert.False(completed.IsError);
         Assert.Equal("interrupt", completed.StopReason);
+    }
+
+    // AC-126: the operator stopping a turn mid-answer must not throw away the partial answer already streamed —
+    // it is what the caller has to show for the interruption, the same as an interrupted OpenAiCompat turn.
+    [Fact]
+    public async Task TurnCompleted_WithInterruptedStatus_StillCarriesTheTextStreamedSoFar()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"partial an","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Equal("partial an", Assert.Single(events.OfType<PluginTurnCompleted>()).Result);
+    }
+
+    // AC-126: the reasoning trace is a separate wire notification from the visible answer (item/reasoning/*) and
+    // must never fold into Result — a caller polling get_task_result would otherwise see Codex's internal
+    // deliberation mixed into (or standing in for) its actual answer.
+    [Fact]
+    public async Task ReasoningDeltas_DoNotLeakIntoTheTurnsResult()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/reasoning/textDelta","params":{"delta":"let me think about this...","itemId":"r1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"item/reasoning/summaryTextDelta","params":{"delta":"analysing the request","itemId":"r1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"delta":"the answer","itemId":"i1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        Assert.Equal("the answer", Assert.Single(events.OfType<PluginTurnCompleted>()).Result);
     }
 
     [Fact]
