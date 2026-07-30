@@ -6,7 +6,11 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// The GitHub-Issues half of the tracker-provider contract (AC-154): posts a comment and adds a label (a GitHub issue
 /// has no status field, so a label is its stage-equivalent) through the <c>gh</c> CLI. GitHub Issues have no attachment
 /// channel, so <see cref="AttachAsync"/> reports it did not land and a consumer falls back to a comment with a link.
-/// Every action returns whether it landed rather than throwing.
+/// Every action returns whether it landed rather than throwing. <see cref="ITrackerProvider.GetLinkedIssuesAsync"/>
+/// (AC-346) is not overridden here — GitHub Issues has no first-class "depends on"/"parent for" link type the way
+/// YouTrack does (task lists and cross-references are text conventions, not a queryable link graph), so this provider
+/// keeps the interface's empty default: Autopilot's epic-runner then reads "no links" and treats the issue as a plain,
+/// non-epic item, which is the correct behaviour for a tracker that cannot answer the question.
 /// </summary>
 internal sealed class GitHubTrackerProvider : ITrackerProvider
 {

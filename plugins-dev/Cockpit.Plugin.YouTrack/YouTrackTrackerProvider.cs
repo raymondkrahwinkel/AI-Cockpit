@@ -113,6 +113,23 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
         }
     }
 
+    public async Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string issueId, CancellationToken cancellationToken = default)
+    {
+        if (_Instance() is not { } instance)
+        {
+            return [];
+        }
+
+        try
+        {
+            return await _client.GetLinkedIssuesAsync(instance.InstanceUrl, instance.Token, issueId, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
     public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
     {
         if (_Instance() is not { } instance)

@@ -835,6 +835,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             _completedRuns++;
             _history.Add(AutopilotRunRecord.Capture(plan, outcome, blockReason, runId, blockadeAnswers, pullRequestMissing, DateTimeOffset.Now));
 
+            // AC-346: this run's sub came from an epic chain (AutopilotEpicRunner stamped EpicId when it picked the
+            // sub) — one progress comment on the epic per settled step, so the epic's own comment trail stays
+            // readable without clicking into every sub. Best-effort and fire-and-forget, like every other tracker
+            // write in this plugin: a comment that fails to land never holds up the surface re-rendering below.
+            if (plan.Source is { EpicId.Length: > 0 } source)
+            {
+                _ = _PostEpicProgressAsync(source, plan, outcome, blockReason);
+            }
+
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
             switch (outcome)
             {
@@ -863,6 +872,40 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             }
 
             _completedRuns = 0;
+        }
+    }
+
+    // AC-346: the epic-runner's progress comment — one per settled sub-run, written onto the epic named by
+    // AutopilotPlanSource.EpicId rather than the sub itself. Reuses AutopilotRunReliability/AutopilotReliabilitySummary
+    // for the same reliability line the merge-ready toast above shows, so the epic's trail reads consistently with
+    // everywhere else that figure is shown rather than inventing a second wording for it. Resolves the tracker
+    // provider by the source's own tracker id — provider-neutral, like every other tracker write in this plugin.
+    private async Task _PostEpicProgressAsync(AutopilotPlanSource source, AutopilotPlan plan, AutopilotPlanPhase outcome, string? blockReason)
+    {
+        var provider = _host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            return;
+        }
+
+        var label = string.IsNullOrWhiteSpace(plan.Label) ? source.IssueId : plan.Label;
+        var outcomeText = outcome switch
+        {
+            AutopilotPlanPhase.MergeReady => "reached a merge-ready PR",
+            AutopilotPlanPhase.Stopped => "was stopped by the operator",
+            _ => $"blocked — {blockReason}",
+        };
+
+        var reliability = AutopilotRunReliability.Summarize(_history.Items).Describe();
+        var comment = $"Epic step {source.IssueId} ({label}) {outcomeText}. {reliability}";
+
+        try
+        {
+            _ = await provider.PostCommentAsync(source.EpicId, comment);
+        }
+        catch (Exception)
+        {
+            // Fail-soft, as every other tracker write in this plugin is.
         }
     }
 

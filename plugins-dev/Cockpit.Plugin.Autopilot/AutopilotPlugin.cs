@@ -2,6 +2,7 @@ using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -83,6 +84,40 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             if (!_RequireCeoProfile(host, settings))
             {
                 return new Dictionary<string, string> { ["status"] = "no-ceo-profile", ["issue"] = run.IssueId };
+            }
+
+            // AC-346: before the stage gate below, find out whether the clicked item is an epic (has "parent for"
+            // children) rather than a single issue. Same caller/tracker guard as _RefuseAsync's tracker-write below —
+            // an epic click reads the epic's own links and, on a pause, writes a comment onto it, so only the tracker
+            // plugin that owns the item gets to trigger that read/write, never an arbitrary caller naming someone
+            // else's issue. A non-epic item (children.Count == 0) costs one link lookup and falls straight through to
+            // the unchanged single-issue path below — _EpicOutcomeAsync returns NotEpic and run is never replaced.
+            if (!string.IsNullOrWhiteSpace(run.IssueId) && string.Equals(intent.CallerPluginId, run.Tracker, StringComparison.OrdinalIgnoreCase)
+                && host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, run.Tracker, StringComparison.OrdinalIgnoreCase)) is { } provider)
+            {
+                var epicOutcome = await AutopilotEpicRunner.ResolveAsync(
+                    provider,
+                    run,
+                    settings.ExecutableStage(run.Tracker),
+                    new GitEpicSubMergeChecker(Directory.GetCurrentDirectory()),
+                    CancellationToken.None);
+
+                switch (epicOutcome.Kind)
+                {
+                    case AutopilotEpicOutcomeKind.Paused:
+                        await _PauseEpicAsync(provider, run.IssueId, epicOutcome.PausedSubId!, epicOutcome.Reason!);
+                        return new Dictionary<string, string> { ["status"] = "epic-paused", ["issue"] = run.IssueId, ["sub"] = epicOutcome.PausedSubId! };
+                    case AutopilotEpicOutcomeKind.Complete:
+                        return new Dictionary<string, string> { ["status"] = "epic-complete", ["issue"] = run.IssueId };
+                    case AutopilotEpicOutcomeKind.Ready:
+                        // Replace the clicked epic with the sub the epic-runner picked — everything below plans that
+                        // sub exactly as if it had been clicked directly, including the (already-passed) Ready gate.
+                        run = epicOutcome.Run!;
+                        break;
+                    case AutopilotEpicOutcomeKind.NotEpic:
+                    default:
+                        break;
+                }
             }
 
             // The stage gate (AC-345), ahead of the CEO's own scoping judgement: what the tracker says beats what the
@@ -173,6 +208,23 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         try
         {
             _ = await provider.PostCommentAsync(run.IssueId, reason);
+        }
+        catch (Exception)
+        {
+            // Fail-soft, as the run coordinator's tracker writes are.
+        }
+    }
+
+    // AC-346: the epic-runner's next sub is not Ready — the chain pauses rather than silently skipping it (the
+    // ticket's own wording). Written onto the epic, not the sub, since it is the epic the operator clicked and the
+    // epic's comment trail is where the DoD wants "which sub, and why" to be readable without opening the sub. Best
+    // effort, like every other tracker write here — a comment that fails to land does not change that the chain
+    // already paused; the caller's returned status already says so.
+    private static async Task _PauseEpicAsync(ITrackerProvider provider, string epicId, string subId, string reason)
+    {
+        try
+        {
+            _ = await provider.PostCommentAsync(epicId, $"Autopilot paused this epic's chain at {subId}: {reason}");
         }
         catch (Exception)
         {

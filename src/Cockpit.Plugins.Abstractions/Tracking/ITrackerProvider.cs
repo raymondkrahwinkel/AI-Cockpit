@@ -57,4 +57,17 @@ public interface ITrackerProvider
     /// </summary>
     Task<TrackerIssueSnapshot> GetIssueSnapshotAsync(string issueId, CancellationToken cancellationToken = default) =>
         Task.FromResult(new TrackerIssueSnapshot(null, null));
+
+    /// <summary>
+    /// Every issue linked to <paramref name="issueId"/> — an epic's children, a sub's dependencies, and anything
+    /// else the tracker carries as a link — with each link's own type, direction and the linked issue's id/title/stage
+    /// (AC-346). Deliberately general rather than two epic/dependency-shaped methods: a consumer (Autopilot's
+    /// epic-runner) filters the tracker-neutral <see cref="TrackerLinkedIssue.LinkType"/> strings itself (e.g.
+    /// <c>"parent for"</c>, <c>"depends on"</c>), so this interface never has to know what an epic is. Default returns
+    /// an empty list: a provider that does not opt in keeps compiling, and a consumer treats "no links reported" the
+    /// same as "genuinely has none" — an epic-runner degrades to "not an epic" rather than failing, which is the
+    /// correct fallback for a tracker whose plugin has not shipped this yet.
+    /// </summary>
+    Task<IReadOnlyList<TrackerLinkedIssue>> GetLinkedIssuesAsync(string issueId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TrackerLinkedIssue>>([]);
 }
