@@ -106,7 +106,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         });
 
         // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history, templates))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history, templates))
         {
             IconKind = MaterialIconKind.RobotHappyOutline,
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
@@ -116,7 +116,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // navigate to it — it does not force a planning round. From the surface the operator starts a run with New run
         // (which is where the CEO-profile guard now lives), so the workspace and its history are reachable without a
         // profile set. A triggered run still opens straight into a planning round through the "plan" intent above.
-        host.AddSideMenuButton("Autopilot (CEO)", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
+        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
     }
 
     public void Dispose()
