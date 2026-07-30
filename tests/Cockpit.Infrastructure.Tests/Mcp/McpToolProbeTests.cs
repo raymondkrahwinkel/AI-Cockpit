@@ -90,7 +90,44 @@ public class McpToolProbeTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => probe.ProbeAsync("unreachable", "outline", null, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => probe.ProbeAsync("unreachable", "outline", null, cancellationToken: cts.Token));
+    }
+
+    // --- callerFallbackServers (AC-499) ---------------------------------------------------------------------------
+    // CockpitHost hands this an additive candidate list scoped to the calling plugin's own contributions. These
+    // tests exercise only the mechanism this class owns: the registry store is tried first, the fallback list only
+    // when that finds nothing under the name, and a name absent from both never resolves.
+
+    [Fact]
+    public async Task ProbeAsync_NotInCallerFallback_TheOtherEntrysNameIsNeverMatched()
+    {
+        // The fallback list is matched by exact name, not treated as "anything in this list is fine" — the one
+        // entry it carries is under a different name than what is asked for, so a match here would only be
+        // possible if the lookup ignored the name (e.g. "first entry regardless of name").
+        var probe = _Probe(_Store());
+        var fallback = new List<McpServerConfig> { new() { Name = "own-server", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" } };
+
+        var result = await probe.ProbeAsync("someone-elses-server", "outline", null, fallback);
+
+        Assert.Equal(McpToolProbeOutcome.Failed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_CallerFallbackOAuthNeedingSignIn_AnswersNotSignedIn_WithoutConnecting()
+    {
+        var fallbackServer = new McpServerConfig
+        {
+            Name = "own-oauth-server", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Auth = McpServerAuth.OAuth,
+        };
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        coordinator.GetStateAsync(fallbackServer, Arg.Any<CancellationToken>()).Returns(McpAuthState.AuthorizationRequired);
+        var authorizer = Substitute.For<IMcpOAuthAuthorizer>();
+        var probe = _Probe(_Store(), coordinator, authorizer);
+
+        var result = await probe.ProbeAsync("own-oauth-server", "outline", null, [fallbackServer]);
+
+        Assert.Equal(McpToolProbeOutcome.NotSignedIn, result.Outcome);
+        authorizer.DidNotReceiveWithAnyArgs().CreateOptions(default!, default);
     }
 
     // --- Wegwerp-harnas (AgentSpawnPlaybook §3): hostile input against the real class -------------------------------

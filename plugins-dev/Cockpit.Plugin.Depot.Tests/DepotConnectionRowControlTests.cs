@@ -219,6 +219,176 @@ public class DepotConnectionRowControlTests
         Assert.DoesNotContain("mcp/mcp", _AuthStatusText(row) ?? string.Empty, StringComparison.Ordinal);
     }
 
+    // AC-499 UX pass: the row's own status slot is the single place the operator reads before deciding to click,
+    // so it has to carry exactly one relevant sentence in every state — never two states' worth, never nothing.
+    // The four tests below pin one sentence per state; the fifth guards the seam between "busy" and "outcome" that
+    // a naive fix (re-deriving the message from field validity in SignInAsync's finally, the way _OnFieldsChanged
+    // does) would silently break.
+
+    [Fact]
+    public void AuthStatus_NewBlankRow_ShowsWhySignInIsUnavailable()
+    {
+        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        _Show(row);
+
+        Assert.Contains("Enter a name first", _AuthStatusText(row), StringComparison.Ordinal);
+    }
+
+    // The state the earlier code left blank (or showing a stale invalid-reason): content is usable, Sign-in is
+    // enabled, and nothing has happened yet. This is the one moment before the click Raymond asked to be told
+    // what a click does — the status slot now says so instead of staying silent or stale.
+    [Fact]
+    public void AuthStatus_FieldsBecomeValid_ShowsTheBrowserMessage()
+    {
+        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        _Show(row);
+        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes[0].Text = "Work";
+        boxes[1].Text = "https://depot.example.com";
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("Opens Depot's sign-in page in your browser.", _AuthStatusText(row));
+    }
+
+    // The saved-row counterpart of the test above: a connection saved earlier but not (yet, or no longer)
+    // authorized gets the same browser message on the dialog's passive status read, not the old "Not signed in.".
+    [Fact]
+    public async Task RefreshAuthStateAsync_AuthorizationRequired_ShowsTheBrowserMessage()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpAuthState.AuthorizationRequired);
+        var existing = new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com");
+        var row = _NewRow(host, existing);
+        _Show(row);
+
+        await row.RefreshAuthStateAsync();
+
+        Assert.Equal("Opens Depot's sign-in page in your browser.", _AuthStatusText(row));
+    }
+
+    [Fact]
+    public async Task SignInAsync_WhileAwaitingTheHost_ShowsSigningIn()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var gate = new TaskCompletionSource<PluginMcpSignInOutcome>();
+        host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => gate.Task);
+        var settings = new DepotSettings(new FakePluginStorage());
+        DepotConnectionRowControl row = null!;
+        row = _NewRow(host, existing: null, settings, saveAll: () =>
+        {
+            settings.Connections = [row.ToRegistration()];
+            return (true, null);
+        });
+        _Show(row);
+        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes[0].Text = "Work";
+        boxes[1].Text = "https://depot.example.com";
+
+        var signInTask = row.SignInAsync();
+
+        Assert.Equal("Signing in…", _AuthStatusText(row));
+
+        gate.SetResult(PluginMcpSignInOutcome.Authorized);
+        await signInTask;
+    }
+
+    [Fact]
+    public async Task SignInAsync_HostReportsAuthorized_ShowsSignedIn()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.SignInMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
+        var settings = new DepotSettings(new FakePluginStorage());
+        DepotConnectionRowControl row = null!;
+        row = _NewRow(host, existing: null, settings, saveAll: () =>
+        {
+            settings.Connections = [row.ToRegistration()];
+            return (true, null);
+        });
+        _Show(row);
+        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes[0].Text = "Work";
+        boxes[1].Text = "https://depot.example.com";
+
+        await row.SignInAsync();
+
+        Assert.Equal("Signed in.", _AuthStatusText(row));
+    }
+
+    // The regression this whole design has to avoid: a failed outcome is the one message the operator most needs
+    // to actually read, so it must not be replaced by an invitation to try again before they get the chance —
+    // SignInAsync's finally block re-derives the button's IsEnabled (content is still valid) but must leave the
+    // text alone, the same invariant its own comment already documents for outcome text in general.
+    [Fact]
+    public async Task SignInAsync_FailedOutcome_TextIsNotImmediatelyReplacedByTheBrowserMessage()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Unreachable);
+        var settings = new DepotSettings(new FakePluginStorage());
+        DepotConnectionRowControl row = null!;
+        row = _NewRow(host, existing: null, settings, saveAll: () =>
+        {
+            settings.Connections = [row.ToRegistration()];
+            return (true, null);
+        });
+        _Show(row);
+        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes[0].Text = "Work";
+        boxes[1].Text = "https://depot.example.com";
+
+        await row.SignInAsync();
+
+        Assert.True(_SignInButton(row).IsEnabled);
+        Assert.DoesNotContain("Opens Depot's sign-in page", _AuthStatusText(row) ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("Couldn't reach", _AuthStatusText(row), StringComparison.Ordinal);
+    }
+
+    // AC-499: the operator must know a click opens a browser before clicking. The row's own status slot (tests
+    // above) is the primary way that happens now; this tooltip on the Sign-in button is a free extra that repeats
+    // it on hover, same idiom as SettingsHelpRow's "?" hint and the other ToolTip.SetTip calls throughout this
+    // codebase — it pins that the tooltip actually says so, not just that some tooltip exists.
+    [Fact]
+    public void SignInButton_HasATooltipExplainingItOpensABrowser()
+    {
+        var row = _NewRow(Substitute.For<ICockpitHost>(), existing: null);
+        _Show(row);
+
+        var tip = ToolTip.GetTip(_SignInButton(row)) as string;
+
+        Assert.Contains("browser", tip ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // AC-499: the status label sits next to the Sign-in button in a Grid ("Auto,*"), not the horizontal StackPanel
+    // it replaced — a StackPanel measures every child with unbounded width along its own orientation, so
+    // TextWrapping.Wrap on the label never had a width to wrap against and a long outcome message (the Unreachable
+    // case above, which names the dialed URL) ran off the row instead of onto a second line. This pins that a long
+    // message actually grows the label's own height (wraps) rather than staying single-line and overflowing.
+    [Fact]
+    public async Task SignInAsync_LongUnreachableMessage_WrapsInsteadOfOverflowing()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Unreachable);
+        var settings = new DepotSettings(new FakePluginStorage());
+        DepotConnectionRowControl row = null!;
+        row = _NewRow(host, existing: null, settings, saveAll: () =>
+        {
+            settings.Connections = [row.ToRegistration()];
+            return (true, null);
+        });
+        var window = new Window { Width = 420, Content = row };
+        window.Show();
+        window.UpdateLayout();
+        var boxes = row.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes[0].Text = "Work";
+        boxes[1].Text = "https://a-very-long-subdomain-name-for-this-depot-instance.internal.example-corp.com/mcp";
+
+        await row.SignInAsync();
+        window.UpdateLayout();
+
+        var label = row.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Opacity == 0.8);
+        // A single line at FontSize 11 is well under 20px tall; a message this long only fits that if it wrapped.
+        Assert.True(label.Bounds.Height > 20, $"expected the long message to wrap onto multiple lines, but it rendered {label.Bounds.Height}px tall");
+    }
+
     [Fact]
     public void FieldsBothFilled_SignInButtonIsEnabled_EvenThoughNothingIsSavedYet()
     {

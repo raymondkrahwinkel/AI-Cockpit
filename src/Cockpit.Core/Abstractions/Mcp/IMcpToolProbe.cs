@@ -12,8 +12,12 @@ namespace Cockpit.Core.Abstractions.Mcp;
 public interface IMcpToolProbe
 {
     /// <summary>
-    /// Calls <paramref name="toolName"/> on the server named <paramref name="serverName"/> in the shared registry,
-    /// short-lived and disposed immediately after. A server the registry does not know answers
+    /// Calls <paramref name="toolName"/> on the server named <paramref name="serverName"/>, short-lived and
+    /// disposed immediately after. Resolved first against the shared registry and, only when that has no entry
+    /// under the name, against <paramref name="callerFallbackServers"/> (AC-499) — servers the caller is entitled
+    /// to reach even though the registry does not carry them, e.g. a plugin whose servers are delivered per-project
+    /// rather than pushed into the registry (Depot, AC-504): this call takes no project id at all, so without this
+    /// fallback such a plugin's own server could never be probed, project row saved or not. A name neither side knows answers
     /// <see cref="McpToolProbeOutcome.Failed"/> without attempting anything (a caller passed a name nothing was ever
     /// registered under — not a claim about the value it was checking). A server whose auth is OAuth and not
     /// currently signed in answers <see cref="McpToolProbeOutcome.NotSignedIn"/>, also without attempting a
@@ -24,5 +28,6 @@ public interface IMcpToolProbe
         string serverName,
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments,
+        IReadOnlyList<McpServerConfig>? callerFallbackServers = null,
         CancellationToken cancellationToken = default);
 }

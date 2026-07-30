@@ -32,6 +32,14 @@ namespace Cockpit.Plugin.Depot.Ui;
 /// </summary>
 internal sealed class DepotConnectionRowControl : UserControl
 {
+    // AC-499 UX pass: the operator has to know a click opens a browser before they click it, without a second
+    // standing line beside every row (Raymond had the previous one — "signing in saves first" — removed for being
+    // exactly that: a line shown on every row regardless of whether there was anything to say). The row's own
+    // status slot already carries exactly one relevant sentence per state — the blocked-reason, "Saving…",
+    // "Signing in…", an outcome — so the moment the row is enabled but nothing has happened yet is simply the one
+    // state that slot said nothing useful in. This message fills it there instead of adding a new line.
+    private const string ReadyToSignInMessage = "Opens Depot's sign-in page in your browser.";
+
     private readonly ICockpitHost _host;
     private readonly string _id;
     private readonly DepotSettings _settings;
@@ -57,18 +65,40 @@ internal sealed class DepotConnectionRowControl : UserControl
 
         _name = new TextBox { Text = existing?.Name ?? string.Empty, PlaceholderText = "Name (e.g. Work, Personal)" };
         _url = new TextBox { Text = existing?.Url ?? string.Empty, PlaceholderText = "https://depot.example.com" };
-        _authStatus = new TextBlock { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap };
+        // VerticalAlignment.Center on both this label and the button below (idiom also used by SettingsHelpRow and
+        // PluginToolbarHost's own icon+text row): a horizontal StackPanel stretches its children to the row's full
+        // height by default, which would otherwise top-align this text against a Sign-in button whose own content
+        // stays centered inside whatever height it is stretched to — and, since the row's height tracks the taller
+        // child, would also visibly grow/shrink the button itself whenever this label's status text wraps to a
+        // second line. Centering both keeps the button a fixed, single-line size and puts the label's text — one
+        // line or wrapped — in line with the button's own centered content instead of jumping with it.
+        _authStatus = new TextBlock { FontSize = 11, Opacity = 0.8, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
         _name.TextChanged += (_, _) => _OnFieldsChanged();
         _url.TextChanged += (_, _) => _OnFieldsChanged();
 
-        _signIn = new Button { Content = "Sign in" };
+        _signIn = new Button { Content = "Sign in", VerticalAlignment = VerticalAlignment.Center };
+        // A free extra, not the primary notice: _authStatus's own text (below/_OnFieldsChanged) is what actually
+        // tells the operator a click opens a browser before they click — this tooltip just repeats it on hover,
+        // same idiom as SettingsHelpRow's "?" hint and the other ToolTip.SetTip calls throughout this codebase.
+        ToolTip.SetTip(_signIn, "Signing in opens Depot's sign-in page in your default browser.");
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
 
         var remove = new Button { Content = "Remove connection", Margin = new Thickness(0, 4, 0, 0) };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
 
-        var signInRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        // A Grid, not the StackPanel this replaced: a horizontal StackPanel measures every child with unbounded
+        // width along its own orientation, so _authStatus's TextWrapping.Wrap never actually had a width to wrap
+        // against — a long outcome message (e.g. the Unreachable case naming the dialed URL) ran off the row
+        // instead of wrapping, cut off at the panel's edge rather than visible on a second line. "Auto,*" bounds
+        // the text column to whatever width is left once the fixed-size button takes its own — same fixed|flexible
+        // idiom SettingsHelpRow's "*,Auto" input+hint row uses, mirrored because the fixed column is on the left
+        // here. Margin on the TextBlock replaces the StackPanel's Spacing, same idiom SettingsHelpRow uses for its
+        // own "?" hint.
+        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        _authStatus.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(_signIn, 0);
+        Grid.SetColumn(_authStatus, 1);
         signInRow.Children.Add(_signIn);
         signInRow.Children.Add(_authStatus);
 
@@ -116,11 +146,13 @@ internal sealed class DepotConnectionRowControl : UserControl
         try
         {
             var state = await _host.GetMcpServerAuthStateAsync(storedName, cancellationToken).ConfigureAwait(true);
+            // AuthorizationRequired and Unknown both land the row in the same "enabled, not confirmed signed in"
+            // state Sign-in's own UX message is for — Depot connections are always OAuth (see this class's own
+            // remarks), so Unknown here means a stale/unread registration, not "sign-in does not apply".
             _authStatus.Text = state switch
             {
                 PluginMcpAuthState.Authorized => "Signed in.",
-                PluginMcpAuthState.AuthorizationRequired => "Not signed in.",
-                _ => string.Empty,
+                _ => ReadyToSignInMessage,
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -211,6 +243,13 @@ internal sealed class DepotConnectionRowControl : UserControl
         if (reason is not null)
         {
             _authStatus.Text = reason;
+        }
+        else if (!_isBusy)
+        {
+            // Only while idle: a field edited mid save/sign-in round trip (Saving…/Signing in…) must not stomp that
+            // progress text, the same invariant SignInAsync's own finally block protects for the outcome that
+            // follows it — see its comment for why that one never re-derives a message here either.
+            _authStatus.Text = ReadyToSignInMessage;
         }
     }
 

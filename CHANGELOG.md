@@ -1123,6 +1123,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   so reaching for "Start fresh" by mistake no longer throws the old thread away. It is let go only when the new
   session runs under a different profile or working directory, where resuming it would have meant reopening a
   conversation somewhere it never ran.
+- fixed: clicking "Choose…" next to a Depot memory row to pick a project could fail with `No enabled MCP server
+  named "Depot: Depot"` even while signed in and with connections configured — picking a project (and the same
+  reachability check a typed slug already got) now reaches a plugin's own server the same way the picker's
+  acceptance check already did, without waiting for the project to be saved first.
 - fixed: a Codex TTY session's status dot no longer gets stuck reading "idle" for the whole session — it now
   moves between busy and done as Codex actually works, the same as Claude's already did. The read-aloud feature
   also no longer speaks Codex's in-progress commentary, only its settled answer.
