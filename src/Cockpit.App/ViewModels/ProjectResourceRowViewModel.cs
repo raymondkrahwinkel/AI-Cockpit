@@ -188,8 +188,14 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
     /// <summary>The choices offered for this row's memory source — the same list, shared, for every row (AC-166).</summary>
     public ObservableCollection<MemorySourceChoice> MemorySourceChoices { get; }
 
-    /// <summary>Every family's own instances, shared for every row the same way <see cref="MemorySourceChoices"/> is (AC-499) — keyed the same case-insensitive way <see cref="ProjectMemorySourceFamily.Key"/> is matched.</summary>
-    private readonly IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _familyInstanceChoicesByKey;
+    /// <summary>
+    /// Every family's own instances, shared for every row the same way <see cref="MemorySourceChoices"/> is (AC-499)
+    /// — keyed the same case-insensitive way <see cref="ProjectMemorySourceFamily.Key"/> is matched. Not readonly
+    /// (AC-523): <see cref="UpdateFamilyInstanceChoices"/> swaps this for a freshly rebuilt dictionary once the
+    /// "Servers…" flow's own settings screen may have added or removed an instance, rather than this row staying
+    /// pinned to whatever <see cref="ProjectDialogViewModel.CreateAsync"/> handed it when the dialog first opened.
+    /// </summary>
+    private IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _familyInstanceChoicesByKey;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> _EmptyFamilyInstanceChoices =
         new Dictionary<string, IReadOnlyList<MemorySourceChoice>>(StringComparer.OrdinalIgnoreCase);
@@ -210,6 +216,35 @@ public partial class ProjectResourceRowViewModel : ViewModelBase
         _label = label;
         _reachesSessions = reachesSessions;
         _sendsContent = sendsContent;
+    }
+
+    /// <summary>
+    /// Swaps in a freshly rebuilt family-instances dictionary (AC-523) — called by
+    /// <see cref="ProjectDialogViewModel.ConfigureMemorySourceAsync"/> once its own "Servers…" call returns, so a
+    /// connection added or removed in the settings screen that call opened shows up here without the operator having
+    /// to close and reopen the whole project dialog.
+    /// <para>
+    /// <see cref="SelectedFamilyInstance"/> is re-matched by <see cref="MemorySourceChoice.Scheme"/> against the new
+    /// dictionary rather than left as-is: the old instance object is never in the new dictionary (each rebuild
+    /// constructs fresh <see cref="MemorySourceChoice"/> records), so a reference-equality read would read every
+    /// previously-selected instance as gone. A scheme still offered keeps its selection (AC-523 criterion 2); a
+    /// scheme no longer offered — the operator removed that connection while the settings screen was open — falls
+    /// back to no selection rather than silently keep pointing at something gone (AC-523 criterion 3).
+    /// </para>
+    /// </summary>
+    internal void UpdateFamilyInstanceChoices(IReadOnlyDictionary<string, IReadOnlyList<MemorySourceChoice>> familyInstanceChoicesByKey)
+    {
+        _familyInstanceChoicesByKey = familyInstanceChoicesByKey;
+
+        if (SelectedFamilyInstance is { Scheme: { } scheme })
+        {
+            SelectedFamilyInstance = FamilyInstanceChoices.FirstOrDefault(choice =>
+                string.Equals(choice.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
+        }
+
+        OnPropertyChanged(nameof(FamilyInstanceChoices));
+        OnPropertyChanged(nameof(HasFamilyInstances));
+        OnPropertyChanged(nameof(MemorySourceInstanceEmptyHint));
     }
 
     /// <summary>

@@ -285,7 +285,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var viewModel = await ProjectDialogViewModel.CreateAsync(
-            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families);
+            project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families,
+            // AC-523: the "Servers…" flow re-reads the live registry through this rather than replaying the
+            // snapshot above, so a connection added or removed in the settings screen it opens shows up back here.
+            refreshMemorySources: () => (_memorySources.Sources, _memorySources.Families));
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

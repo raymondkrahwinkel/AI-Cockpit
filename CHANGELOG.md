@@ -1144,6 +1144,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the project editor's server dropdown no longer requires closing and reopening the dialog to notice a
+  server you just created (or removed) through the "Servers…" button. It now shows the new server immediately,
+  keeps a selection you already made when other servers change around it, and falls back to no selection rather
+  than a silently stale one if the server you had picked disappears.
 - fixed: an MCP server you sign in to with a browser (Depot) no longer disappears from a running session when its
   access token expires. The session is now pointed at a local address the cockpit answers, and the cockpit puts a
   freshly renewed token on each call as it passes through — so the token's lifetime is no longer the session's
