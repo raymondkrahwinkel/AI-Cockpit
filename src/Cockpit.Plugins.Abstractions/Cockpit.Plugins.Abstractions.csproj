@@ -269,7 +269,14 @@
          (NotSignedIn at ordinal 0)/ProjectMemorySourceReachabilityResult (new types). No positional constructor
          parameter was added to the existing record, so a prebuilt plugin keeps compiling and behaving unchanged.
          Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.40.0</Version>
+    <!-- 1.41.0 (AC-276): added PluginBackgroundTasksChanged — the complete set of work that outlived its turn
+         (sub-agents still running, shells still open), plus PluginBackgroundTask and PluginBackgroundTaskKind
+         (Unknown at ordinal 0, so a task type this build does not know cannot pass itself off as a sub-agent).
+         Tasks is always the full set and never a delta, so a dropped event self-corrects on the next one rather
+         than stranding a session on "working". A driver that never raises it reads as "nothing outstanding",
+         which is what every existing driver already does. Additions only — a minor; major and abstractionsVersion
+         stay 1. -->
+    <Version>1.41.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

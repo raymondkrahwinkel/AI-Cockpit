@@ -12,4 +12,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// provider that records no usage in its transcript at all simply never sets this, which reads to the host
 /// exactly like a session with nothing to report yet.
 /// </param>
-public sealed record PluginTranscriptActivity(PluginSessionActivity Activity, string? RawLine, PluginTokenUsage? Usage = null);
+/// <param name="OutstandingShells">
+/// How many backgrounded shells this session still has running (AC-276), when the provider can tell. Separate from
+/// <see cref="PluginSessionActivity.BackgroundBusy"/> on purpose: a shell may be a dev server or a <c>tail -f</c>
+/// that never ends, so it must not hold the status the way a sub-agent does — the host uses this only to withhold
+/// the "session finished" notification. Zero (the default) reads as "none outstanding", which is what a provider
+/// with no such notion reports by never setting it.
+/// </param>
+public sealed record PluginTranscriptActivity(
+    PluginSessionActivity Activity,
+    string? RawLine,
+    PluginTokenUsage? Usage = null,
+    int OutstandingShells = 0);

@@ -15,6 +15,161 @@ namespace Cockpit.Plugin.ClaudeProvider;
 internal static class ClaudeTranscriptLineParser
 {
     /// <summary>
+    /// Reads the CLI's own count of sub-agents still running, which it writes on the
+    /// <c>{"type":"system","subtype":"turn_duration"}</c> line that closes every turn (AC-276). The field is only
+    /// present when something is pending, so its absence is the count zero — measured across 232 transcripts:
+    /// 677 of 2475 turn_duration lines carry it, with values 1..19 and never 0.
+    /// <para>
+    /// This is a count the provider states, not one this reader keeps: every turn restates it, so a line missed
+    /// mid-write costs one stale reading rather than desynchronising a ledger. It counts <em>sub-agents only</em> —
+    /// measured on 608 turn endings that had a shell but no agent open, 594 carried no field at all — so shells are
+    /// tracked separately by <see cref="TryReadBackgroundShellTransition"/>.
+    /// </para>
+    /// </summary>
+    public static bool TryReadPendingSubAgentCount(string transcriptLine, out int count)
+    {
+        count = 0;
+        if (string.IsNullOrWhiteSpace(transcriptLine))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(transcriptLine);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var type)
+                || type.GetString() != "system"
+                || !root.TryGetProperty("subtype", out var subtype)
+                || subtype.GetString() != "turn_duration")
+            {
+                return false;
+            }
+
+            count = root.TryGetProperty("pendingBackgroundAgentCount", out var pending)
+                && pending.ValueKind == JsonValueKind.Number
+                    ? pending.GetInt32()
+                    : 0;
+            return true;
+        }
+        catch (JsonException)
+        {
+            // A tail read landing mid-write — transient, not an error to surface.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reads a backgrounded shell starting or ending (AC-276), keyed on the <c>tool_use</c> id that both ends of
+    /// the exchange carry. A start is a <c>Bash</c> tool call with <c>run_in_background: true</c>; an end is the
+    /// <c>{"type":"queue-operation"}</c> line whose content holds the CLI's <c>&lt;task-notification&gt;</c> block,
+    /// naming the same <c>&lt;tool-use-id&gt;</c>.
+    /// <para>
+    /// Unlike the sub-agent count above there is no provider-stated total for shells, so this one <em>is</em> a
+    /// ledger and carries a ledger's risk: a missed end leaves a shell counted forever. That is deliberate and
+    /// bounded — an outstanding shell only withholds the "session finished" notification, never the status, so the
+    /// worst case is a missing notification rather than a session stuck on "working".
+    /// </para>
+    /// </summary>
+    public static bool TryReadBackgroundShellTransition(string transcriptLine, out string toolUseId, out bool started)
+    {
+        toolUseId = string.Empty;
+        started = false;
+        if (string.IsNullOrWhiteSpace(transcriptLine))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(transcriptLine);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var type))
+            {
+                return false;
+            }
+
+            switch (type.GetString())
+            {
+                case "assistant" when root.TryGetProperty("message", out var message)
+                    && message.ValueKind == JsonValueKind.Object
+                    && message.TryGetProperty("content", out var content)
+                    && content.ValueKind == JsonValueKind.Array:
+                    foreach (var block in content.EnumerateArray())
+                    {
+                        if (block.ValueKind != JsonValueKind.Object
+                            || !block.TryGetProperty("type", out var blockType)
+                            || blockType.GetString() != "tool_use"
+                            || !block.TryGetProperty("name", out var name)
+                            || name.GetString() != "Bash"
+                            || !block.TryGetProperty("input", out var input)
+                            || input.ValueKind != JsonValueKind.Object
+                            || !input.TryGetProperty("run_in_background", out var background)
+                            || background.ValueKind != JsonValueKind.True
+                            || !block.TryGetProperty("id", out var id)
+                            || id.GetString() is not { Length: > 0 } startedId)
+                        {
+                            continue;
+                        }
+
+                        toolUseId = startedId;
+                        started = true;
+                        return true;
+                    }
+
+                    return false;
+
+                case "queue-operation" when root.TryGetProperty("content", out var notification)
+                    && notification.GetString() is { } text
+                    && _TryReadNotifiedToolUseId(text, out var endedId):
+                    toolUseId = endedId;
+                    started = false;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Pulls the <c>&lt;tool-use-id&gt;</c> out of the CLI's <c>&lt;task-notification&gt;</c> block. Deliberately a
+    /// substring read and not an XML parse: this is a text payload the CLI composes for the model, not a contract —
+    /// so it is matched narrowly enough to be wrong loudly (no id found ⇒ no transition) rather than to guess.
+    /// </summary>
+    private static bool _TryReadNotifiedToolUseId(string content, out string toolUseId)
+    {
+        toolUseId = string.Empty;
+        if (!content.Contains("<task-notification>", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        const string OpenTag = "<tool-use-id>";
+        const string CloseTag = "</tool-use-id>";
+        var start = content.IndexOf(OpenTag, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return false;
+        }
+
+        start += OpenTag.Length;
+        var end = content.IndexOf(CloseTag, start, StringComparison.Ordinal);
+        if (end <= start)
+        {
+            return false;
+        }
+
+        toolUseId = content[start..end];
+        return true;
+    }
+
+    /// <summary>
     /// Extracts and concatenates every <c>content[].type == "text"</c> block from an assistant transcript
     /// line. Returns false (with an empty <paramref name="text"/>) for non-assistant lines, lines with no
     /// text content (pure tool-use turns), a blank line, or a line that fails to parse as JSON — the last

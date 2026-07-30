@@ -5858,7 +5858,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // A turn just finished. Worth saying out loud only when you are not looking at that session — the
         // notifier makes that call, since it is the one that knows whether you are even at the PC.
-        if (session.SessionStatus == SessionStatus.Done && previous == SessionStatus.Busy)
+        // A session with a backgrounded shell still running is not finished, whatever the status says (AC-276):
+        // the status deliberately reaches Done there, because a dev server or a tail -f would otherwise pin it on
+        // "working" forever — but announcing it as finished while it is still doing something is the very thing
+        // this notification should not do. Sub-agents need no check here: they hold the status at
+        // WorkingBackground, so that flank never reads Busy → Done to begin with.
+        if (session.SessionStatus == SessionStatus.Done
+            && previous == SessionStatus.Busy
+            && !session.HasOutstandingBackgroundShells)
         {
             NotifySessionFinished(session);
         }

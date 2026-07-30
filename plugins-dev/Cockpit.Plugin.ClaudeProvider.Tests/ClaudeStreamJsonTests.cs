@@ -119,4 +119,74 @@ public class ClaudeStreamJsonTests
 
         Assert.Null(delta.ParentToolUseId);
     }
+
+    // AC-276: the CLI reports what has outlived the turn on system/background_tasks_changed. _ParseSystem used to
+    // drop every system line that was not "init", so this reached the host as nothing at all. The lines below are
+    // taken verbatim from a captured run against the real CLI in the persistent --input-format stream-json mode the
+    // driver actually uses (never -p), where the task list demonstrably arrives before the turn's own result.
+    [Fact]
+    public void BackgroundTasksChanged_CarriesEveryTask_WithItsKind()
+    {
+        const string line = """
+        {"type":"system","subtype":"background_tasks_changed","session_id":"abc","tasks":[
+         {"task_id":"a0ce6840b9","task_type":"local_agent","description":"Agent 1: sleep and reply"},
+         {"task_id":"b706pro1i","task_type":"local_bash","description":"npm run dev"}]}
+        """;
+
+        var changed = Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal(2, changed.Tasks.Count);
+        Assert.Equal(new PluginBackgroundTask("a0ce6840b9", PluginBackgroundTaskKind.SubAgent, "Agent 1: sleep and reply"), changed.Tasks[0]);
+        Assert.Equal(new PluginBackgroundTask("b706pro1i", PluginBackgroundTaskKind.Shell, "npm run dev"), changed.Tasks[1]);
+    }
+
+    [Fact]
+    public void BackgroundTasksChanged_WithAnEmptyList_ReportsNothingOutstanding()
+    {
+        // How the last task ending arrives: not a per-task "done" but a restatement of the whole set, now empty.
+        // A consumer that treated an empty list as "no news" would never let the session go idle again.
+        const string line = """{"type":"system","subtype":"background_tasks_changed","session_id":"abc","tasks":[]}""";
+
+        var changed = Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Empty(changed.Tasks);
+    }
+
+    [Fact]
+    public void BackgroundTasksChanged_WithAnUnknownTaskType_KeepsTheTaskButNotItsKind()
+    {
+        // A task type a newer CLI names and this build does not must still count as outstanding work — dropping it
+        // would report an idle session that is not idle. It maps to Unknown rather than guessing SubAgent, which
+        // would let it freeze the status.
+        const string line = """
+        {"type":"system","subtype":"background_tasks_changed","session_id":"abc",
+         "tasks":[{"task_id":"x1","task_type":"remote_sandbox","description":"something new"}]}
+        """;
+
+        var changed = Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal(PluginBackgroundTaskKind.Unknown, Assert.Single(changed.Tasks).Kind);
+    }
+
+    [Fact]
+    public void BackgroundTasksChanged_SkipsATaskWithNoId()
+    {
+        // Ids are what make a restatement idempotent; a nameless entry would inflate the set on every event.
+        const string line = """
+        {"type":"system","subtype":"background_tasks_changed","session_id":"abc",
+         "tasks":[{"task_type":"local_bash","description":"no id"},{"task_id":"ok","task_type":"local_bash"}]}
+        """;
+
+        var changed = Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
+
+        Assert.Equal("ok", Assert.Single(changed.Tasks).TaskId);
+    }
+
+    [Fact]
+    public void System_WithAnUnrelatedSubtype_StillYieldsNothing()
+    {
+        // The other system subtypes (hook_started, thinking_tokens, task_progress, …) carry no session-level
+        // signal; opening _ParseSystem up for background_tasks_changed must not start admitting those.
+        Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"task_progress","session_id":"abc"}"""));
+    }
 }

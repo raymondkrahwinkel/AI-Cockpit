@@ -582,6 +582,19 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             NumTurns = turnCompleted.NumTurns,
             Errors = turnCompleted.Errors,
         },
+        PluginBackgroundTasksChanged backgroundTasks => new BackgroundTasksChanged
+        {
+            SessionId = backgroundTasks.SessionId,
+            Tasks = [.. backgroundTasks.Tasks.Select(task => new BackgroundTask(
+                task.TaskId,
+                task.Kind switch
+                {
+                    PluginBackgroundTaskKind.SubAgent => BackgroundTaskKind.SubAgent,
+                    PluginBackgroundTaskKind.Shell => BackgroundTaskKind.Shell,
+                    _ => BackgroundTaskKind.Unknown,
+                },
+                task.Description))],
+        },
         PluginSessionError error => new SessionError
         {
             SessionId = error.SessionId,

@@ -15,4 +15,14 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// because a single logical turn can write several assistant lines (a tool-call round trip), each with its own
 /// usage; summing every reading is what makes the total correct for a turn that used a tool.
 /// </param>
-public sealed record SessionTranscriptActivity(SessionActivity Activity, string? RawLine, TokenUsage? Usage = null);
+/// <param name="OutstandingShells">
+/// How many backgrounded shells the session still has running (AC-276). Deliberately not folded into
+/// <see cref="SessionActivity.BackgroundBusy"/>: a shell can be a dev server that never ends, so holding the
+/// status on it would strand the session on "working" — worse than the premature Done it set out to fix. The host
+/// uses this only to withhold the "session finished" notification.
+/// </param>
+public sealed record SessionTranscriptActivity(
+    SessionActivity Activity,
+    string? RawLine,
+    TokenUsage? Usage = null,
+    int OutstandingShells = 0);

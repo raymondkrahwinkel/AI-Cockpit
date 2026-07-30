@@ -1802,6 +1802,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
+            // The driver restated what is still outstanding (AC-276). Kept verbatim — the weighing of sub-agent
+            // versus shell belongs to _RecomputeStatus and the notification gate, not here, so this stays a
+            // straight assignment even when the list is empty (which is how the last task ending arrives).
+            case BackgroundTasksChanged backgroundTasks:
+                _backgroundTasks = backgroundTasks.Tasks;
+                OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                _RecomputeStatus();
+                break;
+
             case SessionStatusChanged statusChanged:
                 // needs_action non-empty is the CLI telling the host the session wants attention
                 // (e.g. a pending question) — same "jump out in the sidebar" signal as a pending
@@ -1878,16 +1887,47 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// busy while a turn is in flight, needs-attention while a permission/needs_action signal is
     /// outstanding (takes priority over busy so it still surfaces if a new send arrives before the
     /// user reacts), done once a turn completed and nothing is pending, idle otherwise.
+    /// <para>
+    /// A finished turn is not the same as a finished session (AC-276). The main agent legitimately reaches
+    /// <c>end_turn</c> several times per instruction while sub-agents it spawned keep running — measured at 1195
+    /// of 3054 turn endings across 77 real sessions — so <see cref="IsBusy"/> alone flips to Done and back on
+    /// every one of them. A still-running sub-agent therefore holds the session on
+    /// <see cref="SessionStatus.WorkingBackground"/>, which is what makes that value reachable on the SDK route
+    /// at all.
+    /// </para>
+    /// <para>
+    /// A shell deliberately does <em>not</em>: it may be a dev server or a <c>tail -f</c> that never ends, and
+    /// pinning the status on that would be worse than the premature Done it set out to fix. It is held back at the
+    /// notification instead — see <see cref="HasOutstandingBackgroundShells"/>.
+    /// </para>
     /// </summary>
     private void _RecomputeStatus()
     {
-        SessionStatus = (_needsAttention, IsBusy) switch
+        SessionStatus = (_needsAttention, IsBusy, _HasOutstandingSubAgents) switch
         {
-            (true, _) => SessionStatus.NeedsAttention,
-            (false, true) => SessionStatus.Busy,
-            (false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
+            (true, _, _) => SessionStatus.NeedsAttention,
+            (false, true, _) => SessionStatus.Busy,
+            (false, false, true) => SessionStatus.WorkingBackground,
+            (false, false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
         };
     }
+
+    /// <summary>
+    /// The work outliving the current turn, as the driver last reported it. Replaced wholesale rather than
+    /// added to and removed from: the event carries the complete set every time (see
+    /// <see cref="BackgroundTasksChanged"/>), so a dropped event costs one stale reading instead of permanently
+    /// desynchronising a ledger.
+    /// </summary>
+    private IReadOnlyList<BackgroundTask> _backgroundTasks = [];
+
+    private bool _HasOutstandingSubAgents => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.SubAgent);
+
+    /// <summary>
+    /// True while a backgrounded shell is still running (AC-276). It does not hold the status — a never-ending
+    /// dev server would pin the session forever — but it does suppress the "session finished" notification, which
+    /// would otherwise announce a session that is still doing something.
+    /// </summary>
+    public override bool HasOutstandingBackgroundShells => _backgroundTasks.Any(task => task.Kind == BackgroundTaskKind.Shell);
 
     // Give this turn's reported usage and cost to the session meter (#8) and refresh the bound meter text.
     // The meter sums the tokens and follows the cost, which the result reports as a session total rather

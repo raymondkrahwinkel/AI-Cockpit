@@ -179,6 +179,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Running token total for the session (AC-398), folded from every transcript reading that carried usage — see <see cref="SessionTranscriptActivity.Usage"/>.</summary>
     private readonly SessionUsageMeter _usage = new();
 
+    private bool _hasOutstandingBackgroundShells;
+
+    /// <inheritdoc />
+    public override bool HasOutstandingBackgroundShells => _hasOutstandingBackgroundShells;
+
     /// <summary>When this session's TUI actually came up, seeded again in <see cref="OnLaunchSucceeded"/> — mirrors <c>SessionViewModel</c>'s own <c>_startedAt</c> so a persisted snapshot measures working time, not launch setup.</summary>
     private DateTimeOffset _startedAt = DateTimeOffset.Now;
 
@@ -789,6 +794,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                     {
                         SessionStatus = _statusTracker.OnActivity(reading.Activity, DateTimeOffset.UtcNow);
                     }
+
+                    // A backgrounded shell does not hold the status (it may be a dev server that never ends), but it
+                    // does withhold the "session finished" notification — see HasOutstandingBackgroundShells (AC-276).
+                    _hasOutstandingBackgroundShells = reading.OutstandingShells > 0;
+                    OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
 
                     // Surface the raw transcript line to the read/observe surface: it carries any output signal
                     // (a pull-request url printed by gh, a merged/closed line) as a substring regardless of which

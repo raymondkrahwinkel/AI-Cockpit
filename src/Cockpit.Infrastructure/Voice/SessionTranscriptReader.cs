@@ -49,7 +49,7 @@ internal sealed class SessionTranscriptReader(
                 PluginSessionActivity.TurnComplete => SessionActivity.TurnComplete,
                 _ => SessionActivity.None,
             };
-            yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage));
+            yield return new SessionTranscriptActivity(activity, reading.RawLine, _MapUsage(reading.Usage), reading.OutstandingShells);
         }
     }
 
