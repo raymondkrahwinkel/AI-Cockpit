@@ -8,8 +8,24 @@ namespace Cockpit.Core.Mcp;
 /// </summary>
 public sealed record McpServerConfig
 {
-    /// <summary>Unique display name / key for the server.</summary>
+    /// <summary>Unique display name for the server. A label the operator may change — see <see cref="Id"/> for what identifies it.</summary>
     public required string Name { get; init; }
+
+    /// <summary>
+    /// The stable id this server is known by (AC-403) — what the OAuth token store files a token under, so that
+    /// renaming the server in the dialog does not leave its sign-in behind under the old name. Empty only for a
+    /// config built by hand (a test, a design-time view); everything that reads one off disk or off a plugin
+    /// contribution carries an id, and <see cref="IdentityKey"/> is what to key on either way.
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The key to file this server's credentials under: <see cref="Id"/> when there is one, and otherwise the id
+    /// the name derives to (<see cref="McpServerIdentity.LegacyIdFor"/>) — which is exactly the name-keyed
+    /// behaviour that came before, so a config assembled without an id behaves as it always did rather than
+    /// keying on the empty string alongside every other such config.
+    /// </summary>
+    public string IdentityKey => string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id;
 
     public McpTransport Transport { get; init; } = McpTransport.Stdio;
 

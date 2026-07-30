@@ -5,6 +5,12 @@ namespace Cockpit.Infrastructure.Configuration;
 /// <summary>On-disk shape of an <see cref="McpServerConfig"/> in the <c>mcpServers</c> section of <c>cockpit.json</c>.</summary>
 internal sealed class McpServerEntry
 {
+    /// <summary>
+    /// The server's stable id (AC-403), under which its OAuth token is filed. Empty for a row written before this
+    /// field existed — see <see cref="ToDomain"/> for the id such a row answers to instead.
+    /// </summary>
+    public string Id { get; set; } = string.Empty;
+
     public string Name { get; set; } = string.Empty;
 
     public McpTransport Transport { get; set; }
@@ -38,6 +44,10 @@ internal sealed class McpServerEntry
 
     public static McpServerEntry FromDomain(McpServerConfig server) => new()
     {
+        // IdentityKey rather than Id, so the id a legacy row was read under is written back explicitly on the first
+        // save. From then on it travels with the row, which is what makes the rename after it safe: the id stops
+        // being a function of a name that is about to change.
+        Id = server.IdentityKey,
         Name = server.Name,
         Transport = server.Transport,
         Scope = server.Scope,
@@ -55,6 +65,10 @@ internal sealed class McpServerEntry
 
     public McpServerConfig ToDomain() => new()
     {
+        // A row from before this field derives its id from the name it is carrying right now — the same id the
+        // token an older build filed under that name answers to, so the sign-in survives the upgrade without
+        // anything being rewritten. Derived, not minted: a random id here would differ on every read.
+        Id = string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id,
         Name = Name,
         Transport = Transport,
         Scope = Scope,

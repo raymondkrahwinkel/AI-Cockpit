@@ -24,6 +24,7 @@ public class McpOAuthCoordinatorTests
 
     private static McpServerConfig _OAuthServer(string url = UnreachableUrl) => new()
     {
+        Id = "depot",
         Name = "depot",
         Transport = McpTransport.Http,
         Url = url,
@@ -61,7 +62,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_WithAStoredTokenThatIsStillGood_HandsItOver()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
+        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
 
         var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
 
@@ -73,7 +74,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_WhenTheNameNowPointsAtADifferentHost_RefusesTheStoredToken()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("depot-access-token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
 
         // A project can replace a registry server with its own entry under the same name and a different address
         // (ProjectMcpOverlay.ApplyTo), and a rename does the same. Handing the token over here would send one host's
@@ -88,7 +89,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_WhenOnlyThePathMoved_StillUsesTheStoredToken()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("depot-access-token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1)));
+        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1)));
 
         // Same party, different endpoint on it: the bearer still goes where it was issued to go, so re-authorizing
         // over a path edit would be a cost without a reason.
@@ -116,7 +117,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_WhenTheStoredTokenIsStaleAndTheRenewalFails_ReportsAuthorizationRequired()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("expired-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("expired-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5), refreshToken: "refresh"));
 
         var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
 
@@ -159,7 +160,7 @@ public class McpOAuthCoordinatorTests
     public async Task GetState_WithAValidToken_SaysSignedIn_WithoutTouchingTheNetwork()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
+        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
 
         Assert.Equal(McpAuthState.Authorized, await coordinator.GetStateAsync(_OAuthServer()));
 
@@ -174,7 +175,7 @@ public class McpOAuthCoordinatorTests
     public async Task GetState_WithAnExpiredTokenThatCanStillBeRenewed_SaysSignedIn()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5), refreshToken: "refresh"));
 
         // Not the same question Acquire answers. Acquire keeps a margin because it writes a token into a config a
         // session then reads for an hour; a status answers "are you signed in", and this one renews itself on next
@@ -186,7 +187,7 @@ public class McpOAuthCoordinatorTests
     public async Task GetState_WithAnExpiredTokenAndNoWayToRenew_SaysASignInIsNeeded()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5)));
+        await store.SaveAsync("depot", "depot", _TokenFor("expired", UnreachableUrl, DateTimeOffset.UtcNow.AddMinutes(-5)));
 
         Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
     }
@@ -195,7 +196,7 @@ public class McpOAuthCoordinatorTests
     public async Task GetState_ForATokenHeldUnderThisNameForADifferentHost_SaysASignInIsNeeded()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("token", "https://depot.example/mcp", DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
 
         // Same rule the credential path applies: a name is not an identity. Showing "signed in" for a host this
         // token was never issued to would be the status lying about exactly the case that matters.
@@ -206,7 +207,7 @@ public class McpOAuthCoordinatorTests
     public async Task GetState_WithATokenAboutToExpireAndNoWayToRenew_SaysASignInIsNeeded()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20)));
+        await store.SaveAsync("depot", "depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20)));
 
         // The status has to agree with what a session start will actually do. Acquire refuses this token — it keeps a
         // margin, because it writes into a config a session reads for an hour — so a badge saying "signed in" would
@@ -218,7 +219,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_AskedInteractively_DoesNotAnswerFromTheStoredToken()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
 
         // "Sign in again" has to sign in again. Answering from the stored token would make the button do nothing —
         // and the reason someone presses it is usually that the stored token looks fine here while the server has
@@ -234,7 +235,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_AskedInteractively_PutsTheOldTokenBack_WhenTheFlowProducesNothing()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("stored-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
 
         await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
 
@@ -253,11 +254,11 @@ public class McpOAuthCoordinatorTests
         var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
         var coordinator = new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance);
 
-        await store.SaveAsync("depot", _TokenFor("old-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("old-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1), refreshToken: "refresh"));
 
         // Stand in for a flow that succeeds and issues a short-lived token: the answer is still "not authorized",
         // because handing over a credential with under two minutes on it writes a session that breaks a minute in.
-        store.OnRemoved = () => store.SaveAsync("depot", _TokenFor("fresh-token", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(60))).GetAwaiter().GetResult();
+        store.OnRemoved = () => store.SaveAsync("depot", "depot", _TokenFor("fresh-token", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(60))).GetAwaiter().GetResult();
 
         await coordinator.AcquireAsync(_OAuthServer(), interactive: true);
 
@@ -270,7 +271,7 @@ public class McpOAuthCoordinatorTests
     public async Task SignOut_ForgetsTheToken_SoTheNextUseAsksAgain()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
+        await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
 
         await coordinator.SignOutAsync(_OAuthServer());
 
@@ -290,7 +291,7 @@ public class McpOAuthCoordinatorTests
     public async Task Acquire_WhenTheTokenExpiresWithinTheMargin_DoesNotHandItOver()
     {
         var (coordinator, store) = _Create();
-        await store.SaveAsync("depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20), refreshToken: "refresh"));
+        await store.SaveAsync("depot", "depot", _TokenFor("nearly-expired", UnreachableUrl, DateTimeOffset.UtcNow.AddSeconds(20), refreshToken: "refresh"));
 
         var access = await coordinator.AcquireAsync(_OAuthServer(), interactive: false);
 

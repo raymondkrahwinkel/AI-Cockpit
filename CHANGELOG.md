@@ -1119,6 +1119,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: renaming an MCP server — or a Depot connection — no longer costs you its sign-in. The token was filed
+  under the server's name, so saving a new name left the old sign-in behind: unreachable, still holding a refresh
+  token, and the row reporting "sign-in needed" over a credential that was sitting right there. A server is now
+  identified by something you can't edit, so the name is back to being just a label. Two servers pointing at the
+  same host are covered too: swapping their names used to hand each one the other's credential, which meant a token
+  could be presented to an endpoint it was never issued for. Nobody has to sign in again after updating — sign-ins
+  you already have are carried over to the new arrangement on first launch.
+
 - fixed: command output in a Linux terminal pane no longer comes out as a staircase. `ls`, `git status` and anything
   else that ends its lines with a plain newline was drawn one row down but never back at the left edge, so each line
   started where the previous one ended and long ones broke mid-word. The pane's terminal was being created without the

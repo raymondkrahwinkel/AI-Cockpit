@@ -131,7 +131,7 @@ public partial class McpServersViewModel : ViewModelBase
         // "new server" therefore collapse into one mounted server while both sit ticked in the checklist, and that
         // is invisible until an agent is missing tools it was promised.
         var added = new EditableMcpServerViewModel(
-            new McpServerConfig { Name = _UnusedServerName(), Command = "npx" },
+            new McpServerConfig { Id = McpServerIdentity.NewId(), Name = _UnusedServerName(), Command = "npx" },
             _oauthCoordinator,
             isPersisted: false,
             saveAllForSignIn: _SaveAllForSignInAsync,
@@ -307,24 +307,25 @@ public partial class McpServersViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Resyncs every row against its own position in <paramref name="reloaded"/> (AC-499 review fix, finding 1) —
-    /// not just the row whose sign-in triggered this save. A dialog-wide save writes every row's <c>ToConfig()</c>
-    /// in list order and <see cref="IMcpServerStore"/> round-trips that order unchanged, so index N in
-    /// <see cref="Servers"/> and index N in <paramref name="reloaded"/> are the same server; a row past the end of
-    /// a shorter-than-expected <paramref name="reloaded"/> resyncs against null. See
-    /// <see cref="EditableMcpServerViewModel"/>'s remarks for why this is positional rather than identity-based,
-    /// and AC-403 for the fix that removes the need for it to be.
+    /// Resyncs every row against the entry carrying its own id in <paramref name="reloaded"/> (AC-499 review fix,
+    /// finding 1; matched by id since AC-403) — not just the row whose sign-in triggered this save. A row whose id
+    /// is not in the reloaded list resyncs against null, which is how a row the store did not take reports itself as
+    /// unsaved rather than borrowing the standing of whatever sat at its index.
     /// <para>
-    /// Without this, only the row that asked for the save updated its own stored name — every other row kept
-    /// whatever it last knew, which a swapped rename between two rows could leave pointing at what is now a
-    /// different server's token. A sign-out from that stale row would withdraw someone else's freshly issued
-    /// credential while its own badge still read "signed in".
+    /// This used to match by list position, for want of anything else: a name was a row's only handle and a save
+    /// rewrote every one of them at once, so the order the store round-tripped was the only thing tying a row to
+    /// what had just been written for it. Matching on an id that a rename cannot move says the same thing without
+    /// depending on save order at all.
     /// </para>
     /// </summary>
     private async Task _ResyncRowsAfterDialogSaveAsync(IReadOnlyList<McpServerConfig> reloaded)
     {
-        var resyncs = Servers.Select((server, index) =>
-            server.ResyncAfterDialogSaveAsync(index < reloaded.Count ? reloaded[index] : null));
+        var byId = reloaded
+            .GroupBy(server => server.IdentityKey, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        var resyncs = Servers.Select(server =>
+            server.ResyncAfterDialogSaveAsync(byId.GetValueOrDefault(server.Id)));
         await Task.WhenAll(resyncs).ConfigureAwait(true);
     }
 

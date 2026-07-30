@@ -39,7 +39,7 @@ internal sealed class McpOAuthCoordinator(
             // it in place means the flow never runs and the button does nothing. But losing a working credential
             // because a browser window was closed is not a price for pressing "sign in again" — so the old one is
             // put back when the flow produced nothing.
-            var previous = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+            var previous = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
             await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
 
             var signedIn = await _ConnectAndReadAsync(server, interactive: true, cancellationToken).ConfigureAwait(false);
@@ -48,19 +48,20 @@ internal sealed class McpOAuthCoordinator(
             // authorized". A sign-in that succeeds and issues a short-lived token gets that verdict too (the answer
             // keeps a margin), and restoring over it would throw away the credential the operator just went to the
             // browser for and hand back the stale one.
-            if (previous is not null && await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false) is null)
+            if (previous is not null && await _ReadAsync(server, cancellationToken).ConfigureAwait(false) is null)
             {
-                await tokenStore.SaveAsync(server.Name, previous, cancellationToken).ConfigureAwait(false);
+                await tokenStore.SaveAsync(server.IdentityKey, server.Name, previous, cancellationToken).ConfigureAwait(false);
             }
 
             return signedIn;
         }
 
-        // A token is stored under the server's name, and a name is not an identity — a project's own entry replaces a
-        // registry server by name and may carry a different address, and a rename does the same. So a token that was
-        // not issued for this address is treated as absent, refresh token and all: renewing with the other host's
-        // grant would be the same mistake one step later.
-        var stored = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        // A token is stored under the server's stable id (AC-403), but that still does not make it right for the
+        // address this server points at now — a project's own entry replaces a registry server by name and may carry
+        // a different one, and the id survives an operator editing the URL under it too. So a token that was not
+        // issued for this address is treated as absent, refresh token and all: renewing with the other host's grant
+        // would be the same mistake one step later.
+        var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
         if (stored is not null && !stored.IsForResource(server.Url))
         {
             logger.LogWarning(
@@ -98,7 +99,7 @@ internal sealed class McpOAuthCoordinator(
     {
         var (stage, explained) = await _HandshakeAsync(server, interactive, cancellationToken).ConfigureAwait(false);
 
-        var token = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        var token = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
         if (token is not null && token.IsForResource(server.Url) && token.IsUsableAt(DateTimeOffset.UtcNow, ExpiryMargin))
         {
             return McpOAuthAccess.Authorized(token.AccessToken) with { SignInStage = stage };
@@ -125,7 +126,7 @@ internal sealed class McpOAuthCoordinator(
             return McpAuthState.NotRequired;
         }
 
-        var stored = await _ReadAsync(server.Name, cancellationToken).ConfigureAwait(false);
+        var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
         if (stored is null || !stored.IsForResource(server.Url))
         {
             return McpAuthState.AuthorizationRequired;
@@ -142,13 +143,15 @@ internal sealed class McpOAuthCoordinator(
     }
 
     public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
-        tokenStore.RemoveAsync(server.Name, cancellationToken);
+        tokenStore.RemoveAsync(server.IdentityKey, cancellationToken);
 
-    private async Task<McpOAuthToken?> _ReadAsync(string serverName, CancellationToken cancellationToken)
+    // Keyed by the server's stable id (AC-403), reported by its name: the id is what finds the token across a
+    // rename, and the name is the only one of the two an operator reading the log would recognise.
+    private async Task<McpOAuthToken?> _ReadAsync(McpServerConfig server, CancellationToken cancellationToken)
     {
         try
         {
-            return await tokenStore.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
+            return await tokenStore.GetAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -158,7 +161,7 @@ internal sealed class McpOAuthCoordinator(
         {
             // A config read that fails leaves the server unauthorized rather than failing the session start, which is
             // how every other read of this file behaves. Never log the token itself (Iron Law #8) — only the server.
-            logger.LogWarning(exception, "Reading the stored MCP credential for {Server} failed; treating it as not signed in.", serverName);
+            logger.LogWarning(exception, "Reading the stored MCP credential for {Server} failed; treating it as not signed in.", server.Name);
             return null;
         }
     }

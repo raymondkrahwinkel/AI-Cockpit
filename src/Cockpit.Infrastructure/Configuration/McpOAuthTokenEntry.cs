@@ -14,7 +14,23 @@ namespace Cockpit.Infrastructure.Configuration;
 /// </summary>
 internal sealed class McpOAuthTokenEntry
 {
-    /// <summary>The <see cref="McpServerConfig.Name"/> this token belongs to.</summary>
+    /// <summary>
+    /// The <see cref="McpServerConfig.IdentityKey"/> this token belongs to (AC-403) — the one field the store
+    /// matches on. Empty only for an entry an older build wrote, which is what <see cref="ServerName"/> is still
+    /// read for.
+    /// </summary>
+    public string ServerId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The <see cref="McpServerConfig.Name"/> this token was last written for — a label, so the section stays
+    /// readable to whoever opens <c>cockpit.json</c>.
+    /// <para>
+    /// ⚠️ <b>Never match a server against this.</b> It is a copy of a name the operator can change, and it goes
+    /// stale the moment they do; that staleness is AC-403 itself. The single exception is an entry with no
+    /// <see cref="ServerId"/> — one an older build wrote, whose name <em>was</em> its key — and even there the
+    /// store compares against the id that name derives to, not against any server's current name.
+    /// </para>
+    /// </summary>
     public string ServerName { get; set; } = string.Empty;
 
     public string AccessToken { get; set; } = string.Empty;
@@ -45,8 +61,9 @@ internal sealed class McpOAuthTokenEntry
     /// <summary>The authorization server <see cref="ClientId"/> was registered with.</summary>
     public string? AuthorizationServer { get; set; }
 
-    public static McpOAuthTokenEntry FromDomain(string serverName, McpOAuthToken token) => new()
+    public static McpOAuthTokenEntry FromDomain(string serverId, string serverName, McpOAuthToken token) => new()
     {
+        ServerId = serverId,
         ServerName = serverName,
         AccessToken = token.AccessToken,
         Scheme = token.Scheme,

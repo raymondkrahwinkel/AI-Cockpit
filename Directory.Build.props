@@ -8,7 +8,19 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.15.0: a plugin can now declare a memory-source *family* (AC-499) — new host-provided functionality a
+    <!-- 0.16.0: a plugin can now tell the host which thing one of its MCP servers actually is (AC-403) — new
+         host-provided functionality a plugin contributes to: McpServerContribution.Id, the stable id the host files
+         that server's OAuth token under instead of filing it under the server's name. It exists because a name is
+         not an identity: a plugin whose server name is built from something the operator renames (a Depot
+         connection, "Depot: {Name}") left its sign-in stranded under the old name on every rename, and two
+         connections to one host that swapped names could each end up presenting the other's bearer — the origin
+         check only bounds a token to scheme/host/port, so it never caught that. A plugin that sets it sets
+         minHostVersion 0.16.0: an older host's copy of Cockpit.Plugins.Abstractions has no such property, and a
+         plugin binds against the host's own copy (ProjectReference with Private=false / ExcludeAssets=runtime), so
+         the init setter is not there to be called at all. A plugin that sets none is unaffected — the host keys on
+         the id its name derives to, which is exactly the name-keyed behaviour that came before. Minor because it is
+         additive; still 0.x.
+         0.15.0: a plugin can now declare a memory-source *family* (AC-499) — new host-provided functionality a
          plugin contributes to: ICockpitHost.AddProjectMemorySourceFamily, plus ProjectMemorySourceRegistration's
          FamilyKey / InstanceTitle telling the host which family an individual source belongs to and what to call it
          inside that family. A family is one entry in the project editor's source picker standing for however many
@@ -115,7 +127,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.15.0</VersionPrefix>
+    <VersionPrefix>0.16.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
