@@ -14,7 +14,11 @@ namespace Cockpit.Infrastructure.Mcp;
 /// every route and survive a restart.
 /// </para>
 /// </summary>
-internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl, IMcpOAuthTokenStore store) : ITokenCache
+/// <param name="serverId">The server's stable <see cref="McpServerConfig.IdentityKey"/> (AC-403) — the key the store files under.</param>
+/// <param name="serverName">The server's current name, written alongside the token purely as a label.</param>
+/// <param name="resourceUrl">The address the token is being obtained for, so a record cannot be used at another one.</param>
+/// <param name="store">Where the token lands.</param>
+internal sealed class McpOAuthTokenCache(string serverId, string serverName, string? resourceUrl, IMcpOAuthTokenStore store) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
@@ -26,14 +30,16 @@ internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl,
         // RFC 6749 §6: a refresh response may leave the refresh token out, which means "keep the one you have". Taking
         // the response at face value would throw it away on the first renewal against any server that does not rotate,
         // and every later expiry would then ask the operator to sign in again for no reason.
-        // The one it keeps has to be its own, though: the stored record is found by name, and if that name has since
-        // come to mean a different host, carrying its refresh token over would launder one host's grant into another
-        // host's record — the same leak the origin check exists to stop, one layer down.
-        var existing = await store.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
+        // The one it keeps has to be its own, though: the stored record is this server's across a rename (AC-403),
+        // but the operator can still have pointed that same server at a different host since, and carrying its
+        // refresh token over would launder one host's grant into another host's record — the same leak the origin
+        // check exists to stop, one layer down.
+        var existing = await store.GetAsync(serverId, cancellationToken).ConfigureAwait(false);
         var inheritable = existing is not null && existing.IsForResource(resourceUrl) ? existing.RefreshToken : null;
         var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? inheritable : token.RefreshToken;
 
         await store.SaveAsync(
+            serverId,
             serverName,
             new McpOAuthToken
             {
@@ -57,11 +63,12 @@ internal sealed class McpOAuthTokenCache(string serverName, string? resourceUrl,
 
     public async ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken = default)
     {
-        var stored = await store.GetAsync(serverName, cancellationToken).ConfigureAwait(false);
+        var stored = await store.GetAsync(serverId, cancellationToken).ConfigureAwait(false);
 
-        // A token found by name is not automatically this server's: the name can now belong to a different address
-        // (a project's own entry replaces a registry server by name, and a rename does the same). Handing it over
-        // would send one host's credential to another, so a mismatch reads as having no token at all.
+        // This server's own token is still not automatically usable here: the address under it can have changed
+        // since it was issued (a project's own entry replaces a registry server by name and may carry a different
+        // one, and an operator can edit the URL). Handing it over would send one host's credential to another, so a
+        // mismatch reads as having no token at all.
         if (stored is null || !stored.IsForResource(resourceUrl))
         {
             return null;

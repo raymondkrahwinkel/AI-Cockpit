@@ -224,8 +224,17 @@ public partial class App : Application
         // plugin the host built for it so it can register its Options tab / side-menu section.
         _InitializePlugins();
 
+        // AC-403: an OAuth token an older build filed under a server's name is moved onto the id that server is
+        // known by now. Immediately after the plugins have registered, because a plugin's own connections are the
+        // only ones that need it and this is the first moment they can be asked for — and before anything that
+        // could rename one, which is the condition that makes matching on a name safe here and nowhere else. Fire
+        // and forget: it never throws, and a launch does not wait on a config rewrite.
+        var mcpTokenAdoption = Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync();
+
         // Silent unless the operator is carrying a plugin this build has replaced, in which case they are told
-        // and asked — rather than having it cleaned out of their plugins folder behind their back.
+        // and asked — rather than having it cleaned out of their plugins folder behind their back. (Continued: the
+        // task above is awaited by the scheduled resumes below, the one thing that can start a session without the
+        // operator doing anything, so a resume cannot read a credential a moment before it has been moved.)
         _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
 
 #if DEBUG
@@ -245,7 +254,7 @@ public partial class App : Application
         cockpitViewModel.StartPeriodicUpdateChecks();
 
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
-        _ = _StartScheduledResumesAsync(cockpitViewModel);
+        _ = _StartScheduledResumesAsync(cockpitViewModel, mcpTokenAdoption);
 
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
@@ -453,10 +462,18 @@ public partial class App : Application
     /// goes. A scheduler that failed to start is the one failure nobody notices by itself: nothing is on screen to
     /// look wrong, and the first sign would be a resume that quietly never arrives, hours later (AC-368).
     /// </summary>
-    private static async Task _StartScheduledResumesAsync(CockpitViewModel cockpit)
+    /// <param name="mcpTokenAdoption">
+    /// AC-403's one-time move of stored MCP sign-ins onto their servers' ids, awaited first. A scheduled resume is
+    /// the only thing that starts a session without the operator having done anything, so it is also the only way a
+    /// credential could be read in the moment before it has been moved — and the answer then would be "sign-in
+    /// needed" for a token that is present. It never throws (it logs instead), so this cannot delay a resume past
+    /// its own failure.
+    /// </param>
+    private static async Task _StartScheduledResumesAsync(CockpitViewModel cockpit, Task mcpTokenAdoption)
     {
         try
         {
+            await mcpTokenAdoption;
             await cockpit.StartScheduledResumesAsync();
         }
         catch (Exception exception)

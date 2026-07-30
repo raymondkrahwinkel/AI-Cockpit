@@ -127,6 +127,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     {
         return new(Name: connection.McpServerName, Url: $"{connection.Url}/mcp")
         {
+            // AC-403: this connection's own id, so the host files its OAuth token under something the operator
+            // cannot edit. The name is "Depot: {Name}" and that Name is a free-text field in the settings view —
+            // renaming a connection used to leave its sign-in stranded under the old name, and two connections to
+            // the same host that swapped names could each end up presenting the other's bearer. The id is minted
+            // once per row and stored with it, so neither can happen.
+            Id = connection.Id,
             // Scheme+host+port of the stored base URL, not its own path — Depot's protected-resource metadata
             // names the origin as its authorization_servers entry, not a subpath. Falls back to the base URL
             // itself on the (defensive-only; the row's own validation already requires an absolute http(s) URL

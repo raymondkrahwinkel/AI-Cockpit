@@ -20,13 +20,11 @@ namespace Cockpit.App.ViewModels;
 /// <see cref="SignOutAsync"/>).
 /// </para>
 /// <para>
-/// <see cref="_storedUnderName"/> is not read back by matching this row's own name against the store (that would be
-/// circular — the save just wrote that exact name) — it is resynced by <see cref="McpServersViewModel"/> after
-/// every dialog-wide save, matching each row against the reloaded list by <b>list position</b>, not identity: there
-/// is no id on an MCP server yet, only a name, and a save writes every row in order. That resync runs for every row
-/// in the dialog, not only the one that asked for the save, which is what makes a rename on one row safe for a
-/// sign-out on another (see <see cref="McpServersViewModel"/>'s save route). <b>AC-403</b> adds a stable id
-/// alongside the name; once that lands, matching stops depending on save order at all.
+/// A row is identified by <see cref="_id"/> (AC-403), not by the name in its own text box. That is what makes a
+/// rename safe: the name is edited, saved and re-read, while the id it is filed under never moves, so a sign-out on
+/// one row can no longer act on what a rename has since handed to another. It also makes
+/// <see cref="McpServersViewModel"/>'s post-save resync an identity match rather than the list-position match it had
+/// to be while a name was the only handle a row had.
 /// </para>
 /// </summary>
 public partial class EditableMcpServerViewModel : ViewModelBase
@@ -58,13 +56,19 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     private readonly CancellationToken _dialogClosing;
 
     /// <summary>
-    /// The name this server is stored under, or <see langword="null"/> for a row that has never been saved. A token
-    /// is keyed by server name, so this is the only name a sign-out may act on. Set at construction (trimmed, so an
-    /// entry a hand-edit or an older build left with a trailing space still matches), and resynced after every
-    /// dialog-wide save by <see cref="ResyncAfterDialogSaveAsync"/> — see the class remarks on how that match is
-    /// made, and its limits.
+    /// This row's stable id (AC-403) — what its token is filed under, and what <see cref="McpServersViewModel"/>
+    /// finds it by in the reloaded list after a save. Fixed for the row's whole life, including across renames and
+    /// including for a row that has not been saved yet: an id minted when the row was added is the id that row will
+    /// still have once it is.
     /// </summary>
-    private string? _storedUnderName;
+    internal string Id { get; }
+
+    /// <summary>
+    /// Whether the store actually holds this row. False for one the operator has just added and not yet saved —
+    /// nothing can be filed for a server the store has never seen, so there is no standing to report and nothing to
+    /// withdraw. Set by <see cref="ResyncAfterDialogSaveAsync"/> after every dialog-wide save.
+    /// </summary>
+    private bool _isPersisted;
 
     [ObservableProperty]
     private string _name;
@@ -247,7 +251,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     /// <param name="isPersisted">
     /// Whether <paramref name="server"/> came from the store. False for a row the operator has just added, whose name
-    /// is a placeholder they are about to replace — see <see cref="_storedUnderName"/>.
+    /// is a placeholder they are about to replace — see <see cref="_isPersisted"/>.
     /// </param>
     /// <param name="saveAllForSignIn">See <see cref="_saveAllForSignIn"/>.</param>
     /// <param name="isDialogBusy">See <see cref="_isDialogBusy"/>.</param>
@@ -264,7 +268,11 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _saveAllForSignIn = saveAllForSignIn;
         _isDialogBusy = isDialogBusy;
         _dialogClosing = dialogClosing;
-        _storedUnderName = isPersisted ? server.Name.Trim() : null;
+        // IdentityKey rather than Id: a row read from a config written before ids existed has none of its own, and
+        // the key it derives to is the one its already-stored token answers to. A row built by hand with neither
+        // (a test, a design-time view) lands on the same derivation, so there is never an empty id in play.
+        Id = server.IdentityKey;
+        _isPersisted = isPersisted;
         _name = server.Name;
         _transport = server.Transport;
         _command = server.Command ?? string.Empty;
@@ -285,16 +293,15 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// What a sign-in, sign-out or status read is about: the edits as they stand, under <paramref name="storedName"/>.
-    /// The URL and auth are the typed ones on purpose — an operator correcting a wrong authority and then signing in
-    /// should get what they just typed. The name is passed in rather than read here, so there is nowhere left for it
-    /// to fall back to a guess: every caller has to hold a stored name before it can ask.
+    /// Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.
+    /// This is both what a save writes and what a sign-in, sign-out or status read is about: the URL and auth are the
+    /// typed ones on purpose — an operator correcting a wrong authority and then signing in should get what they just
+    /// typed — while <see cref="Id"/> is not editable at all, which is what keeps the credential pointed at this row
+    /// no matter what the name box says (AC-403).
     /// </summary>
-    private McpServerConfig _AuthTarget(string storedName) => ToConfig() with { Name = storedName };
-
-    /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
     public McpServerConfig ToConfig() => new()
     {
+        Id = Id,
         Name = Name.Trim(),
         Transport = Transport,
         Scope = SelectedScope.Scope,
@@ -323,19 +330,19 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// <summary>
     /// Reads the stored auth state for this server (AC-355) — no network, no browser, so this is cheap enough to
     /// run for every row when the dialog opens. A no-op without a coordinator (design-time), for a server that is
-    /// not OAuth, or for a row with no stored name: nothing can be filed under a name the store does not have, so
+    /// not OAuth, or for a row the store has never held: nothing can be filed for a server that was never saved, so
     /// there is no standing to report and <see cref="ShowAuthStatus"/> stays false.
     /// </summary>
     public async Task RefreshAuthStateAsync(CancellationToken cancellationToken = default)
     {
-        if (_oauthCoordinator is null || !IsOAuthAuth || _storedUnderName is not { } storedName)
+        if (_oauthCoordinator is null || !IsOAuthAuth || !_isPersisted)
         {
             return;
         }
 
         try
         {
-            AuthState = await _oauthCoordinator.GetStateAsync(_AuthTarget(storedName), cancellationToken).ConfigureAwait(true);
+            AuthState = await _oauthCoordinator.GetStateAsync(ToConfig(), cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -352,13 +359,13 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// Resynced after every dialog-wide save (AC-499 review fix, finding 1), for every row in the dialog — not just
     /// the one that asked for the save. <paramref name="persisted"/> is what <see cref="McpServersViewModel"/>
     /// found at this row's own position in the reloaded list, or null if the list came back shorter than the
-    /// dialog holds. Re-reads the auth status under whatever name that turns out to be, since a rename can leave
-    /// this row's old name pointing at somebody else's token now (see the class remarks) — a plain copy of the old
-    /// <see cref="AuthState"/> would carry that mistake forward instead of fixing it.
+    /// dialog holds. Re-reads the auth status rather than keeping the old <see cref="AuthState"/>, because the save
+    /// is what turns an unsaved row into one that can have a standing at all, and because the sign-in another row
+    /// just made can have landed since this row last looked.
     /// </summary>
     internal async Task ResyncAfterDialogSaveAsync(McpServerConfig? persisted, CancellationToken cancellationToken = default)
     {
-        _storedUnderName = persisted?.Name.Trim();
+        _isPersisted = persisted is not null;
         if (persisted is null)
         {
             AuthState = null;
@@ -382,9 +389,9 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     /// so the only one allowed to open a browser. A sign-in used to require a manual save first, because a token is
     /// filed under the name the server is stored as; that requirement stayed, but the manual step did not need to.
     /// This now saves the whole dialog through <see cref="_saveAllForSignIn"/> — the same route the Save button
-    /// uses, and which resyncs <see cref="_storedUnderName"/> for every row before it returns (see the class
-    /// remarks) — then authorizes under whatever that resync left here. Authorization still targets the URL/auth
-    /// as currently typed.
+    /// uses, and which resyncs every row before it returns (see the class remarks) — then authorizes. Since AC-403
+    /// the credential lands under <see cref="Id"/> rather than under a name, so what the save has to establish is
+    /// only that this row is in the store at all. Authorization still targets the URL/auth as currently typed.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()
@@ -409,17 +416,16 @@ public partial class EditableMcpServerViewModel : ViewModelBase
                 return;
             }
 
-            // The save just resynced _storedUnderName for every row in the dialog, this one included, against its
-            // own position in what the store reported back — see the class remarks for how, and its limits. Null
-            // here means this row's position was not found in that list, which should not happen for an uncontested
-            // save but is reported rather than guessed past.
-            if (_storedUnderName is not { } storedName)
+            // The save just resynced every row in the dialog, this one included, against the id it found for it in
+            // what the store reported back. Not persisted here means this row's id was not in that list, which
+            // should not happen for an uncontested save but is reported rather than guessed past.
+            if (!_isPersisted)
             {
                 AuthMessage = "Saved, but this server isn't in the store — try again.";
                 return;
             }
 
-            var access = await _oauthCoordinator.AcquireAsync(_AuthTarget(storedName), interactive: true, _dialogClosing).ConfigureAwait(true);
+            var access = await _oauthCoordinator.AcquireAsync(ToConfig(), interactive: true, _dialogClosing).ConfigureAwait(true);
             AuthState = access.State;
             if (access.State != McpAuthState.Authorized)
             {
@@ -463,25 +469,22 @@ public partial class EditableMcpServerViewModel : ViewModelBase
 
     private bool CanSignOut =>
         _oauthCoordinator is not null && IsOAuthAuth && !IsAuthBusy && !(_isDialogBusy?.Invoke() ?? false)
-        && _storedUnderName is not null && AuthState == McpAuthState.Authorized;
+        && _isPersisted && AuthState == McpAuthState.Authorized;
 
     /// <summary>
     /// Withdraws whatever access is held for this server (AC-355) — only offered while there is something to
-    /// withdraw. Unlike sign-in, this needs no save first (AC-499): it acts on <see cref="_storedUnderName"/>, the
-    /// name this row was last actually saved under, regardless of what is typed right now. An in-progress, unsaved
-    /// rename does not change what the store has on file, and signing out undoes that — not the row's pending
-    /// edits — so gating it on the typed name matching would refuse a withdrawal the operator is entitled to make.
-    /// A row that has never been saved has no <see cref="_storedUnderName"/> and so nothing to withdraw. Nor does a
-    /// row another row's dialog-wide save has just swapped identity with (AC-499 review fix, finding 1): the resync
-    /// in <see cref="ResyncAfterDialogSaveAsync"/> updates <see cref="_storedUnderName"/> for this row too, so a
-    /// sign-out reached through this gate never acts on a name that save handed to somebody else.
+    /// withdraw. Unlike sign-in, this needs no save first (AC-499): it acts on <see cref="Id"/>, which an unsaved
+    /// rename does not touch. Signing out undoes what the store has on file, not the row's pending edits, so gating
+    /// it on the typed name matching would refuse a withdrawal the operator is entitled to make. A row the store has
+    /// never held has nothing to withdraw. And since AC-403 there is no way left for one row's withdrawal to reach
+    /// another row's token: an id is not something a save can hand to somebody else.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSignOut))]
     private async Task SignOutAsync()
     {
         // The command is gated on CanSignOut, but AsyncRelayCommand.ExecuteAsync does not consult CanExecute — so
-        // the stored name is required here too rather than assumed.
-        if (_oauthCoordinator is null || _storedUnderName is not { } storedName)
+        // being in the store is required here too rather than assumed.
+        if (_oauthCoordinator is null || !_isPersisted)
         {
             return;
         }
@@ -490,7 +493,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         AuthMessage = string.Empty;
         try
         {
-            var config = _AuthTarget(storedName);
+            var config = ToConfig();
             await _oauthCoordinator.SignOutAsync(config).ConfigureAwait(true);
             AuthState = await _oauthCoordinator.GetStateAsync(config).ConfigureAwait(true);
         }

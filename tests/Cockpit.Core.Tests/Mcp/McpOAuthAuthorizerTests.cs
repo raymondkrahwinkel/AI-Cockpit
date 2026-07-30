@@ -14,6 +14,7 @@ public class McpOAuthAuthorizerTests
 {
     private static readonly McpServerConfig Server = new()
     {
+        Id = "depot",
         Name = "depot",
         Transport = McpTransport.Http,
         Url = "https://depot.example/mcp",

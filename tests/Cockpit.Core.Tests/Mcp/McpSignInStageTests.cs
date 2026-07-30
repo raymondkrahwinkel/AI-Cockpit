@@ -18,6 +18,7 @@ public class McpSignInStageTests
 
     private static McpServerConfig _OAuthServer() => new()
     {
+        Id = "depot",
         Name = "depot",
         Transport = McpTransport.Http,
         Url = UnreachableUrl,
@@ -92,6 +93,7 @@ public class McpSignInStageTests
         var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
         var withoutAnAddress = new McpServerConfig
         {
+            Id = "depot",
             Name = "depot",
             Transport = McpTransport.Http,
             Url = string.Empty,
@@ -110,7 +112,7 @@ public class McpSignInStageTests
     public async Task Acquire_RenewingWithoutTheOperator_StaysAtInformation()
     {
         var store = new FakeMcpOAuthTokenStore();
-        await store.SaveAsync("depot", _StaleToken());
+        await store.SaveAsync("depot", "depot", _StaleToken());
         var logger = new CapturingLogger<McpOAuthCoordinator>();
         var authorizer = new McpOAuthAuthorizer(NullLogger<McpOAuthAuthorizer>.Instance, store);
 
