@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Autopilot can now be started on an epic (an issue with subtasks), not just on a single issue. It reads the
+  "depends on" order between the subtasks, picks the next one that's actually ready to work and not already merged,
+  and runs the existing single-issue pipeline on just that one — stopping at a merge-ready PR exactly like before.
+  You still merge every step yourself; the next subtask only opens once the previous one is actually on `main`. A
+  subtask that isn't ready yet pauses the chain with a comment on the epic explaining which one and why, and
+  progress is posted to the epic as each subtask settles, so you can follow the whole chain without opening every
+  subtask.
 - added: the Depot plugin now has a settings screen — connect one or more Depot instances by name and URL, with no
   auth fields to fill in: Depot has a single sign-in path, so each connection is handed to the cockpit's own MCP
   sign-in flow and the plugin never sees or stores a token. Renaming or removing a connection cleans up its old MCP
