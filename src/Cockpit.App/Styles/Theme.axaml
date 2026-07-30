@@ -566,6 +566,14 @@
     <Style Selector="ComboBox:focus-visible /template/ Border#Background">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
+    <!-- Fluent's ComboBox template carries a second overlay behind Border#Background, Border#HighlightBackground,
+         that its own :focus-visible trigger reveals (Template priority, same reclaim mechanism as the hover rule
+         above). Its Background there is ComboBoxBackgroundUnfocused — Avalonia's system accent (#0078d7) at 40%,
+         never one of this theme's tokens (AC-423). The keyboard ring above already carries the focus signal for
+         this control, so this wash is retinted rather than left to paint over it a second time in the wrong hue. -->
+    <Style Selector="ComboBox:focus-visible /template/ Border#HighlightBackground">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+    </Style>
     <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
@@ -597,6 +605,30 @@
     </Style>
     <Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+    </Style>
+
+    <!-- DataGridRow selection: its own control theme fills Rectangle#BackgroundRectangle with the *system*
+         accent (SystemAccentColor, #0078d7) at Template priority for every selected state, scaled down by a
+         separate Opacity setter (Fluent's ListAccentLow/MediumOpacity) — never one of this theme's tokens
+         (AC-423). CockpitAccentSelectionBrush already carries its own tint baked into the colour rather than a
+         separate opacity multiplier (see its own definition above), so Opacity is reclaimed back to 1 here or
+         the two would compound into a wash too faint to read as "selected". One tint for all four states,
+         matching how ComboBoxItem above does not split hover from plain selection either. -->
+    <Style Selector="DataGridRow:selected /template/ Rectangle#BackgroundRectangle">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+        <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="DataGridRow:selected:pointerover /template/ Rectangle#BackgroundRectangle">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+        <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="DataGridRow:selected:focus /template/ Rectangle#BackgroundRectangle">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+        <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="DataGridRow:selected:pointerover:focus /template/ Rectangle#BackgroundRectangle">
+        <Setter Property="Fill" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+        <Setter Property="Opacity" Value="1"/>
     </Style>
 
     <!-- Compact selectors: the per-session mode/model/effort pickers are context controls, not the
