@@ -141,3 +141,23 @@ public interface IAgentResourceClaims
     /// </summary>
     void Forget(string paneId);
 }
+
+/// <summary>
+/// Host-only read of the entire claim store, unpartitioned — the one view <see cref="IAgentResourceClaims"/>
+/// deliberately never offers (AC-439). Every method on that interface takes a <c>workspacePaneIds</c> desk and
+/// answers only for it, because that is the boundary AC-393 exists to hold: an agent must never learn that a claim
+/// exists on another desk. This interface exists for the one consumer that is allowed to see past that boundary —
+/// the cross-workspace collision monitor that tells the <em>operator</em>, not any agent, when two desks have
+/// reached for the same physical resource.
+/// <para>
+/// Kept as a separate interface rather than a method added to <see cref="IAgentResourceClaims"/> so the boundary is
+/// enforced by which interface a class is given, not by a comment telling every future caller of the wide interface
+/// not to use the one unpartitioned method on it. <c>AgentsMcpTools</c> — the only place an agent's request reaches
+/// the claim store — is constructed with <see cref="IAgentResourceClaims"/> alone and never with this one.
+/// </para>
+/// </summary>
+public interface IAgentResourceClaimsAudit
+{
+    /// <summary>Every standing claim, from every desk, oldest first. Never to be reachable from an MCP tool result.</summary>
+    IReadOnlyList<AgentResourceClaim> ListAll();
+}

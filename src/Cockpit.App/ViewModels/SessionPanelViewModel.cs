@@ -858,6 +858,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string? _worktreeBranch;
 
     /// <summary>
+    /// AC-439: whether a resource this session has claimed (<c>mcp__cockpit-agents__claim</c>) is also claimed by a
+    /// session on a <em>different</em> workspace — a collision AC-393's per-desk partition hides from both agents on
+    /// purpose. Recomputed on a UI-thread timer in <see cref="Cockpit.App.Views.CockpitView"/> from
+    /// <c>IClaimCollisionMonitor</c>, never from anything an agent's tool result carries: this is operator-only, the
+    /// chip <see cref="Controls.SessionHeaderBar"/> shows and nothing else. Not a count or a resource name — every
+    /// collision reads the same in phase 1 (see <c>IClaimCollisionMonitor</c> for why).
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasClaimCollision;
+
+    /// <summary>
     /// The project this session works on (AC-163), or null for one belonging to none. On the base for the same
     /// reason as the branch above: every kind of session can start under a project. Carried rather than resolved
     /// on demand because a session outlives the dialog that started it — and a project the operator has since
