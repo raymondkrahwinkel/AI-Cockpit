@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -34,6 +35,8 @@ public class McpOAuthProxyTests
         Auth = McpServerAuth.OAuth,
     };
 
+    private const string RenewedToken = "the-token-after-the-refusal";
+
     private static IMcpOAuthCoordinator _CoordinatorAnswering(McpOAuthAccess access)
     {
         var coordinator = Substitute.For<IMcpOAuthCoordinator>();
@@ -41,10 +44,31 @@ public class McpOAuthProxyTests
         return coordinator;
     }
 
-    private static (McpOAuthProxyHost Proxy, McpAuthKey Key) _Proxy(IMcpOAuthCoordinator coordinator)
+    /// <summary>
+    /// Hands out <see cref="FreshToken"/> until the server refuses it, and <see cref="RenewedToken"/> after — the
+    /// real coordinator's behaviour on this path, narrowed to what the forwarder can observe. Counts the renewals,
+    /// because "exactly one" is the claim.
+    /// </summary>
+    private static IMcpOAuthCoordinator _CoordinatorThatRenewsOnRejection(McpOAuthAccess? renewalAnswer = null)
+    {
+        var coordinator = Substitute.For<IMcpOAuthCoordinator>();
+        var handedOut = FreshToken;
+        coordinator.AcquireAsync(Arg.Any<McpServerConfig>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ => McpOAuthAccess.Authorized(Volatile.Read(ref handedOut)));
+        coordinator.RenewRejectedAsync(Arg.Any<McpServerConfig>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Volatile.Write(ref handedOut, RenewedToken);
+                return renewalAnswer ?? McpOAuthAccess.Authorized(RenewedToken);
+            });
+
+        return coordinator;
+    }
+
+    private static (McpOAuthProxyHost Proxy, McpAuthKey Key) _Proxy(IMcpOAuthCoordinator coordinator, ILoggerFactory? loggerFactory = null)
     {
         var key = new McpAuthKey();
-        return (new McpOAuthProxyHost(coordinator, key, new SessionMcpKeyring(), NullLoggerFactory.Instance), key);
+        return (new McpOAuthProxyHost(coordinator, key, new SessionMcpKeyring(), loggerFactory ?? NullLoggerFactory.Instance), key);
     }
 
     // Mounting has one answer a test can build on and one it cannot, so the check belongs here rather than repeated
@@ -195,12 +219,117 @@ public class McpOAuthProxyTests
     }
 
     [Fact]
-    public async Task WhenTheServerItselfRefusesTheToken_ThatRefusalIsNotPassedOnAsA401()
+    public async Task WhenTheServerRefusesTheToken_TheCredentialIsRenewedAndTheCallGoesThroughOnTheSecondTry()
+    {
+        var seen = new List<string?>();
+        await using var upstream = await InProcessUpstreamServer.StartAsync(async (context, server) =>
+        {
+            seen.Add(server.LastAuthorization);
+            if (server.LastAuthorization != $"Bearer {RenewedToken}")
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+
+            await context.Response.WriteAsync("""{"jsonrpc":"2.0","id":3,"result":{"tools":[]}}""");
+        });
+
+        var coordinator = _CoordinatorThatRenewsOnRejection();
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", key));
+
+            // The cockpit judges a token on its own clock; only the server knows for certain. A grant revoked at the
+            // far end, or a rotation race lost to another session, leaves something that looks healthy here and is
+            // dead there — and answering that with a message instead of a renewal would leave every later call
+            // presenting the same dead token, which is the server gone for the rest of the session.
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("""{"jsonrpc":"2.0","id":3,"result":{"tools":[]}}""", await response.Content.ReadAsStringAsync());
+            Assert.Equal([$"Bearer {FreshToken}", $"Bearer {RenewedToken}"], seen);
+            Assert.Equal("""{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", upstream.LastBody);
+            await coordinator.Received(1).RenewRejectedAsync(Arg.Any<McpServerConfig>(), FreshToken, Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Fact]
+    public async Task WhenTheServerRefusesEvenAFreshToken_ItStopsAtOneRetryAndAnswersTheCall()
+    {
+        var attempts = 0;
+        await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) =>
+        {
+            Interlocked.Increment(ref attempts);
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        });
+
+        var coordinator = _CoordinatorThatRenewsOnRejection();
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", key));
+
+            // Exactly one retry, never a loop: a server that refuses everything must cost two round trips per call
+            // rather than a storm, and a second renewal would only find the same answer as the first.
+            Assert.Equal(2, attempts);
+            await coordinator.Received(1).RenewRejectedAsync(Arg.Any<McpServerConfig>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+            // And the refusal still never reaches the agent as a 401, which is what would take the server and every
+            // tool on it out of the session for good.
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+            Assert.Equal(3, (int)body["id"]!);
+            Assert.Equal(-32001, (int)body["error"]!["code"]!);
+        }
+    }
+
+    [Fact]
+    public async Task WhenTheRenewalAfterARefusalFails_TheCallIsAnsweredWithThatReason_NotTheRefusal()
     {
         await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) =>
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
+        });
+
+        var coordinator = _CoordinatorThatRenewsOnRejection(
+            McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.ServerUnreachable });
+        var (proxy, key) = _Proxy(coordinator);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":9,"method":"tools/list"}""", key));
+            var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+
+            // The renewal is the thing that failed, so its reason is the one worth relaying — and it is not the same
+            // advice as a refusal. The retry is not attempted with a credential that was never obtained.
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("could not be reached", (string)body["error"]!["message"]!, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task AStreamThatStaysSilentForAWhile_IsNotCutOff()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync(async (context, _) =>
+        {
+            context.Response.ContentType = "text/event-stream";
+            await context.Response.Body.FlushAsync();
+
+            // An MCP server-to-client stream says nothing at all until the server has something to send, which can
+            // be minutes. This is the shape the whole ticket rests on, so it is pinned rather than assumed: nothing
+            // in this chain — the proxy's own client above all, whose default hundred-second timeout would have
+            // ended it — may treat silence as a dead connection.
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            await context.Response.WriteAsync("data: after the silence\n\n");
         });
 
         var (proxy, key) = _Proxy(_CoordinatorAnswering(McpOAuthAccess.Authorized(FreshToken)));
@@ -209,13 +338,13 @@ public class McpOAuthProxyTests
             var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
 
             using var client = new HttpClient();
-            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", key));
+            using var request = _Post(proxyUrl, """{"jsonrpc":"2.0","id":1,"method":"tools/call"}""", key);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            using var reader = new StreamReader(stream);
 
-            // A token the cockpit believes in and the server rejects is the same class of failure as one that could
-            // not be renewed, and relaying the 401 would end the session's use of this server just as thoroughly.
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-            Assert.Equal(3, (int)body["id"]!);
+            Assert.Equal("data: after the silence", await reader.ReadLineAsync(deadline.Token));
         }
     }
 
@@ -235,6 +364,56 @@ public class McpOAuthProxyTests
             // A notification carries no id and expects no reply, so there is nothing to answer. Inventing a response
             // for one would be a worse invention than the envelope above, which at least answers a real request.
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task WhenTheServerBreaksOffMidStream_ThatIsHandledAndSaidRatherThanEscaping()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync(async (context, _) =>
+        {
+            context.Response.ContentType = "text/event-stream";
+            await context.Response.WriteAsync("data: first\n\n");
+            await context.Response.Body.FlushAsync();
+
+            // The far side dies while its answer is already going out — the one departure on this path that cannot
+            // be answered, because the response headers are long gone.
+            context.Abort();
+        });
+
+        var logs = new CapturingLoggerFactory();
+        var (proxy, key) = _Proxy(_CoordinatorAnswering(McpOAuthAccess.Authorized(FreshToken)), logs);
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var request = _Post(proxyUrl, """{"jsonrpc":"2.0","id":1,"method":"tools/call"}""", key);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            try
+            {
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+                using var reader = new StreamReader(stream);
+                while (await reader.ReadLineAsync(deadline.Token) is not null)
+                {
+                }
+            }
+            catch (HttpRequestException)
+            {
+                // Expected on this side: the stream it was reading was cut. What is under test is the other side.
+            }
+            catch (IOException)
+            {
+            }
+
+            // Every other departure in the forwarder is caught and logged. This one used to be the exception, and
+            // its failure shape — a connection that simply drops — is exactly what the CLI reads as "server gone",
+            // so it is the one that most needs a line saying what happened.
+            Assert.True(await logs.WaitForAsync(
+                entry => entry.Level == LogLevel.Warning && entry.Message.Contains("broke off", StringComparison.Ordinal),
+                TimeSpan.FromSeconds(10)));
         }
     }
 

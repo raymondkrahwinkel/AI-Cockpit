@@ -12,8 +12,8 @@ namespace Cockpit.Core.Mcp;
 /// detail the operator must not be shown, while a stage is enough to stop the UI naming a window that never opened.
 /// </param>
 /// <param name="Reason">
-/// Why no credential is being handed over (AC-524), so the caller can say what the operator should do about it
-/// rather than guess. <see cref="McpOAuthAttentionReason.None"/> whenever there is a credential.
+/// What is wrong (AC-524), so the caller can say what the operator should do about it rather than guess.
+/// <see cref="McpOAuthAttentionReason.None"/> when nothing is.
 /// </param>
 public readonly record struct McpOAuthAccess(
     McpAuthState State,

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -34,9 +35,16 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
     private readonly SessionMcpKeyring _keyring;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<McpOAuthProxyHost> _logger;
-    private readonly Dictionary<string, string> _mounted = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _mounted = new(StringComparer.Ordinal);
     private readonly List<WebApplication> _apps = [];
-    private readonly SemaphoreSlim _mountGate = new(1, 1);
+
+    /// <summary>
+    /// One gate per server rather than one for all of them. A launch gives every mount it needs a single shared
+    /// budget — five seconds for the whole launch on the TTY route — so a slow first mount holding a global gate
+    /// would spend the second server's time as well as its own, and the second would be dropped for a delay that
+    /// had nothing to do with it.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _mountGates = new(StringComparer.Ordinal);
 
     /// <summary>
     /// One client for every proxied server, with no timeout of its own. The default hundred seconds would cut an MCP
@@ -78,7 +86,15 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
         // longer belongs.
         var key = $"{server.IdentityKey}\n{upstreamUrl.AbsoluteUri}";
 
-        await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Checked before taking the gate as well as after: once a listener is up, every later session finds it here
+        // without queueing behind anything at all.
+        if (_mounted.TryGetValue(key, out var alreadyListening))
+        {
+            return alreadyListening;
+        }
+
+        var gate = _mountGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_mounted.TryGetValue(key, out var existing))
@@ -116,7 +132,7 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
         }
         finally
         {
-            _mountGate.Release();
+            gate.Release();
         }
     }
 
@@ -146,8 +162,20 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
         RequestDelegate forward = context => forwarder.ForwardAsync(context, context.RequestAborted);
         app.Run(forward);
 
+        // Registered for teardown only once it is actually running, and torn down here if it is not. A start that
+        // was cancelled or refused would otherwise leave a half-bound listener behind with nothing in _mounted
+        // pointing at it: unreachable, unstoppable, and holding a port the next attempt cannot reuse.
+        try
+        {
+            await app.StartAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await app.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
         _apps.Add(app);
-        await app.StartAsync(cancellationToken).ConfigureAwait(false);
 
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
             ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
@@ -159,11 +187,19 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
 
     public async ValueTask DisposeAsync()
     {
-        _mountGate.Dispose();
-        _upstream.Dispose();
+        // The listeners go first, and only then the things a request in flight is still holding: disposing the
+        // client or a gate while a relay is mid-stream would end that request on an ObjectDisposedException, and a
+        // mount that is running would throw on a gate that no longer exists.
         foreach (var app in _apps)
         {
             await app.DisposeAsync().ConfigureAwait(false);
         }
+
+        foreach (var gate in _mountGates.Values)
+        {
+            gate.Dispose();
+        }
+
+        _upstream.Dispose();
     }
 }

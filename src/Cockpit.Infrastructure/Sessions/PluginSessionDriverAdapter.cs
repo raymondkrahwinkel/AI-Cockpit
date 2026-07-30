@@ -308,17 +308,25 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             var servers = new List<PluginMcpServer>();
             foreach (var server in eligible)
             {
-                var access = await _AcquireCredentialAsync(server, cancellationToken).ConfigureAwait(false);
+                // The endpoint first, because it changes what has to be asked for. Behind it the session never holds
+                // a token at all, so it only has to be established that a sign-in exists; without it the token goes
+                // into the config and has to outlast the whole sitting.
+                var proxyUrl = await _ProxyUrlAsync(server, cancellationToken).ConfigureAwait(false);
+                var access = await _AcquireCredentialAsync(server, proxyUrl is null, cancellationToken).ConfigureAwait(false);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
-                    // Left out rather than handed over bare: a server the agent cannot authenticate to is not a
-                    // server it can use, and passing the address along only moves the refusal one hop further out —
-                    // into the agent's own client, where nothing can be said about it. The line above is what the
-                    // operator gets instead.
+                    // Left out rather than handed over bare, and this is the one place where that choice is made.
+                    // Handing it over anyway would not save it: the CLI runs its initialize the moment the session
+                    // starts, that call would meet the same refusal, and the server would be reported as failing
+                    // instead of as absent — a worse answer, because it also asks the operator to distinguish a
+                    // broken server from an unauthorized one. What they get instead is the coordinator's single line
+                    // naming the cause and the action, and the Information line below naming this session. The case
+                    // this ticket exists for — a sign-in that dies while the session runs — is not this one, and is
+                    // handled at the endpoint above, where a call can still be answered.
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken, await _ProxyUrlAsync(server, cancellationToken).ConfigureAwait(false)) is { } mapped)
+                if (_ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -374,16 +382,22 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// so a token that cannot be renewed silently leaves the server unauthorized — and says so, because the whole
     /// point is that this is known before the first tool call rather than surfacing as a 401 from the depths.
     /// </summary>
-    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, CancellationToken cancellationToken)
+    /// <param name="theSessionWillHoldIt">
+    /// Whether the credential goes into the config and stays there. It does when nothing stands in front of the
+    /// server, and then it has to outlast the session — a token with minutes left is a session that loses this
+    /// server minutes in, which is the defect this ticket was opened for. Behind the loopback endpoint the answer is
+    /// only ever used to establish that a sign-in exists, because the endpoint asks again on every call.
+    /// </param>
+    private async Task<McpOAuthAccess> _AcquireCredentialAsync(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken cancellationToken)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
             return McpOAuthAccess.NotRequired;
         }
 
-        // AcquireForSessionAsync, not AcquireAsync (AC-524): a session start is not one request. Whatever comes back
-        // here is held for the session's whole life, so it is asked for with the margin that reflects that.
-        var access = await oauthCoordinator.AcquireForSessionAsync(server, cancellationToken).ConfigureAwait(false);
+        var access = theSessionWillHoldIt
+            ? await oauthCoordinator.AcquireForSessionAsync(server, cancellationToken).ConfigureAwait(false)
+            : await oauthCoordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
         if (access.State == McpAuthState.AuthorizationRequired)
         {
             // Information, not a warning: the coordinator raises the operator's line once, on the transition into

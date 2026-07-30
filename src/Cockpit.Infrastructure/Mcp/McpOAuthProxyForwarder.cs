@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
@@ -44,12 +45,26 @@ internal sealed class McpOAuthProxyForwarder(
     /// </summary>
     private const int CredentialUnavailableCode = -32001;
 
+    /// <summary>How much of a request body is kept in memory before the buffer spills to a temp file. An MCP call is
+    /// a JSON document and almost always fits; the threshold is generous so the ordinary one never touches disk.</summary>
+    private const int MemoryBufferThreshold = 128 * 1024;
+
+    /// <summary>
+    /// How large a call may be and still be worth sending a second time after its credential was renewed. Beyond it
+    /// the body only exists as a temp file, and re-reading megabytes from disk to save one call is a poor trade for
+    /// a caller that has been told to send it again. A limit on the retry only — the first forward is never refused
+    /// for size.
+    /// </summary>
+    private const long RepeatableBodyLimit = 8L * 1024 * 1024;
+
     public async Task ForwardAsync(HttpContext context, CancellationToken cancellationToken)
     {
-        // Buffered so the body can be read twice: once to forward, and — if the forward could not happen or came
-        // back refused — once more to find the JSON-RPC id the reply has to carry. An MCP request is a small
-        // JSON document, so this costs nothing worth avoiding.
-        context.Request.EnableBuffering();
+        // Buffered so the body can be read more than once: to forward it, to send it again after a refused
+        // credential has been renewed, and to find the JSON-RPC id a refusal has to be answered under. Kept in
+        // memory up to a threshold and spilled to a temp file beyond it, which the request's own teardown removes.
+        // Deliberately without a hard buffer limit: one would abort the ordinary forward as well, and refusing a
+        // large call outright is a worse answer than relaying it and only giving up its retry.
+        context.Request.EnableBuffering(bufferThreshold: MemoryBufferThreshold);
 
         var access = await coordinator.AcquireAsync(server, interactive: false, cancellationToken).ConfigureAwait(false);
         if (access.State != McpAuthState.Authorized || string.IsNullOrWhiteSpace(access.AccessToken))
@@ -58,44 +73,144 @@ internal sealed class McpOAuthProxyForwarder(
             return;
         }
 
-        HttpResponseMessage response;
+        var response = await _SendAsync(context, access.AccessToken, cancellationToken).ConfigureAwait(false);
+        if (response is null)
+        {
+            return;
+        }
+
         try
         {
-            using var request = _BuildUpstreamRequest(context, access.AccessToken);
-            response = await upstream.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if (_IsRefusal(response))
+            {
+                var retried = await _RetryWithARenewedCredentialAsync(context, access.AccessToken, response, cancellationToken).ConfigureAwait(false);
+                if (retried is null)
+                {
+                    return;
+                }
+
+                response = retried;
+            }
+
+            await _RelayResponseAsync(context, response, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The agent hung up mid-stream. Ordinary — a session that stops reading is how a cancelled tool call
+            // ends — and there is nobody left to tell.
+        }
+        catch (Exception exception)
+        {
+            // The far side broke while its answer was already going out. Nothing can be said in the response any
+            // more, so this exists to make sure it is not said nowhere: every other departure in this class is
+            // logged, and a stream that ends in a dropped connection is what the CLI reads as "server gone".
+            logger.LogWarning(exception, "The response from MCP server {Server} broke off while it was being relayed.", server.Name);
+            _AbortIfStarted(context);
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The one retry a refused credential gets. The cockpit judges a token on its own clock, and the server is the
+    /// only one who knows for certain — a grant revoked at the far end, or a rotation race lost to another session,
+    /// leaves something that looks healthy here and is dead there. Without this, every later call would present the
+    /// same dead token and the server would be gone for the rest of the session over a single renewal.
+    /// <para>
+    /// Exactly once, never a loop: a server that refuses everything must cost two round trips per call, not a storm.
+    /// The renewal itself is the coordinator's, and coalesces — a hundred calls refused at the same moment cause one.
+    /// </para>
+    /// </summary>
+    /// <returns>The response to relay, or <see langword="null"/> when this method has already answered the request.</returns>
+    private async Task<HttpResponseMessage?> _RetryWithARenewedCredentialAsync(
+        HttpContext context,
+        string rejectedAccessToken,
+        HttpResponseMessage refusal,
+        CancellationToken cancellationToken)
+    {
+        logger.LogWarning(
+            "MCP server {Server} refused the cockpit's access token with {StatusCode}; renewing it and sending the call once more.",
+            server.Name,
+            (int)refusal.StatusCode);
+
+        var renewed = await coordinator.RenewRejectedAsync(server, rejectedAccessToken, cancellationToken).ConfigureAwait(false);
+        if (renewed.State != McpAuthState.Authorized || string.IsNullOrWhiteSpace(renewed.AccessToken))
+        {
+            await _RespondUnavailableAsync(context, renewed.Reason, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        if (!_CanSendAgain(context))
+        {
+            // The credential is renewed either way, so the next call works; only this one is lost. Saying that is
+            // the point — an agent told "send it again" acts on it, where a bare failure only gets repeated blindly.
+            logger.LogWarning(
+                "The call to MCP server {Server} was too large to send again after its credential was renewed; the credential is now current and the next call will carry it.",
+                server.Name);
+
+            await _RespondUnavailableAsync(context, McpOAuthAttentionReason.CallCouldNotBeRepeated, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        refusal.Dispose();
+        context.Request.Body.Position = 0;
+
+        var second = await _SendAsync(context, renewed.AccessToken, cancellationToken).ConfigureAwait(false);
+        if (second is null)
+        {
+            return null;
+        }
+
+        // Still refused with a credential minted seconds ago. Renewing again would only find the same answer, so
+        // this is where it stops and the operator is told instead.
+        if (_IsRefusal(second))
+        {
+            logger.LogWarning(
+                "MCP server {Server} refused a freshly renewed access token as well ({StatusCode}); the session is kept and the call is answered with the reason instead.",
+                server.Name,
+                (int)second.StatusCode);
+
+            second.Dispose();
+            await _RespondUnavailableAsync(context, McpOAuthAttentionReason.SignInExpired, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        return second;
+    }
+
+    /// <summary>Sends one attempt upstream, or answers the request itself and returns <see langword="null"/>.</summary>
+    private async Task<HttpResponseMessage?> _SendAsync(HttpContext context, string accessToken, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = _BuildUpstreamRequest(context, accessToken);
+            return await upstream.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The agent hung up. Nothing to say to anybody.
-            return;
+            return null;
         }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Forwarding a request to MCP server {Server} failed.", server.Name);
             await _RespondUnavailableAsync(context, McpOAuthAttentionReason.ServerUnreachable, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        using (response)
-        {
-            // A 401 is what the CLI reads as "this server is gone", and it drops the server and every tool on it for
-            // the rest of the session — precisely the failure this proxy exists to prevent. So a rejected credential
-            // is treated the same as one that could not be renewed: the connection is kept and the reason is said in
-            // a form the agent can relay, which leaves the operator able to sign in again and the next call working.
-            if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
-            {
-                logger.LogWarning(
-                    "MCP server {Server} refused the cockpit's access token with {StatusCode}; the session is kept and the call is answered with the reason instead.",
-                    server.Name,
-                    (int)response.StatusCode);
-
-                await _RespondUnavailableAsync(context, McpOAuthAttentionReason.SignInExpired, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            await _RelayResponseAsync(context, response, cancellationToken).ConfigureAwait(false);
+            return null;
         }
     }
+
+    // A 401 is what the CLI reads as "this server is gone" — it drops the server and every tool on it for the rest
+    // of the session. A 403 travels with it because a server that scopes its tokens answers a stale one that way.
+    private static bool _IsRefusal(HttpResponseMessage response) =>
+        response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
+
+    // Whether the request body can go out a second time. It can whenever the buffering above kept it, which is
+    // every call up to the limit; past that the buffer is a temp file that would have to be re-read from disk for
+    // a retry whose only purpose is to save one call, and the honest answer is to say the call was lost instead.
+    private static bool _CanSendAgain(HttpContext context) =>
+        context.Request.Body.CanSeek && (context.Request.ContentLength ?? 0) <= RepeatableBodyLimit;
 
     private HttpRequestMessage _BuildUpstreamRequest(HttpContext context, string accessToken)
     {
@@ -200,7 +315,7 @@ internal sealed class McpOAuthProxyForwarder(
         {
             // Already streaming: there is no status left to set and no envelope that could be understood halfway
             // through a body. Cutting the connection is the only honest end.
-            context.Abort();
+            _AbortIfStarted(context);
             return;
         }
 
@@ -240,6 +355,17 @@ internal sealed class McpOAuthProxyForwarder(
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(envelope.ToJsonString(), cancellationToken).ConfigureAwait(false);
+    }
+
+    // Ends a response that is already on the wire. There is no status code left to set and no envelope a client
+    // could make sense of halfway through a body, so cutting it is the only ending left; a response that has not
+    // started yet is still answerable and must not be cut.
+    private static void _AbortIfStarted(HttpContext context)
+    {
+        if (context.Response.HasStarted)
+        {
+            context.Abort();
+        }
     }
 
     // The id of the JSON-RPC request being answered, or null when there is none to answer (a notification, a batch,

@@ -1,7 +1,9 @@
 using System.Net.Sockets;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Notifications;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 
@@ -11,10 +13,16 @@ namespace Cockpit.Infrastructure.Mcp;
 /// Decides what credential a session may present to an OAuth-protected MCP server, and renews one that has gone
 /// stale (AC-353).
 /// </summary>
+/// <param name="toastNotifier">
+/// Where a server going unusable is told to the operator (AC-524). Optional because the three routes that build a
+/// coordinator without one — the screenshot harness and the tests — have no desktop to show anything on; on those it
+/// is the log line alone, which is what they assert against anyway.
+/// </param>
 internal sealed class McpOAuthCoordinator(
     IMcpOAuthTokenStore tokenStore,
     IMcpOAuthAuthorizer authorizer,
-    ILogger<McpOAuthCoordinator> logger) : IMcpOAuthCoordinator, ISingletonService
+    ILogger<McpOAuthCoordinator> logger,
+    IToastNotifier? toastNotifier = null) : IMcpOAuthCoordinator, ISingletonService
 {
     /// <summary>
     /// How much of an access token's remaining life has to be left for it to be worth using for <em>one request</em>:
@@ -32,9 +40,15 @@ internal sealed class McpOAuthCoordinator(
     /// A fixed margin rather than "renew below half the lifetime" for two reasons. It needs no issue time (the store
     /// keeps only the expiry, so a fraction is not computable without widening the on-disk record), and it already
     /// bounds the churn from both ends: a server issuing long-lived tokens clears 55 minutes and is never renewed at
-    /// all, while a server issuing short ones costs exactly one token-endpoint round trip per session start. The one
-    /// case a wide margin cannot handle on its own — a lifetime shorter than the margin itself, where no token this
-    /// server ever issues would qualify — is handled where the renewal lands, not by narrowing this number.
+    /// all, while a server issuing short ones costs exactly one token-endpoint round trip per session start.
+    /// </para>
+    /// <para>
+    /// A server whose tokens never live this long fails the margin on every token it issues, and that is answered
+    /// honestly rather than by quietly lowering the bar: it comes back as
+    /// <see cref="McpOAuthAttentionReason.TokenTooShortLived"/>, which the session start reads as a server to leave
+    /// out. Handing over a token that will be dead in ten minutes would produce exactly the session this ticket
+    /// exists to stop — and the case only arises at all when the loopback endpoint, which makes the lifetime
+    /// irrelevant, could not be put in front of the server.
     /// </para>
     /// </summary>
     private static readonly TimeSpan SessionExpiryMargin = TimeSpan.FromMinutes(55);
@@ -83,7 +97,9 @@ internal sealed class McpOAuthCoordinator(
             var previous = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
             await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
 
-            var signedIn = await _ConnectAndReadAsync(server, interactive: true, RequestExpiryMargin, cancellationToken).ConfigureAwait(false);
+            // replacing: null — SignOutAsync above emptied the store, so anything found afterwards came out of this
+            // sign-in and nothing has to be compared against a leftover.
+            var signedIn = await _ConnectAndReadAsync(server, interactive: true, RequestExpiryMargin, replacing: null, cancellationToken).ConfigureAwait(false);
 
             // Put the old one back only when the flow left nothing behind — not merely when the answer was "not
             // authorized". A sign-in that succeeds and issues a short-lived token gets that verdict too (the answer
@@ -108,6 +124,44 @@ internal sealed class McpOAuthCoordinator(
         }
 
         return await _RenewIfNeededAsync(server, SessionExpiryMargin, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<McpOAuthAccess> RenewRejectedAsync(McpServerConfig server, string rejectedAccessToken, CancellationToken cancellationToken = default)
+    {
+        if (server.Auth != McpServerAuth.OAuth)
+        {
+            return McpOAuthAccess.NotRequired;
+        }
+
+        var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
+        if (stored is null || !stored.IsForResource(server.Url))
+        {
+            return _Unauthorized(server, McpOAuthAttentionReason.NeverSignedIn, McpSignInStage.NoBrowserLaunched);
+        }
+
+        // Somebody already replaced it. This is the ordinary shape of a hundred calls in flight against a credential
+        // the server has just started refusing: the first renews, and every other one arrives here to find a token it
+        // has not tried yet. Handing that one back is what keeps the burst to a single round trip.
+        if (!string.Equals(stored.AccessToken, rejectedAccessToken, StringComparison.Ordinal))
+        {
+            return _Authorized(server, stored.AccessToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(stored.RefreshToken))
+        {
+            return _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
+        }
+
+        // Said out loud because it contradicts what this process believed a moment ago, and that disagreement is the
+        // only evidence there will ever be of a grant revoked at the far end or a rotation race lost to another
+        // session. Never the token itself (Iron Law #8) — the expiry it claimed is what makes the point.
+        logger.LogWarning(
+            "MCP server {Server} refused an access token the cockpit still considered valid until {ExpiresAt}; renewing it rather than presenting it again.",
+            server.Name,
+            stored.ExpiresAt);
+
+        // The per-request margin, not the session one: this token is about to be spent on the call that was refused.
+        return await _ConnectAndReadAsync(server, interactive: false, RequestExpiryMargin, stored.AccessToken, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -161,7 +215,7 @@ internal sealed class McpOAuthCoordinator(
             stored.ExpiresAt,
             margin);
 
-        return await _ConnectAndReadAsync(server, interactive: false, margin, cancellationToken).ConfigureAwait(false);
+        return await _ConnectAndReadAsync(server, interactive: false, margin, stored.AccessToken, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -170,7 +224,12 @@ internal sealed class McpOAuthCoordinator(
     /// installs — so connecting and then reading is how either is driven, rather than a second, hand-rolled OAuth
     /// implementation drifting alongside the SDK's.
     /// </summary>
-    private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, TimeSpan margin, CancellationToken cancellationToken)
+    /// <param name="replacing">
+    /// The access token that was in the store before this ran, or <see langword="null"/> when there was none. It is
+    /// what tells a renewal that produced something unusable apart from one that produced nothing at all — the store
+    /// still holds the old record either way, and the two need opposite things said about them.
+    /// </param>
+    private async Task<McpOAuthAccess> _ConnectAndReadAsync(McpServerConfig server, bool interactive, TimeSpan margin, string? replacing, CancellationToken cancellationToken)
     {
         // An interactive sign-in stays outside the single-flight gate: the operator pressed the button, this method
         // already cleared the stored token so the flow would actually run, and joining somebody else's silent
@@ -183,35 +242,18 @@ internal sealed class McpOAuthCoordinator(
         // always finds a fresh token here, and the whole point of waiting was to use it rather than to redeem the
         // same refresh token a second time.
         var token = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
-        if (token is not null && token.IsForResource(server.Url))
+        var renewed = token is not null
+            && token.IsForResource(server.Url)
+            && !string.Equals(token.AccessToken, replacing, StringComparison.Ordinal);
+
+        if (renewed && token!.IsUsableAt(DateTimeOffset.UtcNow, margin))
         {
-            var now = DateTimeOffset.UtcNow;
-            if (token.IsUsableAt(now, margin))
-            {
-                logger.LogInformation(
-                    "Renewed the authorization for MCP server {Server}; the new access token runs to {ExpiresAt}.",
-                    server.Name,
-                    token.ExpiresAt);
+            logger.LogInformation(
+                "Renewed the authorization for MCP server {Server}; the new access token runs to {ExpiresAt}.",
+                server.Name,
+                token.ExpiresAt);
 
-                return _Authorized(server, token.AccessToken) with { SignInStage = stage };
-            }
-
-            // The edge a wide margin creates, handled where it appears rather than by picking a smaller number: a
-            // server whose access tokens live for less than the session margin would fail this check on every token
-            // it ever issues, so honouring the margin literally would make it permanently unavailable — strictly
-            // worse than the short-lived credential this ticket set out to replace. So the wide margin is a
-            // preference: below it, a freshly renewed token still has to clear what a single request needs, and one
-            // that does is handed over with the shortfall on the record.
-            if (token.IsUsableAt(now, RequestExpiryMargin))
-            {
-                logger.LogWarning(
-                    "MCP server {Server} renewed to an access token that expires at {ExpiresAt}, sooner than the {Margin} a session would like to hold; it is used anyway, because refusing it would leave this server unusable altogether.",
-                    server.Name,
-                    token.ExpiresAt,
-                    margin);
-
-                return _Authorized(server, token.AccessToken) with { SignInStage = stage };
-            }
+            return _Authorized(server, token.AccessToken) with { SignInStage = stage };
         }
 
         // The dialog tells the operator the reason is in the log, so an interactive failure has to leave one there
@@ -225,9 +267,27 @@ internal sealed class McpOAuthCoordinator(
                 stage);
         }
 
+        // Three different failures, and they are told apart here rather than lumped together, because the advice
+        // that follows from each is different and two of the three are actively misled by the other's. A renewal
+        // that worked and produced a token too short for the margin asked of it is not an expired sign-in: nothing
+        // expired, and signing in again yields another token exactly like it.
+        var reason = renewed
+            ? McpOAuthAttentionReason.TokenTooShortLived
+            : unreachable
+                ? McpOAuthAttentionReason.ServerUnreachable
+                : McpOAuthAttentionReason.SignInExpired;
+
+        if (renewed)
+        {
+            logger.LogWarning(
+                "MCP server {Server} renewed to an access token that expires at {ExpiresAt}, sooner than the {Margin} this use has to hold it for.",
+                server.Name,
+                token!.ExpiresAt,
+                margin);
+        }
+
         // An interactive failure is already in front of the operator — they pressed the button and the dialog is
         // waiting on it — so it is not reported a second time through the channel that exists for the automatic path.
-        var reason = unreachable ? McpOAuthAttentionReason.ServerUnreachable : McpOAuthAttentionReason.SignInExpired;
         return interactive
             ? McpOAuthAccess.AuthorizationRequired with { SignInStage = stage, Reason = reason }
             : _Unauthorized(server, reason, stage);
@@ -316,11 +376,40 @@ internal sealed class McpOAuthCoordinator(
 
         if (announce)
         {
-            logger.LogWarning("MCP server {Server} is unavailable: {Guidance}", server.Name, McpOAuthSignInGuidance.For(server.Name, reason));
+            var guidance = McpOAuthSignInGuidance.For(server.Name, reason);
+            logger.LogWarning("MCP server {Server} is unavailable: {Guidance}", server.Name, guidance);
+            _NotifyOperator(server, guidance);
         }
 
         return McpOAuthAccess.AuthorizationRequired with { SignInStage = stage, Reason = reason };
     }
+
+    /// <summary>
+    /// Puts the same sentence where the operator will actually meet it. A log line is not a notification: the way
+    /// this failure was found in the first place was a server silently missing from a session, and a trail that only
+    /// exists once you know to go looking for it does not fix that.
+    /// </summary>
+    /// <remarks>
+    /// Fire-and-forget with the failure caught inside: a toast that cannot be shown must never take down the credential
+    /// path it is reporting on, and an unobserved fault on a path nothing awaits is a silence of its own. Only reached
+    /// from the announce branch above, so the once-per-transition rule covers this as well as the log line.
+    /// </remarks>
+    private void _NotifyOperator(McpServerConfig server, string guidance) => _ = Task.Run(async () =>
+    {
+        if (toastNotifier is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await toastNotifier.NotifyAsync(new AttentionNotification("MCP server unavailable", guidance)).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not show the operator a notification about MCP server {Server}.", server.Name);
+        }
+    });
 
     public async Task<McpAuthState> GetStateAsync(McpServerConfig server, CancellationToken cancellationToken = default)
     {

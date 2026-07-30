@@ -19,4 +19,18 @@ public enum McpOAuthAttentionReason
 
     /// <summary>The renewal never got an answer — the server or its authorization server could not be reached.</summary>
     ServerUnreachable,
+
+    /// <summary>
+    /// The renewal worked and produced a token that expires sooner than the use it was asked for needs. Its own case
+    /// because the two obvious pieces of advice are both wrong here: nothing is expired, and signing in again yields
+    /// another token exactly like this one. What the operator can act on is the endpoint that would have made the
+    /// lifetime irrelevant, not the sign-in.
+    /// </summary>
+    TokenTooShortLived,
+
+    /// <summary>
+    /// A call could not be relayed because its body was too large to hold on to, and the credential it went out with
+    /// was refused — so the retry that would have fixed it could not repeat the request.
+    /// </summary>
+    CallCouldNotBeRepeated,
 }

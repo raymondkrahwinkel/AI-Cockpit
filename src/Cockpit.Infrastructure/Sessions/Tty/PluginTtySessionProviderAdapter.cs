@@ -103,16 +103,21 @@ internal sealed class PluginTtySessionProviderAdapter(
 
             foreach (var server in selected.Where(McpConfigFile.IsAgentEligible))
             {
-                var access = _AcquireCredential(server, budget.Token);
+                // The endpoint first, for the same reason as on the SDK route: behind it the launch never writes a
+                // token, so it only has to establish that a sign-in exists; without it the token goes into the
+                // config and has to outlast the sitting.
+                var proxyUrl = _ProxyUrl(server, budget.Token);
+                var access = _AcquireCredential(server, theSessionWillHoldIt: proxyUrl is null, budget.Token);
                 if (access.State == McpAuthState.AuthorizationRequired)
                 {
-                    // Same rule as the SDK route: a server the agent cannot authenticate to is left out rather than
-                    // handed over bare, so the refusal is something the operator is told here instead of something
-                    // the agent meets later with nothing to act on.
+                    // Same rule and the same reasoning as the SDK route (see PluginSessionDriverAdapter): handing it
+                    // over anyway only moves the refusal into the CLI's own initialize, where it reads as a broken
+                    // server rather than an absent one. The operator gets the coordinator's line naming the cause and
+                    // the action instead.
                     continue;
                 }
 
-                if (_ToPluginMcpServer(server, access.AccessToken, _ProxyUrl(server, budget.Token)) is { } mapped)
+                if (_ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
                     servers.Add(mapped);
                 }
@@ -145,7 +150,12 @@ internal sealed class PluginTtySessionProviderAdapter(
     /// rather than rare — hence the budget above, and never an unbounded wait.
     /// </para>
     /// </summary>
-    private McpOAuthAccess _AcquireCredential(McpServerConfig server, CancellationToken budget)
+    /// <param name="theSessionWillHoldIt">
+    /// Whether the credential is written into the launch's config and kept there — see the SDK route's own
+    /// parameter of the same name. Behind the loopback endpoint it is not, and the question narrows to whether a
+    /// sign-in exists at all.
+    /// </param>
+    private McpOAuthAccess _AcquireCredential(McpServerConfig server, bool theSessionWillHoldIt, CancellationToken budget)
     {
         if (oauthCoordinator is null || server.Auth != McpServerAuth.OAuth)
         {
@@ -159,18 +169,25 @@ internal sealed class PluginTtySessionProviderAdapter(
             // not resume while GetResult() is holding it, and a budget cannot lift a deadlock — the operation would
             // finish and the continuation would still be waiting for the thread that is waiting for it. Cockpit's own
             // chain configures away from the context throughout, but the MCP client's does not answer to us.
-            // AcquireForSessionAsync, not AcquireAsync (AC-524): what this returns is written into a config the CLI
-            // reads once and then holds for the whole session, so it is asked for with the margin that says so.
-            access = Task.Run(() => oauthCoordinator.AcquireForSessionAsync(server, budget), budget)
+            access = Task.Run(
+                    () => theSessionWillHoldIt
+                        ? oauthCoordinator.AcquireForSessionAsync(server, budget)
+                        : oauthCoordinator.AcquireAsync(server, interactive: false, budget),
+                    budget)
                 .GetAwaiter()
                 .GetResult();
         }
         catch (OperationCanceledException)
         {
             logger?.LogWarning(
-                "Renewing the authorization for MCP server {Name} took longer than the launch waits for, so this session starts without it.",
+                "Renewing the authorization for MCP server {Name} took longer than the launch waits for.",
                 server.Name);
-            return McpOAuthAccess.AuthorizationRequired;
+
+            // Carries the cause rather than returning here, so the line below says something the operator can act
+            // on: a renewal that ran out of the launch's time is the server not answering in time, and the advice
+            // for that is to wait for it rather than to sign in again. Returning early left that answer blank, and
+            // blank falls through to the sentence for "no reason given".
+            access = McpOAuthAccess.AuthorizationRequired with { Reason = McpOAuthAttentionReason.ServerUnreachable };
         }
 
         if (access.State == McpAuthState.AuthorizationRequired)

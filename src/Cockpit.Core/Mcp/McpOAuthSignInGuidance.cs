@@ -25,6 +25,17 @@ public static class McpOAuthSignInGuidance
             $"'{serverName}' could not be reached, so the cockpit could not renew its sign-in. "
             + "Signing in again will not help while it is down; it is retried on its own once the server answers.",
 
+        McpOAuthAttentionReason.TokenTooShortLived =>
+            $"'{serverName}' hands out access tokens that expire sooner than a session lasts, and the cockpit could "
+            + "not put its own endpoint in front of it this time — so it is left out rather than added and lost a few "
+            + "minutes later. Restarting the cockpit usually restores that endpoint; signing in again will not, "
+            + "because the next token is no longer-lived than this one.",
+
+        McpOAuthAttentionReason.CallCouldNotBeRepeated =>
+            $"'{serverName}' refused the credential this call went out with, and the call was too large to send "
+            + "again — so the renewal that would have fixed it could not be applied to this one. The credential has "
+            + "been renewed; sending the same request again should work.",
+
         // Not reached from a failure: None is what a successful acquire carries. Answering with a sentence rather
         // than throwing keeps a logging path from becoming the thing that breaks a session.
         _ => $"the cockpit cannot present a credential to '{serverName}'.",
