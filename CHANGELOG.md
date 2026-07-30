@@ -1097,6 +1097,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a Codex TTY session's status dot no longer gets stuck reading "idle" for the whole session — it now
+  moves between busy and done as Codex actually works, the same as Claude's already did. The read-aloud feature
+  also no longer speaks Codex's in-progress commentary, only its settled answer.
 - fixed: a worktree whose repository folder had disappeared (a rare case, but one with no workaround once it
   happened) could no longer be removed from Managed worktrees — Remove failed with "Could not run 'git' — is it
   installed and on PATH?", a diagnosis that sent you checking your git install for a problem that was never there.
