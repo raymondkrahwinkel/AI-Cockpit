@@ -224,14 +224,29 @@ public class YouTrackWidenSearchTests
 
         public void SetResolvedState(string fieldName, string selectedState) => Dispatcher.UIThread.Invoke(() =>
         {
-            // _stateFieldName set LAST, deliberately: the ComboBox mutations above fire SelectionChanged (real
-            // Avalonia event plumbing), which — were _stateFieldName already non-null — would kick off a genuine,
-            // uncontrolled reload via _OnStateFilterChangedAsync and race with the widen call this test means to
-            // isolate. Setting a private field by reflection fires no event of its own, so this ordering is the
-            // one that never triggers a network call from test setup itself.
-            _StateFilter().ItemsSource = new List<string> { "All", selectedState };
-            _StateFilter().SelectedItem = selectedState;
+            // _stateFieldName set FIRST, matching the real production order (_ResolveStateFieldAsync) rather than
+            // working around it: the ComboBox mutations below are real Avalonia event plumbing and each fires
+            // SelectionChanged on its own, which — with _stateFieldName already non-null — would otherwise take
+            // _OnStateFilterChangedAsync's reload branch and race the widen call this test means to isolate. Safe
+            // now under the real production order because _isPopulatingStateOptions — the same guard
+            // _SetStateOptions itself sets around this exact pair of assignments — tells _OnStateFilterChangedAsync
+            // this is a dropdown rebuild, not the operator's own choice, so no reload fires (AC-518 adversarial
+            // review fix). Toggled directly here, rather than routed through _SetStateOptions itself, only so the
+            // test keeps full control of exactly which state ends up selected instead of inheriting that method's
+            // own previous-selection-preserving logic.
             _Field("_stateFieldName").SetValue(dialog, fieldName);
+
+            var isPopulatingStateOptions = _Field("_isPopulatingStateOptions");
+            isPopulatingStateOptions.SetValue(dialog, true);
+            try
+            {
+                _StateFilter().ItemsSource = new List<string> { "All", selectedState };
+                _StateFilter().SelectedItem = selectedState;
+            }
+            finally
+            {
+                isPopulatingStateOptions.SetValue(dialog, false);
+            }
         });
 
         public async Task WidenSearchAsync() => await Dispatcher.UIThread.InvokeAsync(async () =>

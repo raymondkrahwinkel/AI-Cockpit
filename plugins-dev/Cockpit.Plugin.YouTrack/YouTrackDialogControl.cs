@@ -108,10 +108,29 @@ internal sealed class YouTrackDialogControl : UserControl
     // and trigger a second, redundant issues fetch before the first one (driven explicitly below) even ran.
     private bool _isSyncingProjectFilter;
 
+    // Guards _SetStateOptions's own ItemsSource/SelectedItem assignment the same way _isSyncingProjectFilter
+    // guards the project filter's: rebuilding the dropdown (from _ResolveStateFieldAsync, or the rows-fallback
+    // in _LoadIssuesAsync) is not the operator choosing a state, but both assignments are real ComboBox
+    // mutations and each fires SelectionChanged on its own. Without this, _OnStateFilterChangedAsync read
+    // _stateFieldName as already resolved and took its reload branch for both — a redundant, unfiltered fetch
+    // racing the explicit load that follows in the same caller, with no reentrancy guard or generation token to
+    // say which one is stale (AC-518 adversarial review). The explicit _LoadIssuesAsync call every caller of
+    // _ResolveStateFieldAsync/_SetStateOptions already makes is the only fetch this dropdown rebuild should ever
+    // cause.
+    private bool _isPopulatingStateOptions;
+
     // Guards _WidenSearchIfTruncatedAsync against overlapping requests: Enter and LostFocus can both fire for the
     // same "operator is done typing" moment (pressing Enter usually also moves focus away), and without this a
     // second call could race the first one's grid/status update.
     private bool _isWideningSearch;
+
+    // Stamped on every _LoadIssuesAsync call and checked again once its fetch returns (same idiom as
+    // _fieldsToken/_LoadFieldsAsync): belt-and-braces alongside _isPopulatingStateOptions above — that guard
+    // closes the one known source of a redundant fetch, this one makes sure that ANY overlapping fetch, from
+    // whatever caller, can no longer have its response applied once a later call has superseded it. Without it,
+    // whichever of two in-flight fetches merely happened to respond last would win, even if it started first and
+    // now answers a filter the operator has since changed away from.
+    private int _loadToken;
 
     public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links, IssueStateChanges stateChanges)
     {
@@ -529,6 +548,11 @@ internal sealed class YouTrackDialogControl : UserControl
 
     private async Task _OnStateFilterChangedAsync()
     {
+        if (_isPopulatingStateOptions)
+        {
+            return;
+        }
+
         if (_stateFieldName is not null)
         {
             // A known status field lets the next fetch scope to exactly this value server-side (AC-518), rather
@@ -556,6 +580,13 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
+        // Stamped before the fetch and checked again once it returns (_fieldsToken's own idiom, below): a second
+        // overlapping call to this method — from any caller, for any reason — bumps this past what the first
+        // call captured, so a slower, older fetch can no longer apply its result once a newer one has started
+        // (AC-518 adversarial review). _isPopulatingStateOptions above closes the one known source of a redundant
+        // call; this is the backstop for any other one.
+        var token = ++_loadToken;
+
         _SetStatus("Loading…");
         _loading.IsVisible = true;
 
@@ -581,7 +612,15 @@ internal sealed class YouTrackDialogControl : UserControl
                 ? $"#Unresolved {fieldName}: {{{selectedState}}}"
                 : null;
 
-            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            var fetched = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
+            if (token != _loadToken)
+            {
+                // Superseded while the fetch was in flight — applying this now would let a stale, older request
+                // overwrite whatever the newer, current one already showed or is still about to (AC-518).
+                return;
+            }
+
+            _all = fetched;
             if (_stateFieldName is null)
             {
                 _SetStateOptions(_DistinctRowStates());
@@ -592,13 +631,20 @@ internal sealed class YouTrackDialogControl : UserControl
         }
         catch (Exception exception)
         {
-            _SetStatus($"Could not load issues: {exception.Message}");
+            if (token == _loadToken)
+            {
+                _SetStatus($"Could not load issues: {exception.Message}");
+            }
         }
         finally
         {
-            // In a finally: a bar still moving after a failure says the thing is still coming, which is the one
-            // message it must never send.
-            _loading.IsVisible = false;
+            if (token == _loadToken)
+            {
+                // In a finally: a bar still moving after a failure says the thing is still coming, which is the
+                // one message it must never send. Guarded the same as above — a superseded call's finally must
+                // not hide the loading bar out from under a newer call that is still genuinely in flight.
+                _loading.IsVisible = false;
+            }
         }
     }
 
@@ -759,10 +805,21 @@ internal sealed class YouTrackDialogControl : UserControl
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(state => state, StringComparer.OrdinalIgnoreCase));
 
-        _stateFilter.ItemsSource = options;
-        _stateFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
-            ? previousSelection
-            : AllOption;
+        // Both assignments below are real ComboBox mutations and each fires SelectionChanged on its own —
+        // rebuilding the dropdown is not the operator choosing a state, so _isPopulatingStateOptions tells
+        // _OnStateFilterChangedAsync to ignore both (AC-518 adversarial review).
+        _isPopulatingStateOptions = true;
+        try
+        {
+            _stateFilter.ItemsSource = options;
+            _stateFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
+                ? previousSelection
+                : AllOption;
+        }
+        finally
+        {
+            _isPopulatingStateOptions = false;
+        }
     }
 
     private void _ApplyFilter()
