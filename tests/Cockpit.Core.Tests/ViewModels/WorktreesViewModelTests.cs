@@ -89,11 +89,45 @@ public class WorktreesViewModelTests
         var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
         await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
 
-        manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns((string?)null);
         await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
 
         Assert.Null(viewModel.RemoveFailure);
         Assert.False(viewModel.HasRemoveFailure);
+    }
+
+    [Fact]
+    public async Task Remove_SucceedsButLeavesTheFolderBehind_ShowsTheNoticeRatherThanTheErrorStyling()
+    {
+        // AC-507: a removal that went through — the entry is gone — but left an unmanaged folder on disk because its
+        // repository disappeared. That is information, not a failure, so it must land on RemoveNotice, never on
+        // RemoveFailure (which reads as an error in the dialog).
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
+        manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns("The repository behind 'cockpit/x' no longer exists. Its worktree folder was left on disk.");
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+
+        await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
+
+        Assert.True(viewModel.HasRemoveNotice);
+        Assert.Contains("left on disk", viewModel.RemoveNotice);
+        Assert.Null(viewModel.RemoveFailure);
+        Assert.False(viewModel.HasRemoveFailure);
+    }
+
+    [Fact]
+    public async Task Remove_PlainSuccess_HasNoNotice()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
+        manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns((string?)null);
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+
+        await viewModel.RemoveCommand.ExecuteAsync(_Row(isOwnerLive: false));
+
+        Assert.Null(viewModel.RemoveNotice);
+        Assert.False(viewModel.HasRemoveNotice);
     }
 
     [Fact]
@@ -146,7 +180,7 @@ public class WorktreesViewModelTests
         var manager = Substitute.For<IWorktreeManager>();
         manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
         manager.RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(new InvalidOperationException(message)));
+            .Returns(Task.FromException<string?>(new InvalidOperationException(message)));
 
         return manager;
     }

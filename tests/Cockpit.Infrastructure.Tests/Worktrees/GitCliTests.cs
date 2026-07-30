@@ -69,4 +69,19 @@ public class GitCliTests
 
         Assert.Equal(stderr.Trim(), GitCli.StripProgress(stderr));
     }
+
+    [Fact]
+    public async Task RunAsync_WorkingDirectoryDoesNotExist_NamesThatCauseRatherThanBlamingPath()
+    {
+        // AC-507 defect 1: a repository folder that moved away used to land in the same catch as a genuinely missing
+        // git binary, so the operator was told to check their git install for a problem that was never there. The two
+        // causes are told apart before git is even asked to start.
+        var gone = Path.Combine(Path.GetTempPath(), $"cockpit-gone-{Guid.NewGuid():n}");
+
+        var run = async () => await GitCli.RunAsync(gone, ["status"], CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(run);
+        Assert.Contains(gone, ex.Message);
+        Assert.DoesNotContain("is it installed and on PATH", ex.Message);
+    }
 }

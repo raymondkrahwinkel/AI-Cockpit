@@ -150,8 +150,8 @@ internal sealed class WorktreeTools
 
         try
         {
-            await _worktreeManager.RemoveAsync(record, force: dirty);
-            return _Serialize(new { ok = true });
+            var notice = await _worktreeManager.RemoveAsync(record, force: dirty);
+            return _Serialize(new { ok = true, notice });
         }
         catch (Exception exception)
         {

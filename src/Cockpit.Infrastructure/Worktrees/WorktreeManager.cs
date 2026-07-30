@@ -454,26 +454,55 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    public async Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)
+    // Returns a notice for the caller to surface when the removal succeeded but left something on disk the operator
+    // should know about (AC-507: the repository is gone, so the worktree folder could not be handed back to git and
+    // was simply abandoned) — null on a plain removal, with nothing left behind to mention.
+    public async Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)
     {
-        var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
+        var repositoryMissing = !Directory.Exists(record.RepositoryRoot);
+        string? notice = null;
 
-        // A refusal about a folder that still holds a working copy stands: it may hold work, and git said in its own
-        // words why it would not go. With no working copy left there is nothing for git to remove — the folder gone
-        // after a manual delete plus a prune, a repository that moved away, or a folder left behind with the checkout
-        // cleared out of it — and the registry entry is the only thing that outlived the worktree. Dropping that entry
-        // IS the removal then. Failing instead would leave the panel a row whose Remove button can never succeed
-        // (AC-342), and git's own admin entry, if one lingers, is what the reconcile sweep's prune is for. Nothing on
-        // disk goes on this path beyond an empty folder: files left in a cleared-out worktree stay exactly where they
-        // are, they are simply no longer the cockpit's to manage.
-        if (refusal is not null && await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
+        if (repositoryMissing)
         {
-            throw new InvalidOperationException(refusal);
+            // The repository this worktree was forked from is gone — `git worktree remove` cannot run without it
+            // (there is nowhere to ask), so it is never even attempted here, and nothing below asks git anything
+            // either: an orphaned worktree's own .git file points at <RepositoryRoot>/.git/worktrees/<name>, which is
+            // gone along with it, so every git command run inside the folder fails the same way regardless of
+            // whether it still holds uncommitted work — there is no git answer left to tell the two apart. The
+            // filesystem is the only oracle left. Route A (Raymond, 2026-07-30): drop the registry entry
+            // unconditionally and leave the worktree folder exactly as it is, whether or not it still holds
+            // uncommitted work — the alternative (keep refusing) reproduces AC-342, a Remove button that can never
+            // succeed. The operator is told whenever something was left behind, so "removed" never reads as
+            // "discarded".
+            if (Directory.Exists(record.Path) && Directory.EnumerateFileSystemEntries(record.Path).Any())
+            {
+                notice =
+                    $"The repository behind '{record.Branch}' no longer exists at '{record.RepositoryRoot}'. " +
+                    $"Its worktree folder was left on disk at '{record.Path}' and is no longer managed by the cockpit.";
+            }
+        }
+        else
+        {
+            var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
+
+            // A refusal about a folder that still holds a working copy stands: it may hold work, and git said in its
+            // own words why it would not go. With no working copy left there is nothing for git to remove — the
+            // folder gone after a manual delete plus a prune, or a folder left behind with the checkout cleared out
+            // of it — and the registry entry is the only thing that outlived the worktree. Dropping that entry IS the
+            // removal then. Failing instead would leave the panel a row whose Remove button can never succeed
+            // (AC-342), and git's own admin entry, if one lingers, is what the reconcile sweep's prune is for.
+            // Nothing on disk goes on this path beyond an empty folder: files left in a cleared-out worktree stay
+            // exactly where they are, they are simply no longer the cockpit's to manage.
+            if (refusal is not null && await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(refusal);
+            }
         }
 
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
         _TryRemoveIfEmpty(record.Path);
         _TryRemoveIfEmpty(Path.GetDirectoryName(record.Path));
+        return notice;
     }
 
     // Asks git to remove the worktree and reports what it refused with, or null when it went through. Unlocked
@@ -533,11 +562,22 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and later
         // teardown follow the new session rather than the dead one. Locking is best-effort — it may already be
-        // locked; the re-own is the part that has to land.
-        await GitCli.RunAsync(
-            existing.RepositoryRoot,
-            ["worktree", "lock", "--reason", $"cockpit session {newSessionId}", existing.Path],
-            cancellationToken).ConfigureAwait(false);
+        // locked, or the repository behind it may be gone entirely (AC-507) — and the try/catch makes that true in
+        // practice as well as in the comment: an unhandled start failure here (GitCli now throws instead of
+        // silently returning a non-zero exit) previously took the whole reattach down with it, before line 567-568
+        // — the re-own that actually has to land — ever ran.
+        try
+        {
+            await GitCli.RunAsync(
+                existing.RepositoryRoot,
+                ["worktree", "lock", "--reason", $"cockpit session {newSessionId}", existing.Path],
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // git could not even start against this repository root — nothing to lock, so nothing to re-own is
+            // blocked by it. Left unlocked; a later reconcile sweep may prune it, which is no worse than today.
+        }
 
         var reattached = existing with { SessionId = newSessionId, IsRetained = false, IsLocked = true };
         await _registry.AddAsync(reattached, cancellationToken).ConfigureAwait(false);

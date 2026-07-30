@@ -67,6 +67,17 @@ internal static class GitCli
             startInfo.ArgumentList.Add(argument);
         }
 
+        // Checked up front rather than inferred from the Process.Start() failure below: a missing working directory
+        // and a missing git binary both surface as a Win32Exception there (on Windows, "The directory name is
+        // invalid"; on Linux, "No such file or directory" — the same shape either way), so catching and re-diagnosing
+        // after the fact would be guessing. A caller (AC-507) needs the two told apart — a repository folder that
+        // moved away is its own state to react to, not an environment problem to send the operator chasing a git
+        // install that was never broken.
+        if (!Directory.Exists(workingDirectory))
+        {
+            throw new InvalidOperationException($"Could not run git — the working directory does not exist: '{workingDirectory}'.");
+        }
+
         using var process = new Process { StartInfo = startInfo };
 
         try

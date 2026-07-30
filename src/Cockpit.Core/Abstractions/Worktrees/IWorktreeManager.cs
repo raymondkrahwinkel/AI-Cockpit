@@ -93,8 +93,15 @@ public interface IWorktreeManager
     /// way. Without that, an entry git no longer knows about could never be removed (AC-342). Every other refusal
     /// throws with what git said.
     /// </para>
+    /// <para>
+    /// A worktree whose <em>repository</em> is gone (AC-507) is removed the same way — dropping the entry is the only
+    /// possible removal, because there is no repository left to ask git to do it — but that folder is never touched:
+    /// it may still hold uncommitted work with nowhere else to be. Returns a message to surface when that happened,
+    /// so "removed" is never mistaken for "discarded"; <c>null</c> on a plain removal with nothing left behind to
+    /// mention.
+    /// </para>
     /// </summary>
-    Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
+    Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Re-owns an existing worktree for a new session (AC-85 reattach): after a crash a worktree's owning session is
