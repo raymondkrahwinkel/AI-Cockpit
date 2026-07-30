@@ -1,0 +1,104 @@
+name: Publish updated plugins
+
+# Ships whatever main carries that the store does not have yet, so that "this plugin needs publishing" stops
+# being something a person has to remember. On 2026-07-30 twelve of twenty-four plugins held merged code no
+# published zip contained — including a session-status fix that reached nobody for a week — while the store
+# index reported every plugin up to date, because by its own measure it was.
+#
+# The criterion is deliberately "the manifest version is not in the store index" rather than "a version
+# changed in this push". A range is only right if every run fires and succeeds; a missing-versions comparison
+# is idempotent and self-healing — a run that never fired, or failed halfway, is simply picked up by the next
+# one. Nothing is republished, because a version already in the index is not missing.
+#
+# It runs after the Nightly rather than on push, and that ordering is the point: a plugin that needs a host
+# API only lands in a host build later, and publish-plugin.yml refuses (rightly) to publish a plugin no
+# published host can run. Waiting for the nightly means the host is out by the time the plugin goes.
+#
+# The version bump itself is guarded elsewhere — ci.yml's plugin-versions job fails a pull request whose
+# plugin code moved without its number. That guard and this workflow are two halves of one thing: one makes
+# sure there is something to publish, the other makes sure it gets published.
+
+on:
+  workflow_run:
+    workflows: [Nightly]
+    types: [completed]
+  workflow_dispatch:
+
+env:
+  STORE_REPO: raymondkrahwinkel/AI-Cockpit-Plugins
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    # A nightly that failed proves nothing about which host is out there, and the gate downstream reads exactly
+    # that. Manual runs carry no conclusion to wait for.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    outputs:
+      plugins: ${{ steps.missing.outputs.plugins }}
+
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v7
+
+      - name: Check out the store repo
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.STORE_REPO }}
+          token: ${{ secrets.STORE_PUBLISH_TOKEN }}
+          path: store
+
+      - name: Which plugin versions are missing from the store?
+        id: missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Newline-separated text, not an array: an empty array has to be special-cased at every expansion,
+          # and getting that wrong here does not fail — it emits [""], which the matrix runs as a plugin named
+          # empty string.
+          missing=''
+          for manifest in plugins-dev/Cockpit.Plugin.*/plugin.json; do
+            id="$(jq -r '.id' "$manifest")"
+            version="$(jq -r '.version' "$manifest")"
+            present="$(jq -r --arg id "$id" --arg v "$version" \
+              '.plugins[]? | select(.id==$id) | .versions[]?.version | select(.==$v)' store/index.json | head -1)"
+            if [ "$present" = "$version" ]; then
+              echo "up to date: $id $version"
+            else
+              echo "MISSING:    $id $version"
+              missing="${missing}${id}"$'\n'
+            fi
+          done
+
+          # Compact, so the matrix gets ["a","b"] — and a literal [] when there is nothing to do, which is what
+          # the job below tests to skip itself.
+          if [ -z "$missing" ]; then
+            json='[]'
+          else
+            json="$(printf '%s' "$missing" | jq -R . | jq -sc .)"
+          fi
+          echo "Publishing: $json"
+          printf 'plugins=%s\n' "$json" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: discover
+    if: needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != ''
+
+    strategy:
+      # One at a time, and this is not tuning. Every publish branches from the store's main and rewrites the
+      # same index.json; two in flight produce two branches that both edit the same lines, and the second
+      # merge conflicts. Serialised, each run checks out a main that already contains the previous merge.
+      max-parallel: 1
+      # A plugin that cannot go yet — a host gate not satisfied, say — must not take the others down with it.
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJson(needs.discover.outputs.plugins) }}
+
+    uses: ./.github/workflows/publish-plugin.yml
+    with:
+      plugin: ${{ matrix.plugin }}
+      auto_merge: true
+    secrets: inherit
