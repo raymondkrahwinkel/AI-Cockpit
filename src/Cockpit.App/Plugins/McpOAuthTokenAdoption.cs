@@ -24,6 +24,12 @@ namespace Cockpit.App.Plugins;
 /// <c>App.OnFrameworkInitializationCompleted</c> right after the plugins have registered themselves, which is the
 /// earliest point at which a plugin's own servers can be asked for at all.
 /// </para>
+/// <para>
+/// A plugin that is switched off at that moment contributes nothing and so is not migrated — and does not have to
+/// be: enabling, installing or updating a plugin all take effect on the next restart rather than live (a
+/// non-collectible plugin cannot load into a running process), so a plugin that is on for a session was on when
+/// this ran. There is no window in which one appears afterwards carrying tokens this pass never saw.
+/// </para>
 /// </summary>
 internal sealed class McpOAuthTokenAdoption(
     IMcpOAuthTokenStore tokenStore,
