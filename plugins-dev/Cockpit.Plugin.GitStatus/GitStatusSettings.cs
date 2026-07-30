@@ -3,12 +3,17 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitStatus;
 
 /// <summary>
-/// The configured repository paths (#1), persisted as a JSON list in the plugin's per-plugin storage. The
-/// dialog and the settings view both read/write through here; empty by default (the user adds their repos).
+/// The session-header indicator's one setting, persisted in the plugin's per-plugin storage.
+/// <para>
+/// AC-522 removed the plugin's dialog, and with it the only reader/writer of a manually configured repository
+/// list this class used to keep under a "repos" key. Nothing here reads that key any more; an install from
+/// before AC-522 may still carry it in storage, but it is inert — never deserialized, so it cannot fail to
+/// load. <see cref="IPluginStorage"/> has no way to remove a stored key, so the JSON entry itself may outlive
+/// the feature, harmlessly.
+/// </para>
 /// </summary>
 internal sealed class GitStatusSettings(IPluginStorage storage)
 {
-    private const string ReposKey = "repos";
     private const string ShowBranchNameKey = "showBranchName";
 
     /// <summary>
@@ -17,10 +22,6 @@ internal sealed class GitStatusSettings(IPluginStorage storage)
     /// header is transient, so it subscribes on attach and unsubscribes on detach — no dead control is left rooted.
     /// </summary>
     public event Action? Changed;
-
-    public IReadOnlyList<string> Repos => storage.Get<List<string>>(ReposKey) ?? [];
-
-    public void SaveRepos(IReadOnlyList<string> repos) => storage.Set(ReposKey, new List<string>(repos));
 
     /// <summary>
     /// Whether the session-header badge shows the branch name next to the status dot (AC-36). Off leaves only the

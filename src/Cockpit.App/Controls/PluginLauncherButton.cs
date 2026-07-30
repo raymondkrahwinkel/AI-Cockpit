@@ -1,6 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Cockpit.App.Theming;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Controls;
 
@@ -12,6 +16,13 @@ namespace Cockpit.App.Controls;
 /// The gear is a button inside a button, so the press has to stop there: <see cref="Button.Click"/> is a bubbling
 /// routed event, and left alone it would reach the launcher and open the plugin's dialog behind its own settings.
 /// </para>
+/// <para>
+/// <paramref name="badge"/> (AC-516) draws the same accent count-pill the plugin store's own update badge already
+/// uses (<c>CockpitView.axaml</c>'s "Plugin store" row), so a counter here reads as the same kind of indicator
+/// rather than a one-off look. It follows <see cref="SideMenuButtonBadge.Changed"/> for as long as this button is
+/// in the visual tree — subscribed on attach, unsubscribed on detach, so a menu rebuild (a plugin order/visibility
+/// change) never accumulates a second handler on the badge the old button instance held.
+/// </para>
 /// </summary>
 internal sealed class PluginLauncherButton : Button
 {
@@ -20,7 +31,11 @@ internal sealed class PluginLauncherButton : Button
     // has. It is a button, and it should be styled as one.
     protected override Type StyleKeyOverride => typeof(Button);
 
-    public PluginLauncherButton(string title, Action onInvoke, Action? onSettings = null)
+    private readonly SideMenuButtonBadge? _badge;
+    private readonly Border? _badgePill;
+    private readonly TextBlock? _badgeText;
+
+    public PluginLauncherButton(string title, Action onInvoke, Action? onSettings = null, SideMenuButtonBadge? badge = null)
     {
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -48,6 +63,29 @@ internal sealed class PluginLauncherButton : Button
             content.Children.Add(gear);
         }
 
+        if (badge is not null)
+        {
+            _badge = badge;
+            _badgeText = new TextBlock
+            {
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = ThemeBrush.Resolve("CockpitTextOnAccentBrush", "#ffffff"),
+            };
+            _badgePill = new Border
+            {
+                Background = ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb"),
+                CornerRadius = _Radius("CockpitPillRadius", 20),
+                Padding = new Thickness(7, 1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                Child = _badgeText,
+            };
+            _RenderBadge();
+            DockPanel.SetDock(_badgePill, Dock.Right);
+            content.Children.Add(_badgePill);
+        }
+
         content.Children.Add(new TextBlock
         {
             Text = title,
@@ -56,4 +94,50 @@ internal sealed class PluginLauncherButton : Button
 
         Content = content;
     }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (_badge is not null)
+        {
+            _badge.Changed += _OnBadgeChanged;
+            // The badge may have changed between construction and this button actually landing in the tree (a
+            // plugin rarely knows a count at Initialize time), so re-render once on attach rather than trusting
+            // the constructor's snapshot to still be current.
+            _RenderBadge();
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        if (_badge is not null)
+        {
+            _badge.Changed -= _OnBadgeChanged;
+        }
+
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    // AC-516: a plugin typically updates its counter from a background fetch, never from the UI thread — so this
+    // marshals itself rather than trusting the caller to.
+    private void _OnBadgeChanged() => Dispatcher.UIThread.Post(_RenderBadge);
+
+    // The one place this button decides what the badge shows — see SideMenuButtonBadge.ToDisplayText for the rule
+    // (null Primary = nothing, Primary alone = that number including "0", both set = "primary / secondary").
+    private void _RenderBadge()
+    {
+        if (_badge is null || _badgePill is null || _badgeText is null)
+        {
+            return;
+        }
+
+        var text = _badge.ToDisplayText();
+        _badgeText.Text = text;
+        _badgePill.IsVisible = text.Length > 0;
+    }
+
+    private static CornerRadius _Radius(string key, double fallback) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
+            ? radius
+            : new CornerRadius(fallback);
 }

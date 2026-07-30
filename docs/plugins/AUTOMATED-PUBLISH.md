@@ -18,6 +18,17 @@ The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`
    workflow blocks it and tells you to ship the app release/nightly first. **This gate is only as honest as
    the `minHostVersion` you set** — bump it whenever a plugin starts using a new host API, or the gate waves
    through a plugin that will not run.
+
+   The workflow only ever compares the two version *numbers* — it has no idea what your plugin's code
+   actually calls or renders. That includes a host **theme resource or control style class** looked up by
+   name (`CockpitTextOnStatusBrush`, `Border.tag`, …): unlike an SDK member, an old host missing one of these
+   degrades silently (unstyled control, a stale fallback colour) instead of refusing to load, so this gate is
+   the only thing standing between that and a store update. Before you run this workflow, set
+   `minHostVersion` by hand for any such dependency your plugin picked up since the last publish — see
+   [PLUGIN-SDK.md → Theme tokens and control classes](PLUGIN-SDK.md#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you).
+   AC-416 is the reason this line exists: ten plugins repainted onto host tokens the manifest never named,
+   and two of them stayed pointed at a host that predated the repaint until someone went and read the git
+   history to work out what the honest floor was.
 3. Skips if the plugin's current version is already in the store index (a published version is immutable —
    users may have pinned its `sha256`).
 4. Builds Release, zips the output (`plugin.json` at the zip root, `.pdb` excluded), and hashes it.

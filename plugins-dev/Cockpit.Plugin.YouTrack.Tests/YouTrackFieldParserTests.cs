@@ -125,4 +125,114 @@ public class YouTrackFieldParserTests
 
         Assert.Equal(new[] { "Open", "Review", "Done" }, values);
     }
+
+    [Fact]
+    public void ParseProjectStateField_FindsTheFieldByPreferenceAndReturnsItsName()
+    {
+        var (fieldName, values) = YouTrackFieldParser.ParseProjectStateField(
+            """
+            [
+              {"field":{"name":"Priority"},"bundle":{"values":[{"name":"Low"}]}},
+              {"field":{"name":"State"},"bundle":{"values":[{"name":"Open"},{"name":"Review"},{"name":"Done"}]}}
+            ]
+            """);
+
+        Assert.Equal("State", fieldName);
+        Assert.Equal(new[] { "Open", "Review", "Done" }, values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_WhenTheProjectCallsItStage_FindsItAnyway()
+    {
+        var (fieldName, values) = YouTrackFieldParser.ParseProjectStateField(
+            """[{"field":{"name":"Stage"},"bundle":{"values":[{"name":"Backlog"},{"name":"Ready"}]}}]""");
+
+        Assert.Equal("Stage", fieldName);
+        Assert.Equal(new[] { "Backlog", "Ready" }, values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_WhenABoardHasBothStateAndKanbanState_PrefersState()
+    {
+        var (fieldName, _) = YouTrackFieldParser.ParseProjectStateField(
+            """
+            [
+              {"field":{"name":"Kanban State"},"bundle":{"values":[{"name":"Ready"}]}},
+              {"field":{"name":"State"},"bundle":{"values":[{"name":"Open"}]}}
+            ]
+            """);
+
+        Assert.Equal("State", fieldName);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_ExcludesAValueWhoseIsResolvedIsTrue()
+    {
+        // AC-518 follow-up: the state filter always queries with #Unresolved, so a resolved value (Done) would be
+        // an option that reads as present but returns nothing every time it is chosen.
+        var (_, values) = YouTrackFieldParser.ParseProjectStateField(
+            """
+            [
+              {"field":{"name":"State"},"bundle":{"values":[
+                {"name":"Open","isResolved":false},
+                {"name":"Done","isResolved":true}
+              ]}}
+            ]
+            """);
+
+        Assert.Equal(["Open"], values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_KeepsAValueWhoseIsResolvedIsJsonNull()
+    {
+        // Undocumented what YouTrack sends when isResolved does not apply — treated as "cannot confirm resolved",
+        // never as "treat as resolved": a value disappearing from the filter is worse than one that returns empty.
+        var (_, values) = YouTrackFieldParser.ParseProjectStateField(
+            """[{"field":{"name":"State"},"bundle":{"values":[{"name":"Done","isResolved":null}]}}]""");
+
+        Assert.Equal(["Done"], values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_KeepsAValueWithNoIsResolvedPropertyAtAll()
+    {
+        // The EnumBundle shape a Stage/Kanban State field runs on (as opposed to a StateBundle) — its elements
+        // carry no isResolved key at all, and this must degrade to "keep everything", not drop silently.
+        var (_, values) = YouTrackFieldParser.ParseProjectStateField(
+            """[{"field":{"name":"Stage"},"bundle":{"values":[{"name":"Done"}]}}]""");
+
+        Assert.Equal(["Done"], values);
+    }
+
+    [Fact]
+    public void ParseProjectFieldValues_KeepsAResolvedValue_UnlikeParseProjectStateField()
+    {
+        // The per-issue Set-state menu (GetIssueFieldsAsync's fallback route) has to be able to offer moving an
+        // issue TO Done — only the state filter's own dropdown excludes resolved values.
+        var values = YouTrackFieldParser.ParseProjectFieldValues(
+            """[{"field":{"name":"State"},"bundle":{"values":[{"name":"Open","isResolved":false},{"name":"Done","isResolved":true}]}}]""",
+            "State");
+
+        Assert.Equal(["Open", "Done"], values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_WithNoRecognizedStatusField_ReportsNone()
+    {
+        var (fieldName, values) = YouTrackFieldParser.ParseProjectStateField(
+            """[{"field":{"name":"Priority"},"bundle":{"values":[{"name":"Low"}]}}]""");
+
+        Assert.Null(fieldName);
+        Assert.Empty(values);
+    }
+
+    [Fact]
+    public void ParseProjectStateField_WithAnEmptyProject_ReportsNone()
+    {
+        var (fieldName, values) = YouTrackFieldParser.ParseProjectStateField("[]");
+
+        Assert.Null(fieldName);
+        Assert.Empty(values);
+    }
 }

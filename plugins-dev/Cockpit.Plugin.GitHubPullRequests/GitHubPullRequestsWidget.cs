@@ -14,32 +14,34 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// <summary>
 /// The dashboard-workspace view of your open pull requests (#AC-18): the same list the always-on side-menu
 /// section shows — number, title, repository, an amber stripe on the ones waiting for your review, left-click
-/// to drop a review prompt, right-click for the menu — placed as a resizable pane. It reads the same data (the
-/// shared <see cref="PullRequestFeed"/>) and the same connection/repository settings, so the two never disagree
-/// about what is open; what it adds is a per-pane "how many to show", because a dashboard pane is sized by hand.
+/// to drop a review prompt, right-click for the menu — placed as a resizable pane. It reads the same
+/// <see cref="PullRequestRefreshSource"/> the side section subscribes to (AC-515) and the same connection/
+/// repository settings, so the two never disagree about what is open; what it adds is a per-pane "how many to
+/// show", because a dashboard pane is sized by hand.
 /// </summary>
 /// <remarks>
 /// Built in <c>Initialize</c> where the full <see cref="ICockpitHost"/> is in scope, so the closure hands it the
-/// host (to inject prompts and open dialogs) as well as this instance's <see cref="IWidgetContext"/> (its own
-/// count, its refresh signal). Pull requests the operator has set aside in the section are hidden here too —
-/// ignoring is a decision about a PR, not about one surface — but the widget does not offer the ignore action
-/// itself; curation stays with the persistent list.
+/// host (to inject prompts and open dialogs), this instance's <see cref="IWidgetContext"/> (its own count, its
+/// refresh signal), and the plugin's one shared <see cref="PullRequestRefreshSource"/> — every widget instance
+/// (a dashboard can hold more than one) reads the same source rather than polling for itself. Pull requests the
+/// operator has set aside in the section are hidden here too — ignoring is a decision about a PR, not about one
+/// surface — but the widget does not offer the ignore action itself, or announce review-request arrivals;
+/// curation and the toast both stay with the side section.
 /// </remarks>
 internal sealed class GitHubPullRequestsWidget : UserControl
 {
-    // The same cadence as the side section: a quiet background poll above the gh client's 60s cache TTL, and a
-    // short debounce that coalesces the burst of lines a single `gh pr create` prints into one refresh.
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);
+    // On top of the shared PullRequestRefreshSource's own background poll, a short debounce coalesces the burst
+    // of lines a single `gh pr create` prints into one refresh.
     private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(3);
 
     private readonly GitHubPullRequestsSettings _settings;
     private readonly ICockpitHost _host;
     private readonly IWidgetContext _context;
-    private readonly PullRequestFeed _feed = new();
-    private readonly DispatcherTimer _autoRefresh;
+    private readonly PullRequestRefreshSource _source;
     private readonly DispatcherTimer _signalRefresh;
 
     private readonly TextBlock _counts;
+    private readonly TextBlock _stale;
     private readonly TextBlock _status;
     private readonly StackPanel _rows;
     private readonly ProgressBar _loading = LoadingBar.Build();
@@ -47,15 +49,27 @@ internal sealed class GitHubPullRequestsWidget : UserControl
     private IReadOnlyList<GitHubPullRequest> _loaded = [];
     private IReadOnlySet<string> _reviewRequested = new HashSet<string>(StringComparer.Ordinal);
 
-    public GitHubPullRequestsWidget(GitHubPullRequestsSettings settings, ICockpitHost host, IWidgetContext context)
+    public GitHubPullRequestsWidget(GitHubPullRequestsSettings settings, ICockpitHost host, IWidgetContext context, PullRequestRefreshSource source)
     {
         _settings = settings;
         _host = host;
         _context = context;
+        _source = source;
 
         // No refresh button of its own: the pane already wears a ↻, which reaches this through
         // RefreshRequested (below). A second one inside the pane would be two controls for one gesture.
         _counts = new TextBlock { FontSize = 11, Margin = new Thickness(2, 0, 0, 2), VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
+
+        // Same faint styling as the side section's marker — visible, not an alarm (IL#9 / AC-515 criterion 6).
+        _stale = new TextBlock
+        {
+            Text = "showing an older list",
+            FontSize = 11,
+            Margin = new Thickness(2, 0, 0, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+            IsVisible = false,
+        };
 
         _rows = new StackPanel { Spacing = 1 };
 
@@ -91,30 +105,27 @@ internal sealed class GitHubPullRequestsWidget : UserControl
             Margin = new Thickness(4),
             Children =
             {
-                new StackPanel { [DockPanel.DockProperty] = Dock.Top, Spacing = 4, Children = { _counts, _loading, _status } },
+                new StackPanel { [DockPanel.DockProperty] = Dock.Top, Spacing = 4, Children = { _counts, _stale, _loading, _status } },
                 new Border { [DockPanel.DockProperty] = Dock.Bottom, Child = viewAll },
                 new ScrollViewer { Content = _rows },
             },
         };
 
-        // The pane's ↻ and a saved config both raise this, and both want the same thing: the ↻ is a re-fetch, and
-        // re-fetching after a count change is a cheap way to also pick the new count up (the gh client's own 60s
-        // cache absorbs the redundancy). Not host.OnSettingsSaved: that has no unsubscribe, so a widget removed
-        // from a dashboard would keep reloading a detached pane on every settings save — a leak the always-on side
-        // section never has. A connection change instead reaches this pane on its next auto-refresh tick or ↻.
-        context.RefreshRequested += (_, _) => _ = _LoadAsync(forceRefresh: true);
-
-        _autoRefresh = new DispatcherTimer { Interval = AutoRefreshInterval };
-        _autoRefresh.Tick += (_, _) => _ = _LoadAsync(forceRefresh: true, quiet: true);
+        // The pane's ↻ asks the shared source for a forced refresh — the same source the side section and every
+        // other widget instance read from, so "how many to show" changing here does not mean re-fetching for
+        // itself; a count change just re-renders on the next Updated.
+        context.RefreshRequested += (_, _) => _ = _RefreshAsync(forceRefresh: true);
 
         _signalRefresh = new DispatcherTimer { Interval = SignalDebounce };
         _signalRefresh.Tick += (_, _) =>
         {
             _signalRefresh.Stop();
-            _ = _LoadAsync(forceRefresh: true, quiet: true);
+            _ = _RefreshAsync(forceRefresh: true, quiet: true);
         };
 
-        _ = _LoadAsync(forceRefresh: false);
+        // Yesterday's list (or nothing, on the very first run ever), now. Never a wait: Current is always the last
+        // known answer.
+        _ApplySnapshot(_source.Current);
     }
 
     private int _MaxItems() =>
@@ -130,49 +141,69 @@ internal sealed class GitHubPullRequestsWidget : UserControl
         }
     }
 
+    private void _OnSourceUpdated(object? sender, PullRequestFeedSnapshot snapshot) =>
+        Dispatcher.UIThread.Post(() => _ApplySnapshot(snapshot));
+
+    // The background poll lives on the shared source now and runs regardless of any pane being on screen; what is
+    // tied to attach/detach here is only this instance's own subscription — unsubscribing on detach matters more
+    // for a widget than the always-on side section, since a pane can be removed from a dashboard entirely.
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _autoRefresh.Start();
+        _source.Updated += _OnSourceUpdated;
+        _ApplySnapshot(_source.Current);
         _context.Sessions.OutputProduced += _OnSessionOutput;
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _autoRefresh.Stop();
+        _source.Updated -= _OnSourceUpdated;
         _signalRefresh.Stop();
         _context.Sessions.OutputProduced -= _OnSessionOutput;
     }
 
-    private async Task _LoadAsync(bool forceRefresh, bool quiet = false)
+    /// <summary>What the pane's ↻ and the signal-refresh debounce both do: ask the shared source, and only a non-quiet caller reports a failure.</summary>
+    private async Task _RefreshAsync(bool forceRefresh, bool quiet = false)
     {
         _loading.IsVisible = !quiet;
         try
         {
-            var result = await _feed.LoadAsync(_settings, forceRefresh, CancellationToken.None);
-            if (result.RepositoryMissing)
+            var ran = await _source.RefreshAsync(forceRefresh);
+            if (!quiet && ran && _source.LastError is { } error)
             {
-                _Say("No repository set, and the GitHub CLI is off — open the plugin's settings.");
-                return;
-            }
-
-            _reviewRequested = result.ReviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
-            _loaded = result.PullRequests;
-            _Say(null);
-            _Render();
-        }
-        catch (Exception exception)
-        {
-            // A quiet background poll that fails keeps the last good list; an explicit load surfaces the error.
-            if (!quiet)
-            {
-                _Say($"Could not load pull requests: {exception.Message}");
+                _Say($"Could not load pull requests: {error.Message}");
             }
         }
         finally
         {
             _loading.IsVisible = false;
+        }
+    }
+
+    /// <summary>Draws one snapshot from the shared source. See the side section's own copy of this reasoning — the two surfaces read the same source but never announce arrivals themselves; curation stays with the persistent list.</summary>
+    private void _ApplySnapshot(PullRequestFeedSnapshot snapshot)
+    {
+        var result = snapshot.Result;
+        if (result.RepositoryMissing)
+        {
+            _stale.IsVisible = false;
+            _Say("No repository set, and the GitHub CLI is off — open the plugin's settings.");
+            return;
+        }
+
+        _reviewRequested = result.ReviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
+        _loaded = result.PullRequests;
+        var fetchedAt = snapshot.FetchedAt;
+        _stale.IsVisible = fetchedAt is { } at && DateTimeOffset.UtcNow - at > PullRequestRefreshSource.StaleAfter;
+
+        _Say(null);
+        _Render();
+
+        if (fetchedAt is null && _loaded.Count == 0)
+        {
+            _loading.IsVisible = _source.LastError is null;
+            _Say(_source.LastError is { } error ? $"Could not load pull requests: {error.Message}" : "Loading pull requests…");
         }
     }
 

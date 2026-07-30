@@ -12,14 +12,27 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// </summary>
 internal sealed class GitHubGhClient
 {
+    /// <summary>
+    /// gh's own page size for the issue search. <see cref="SearchOpenIssuesAsync"/> compares the raw parsed count
+    /// against this — before archived-repo issues are filtered out of it in <see cref="ApplyArchivedFilter"/> — so
+    /// the dialog's "may be capped" warning (AC-519) is driven by a count taken where truncation actually happens: a
+    /// result that comes back at exactly this size might have more behind it, and there is no way to tell short of
+    /// asking a narrower question (a label filter).
+    /// </summary>
+    public const int IssueSearchLimit = 100;
+
+    /// <summary>Page size for one repo's label list — generous for a filter dropdown; a repo with more labels than this keeps the overflow off the list rather than paginating.</summary>
+    internal const int LabelListLimit = 100;
+
     private static readonly TimeSpan IssueTtl = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
     private static readonly object CacheGate = new();
-    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Repositories)> RepositoryCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<string> Labels)> LabelsCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
+    public async Task<(IReadOnlyList<GitHubIssue> Issues, bool WasTruncated)> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
         // The assigned-to-me filter changes the server-side query, so it must key the cache separately —
@@ -36,44 +49,130 @@ internal sealed class GitHubGhClient
             {
                 if (IssueCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < IssueTtl)
                 {
-                    return cached.Issues;
+                    return (cached.Issues, cached.WasTruncated);
                 }
             }
         }
 
         var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
+        var issues = _ParseIssues(await _RunGhAsync(SearchArguments(normalizedOwner, assignedToMe, extraTerms), cancellationToken));
+        var (result, wasTruncated) = ApplyArchivedFilter(issues, archived);
 
-        var searchArgs = new List<string>
+        lock (CacheGate)
         {
-            "search", "issues", "--owner", normalizedOwner, "--state", "open",
-            "--limit", "100", "--json", "number,title,url,body,repository,labels",
-        };
-        if (assignedToMe)
-        {
-            // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
-            searchArgs.Add("--assignee");
-            searchArgs.Add("@me");
+            IssueCache[cacheKey] = (DateTimeOffset.UtcNow, result, wasTruncated);
         }
 
-        // What the operator asked to narrow it by — GitHub's own search syntax, handed straight to gh: "-label:blocked",
-        // "label:bug", "no:assignee". Each word is its own argument, because gh takes them that way.
-        foreach (var term in terms.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            searchArgs.Add(term);
-        }
+        return (result, wasTruncated);
+    }
 
-        var issues = _ParseIssues(await _RunGhAsync(searchArgs.ToArray(), cancellationToken));
+    /// <summary>
+    /// Excludes archived-repo issues from a freshly parsed page, and reports whether that raw, pre-exclusion page
+    /// was itself full (AC-519 fix) — pulled out of <see cref="SearchOpenIssuesAsync"/> so the truncation signal is
+    /// provable without shelling out to gh: a page of exactly <see cref="IssueSearchLimit"/> raw issues must still
+    /// warn even when most of them turn out to belong to archived repositories and get filtered out here, since the
+    /// truncation already happened server-side before this method ever runs.
+    /// </summary>
+    internal static (IReadOnlyList<GitHubIssue> Issues, bool WasTruncated) ApplyArchivedFilter(IReadOnlyList<GitHubIssue> issues, IReadOnlySet<string> archived)
+    {
+        var wasTruncated = issues.Count == IssueSearchLimit;
         var result = archived.Count == 0
             ? issues
             : issues.Where(issue => !archived.Contains(issue.Repository)).ToList();
 
+        return (result, wasTruncated);
+    }
+
+    /// <summary>
+    /// The <c>gh search issues</c> argument list — pulled out of <see cref="SearchOpenIssuesAsync"/> so the query
+    /// this plugin builds (owner scope, open state, page size, assignee, and any extra GitHub search qualifiers) is
+    /// asserted without shelling out.
+    /// </summary>
+    internal static string[] SearchArguments(string owner, bool assignedToMe, string? extraTerms)
+    {
+        var args = new List<string>
+        {
+            "search", "issues", "--owner", owner, "--state", "open",
+            "--limit", IssueSearchLimit.ToString(), "--json", "number,title,url,body,repository,labels",
+        };
+        if (assignedToMe)
+        {
+            // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
+            args.Add("--assignee");
+            args.Add("@me");
+        }
+
+        // What the operator asked to narrow it by — GitHub's own search syntax, handed straight to gh: "-label:blocked",
+        // "label:bug", a label filter's own "label:\"in progress\"". Each word is its own argument (gh rejoins them
+        // with spaces to build its query), because gh takes them that way.
+        var terms = extraTerms?.Trim() ?? string.Empty;
+        foreach (var term in terms.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            args.Add(term);
+        }
+
+        return args.ToArray();
+    }
+
+    /// <summary>
+    /// GitHub's own search syntax for narrowing by label, quoted so a label containing a space reads as one value
+    /// rather than splitting into "label:X" plus a stray free-text word — no shell is involved (the argument list
+    /// bypasses one), so this is GitHub's own query quoting, not OS escaping.
+    /// </summary>
+    internal static string LabelSearchTerm(string label) => $"label:\"{label}\"";
+
+    /// <summary>
+    /// The union of labels across every one of the owner's repositories (AC-519) — deliberately not the labels seen
+    /// in the loaded issues, which is the same gap the YouTrack status filter had: a label that exists on a repo but
+    /// happens not to appear among the currently loaded (possibly capped) issues would otherwise be unreachable as a
+    /// filter. A repo whose label list cannot be read (deleted mid-listing, no access) is skipped rather than failing
+    /// the whole lookup — one broken repo should not cost every other repo its labels. Cached as long as the
+    /// archived-repo list.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ListRepositoryLabelsAsync(string owner, CancellationToken cancellationToken)
+    {
+        var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
+
         lock (CacheGate)
         {
-            IssueCache[cacheKey] = (DateTimeOffset.UtcNow, result);
+            if (LabelsCache.TryGetValue(normalizedOwner, out var cached) && DateTimeOffset.UtcNow - cached.At < ArchivedTtl)
+            {
+                return cached.Labels;
+            }
+        }
+
+        var repositories = await ListRepositoriesAsync(normalizedOwner, cancellationToken);
+        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var repository in repositories)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(await _RunGhAsync(LabelListArguments(repository), cancellationToken));
+                foreach (var name in GitHubIssueLabels.ReadListing(document.RootElement))
+                {
+                    labels.Add(name);
+                }
+            }
+            catch
+            {
+                // Fails open like the archived-repo lookup above: one repo's label list going missing must not cost
+                // every other repo's labels.
+            }
+        }
+
+        var result = labels.OrderBy(label => label, StringComparer.OrdinalIgnoreCase).ToList();
+
+        lock (CacheGate)
+        {
+            LabelsCache[normalizedOwner] = (DateTimeOffset.UtcNow, result);
         }
 
         return result;
     }
+
+    /// <summary>The <c>gh label list</c> argument list for one repository, pulled out for the same reason <see cref="SearchArguments"/> is.</summary>
+    internal static string[] LabelListArguments(string repository) =>
+        ["label", "list", "--repo", repository, "--json", "name", "--limit", LabelListLimit.ToString()];
 
     /// <summary>
     /// The owner's repositories, as <c>owner/repo</c> — the source the project editor's repository field offers

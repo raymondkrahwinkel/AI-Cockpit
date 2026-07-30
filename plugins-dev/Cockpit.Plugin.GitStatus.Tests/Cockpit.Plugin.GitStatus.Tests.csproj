@@ -12,11 +12,14 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <!-- Full refs (unlike the plugin's compile-only ones): GitStatusDialogControlTests builds the real dialog, so
-         the Avalonia stack, the DataGrid and MaterialIconKind all need a runtime copy present, which the host
-         would otherwise supply. Same set the GitHubIssues/YouTrack plugins' test projects carry — see
-         HeadlessAvalonia for why Skia rather than headless drawing. -->
+    <!-- Full refs (unlike the plugin's compile-only ones): GitStatusHeaderControlTests builds the real header
+         control headless, so the Avalonia stack and MaterialIconKind (via the workflow steps' icons) need a
+         runtime copy present, which the host would otherwise supply. Same set the GitHubIssues/YouTrack plugins'
+         test projects carry — see HeadlessAvalonia for why Skia rather than headless drawing. -->
     <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- Not needed by this plugin any more (AC-522 removed its only DataGrid, the dialog) — kept only because
+         GitStatusTestApp parses the host's own Theme.axaml off disk, and that file styles DataGridRow for the
+         plugins that do still use one; XamlX cannot resolve that selector without the assembly loaded. -->
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
     <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
     <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
@@ -26,6 +29,9 @@
          theme rather than bare Fluent. -->
     <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="12.0.5" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <!-- The concrete ServiceCollection (the plugin's own reference is Abstractions-only, compile-only): needed
+         to hand GitStatusPlugin.ConfigureServices a real IServiceCollection in GitStatusPluginLoadTests. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />

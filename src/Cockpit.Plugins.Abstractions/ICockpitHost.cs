@@ -38,6 +38,25 @@ public interface ICockpitHost
     void AddSideMenuSection(string title, Func<Control> createView);
 
     /// <summary>
+    /// Adds a launcher button to the left menu like <see cref="AddSideMenuButton"/>, but carrying a live
+    /// counter/badge next to the title (AC-516) — "Open PR's 3" — that the plugin updates through the returned
+    /// <see cref="SideMenuButtonBadge"/> without calling this again, and the host renders on
+    /// <see cref="SideMenuButtonBadge.Changed"/> without polling. See <see cref="SideMenuButtonBadge"/> for exactly
+    /// what null/zero/two-counter values mean and how they render (<see cref="SideMenuButtonBadge.ToDisplayText"/>).
+    /// <para>
+    /// A new method rather than a parameter on <see cref="AddSideMenuButton"/>: <see cref="ICockpitHost"/> is a
+    /// facade a plugin only <em>consumes</em>, never implements, so adding a method here cannot break an existing
+    /// plugin — it simply never calls the new one. Widening <see cref="AddSideMenuButton"/>'s own signature instead
+    /// would have been a binary break invisible to <see cref="AbstractionsContract.Version"/>, the exact failure
+    /// AC-500 found only by loading a mini-plugin built against the old and new abstractions dlls side by side.
+    /// </para>
+    /// Default returns a badge no one renders, so existing <see cref="ICockpitHost"/> implementations (test fakes,
+    /// older plugin builds) keep compiling untouched — only the app's own host attaches the button and follows
+    /// the badge's changes.
+    /// </summary>
+    SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke) => new();
+
+    /// <summary>
     /// Adds a small control to <em>every session's header bar</em>, built once per session and handed that
     /// session's own <see cref="IPluginSessionContext"/> — for status that belongs to the session it describes
     /// (the git state of the repo it is working in, say) rather than to the cockpit as a whole. Keep it compact:

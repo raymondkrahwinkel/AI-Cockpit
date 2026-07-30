@@ -29,6 +29,8 @@ on:
           - cli-agent-provider
           - clock
           - depot
+          - docker
+          - example-workspace
           - fan-out
           - gemini-provider
           - github-actions
@@ -37,11 +39,13 @@ on:
           - github-pull-requests
           - git-status
           - kimi-provider
+          - kubernetes
           - local-ci
           - prompt-library
           - session-review
           - system-monitor
           - transcript-search
+          - usage-trend
           - workflows
           - youtrack
       notes:

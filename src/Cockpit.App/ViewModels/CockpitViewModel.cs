@@ -546,6 +546,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     void IPluginContributionSink.AddPluginSideButton(string pluginId, string title, Action onInvoke) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke)));
 
+    // AC-516: the badge-carrying overload. Kept as its own tiny explicit-interface method (rather than folding a
+    // nullable badge into the call above) so the plain path above stays exactly what it was.
+    void IPluginContributionSink.AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
+        _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge)));
+
     void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
 

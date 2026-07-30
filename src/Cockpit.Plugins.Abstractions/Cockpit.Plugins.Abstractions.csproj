@@ -276,12 +276,21 @@
          than stranding a session on "working". A driver that never raises it reads as "nothing outstanding",
          which is what every existing driver already does. Additions only — a minor; major and abstractionsVersion
          stay 1. -->
+    <!-- 1.43.0 (AC-516): added SideMenuButtonBadge (new type — a mutable counter handle with Primary/Secondary
+         int? and a Changed event) and ICockpitHost.AddSideMenuButtonWithBadge (default-implemented, returns a
+         badge no one renders). A plugin can now register a left-menu launcher carrying a live counter — one
+         number, or two ("3 / 2") — and update it after registering without calling this again; the host follows
+         Changed without polling. AddSideMenuButton(string, Action) itself is byte-for-byte unchanged: no
+         parameter added, no default parameter, nothing widened — the new capability lives only behind the new
+         method, so a plugin binary that never calls it is unaffected (empirically verified: a mini-plugin built
+         against an older SDK loads and runs unchanged against this version, AC-516's own ABI proof). Additions
+         only — a minor; major and abstractionsVersion stay 1. -->
     <!-- 1.42.0 (AC-346): added ITrackerProvider.GetLinkedIssuesAsync as a default interface method (empty list),
          plus TrackerLinkedIssue/TrackerLinkDirection — a tracker-neutral way to read an issue's links (type,
          direction, target id/title/stage), so the Autopilot epic-runner can read an epic's "parent for" children
          and their "depends on" order without every existing ITrackerProvider needing a real implementation.
          Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.42.0</Version>
+    <Version>1.43.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

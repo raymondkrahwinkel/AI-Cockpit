@@ -16,7 +16,19 @@ internal sealed class GitHubPrGhClient
     /// <summary>GitHub's search accepts at most five owner qualifiers; ask for more and it answers with an empty list rather than an error.</summary>
     private const int OwnersPerSearch = 5;
 
-    private static readonly TimeSpan PullRequestTtl = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// How long a cached pull-request search answers without shelling out again — and, since AC-515,
+    /// <see cref="PullRequestRefreshSource"/>'s own background poll interval. Used to sit at 60 seconds so a
+    /// caller almost always missed and paid for a fresh `gh` call; that only made sense back when a control
+    /// awaited this directly and had to render *something*. Now the refresh source is the only regular caller,
+    /// polls in the background and never blocks a render on the answer, so there is nothing left waiting on a
+    /// miss — a longer TTL only means fewer `gh` calls, not a slower screen. Five minutes: long enough that the
+    /// source's own tick (aligned to this value) usually finds a still-warm entry from whatever last refreshed
+    /// it — a manual click, a session signal — short enough that "how open pull requests are right now" stays
+    /// true within a coffee break.
+    /// </summary>
+    internal static readonly TimeSpan PullRequestTtl = TimeSpan.FromMinutes(5);
+
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan RepositoriesTtl = TimeSpan.FromMinutes(30);
     /// <summary>Every repository the operator is involved with, and whether it is archived — one gh call answers both.</summary>

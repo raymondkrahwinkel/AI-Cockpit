@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -31,28 +30,20 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 {
-    // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed — a deliberate choice —
-    // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
-    // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
-    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);
-
-    /// <summary>How old the remembered list may be and still be worth showing while the fresh one loads.</summary>
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(1);
-
-    // On top of the periodic poll, the section refreshes near-instantly when it sees a PR signal in session
-    // output (a pull url, a merged/closed line) via the read/observe surface. A short debounce coalesces the
-    // burst of lines a single `gh pr create` prints into one refresh, and waits out the gh-side propagation
-    // so the just-changed PR is actually reflected by the time we re-query.
+    // On top of the shared PullRequestRefreshSource's own background poll, the section refreshes near-instantly
+    // when it sees a PR signal in session output (a pull url, a merged/closed line) via the read/observe surface.
+    // A short debounce coalesces the burst of lines a single `gh pr create` prints into one refresh, and waits out
+    // the gh-side propagation so the just-changed PR is actually reflected by the time we re-query.
     private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(3);
 
     private readonly GitHubPullRequestsSettings _settings;
     private readonly ICockpitHost _host;
-    private readonly PullRequestFeed _feed = new();
-    private readonly DispatcherTimer _autoRefresh;
+    private readonly PullRequestRefreshSource _source;
     private readonly DispatcherTimer _signalRefresh;
 
     private readonly TextBlock _counts;
     private readonly TextBlock _waiting;
+    private readonly TextBlock _stale;
     private readonly Button _ignoredToggle;
     private readonly TextBlock _status;
     private readonly StackPanel _rows;
@@ -64,10 +55,11 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     private IReadOnlySet<string> _reviewRequested = new HashSet<string>(StringComparer.Ordinal);
     private bool _showIgnored;
 
-    public GitHubPullRequestsSideSectionControl(GitHubPullRequestsSettings settings, ICockpitHost host)
+    public GitHubPullRequestsSideSectionControl(GitHubPullRequestsSettings settings, ICockpitHost host, PullRequestRefreshSource source)
     {
         _settings = settings;
         _host = host;
+        _source = source;
 
         _counts = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
         _waiting = new TextBlock
@@ -105,7 +97,19 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
         ToolTip.SetTip(refresh, "Refresh");
-        refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
+        refresh.Click += async (_, _) => await _RefreshAsync(forceRefresh: true);
+
+        // Faint, not the review-requested amber: this says "you're looking at what was last fetched", never
+        // "something needs your attention" — the two must not compete on loudness (IL#9 / AC-515 criterion 6).
+        _stale = new TextBlock
+        {
+            Name = "stale",
+            Text = "showing an older list",
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+            IsVisible = false,
+        };
 
         var countsRow = new DockPanel { Margin = new Thickness(2, 0, 0, 2) };
         DockPanel.SetDock(refresh, Dock.Right);
@@ -122,20 +126,30 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                 _counts,
                 new TextBlock { Text = "·", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextFaintBrush"), IsVisible = false },
                 _waiting,
+                new TextBlock { Text = "·", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextFaintBrush"), IsVisible = false },
+                _stale,
             },
         });
 
-        // The middle dot only earns its place when there is something on both sides of it.
-        var separator = (TextBlock)((StackPanel)countsRow.Children[^1]).Children[1];
+        // The middle dots only earn their place when there is something on both sides of them.
+        var waitingSeparator = (TextBlock)((StackPanel)countsRow.Children[^1]).Children[1];
         _waiting.PropertyChanged += (_, e) =>
         {
             if (e.Property == IsVisibleProperty)
             {
-                separator.IsVisible = _waiting.IsVisible;
+                waitingSeparator.IsVisible = _waiting.IsVisible;
+            }
+        };
+        var staleSeparator = (TextBlock)((StackPanel)countsRow.Children[^1]).Children[3];
+        _stale.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty)
+            {
+                staleSeparator.IsVisible = _stale.IsVisible;
             }
         };
 
-        _rows = new StackPanel { Spacing = 1 };
+        _rows = new StackPanel { Name = "rows", Spacing = 1 };
 
         _status = new TextBlock
         {
@@ -164,9 +178,8 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             width: 1040,
             height: 700);
 
-        // Under the counts, above the list: this section refreshes on a timer and whenever a session touches a pull
-        // request, so it is often working while nobody asked it to. Without this the list simply looks stale — or,
-        // on the first load, empty.
+        // Under the counts, above the list: refreshing is the shared source's job now (a background poll, a
+        // settings save, a session signal), not this control's — it only ever draws the last snapshot handed to it.
         Content = new StackPanel
         {
             Margin = new Thickness(4),
@@ -174,18 +187,9 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             Children = { countsRow, _loading, _status, _rows, viewAll },
         };
 
-        // Re-fetch with the just-saved settings (owner/repo, token, gh-CLI toggle) instead of leaving this
-        // already-built section showing data loaded under the old configuration until an app restart (#52).
-        host.OnSettingsSaved(() => _ = _LoadAsync(forceRefresh: true));
-
-        // Yesterday's list, now, while today's is on its way. Fetching takes seconds — every gh query is a process
-        // spawn and a round trip — and an empty panel for those seconds does not read as "loading", it reads as
-        // "no open pull requests", which is a lie the operator acts on.
-        _ShowCached();
-        _ = _LoadAsync(forceRefresh: false);
-
-        _autoRefresh = new DispatcherTimer { Interval = AutoRefreshInterval };
-        _autoRefresh.Tick += (_, _) => _ = _LoadAsync(forceRefresh: true, quiet: true);
+        // Yesterday's list (or, on the very first run ever, nothing), now, while today's is on its way. Never a
+        // wait: the source's Current is always the last known answer, and drawing it here costs nothing.
+        _ApplySnapshot(_source.Current);
 
         // Smart refresh: watch session output for a PR signal and refresh once the debounce settles. The
         // observer marshals OutputProduced to the UI thread, so touching the timer here is safe.
@@ -193,7 +197,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         _signalRefresh.Tick += (_, _) =>
         {
             _signalRefresh.Stop();
-            _ = _LoadAsync(forceRefresh: true, quiet: true);
+            _ = _RefreshAsync(forceRefresh: true, quiet: true);
         };
     }
 
@@ -208,106 +212,79 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         }
     }
 
-    // The section is always on screen while the plugin is loaded, so tie the poll to attach/detach: it runs
-    // while visible and stops (no orphaned gh spawns) once the pane goes away.
+    private void _OnSourceUpdated(object? sender, PullRequestFeedSnapshot snapshot) =>
+        Dispatcher.UIThread.Post(() => _ApplySnapshot(snapshot));
+
+    // The background poll lives on the shared source now and runs regardless of attachment; what is tied to
+    // attach/detach here is only this control's own subscription (so a removed section is not held onto by the
+    // source forever) and the session-output listening the signal-refresh needs.
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _autoRefresh.Start();
+        _source.Updated += _OnSourceUpdated;
+        _ApplySnapshot(_source.Current);
         _host.Sessions.OutputProduced += _OnSessionOutput;
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _autoRefresh.Stop();
+        _source.Updated -= _OnSourceUpdated;
         _signalRefresh.Stop();
         _host.Sessions.OutputProduced -= _OnSessionOutput;
     }
 
-    private async Task _LoadAsync(bool forceRefresh, bool quiet = false)
+    /// <summary>What the manual refresh button and the signal-refresh debounce both do: ask the shared source, and only an explicit (non-quiet) caller reports a failure — a background poll that fails keeps the last good list on screen without a word.</summary>
+    private async Task _RefreshAsync(bool forceRefresh, bool quiet = false)
     {
-        // A background poll that nobody asked for does not announce itself: the bar is for a load the operator is
-        // waiting on (the first one, or a Refresh they clicked), not for the timer ticking behind their back.
         _loading.IsVisible = !quiet;
         try
         {
-            var result = await _feed.LoadAsync(_settings, forceRefresh, CancellationToken.None);
-
-            // The HTTP mode talks to one repository; with none set there is nothing to query, and an empty list
-            // here would read as "no open pull requests" rather than "not configured".
-            if (result.RepositoryMissing)
+            var ran = await _source.RefreshAsync(forceRefresh);
+            if (!quiet && ran && _source.LastError is { } error)
             {
-                _Say("No repository set, and the GitHub CLI is off — open the settings above.");
-                return;
-            }
-
-            // A review request is news this section acts on — it announces the new ones (a toast) and stripes
-            // them — where the feed only reports them. In HTTP mode the feed finds none, and skipping the
-            // announce there leaves the seen-set untouched rather than clearing it.
-            _reviewRequested = result.ReviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
-            if (_settings.UseGitHubCli)
-            {
-                _AnnounceArrivals(result.ReviewRequested);
-            }
-
-            _loaded = result.PullRequests;
-
-            _Say(null);
-            _Render();
-            _RememberForNextTime();
-        }
-        catch (Exception exception)
-        {
-            // A quiet background poll that fails keeps the last good list rather than flashing an error; an
-            // explicit (manual/settings) load surfaces it.
-            if (!quiet)
-            {
-                _Say($"Could not load pull requests: {exception.Message}");
+                _Say($"Could not load pull requests: {error.Message}");
             }
         }
         finally
         {
             // In a finally: a bar still moving after a failure says the thing is still coming, which is the one
-            // message it must never send.
+            // message it must never send. _ApplySnapshot (via Updated) draws the result itself.
             _loading.IsVisible = false;
         }
     }
 
-    /// <summary>The list from last time, drawn at once. Nothing is shown if it is older than a day: a list that stale is misinformation, not a head start.</summary>
-    private void _ShowCached()
+    /// <summary>Draws one snapshot from the shared source: the list, the review-requested stripe, and — new arrivals only in CLI mode — the toast. What <see cref="_Render"/> then lays out is unaffected by whether this came from a cold start, a poll or a click.</summary>
+    private void _ApplySnapshot(PullRequestFeedSnapshot snapshot)
     {
-        try
+        var result = snapshot.Result;
+        if (result.RepositoryMissing)
         {
-            if (_settings.CachedAt is not { } at || DateTimeOffset.UtcNow - at > CacheLifetime)
-            {
-                return;
-            }
+            _stale.IsVisible = false;
+            _Say("No repository set, and the GitHub CLI is off — open the settings above.");
+            return;
+        }
 
-            if (JsonSerializer.Deserialize<List<GitHubPullRequest>>(_settings.CachedPullRequests) is { Count: > 0 } cached)
-            {
-                _loaded = cached;
-                _Render();
-            }
-        }
-        catch (Exception)
+        _reviewRequested = result.ReviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
+        if (_settings.UseGitHubCli)
         {
-            // A cache written by an older version of this plugin, in a shape this one does not read. Not worth a
-            // word to the operator: the fresh list is already on its way.
+            _AnnounceArrivals(result.ReviewRequested);
         }
-    }
 
-    /// <summary>Keeps what was loaded, so the next start has something to show while it fetches.</summary>
-    private void _RememberForNextTime()
-    {
-        try
+        _loaded = result.PullRequests;
+        var fetchedAt = snapshot.FetchedAt;
+        _stale.IsVisible = fetchedAt is { } at && DateTimeOffset.UtcNow - at > PullRequestRefreshSource.StaleAfter;
+
+        _Say(null);
+        _Render();
+
+        // Nothing has loaded yet, ever — not this run, not a previous one — so what _Render just said ("No open
+        // pull requests") would be a guess dressed as an answer. The very first tick has not landed yet, or it
+        // already failed; either way this is the one moment where the truth is not "the list", it is "no list yet".
+        if (fetchedAt is null && _loaded.Count == 0)
         {
-            _settings.CachedPullRequests = JsonSerializer.Serialize(_loaded);
-            _settings.CachedAt = DateTimeOffset.UtcNow;
-        }
-        catch (Exception)
-        {
-            // A cache that cannot be written costs the next start a few seconds. It is not worth failing a load over.
+            _loading.IsVisible = _source.LastError is null;
+            _Say(_source.LastError is { } error ? $"Could not load pull requests: {error.Message}" : "Loading pull requests…");
         }
     }
 

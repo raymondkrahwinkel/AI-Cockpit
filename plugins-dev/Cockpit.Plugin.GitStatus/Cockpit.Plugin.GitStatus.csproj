@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Git status plugin (#14 / idea #1): the branch / uncommitted / unpushed / ahead-behind status of your
-       configured repositories in one place, click to drop a status summary into the active session. Built
-       OUTSIDE the main solution (plugins-dev/) like the other example plugins; package bin/<config>/net10.0
-       into a .zip and install it via the Plugin store. EnableDynamicLoading emits the .deps.json the host's
-       AssemblyDependencyResolver needs. Shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the
-       DataGrid, the DI abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's
-       copies load and shared types keep one identity — the plugin folder ships only its own DLL + plugin.json. -->
+  <!-- Git status plugin (#14 / idea #1): a per-session header indicator for the branch / uncommitted / unpushed
+       status of the repo that session is working in, click to drop a status summary into it (AC-522 removed the
+       plugin's other half, a left-menu dialog over a manually configured repository list). Built OUTSIDE the
+       main solution (plugins-dev/) like the other example plugins; package bin/<config>/net10.0 into a .zip and
+       install it via the Plugin store. EnableDynamicLoading emits the .deps.json the host's
+       AssemblyDependencyResolver needs. Shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI
+       abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's copies load and
+       shared types keep one identity — the plugin folder ships only its own DLL + plugin.json. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -24,10 +25,6 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.5">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

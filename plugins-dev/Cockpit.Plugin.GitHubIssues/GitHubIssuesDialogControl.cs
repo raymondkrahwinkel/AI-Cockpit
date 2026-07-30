@@ -14,18 +14,24 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
-/// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a search box, and a
-/// sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
+/// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a label filter, a search box,
+/// and a sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
 /// mode) on the left, and a details panel on the right — number, title, a repository chip, a rendered
 /// description, a fixed action toolbar and a collapsible preview of the prompt it would produce (with a copy
-/// button). The repository filter is populated from the distinct <see cref="GitHubIssue.Repository"/> values in
-/// the loaded issues plus an "All" entry; it filters the grid client-side. "Add to prompt" injects into the
-/// active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to the cockpit's own
-/// New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
+/// button). The repository filter is populated from the owner's own repositories (gh mode) or the one repository
+/// the settings name (HTTP mode) plus an "All" entry — not from the distinct repositories among the loaded issues,
+/// which the active label filter narrows before this ever runs and would otherwise be able to drop a repository
+/// with no currently-matching issue, and its AC-317 preselection, out of the dropdown entirely; it filters the grid
+/// client-side. The label filter is populated from the labels of the repositories involved (AC-519) — not from the
+/// loaded issues, which would repeat the same gap the YouTrack status filter had — and narrows the fetch itself,
+/// since filtering client-side over a page GitHub may have capped would silently miss whatever was cut off. "Add to
+/// prompt" injects into the active session; "New session" (mirroring the YouTrack dialog) hands the same prompt to
+/// the cockpit's own New-session dialog instead. Built in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
     private const string AllRepositoriesOption = "All";
+    private const string AllLabelsOption = "All labels";
 
     private readonly GitHubIssuesSettings _settings;
     private readonly ICockpitHost _host;
@@ -35,11 +41,36 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly GitHubGhClient _gh = new();
 
     private readonly ComboBox _repoFilter;
+    private readonly ComboBox _labelFilter;
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
 
     /// <summary>The repository the session's project is linked to (AC-317). Null until asked for, empty string once asked and there was none — so it is asked exactly once.</summary>
     private string? _linkedRepository;
+
+    // Whether the repo dropdown has been populated at least once — see _PopulateRepoFilter for why this, and not a
+    // null check on the ComboBox's own SelectedItem, is what tells the first population from a later one. Found
+    // during AC-519 review: _repoFilter is constructed with SelectedIndex = 0, and a ComboBox resolves that to a
+    // real, non-null SelectedItem synchronously, before _LoadAsync ever runs — so "SelectedItem as string ?? ..."
+    // always took the left side and _linkedRepository (AC-317) was never actually consulted. Confirmed with a
+    // regression test before this field was added (RepoFilter_PreselectsTheLinkedProjectsRepository_OnFirstPopulation).
+    private bool _repoOptionsPopulated;
+
+    /// <summary>
+    /// The label the settings' <see cref="GitHubIssuesSettings.InProgressLabel"/> names (AC-519), resolved once —
+    /// the label filter's one chance to open on it, the same way <see cref="_linkedRepository"/> gets the repository
+    /// filter's. After the first population the operator's own choice persists. Empty once resolved and there was
+    /// none, so it is asked exactly once.
+    /// </summary>
+    private string? _preferredLabel;
+
+    // Whether the label dropdown has been populated at least once — see _PopulateLabelFilter for why this, and not
+    // a null check on the ComboBox's own SelectedItem, is what tells the first population from a later one.
+    private bool _labelOptionsPopulated;
+
+    // Set while a fetch itself repopulates the label dropdown's ItemsSource/SelectedItem, so that assignment does
+    // not read back as the operator choosing a label and triggering a second fetch.
+    private bool _suppressLabelFilterReload;
 
     // The window-level status line, along the bottom edge of the dialog: fetch/load/refresh state and the guard
     // messages ("no repository set") that fire before any issue is even selected. Always present; what an action
@@ -66,6 +97,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly TextBlock _detailStatus;
 
     private IReadOnlyList<GitHubIssue> _all = [];
+
+    // Whether the fetch behind _all was possibly capped by the server's own page limit — measured by the client,
+    // against the raw count it received before any local filtering (pull requests in HTTP mode, archived-repo
+    // issues in gh mode) ran on it (AC-519 fix). _all.Count alone cannot answer this: filtering can shrink it well
+    // below the page limit even when the raw page was full, which is exactly the case an earlier version of this
+    // check (comparing _all.Count itself to the limit) missed.
+    private bool _possiblyTruncated;
+
     private string _renderedPrompt = string.Empty;
 
     // Which issue the line in _detailStatus is about. A result belongs to the issue it was produced for, not to
@@ -83,12 +122,35 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         _repoFilter = new ComboBox
         {
+            Name = "repoFilter",
             ItemsSource = new List<string> { AllRepositoriesOption },
             SelectedIndex = 0,
             Width = 200,
             Margin = new Thickness(0, 0, 8, 0),
         };
         _repoFilter.SelectionChanged += (_, _) => _ApplyFilter();
+
+        // Unlike the repository filter, a label narrows the fetch server-side (gh's "label:x" search term, or the
+        // REST labels= param) — the whole point being that filtering must reach past whatever GitHub capped the
+        // first page at, which client-side filtering over that page could never do (AC-519).
+        _labelFilter = new ComboBox
+        {
+            Name = "labelFilter",
+            ItemsSource = new List<string> { AllLabelsOption },
+            SelectedIndex = 0,
+            Width = 200,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        ToolTip.SetTip(_labelFilter, "Filter by label — from the repositories themselves, not just the loaded issues, and applied on GitHub's side so it is not limited to the first page.");
+        _labelFilter.SelectionChanged += async (_, _) =>
+        {
+            if (_suppressLabelFilterReload)
+            {
+                return;
+            }
+
+            await _LoadAsync(forceRefresh: true);
+        };
 
         // Assigned-to-me narrows the fetch server-side (gh --assignee @me, or the REST assignee filter), so a
         // toggle re-loads rather than filtering the already-fetched list client-side.
@@ -103,7 +165,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _search = new TextBox { PlaceholderText = "Filter by title, repository or number…", Width = 320 };
         _search.TextChanged += (_, _) => _ApplyFilter();
 
-        _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+        _status = new TextBlock { Name = "status", FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
@@ -125,9 +187,11 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
         DockPanel.SetDock(_repoFilter, Dock.Left);
+        DockPanel.SetDock(_labelFilter, Dock.Left);
         DockPanel.SetDock(_assignedToMe, Dock.Left);
         topBar.Children.Add(refresh);
         topBar.Children.Add(_repoFilter);
+        topBar.Children.Add(_labelFilter);
         topBar.Children.Add(_assignedToMe);
         topBar.Children.Add(_search);
 
@@ -374,29 +438,74 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         try
         {
-            var assignedToMe = _assignedToMe.IsChecked == true;
-            if (_settings.UseGitHubCli)
+            if (!_settings.UseGitHubCli && (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo)))
             {
-                _all = await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None);
+                _SetStatus("No repository set, and the GitHub CLI is off.");
+                return;
             }
-            else
-            {
-                if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
-                {
-                    _SetStatus("No repository set, and the GitHub CLI is off.");
-                    return;
-                }
 
-                _all = await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None);
+            var assignedToMe = _assignedToMe.IsChecked == true;
+
+            // The label list is a filter aid, not the issue list itself — a repo the label lookup cannot reach must
+            // not block the dialog from showing issues; the issue fetch below hits the same wall and reports it if
+            // the problem is real.
+            IReadOnlyList<string> labelOptions;
+            try
+            {
+                labelOptions = _settings.UseGitHubCli
+                    ? await _gh.ListRepositoryLabelsAsync(_settings.GhOwner, CancellationToken.None)
+                    : await _http.GetRepositoryLabelsAsync(_settings.Owner, _settings.Repo, _settings.Token, CancellationToken.None);
             }
+            catch
+            {
+                labelOptions = [];
+            }
+
+            _PopulateLabelFilter(labelOptions);
+            var label = _labelFilter.SelectedItem as string is { Length: > 0 } selectedLabel && selectedLabel != AllLabelsOption
+                ? selectedLabel
+                : null;
+
+            // The repository list is a filter aid too (AC-317), and just as independent of the issue fetch as
+            // labelOptions above — deliberately not derived from _all (found during adversarial review): _all is
+            // narrowed by the label filter chosen just above, so a repository with no open issue carrying that
+            // label would otherwise vanish from the dropdown along with its issues, taking the AC-317 preselection
+            // down with it. gh mode already has its own repository source (GitHubRepositoryField uses the same
+            // one for the project editor's repository field); HTTP mode has only ever had the one repository the
+            // settings name, whether or not it has a matching issue right now.
+            IReadOnlyList<string> repoOptions;
+            try
+            {
+                repoOptions = _settings.UseGitHubCli
+                    ? await _gh.ListRepositoriesAsync(_settings.GhOwner, CancellationToken.None)
+                    : (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo)
+                        ? []
+                        : [$"{_settings.Owner}/{_settings.Repo}"]);
+            }
+            catch
+            {
+                repoOptions = [];
+            }
+
+            (_all, _possiblyTruncated) = _settings.UseGitHubCli
+                ? await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None, label is null ? null : GitHubGhClient.LabelSearchTerm(label))
+                : await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None, label);
 
             // AC-317: what the session's own project says it lives in, resolved once so the first population can
             // open on it. After that the filter keeps whatever the operator chose, link or no link.
             _linkedRepository ??= await _host.GetProjectFieldValueAsync(GitHubRepositoryField.Key) ?? string.Empty;
 
-            _PopulateRepoFilter();
+            // A repository seen on a loaded issue but somehow missing from repoOptions (e.g. the repository list
+            // call above failed open to []) still belongs in the dropdown — the issue is right there in the grid.
+            var repositories = repoOptions
+                .Concat(_all.Select(issue => issue.Repository))
+                .Where(repository => !string.IsNullOrEmpty(repository))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(repository => repository, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _PopulateRepoFilter(repositories);
             _ApplyFilter();
-            _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
+            _ReportLoaded();
         }
         catch (Exception exception)
         {
@@ -410,20 +519,40 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         }
     }
 
-    // Rebuilds the repository dropdown from the distinct repositories in the freshly loaded issues, keeping
-    // the previous selection if it is still present (otherwise falls back to "All"). On the first population there is
-    // no selection yet, and that is where the project's own link (AC-317) gets its one chance to be the answer — a
-    // repository the operator linked on purpose, not a preference this dialog then keeps re-imposing.
-    private void _PopulateRepoFilter()
+    // What a successful load reports — pulled out of _LoadAsync so the boundary worth proving precisely (a result
+    // landing at exactly the page limit) is reachable without a live fetch (AC-519).
+    private void _ReportLoaded()
     {
-        var previousSelection = _repoFilter.SelectedItem as string
-            ?? (string.IsNullOrWhiteSpace(_linkedRepository) ? null : _linkedRepository);
-        var repositories = _all
-            .Select(issue => issue.Repository)
-            .Where(repository => !string.IsNullOrEmpty(repository))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(repository => repository, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var baseline = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
+        var limit = _settings.UseGitHubCli ? GitHubGhClient.IssueSearchLimit : GitHubIssuesClient.IssuePageLimit;
+
+        // Whether to warn comes from _possiblyTruncated, not from comparing _all.Count to the limit here: both
+        // clients filter their raw page (pull requests, archived-repo issues) after the page limit is already
+        // applied, so _all.Count can sit well below the limit even though the raw page was full (AC-519 fix). A raw
+        // page of exactly the limit might have more behind it — or, rarely, might be the whole truth (a repo with
+        // precisely that many open issues). There is no cheap way to tell the two apart without a second, narrower
+        // request, so this warns on both; over-warning on the rare exact match is the safer of the two wrong
+        // answers; a label filter is offered as the reliable way to see past it.
+        _SetStatus(_possiblyTruncated
+            ? $"{baseline} The list may be incomplete at exactly {limit} — filter by label for the reliable set."
+            : baseline);
+    }
+
+    // Rebuilds the repository dropdown from the repositories handed in — the owner's own repository list (gh mode)
+    // or the one repository the settings name (HTTP mode), not the distinct repositories among the freshly loaded
+    // issues (AC-317, fixed alongside AC-519 during adversarial review): _all is narrowed by whatever label filter
+    // is active by the time this runs, so deriving options from it would drop a repository with no
+    // currently-matching issue from the dropdown, and the AC-317 preselection below along with it. Keeps the
+    // previous selection if it is still on offer, otherwise falls back to "All". On the first population that is
+    // where the project's own link (AC-317) gets its one chance to be the answer — a repository the operator
+    // linked on purpose, not a preference this dialog then keeps re-imposing. _repoOptionsPopulated, not a null
+    // check on SelectedItem, is what tells first from later — see that field for why.
+    private void _PopulateRepoFilter(IReadOnlyList<string> repositories)
+    {
+        var previousSelection = _repoOptionsPopulated
+            ? _repoFilter.SelectedItem as string
+            : (string.IsNullOrWhiteSpace(_linkedRepository) ? null : _linkedRepository);
+        _repoOptionsPopulated = true;
 
         var options = new List<string> { AllRepositoriesOption };
         options.AddRange(repositories);
@@ -431,6 +560,39 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _repoFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
             ? previousSelection
             : AllRepositoriesOption;
+    }
+
+    // Rebuilds the label dropdown from the repositories' own labels (AC-519), keeping the previous selection if it
+    // is still on offer. On the first population that is where the operator's own "in progress" label
+    // (_preferredLabel) gets its one chance to be the answer — reusing the settings' existing notion of "what
+    // counts as in progress" rather than a second setting for the same thing. _labelOptionsPopulated, not a null
+    // check on SelectedItem, is what tells first from later: the ComboBox resolves SelectedIndex 0 to "All labels"
+    // the moment it is constructed, well before any load runs, so SelectedItem is never actually null here. Selecting
+    // here is done with the reload it triggers suppressed: this call is itself part of a reload, not the operator
+    // choosing.
+    private void _PopulateLabelFilter(IReadOnlyList<string> labels)
+    {
+        _preferredLabel ??= _settings.InProgressLabel;
+        var previousSelection = _labelOptionsPopulated
+            ? _labelFilter.SelectedItem as string
+            : (string.IsNullOrEmpty(_preferredLabel) ? null : _preferredLabel);
+        _labelOptionsPopulated = true;
+
+        var options = new List<string> { AllLabelsOption };
+        options.AddRange(labels);
+
+        _suppressLabelFilterReload = true;
+        try
+        {
+            _labelFilter.ItemsSource = options;
+            _labelFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
+                ? previousSelection
+                : AllLabelsOption;
+        }
+        finally
+        {
+            _suppressLabelFilterReload = false;
+        }
     }
 
     private void _ApplyFilter()

@@ -147,7 +147,15 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     _Label("Only these repositories (optional)"),
                     SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
-                    SettingsHelpRow.Build(_template, "Prompt inserted when you click a pull request. Placeholders: {number} {title} {url} {owner} {repo} {body} {author}."),
+                    SettingsHelpRow.Build(_template,
+                        "Prompt inserted when you click a pull request.\n" +
+                        "{number} — the pull request number, e.g. 42.\n" +
+                        "{title} — the pull request's title.\n" +
+                        "{url} — link to the pull request.\n" +
+                        "{owner} — the repository owner or org.\n" +
+                        "{repo} — the repository name.\n" +
+                        "{body} — the full pull request description; \"(no description)\" when empty.\n" +
+                        "{author} — who opened it; \"(unknown)\" when GitHub does not give one."),
                 },
             },
         };

@@ -90,6 +90,13 @@ internal sealed class CockpitHost(
     public void AddSideMenuButton(string title, Action onInvoke) =>
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 
+    public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
+    {
+        var badge = new SideMenuButtonBadge();
+        contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
+        return badge;
+    }
+
     public void AddShortcut(PluginShortcut shortcut) =>
         contributionSink.AddPluginShortcut(shortcut);
 

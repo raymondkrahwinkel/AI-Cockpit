@@ -316,6 +316,43 @@ public class YouTrackDialogControlTests
         Assert.True(string.IsNullOrEmpty(preview), "whatever is in the preview is what Add to prompt injects");
     });
 
+    [Fact]
+    public void StatusLine_AtExactlyMaxResults_WarnsTheListMayBeIncomplete() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-518 follow-up: the one boundary worth proving to the exact number — the constant itself, not a round
+        // number above it — since the notice's whole premise is "the result came back at exactly the fetch cap".
+        var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults)
+            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
+            .ToArray();
+        var harness = DialogHarness.Open(issues);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.Contains("may be incomplete", status);
+        Assert.Contains(YouTrackDialogControl.MaxResults.ToString(), status);
+    });
+
+    [Fact]
+    public void StatusLine_OneShortOfMaxResults_DoesNotWarn() => HeadlessAvalonia.Run(() =>
+    {
+        var issues = Enumerable.Range(1, YouTrackDialogControl.MaxResults - 1)
+            .Select(number => new YouTrackIssue($"1-{number}", $"AT-{number}", $"Issue {number}", null, "AT", "Backlog"))
+            .ToArray();
+        var harness = DialogHarness.Open(issues);
+
+        harness.ReportLoaded();
+
+        var status = harness.StatusText;
+        _out.WriteLine($"status={status}");
+        harness.Close();
+
+        Assert.DoesNotContain("may be incomplete", status);
+    });
+
     /// <summary>
     /// One dialog under test, in a window its real size, with the loaded issue set planted and the fakes it talks to
     /// kept to hand.
@@ -432,6 +469,19 @@ public class YouTrackDialogControlTests
         public string? DescriptionText() => _TextIn(DescriptionScroll());
 
         public string? PromptPreviewText() => _TextIn(PromptScroll());
+
+        /// <summary>The bottom-docked status line (AC-518 follow-up) — render-proof that it actually shows the text, not just that the field holds it.</summary>
+        public string? StatusText => _window.GetVisualDescendants().OfType<TextBlock>()
+            .FirstOrDefault(text => text.Name == "status")?.Text;
+
+        /// <summary>Drives the private post-load status composition directly — proves the exact-MaxResults truncation notice without a live fetch.</summary>
+        public void ReportLoaded()
+        {
+            var method = typeof(YouTrackDialogControl).GetMethod("_ReportLoaded", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException("YouTrackDialogControl no longer has _ReportLoaded.");
+            method.Invoke(_dialog, []);
+            Layout();
+        }
 
         public void Close() => _window.Close();
 

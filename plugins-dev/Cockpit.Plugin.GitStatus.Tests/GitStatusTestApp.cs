@@ -9,18 +9,22 @@ using Material.Icons.Avalonia;
 namespace Cockpit.Plugin.GitStatus.Tests;
 
 /// <summary>
-/// The application the headless platform runs the dialog under. The plugin's controls are built in code and carry no
-/// styles of their own — the cockpit supplies the base theme, so a test host that leaves it out gets untemplated
-/// controls that measure to nothing, and the state cell's <c>CockpitStatusErrorBrush</c>/etc. lookups resolve to
-/// nothing.
+/// The application the headless platform runs the plugin's controls under (renamed from <c>DialogTestApp</c>
+/// when AC-522 removed the dialog it was originally named for — <see cref="GitStatusHeaderControlTests"/> is
+/// its only user now). The plugin's controls are built in code and carry no styles of their own — the cockpit
+/// supplies the base theme, so a test host that leaves it out gets untemplated controls that measure to
+/// nothing, and the badge's <c>CockpitStatusDoneBrush</c>/etc. lookups resolve to nothing.
 /// </summary>
 /// <remarks>
 /// Loads the same styles, in the same order, as <c>src/Cockpit.App/App.axaml</c> (AC-338): Fluent, then the
 /// material icon set, then the DataGrid's own Fluent theme, then the cockpit's <c>Theme.axaml</c> read off disk
-/// (the plugin cannot reference <c>Cockpit.App</c>). Same arrangement the GitHubIssues/YouTrack plugin test
-/// projects use.
+/// (the plugin cannot reference <c>Cockpit.App</c>). The DataGrid theme stays even though this plugin no longer
+/// has one of its own (AC-522 removed its only <c>DataGrid</c>, the dialog): <c>Theme.axaml</c> itself styles
+/// <c>DataGridRow</c> for the plugins that still do, and XamlX cannot resolve that selector unless the
+/// assembly is already loaded — measured, not assumed: dropping this line broke every test here with
+/// "Unable to resolve type DataGridRow" the moment <c>Theme.axaml</c> parsed.
 /// </remarks>
-public sealed class DialogTestApp : Application
+public sealed class GitStatusTestApp : Application
 {
     public override void Initialize()
     {
