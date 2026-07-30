@@ -497,6 +497,19 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             ? Task.CompletedTask
             : _ApplyAsync(Settings.WithUpdated(workspace.WithPane(pane)));
 
+    /// <summary>
+    /// Updates a persisted AI-session pane's title and whether it was chosen (AC-514) — the counterpart to
+    /// <see cref="AddPaneAsync"/> for a name that changes after the pane already exists: an operator's inline
+    /// rename, or a name a plugin/agent suggested. A no-op — no write at all — only when
+    /// <paramref name="workspaceId"/> names no workspace; a workspace with no pane matching
+    /// <paramref name="paneId"/> still writes (<see cref="Workspace.WithPaneRenamed"/> leaves its panes
+    /// untouched in that case, but the write goes through regardless, the same as <see cref="MovePaneAsync"/>).
+    /// </summary>
+    public Task RenamePaneAsync(string workspaceId, string paneId, string title, bool nameIsChosen) =>
+        Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+            ? Task.CompletedTask
+            : _ApplyAsync(Settings.WithUpdated(workspace.WithPaneRenamed(paneId, title, nameIsChosen)));
+
     /// <summary>Moves a pane to <paramref name="cell"/> after a drag. Position only — the pane itself is never rebuilt, which is what keeps a dragged terminal from losing its pty (leermoment 2026-07-13).</summary>
     public Task MovePaneAsync(string paneId, GridCell cell) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithPaneMoved(paneId, cell)));

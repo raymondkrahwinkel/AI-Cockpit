@@ -49,8 +49,7 @@ public sealed class PluginActions(
                 {
                     // A flow naming the session it started is a name somebody chose, same as a rename — so a ticket
                     // linked to that session later offers its name rather than taking it (#AC-310).
-                    session.Title = name.Trim();
-                    session.HasGeneratedName = false;
+                    session.SetNameDirectly(name);
                 }
             }
         }).GetTask();

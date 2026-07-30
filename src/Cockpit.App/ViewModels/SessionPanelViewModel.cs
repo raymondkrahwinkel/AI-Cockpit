@@ -266,6 +266,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         Title = name.Trim();
+        // AC-514: a suggested name only ever lived on this view model — the pane record a restart reads back
+        // still carried whatever title the session was created with. Raised so CockpitViewModel can persist it,
+        // same as an inline rename. HasGeneratedName is deliberately left as-is (still true): a suggestion is
+        // remembered, not "chosen" — a later, better suggestion must still be free to replace it (#AC-324).
+        RaiseNameChanged();
         return true;
     }
 
@@ -282,11 +287,27 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var trimmed = EditTitle?.Trim();
         if (!string.IsNullOrEmpty(trimmed))
         {
-            Title = trimmed;
-            HasGeneratedName = false;
+            SetNameDirectly(trimmed);
         }
 
         IsRenaming = false;
+    }
+
+    /// <summary>
+    /// Sets the title outright — an operator's own word, the same as an inline rename, whether it arrived through
+    /// one (<see cref="CommitRename"/>) or through <c>SetSessionName</c>/<c>SetActiveSessionStatusAsync</c>
+    /// (#AC-13/#AC-312). <see cref="HasGeneratedName"/> always goes to false: unlike <see cref="SuggestName"/>,
+    /// nothing here is a mere proposal a later suggestion may still replace. The one place this combination is
+    /// written, so a caller cannot set the title and forget <see cref="RaiseNameChanged"/> (AC-514) — three call
+    /// sites once did exactly that, silently, before this existed.
+    /// </summary>
+    internal void SetNameDirectly(string name)
+    {
+        Title = name.Trim();
+        HasGeneratedName = false;
+        // AC-514: without this, the pane record a restart reads back kept whatever title the session was created
+        // with — none of Title/HasGeneratedName changing after that ever reached the persisted pane on their own.
+        RaiseNameChanged();
     }
 
     /// <summary>Cancels the inline rename, discarding the edit.</summary>
@@ -345,6 +366,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     /// <summary>Signals <see cref="CockpitViewModel"/> to close this session through its own flow.</summary>
     protected void RaiseCloseRequested() => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// Raised whenever <see cref="Title"/> changes after the session already exists — a suggested name
+    /// (<see cref="SuggestName"/>) or an inline rename (<see cref="CommitRename"/>) — so <see cref="CockpitViewModel"/>
+    /// can persist it to the pane's saved record (AC-514). Not raised for the initial title a session is created
+    /// with; that one is written by the same call that first persists the pane.
+    /// </summary>
+    public event EventHandler? NameChanged;
+
+    private void RaiseNameChanged() => NameChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Test seam: raise <see cref="CloseRequested"/> directly to exercise the cockpit's close wiring.</summary>
     internal void RequestSelfClose() => RaiseCloseRequested();

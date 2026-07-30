@@ -76,6 +76,103 @@ public class SessionRestoreViewTests
         Assert.Null(restored.ProcessId);
     }
 
+    // AC-514: a name that changes after the pane already exists — a plugin/agent suggestion, or an operator's
+    // inline rename — used to live only on the view model, so the pane record a restart reads back still carried
+    // whatever title it was created with. These prove the fix's other half: what SuggestName/CommitRename write
+    // now actually lands where a restart reads from.
+    [Fact]
+    public async Task SuggestName_OnAPersistedSession_WritesTheNewTitleToThePaneRecord()
+    {
+        var pane = new WorkspacePane("saved-pane-1", PaneKind.AiSession) { ProfileId = "work", Title = "work - 1", NameIsChosen = false };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+
+        var vm = NewVm(workspaceStore, stateStore);
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+        var restored = vm.Sessions[0];
+
+        var applied = restored.SuggestName("AC-514");
+
+        Assert.True(applied);
+        var persisted = vm.Workspaces.Settings.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1");
+        Assert.Equal("AC-514", persisted.Title);
+        // The pivot this ticket exists to protect (acceptance criterion 3): a suggestion is remembered, not
+        // "chosen" — NameIsChosen must stay false so a later, better suggestion can still replace it (#AC-324).
+        Assert.False(persisted.NameIsChosen);
+        // Not just the in-memory Settings — the write must actually reach the store, or a restart never sees it.
+        await workspaceStore.Received().SaveAsync(
+            Arg.Is<WorkspaceSettings>(saved => saved.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1").Title == "AC-514"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CommitRename_OnAPersistedSession_WritesTheNewTitleAndNameIsChosenToThePaneRecord()
+    {
+        var pane = new WorkspacePane("saved-pane-1", PaneKind.AiSession) { ProfileId = "work", Title = "work - 1", NameIsChosen = false };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+
+        var vm = NewVm(workspaceStore, stateStore);
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+        var restored = vm.Sessions[0];
+
+        restored.BeginRename();
+        restored.EditTitle = "release work";
+        restored.CommitRename();
+
+        var persisted = vm.Workspaces.Settings.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1");
+        Assert.Equal("release work", persisted.Title);
+        // A manual rename is the operator's own word — NameIsChosen must flip true, unlike a mere suggestion above.
+        Assert.True(persisted.NameIsChosen);
+        await workspaceStore.Received().SaveAsync(
+            Arg.Is<WorkspaceSettings>(saved => saved.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1").Title == "release work"),
+            Arg.Any<CancellationToken>());
+    }
+
+    // AC-514: SetSessionName (#AC-13 — the pane-id rename API a plugin or the cockpit's own UI calls through
+    // ICockpitHost) used to set Title/HasGeneratedName directly, bypassing SessionPanelViewModel entirely — the
+    // same bug as CommitRename, on a different call site the first pass of this fix missed. Proves it now goes
+    // through SetNameDirectly and reaches the persisted pane like every other naming route.
+    [Fact]
+    public async Task SetSessionName_OnAPersistedSession_WritesTheNewTitleAndNameIsChosenToThePaneRecord()
+    {
+        var pane = new WorkspacePane("saved-pane-1", PaneKind.AiSession) { ProfileId = "work", Title = "work - 1", NameIsChosen = false };
+        var sessions = Workspace.Create("Work", WorkspaceType.Sessions).WithPane(pane);
+        var settings = new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+
+        var workspaceStore = Substitute.For<IWorkspaceSettingsStore>();
+        workspaceStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings);
+        var stateStore = Substitute.For<ISessionStateStore>();
+        stateStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SessionStateRecord>());
+
+        var vm = NewVm(workspaceStore, stateStore);
+        await vm.Workspaces.InitializeAsync();
+        await vm.RestoreSessionPanesAsync();
+        var restored = vm.Sessions[0];
+
+        var applied = vm.SetSessionName(restored.PaneId, "AC-514 done");
+
+        Assert.True(applied);
+        var persisted = vm.Workspaces.Settings.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1");
+        Assert.Equal("AC-514 done", persisted.Title);
+        Assert.True(persisted.NameIsChosen);
+        await workspaceStore.Received().SaveAsync(
+            Arg.Is<WorkspaceSettings>(saved => saved.Workspaces.Single().Panes.Single(p => p.Id == "saved-pane-1").Title == "AC-514 done"),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task RestoreSessionPanesAsync_TwoPanesWithTheSameHandEditedId_MaterializesOnlyOne()
     {

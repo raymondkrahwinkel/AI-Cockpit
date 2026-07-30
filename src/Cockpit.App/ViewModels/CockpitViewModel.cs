@@ -5430,11 +5430,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-410: harmless for a freshly started session — RestoreOffer stays null, so nothing on the banner can
         // ever raise this — and is what lets a restored one's "Resume"/"Start fresh" reach the cockpit.
         session.RestoreDecided += OnSessionRestoreDecided;
+        // AC-514: a suggested name or an inline rename after the pane already exists — without this the persisted
+        // pane kept whatever title the session was created with, so it came back unchanged after a restart.
+        session.NameChanged += OnSessionNameChanged;
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
 
         Sessions.Add(session);
+    }
+
+    // AC-514: persists a name that changed after the pane already exists. Guarded on HasPersistedPane, which
+    // _PersistNewSessionPane/_AttachRestoredSession set synchronously before Title/HasGeneratedName can ever
+    // change — so this only ever skips a session with no pane record at all (a plain terminal), never races the
+    // pane's own creation write. NameIsChosen mirrors HasGeneratedName the same way _AttachRestoredSession reads
+    // it back. Both this write and the creation write are still fire-and-forget, each carrying a full settings
+    // snapshot through the same write gate (CockpitConfigWriteGate) with no ordering guarantee between them — a
+    // narrow, pre-existing class of race this call shares with every other fire-and-forget workspace write
+    // (MovePaneAsync included), not one it introduces.
+    private void OnSessionNameChanged(object? sender, EventArgs e)
+    {
+        if (sender is not SessionPanelViewModel { HasPersistedPane: true } session)
+        {
+            return;
+        }
+
+        _ = Workspaces.RenamePaneAsync(session.WorkspaceId, session.PaneId, session.Title, !session.HasGeneratedName);
     }
 
     /// <summary>
@@ -5818,8 +5839,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return false;
         }
 
-        target.Title = name.Trim();
-        target.HasGeneratedName = false;
+        target.SetNameDirectly(name);
         return true;
     }
 
@@ -6024,6 +6044,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnSessionCloseRequested;
         session.RestoreDecided -= OnSessionRestoreDecided;
+        session.NameChanged -= OnSessionNameChanged;
         _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
@@ -6733,6 +6754,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
             session.CloseRequested -= OnSessionCloseRequested;
+            session.NameChanged -= OnSessionNameChanged;
             await session.DisposeAsync();
         }
 

@@ -59,4 +59,14 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
     /// <summary>This workspace with <paramref name="paneId"/> moved to <paramref name="cell"/> (a no-op when it holds no such pane).</summary>
     public Workspace WithPaneMoved(string paneId, GridCell cell) =>
         this with { Panes = [.. Panes.Select(pane => pane.Id == paneId ? pane with { Cell = cell } : pane)] };
+
+    /// <summary>
+    /// This workspace with <paramref name="paneId"/>'s <see cref="WorkspacePane.Title"/> and
+    /// <see cref="WorkspacePane.NameIsChosen"/> updated (a no-op when it holds no such pane) — a name that changes
+    /// after the pane already exists (AC-514): an operator's inline rename, or a name a plugin/agent suggested.
+    /// Replaces the pane record in place, the same way <see cref="WithPaneMoved"/> does, rather than appending a
+    /// second entry for the same id the way <see cref="WithPane"/> would.
+    /// </summary>
+    public Workspace WithPaneRenamed(string paneId, string title, bool nameIsChosen) =>
+        this with { Panes = [.. Panes.Select(pane => pane.Id == paneId ? pane with { Title = title, NameIsChosen = nameIsChosen } : pane)] };
 }
