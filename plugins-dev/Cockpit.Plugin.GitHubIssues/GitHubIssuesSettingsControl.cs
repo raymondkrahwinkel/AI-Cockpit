@@ -53,7 +53,14 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
                 SettingsHelpRow.Build(_pickerTerms, "GitHub's own search syntax, added to \"open issues\": \"-label:blocked\", \"label:bug\", \"no:assignee\". Closed issues are never offered — that is work that is over."),
 
                 _Label("Branch name pattern"),
-                SettingsHelpRow.Build(_branchPattern, "How a branch is named for an issue. Placeholders: {number} and {title}. Default \"{number}-{title}\" (42-fix-the-login-redirect); \"feature/{number}\" works too. Whatever you write, the result is lowercased and made safe for git."),
+                SettingsHelpRow.Build(_branchPattern,
+                    "How a branch is named for an issue. A separate set from the prompt template below — its own " +
+                    "meaning per placeholder:\n" +
+                    "{number} (also accepted as {issue}) — the issue number, e.g. 42.\n" +
+                    "{title} (also accepted as {summary}) — not the full title like in the prompt template: shortened " +
+                    "to about 60 characters and made git-safe (lowercase, accents stripped, spaces/punctuation " +
+                    "collapsed to '-').\n" +
+                    "Default \"{number}-{title}\" (42-fix-the-login-redirect); \"feature/{number}\" works too."),
 
                 _Label("Label your repos use for work in progress (optional)"),
                 SettingsHelpRow.Build(_inProgressLabel, "A GitHub issue has no status field. Teams use a label instead, and GitHub enforces no name for it — so name yours here (\"in progress\", \"status: in progress\"). Left empty, nothing offers to label anything."),
@@ -108,7 +115,14 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
                     ghPanel,
                     httpPanel,
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body}"),
-                    SettingsHelpRow.Build(_template, "Prompt inserted when you click an issue. Placeholders: {number} {title} {url} {owner} {repo} {body}."),
+                    SettingsHelpRow.Build(_template,
+                        "Prompt inserted when you click an issue.\n" +
+                        "{number} — the issue number, e.g. 42.\n" +
+                        "{title} — the issue's title.\n" +
+                        "{url} — link to the issue.\n" +
+                        "{owner} — the repository owner or org.\n" +
+                        "{repo} — the repository name.\n" +
+                        "{body} — the full issue description; \"(no description)\" when empty."),
                 },
             },
         };

@@ -24,9 +24,10 @@ namespace Cockpit.Plugin.Autopilot;
 /// </summary>
 internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsView, IPluginSettingsSections
 {
-    // The placeholder tokens a template body may carry (AC-189), shown as the placeholder-help under the Templates
-    // section and offered as quick-insert chips in the editor. Kept here so the help and the editor stay in lockstep with
-    // what AutopilotTemplateResolver actually fills.
+    // The placeholder tokens a template body may carry (AC-189), offered as quick-insert chips in the editor and
+    // named (with what each one fills in, AC-521) in the placeholder-help under the Templates section — that help
+    // spells its own meaning per token rather than joining this array, but names the same tokens; a mismatch is
+    // pinned by AutopilotSettingsControlPlaceholderHelpTests against what AutopilotTemplateResolver actually fills.
     private static readonly string[] _Placeholders =
     [
         "{{issue.id}}",
@@ -34,7 +35,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         "{{issue.description}}",
         "{{issue.url}}",
         "{{issue.tracker}}",
-        "{{input.<naam>}}",
+        "{{input.<name>}}",
     ];
 
     private readonly AutopilotSettings _settings;
@@ -151,7 +152,14 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         newTemplate.Click += (_, _) => _EditTemplate(null);
         templatesSection.Children.Add(newTemplate);
         templatesSection.Children.Add(_templateList);
-        templatesSection.Children.Add(_Hint($"Placeholders you can use in a body (filled from the triggering issue and your input): {string.Join("  ", _Placeholders)}"));
+        templatesSection.Children.Add(_Hint(
+            "Placeholders you can use in a body (filled from the triggering issue and your input):\n" +
+            "{{issue.id}} — the tracker's issue id, e.g. AC-513.\n" +
+            "{{issue.title}} — the issue's title.\n" +
+            "{{issue.description}} — the full description; empty if the tracker gave none.\n" +
+            "{{issue.url}} — link to the issue.\n" +
+            "{{issue.tracker}} — which tracker it came from, e.g. youtrack.\n" +
+            "{{input.<name>}} — an operator-supplied value by name, e.g. {{input.branch}}; only filled for a name you actually ask for."));
 
         // Re-render the list whenever a template changes (created, edited, deleted, reset) so the section stays in step
         // with the store, the same way the plan surface tracks its queue/history.
