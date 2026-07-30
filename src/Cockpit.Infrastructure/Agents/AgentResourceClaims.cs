@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Agents;
 /// enough that a scan is the cheaper answer as well as the simpler one.
 /// </para>
 /// </summary>
-internal sealed class AgentResourceClaims : IAgentResourceClaims, ISingletonService
+internal sealed class AgentResourceClaims : IAgentResourceClaims, IAgentResourceClaimsAudit, ISingletonService
 {
     /// <summary>
     /// Cap on the claims one pane may hold at once. An agent claims the handful of things it is working on — a
@@ -95,6 +95,19 @@ internal sealed class AgentResourceClaims : IAgentResourceClaims, ISingletonServ
         lock (_lock)
         {
             _claims.RemoveAll(claim => string.Equals(claim.OwnerPaneId, paneId, StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>
+    /// <see cref="IAgentResourceClaimsAudit.ListAll"/> — every claim, from every desk, with no
+    /// <c>workspacePaneIds</c> filter applied. Reachable only through that separate interface (AC-439), never
+    /// through <see cref="IAgentResourceClaims"/>, so nothing in <c>AgentsMcpTools</c> can call it.
+    /// </summary>
+    public IReadOnlyList<AgentResourceClaim> ListAll()
+    {
+        lock (_lock)
+        {
+            return [.. _claims];
         }
     }
 

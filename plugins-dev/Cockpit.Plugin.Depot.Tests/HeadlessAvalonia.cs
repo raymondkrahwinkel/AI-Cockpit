@@ -21,6 +21,12 @@ public sealed class HeadlessAvalonia
     private static readonly Lock Gate = new();
     private static bool _started;
 
+    // AC-423 added a DataGridRow selector to the shared Theme.axaml parsed below. Nothing in this plugin ever
+    // constructs a DataGrid, so Avalonia.Controls.DataGrid.dll — present in the output directory via the
+    // PackageReference, but never touched by any executed code — would otherwise never actually load, and the
+    // runtime XAML compiler only resolves a type against assemblies that are loaded. This reference forces it.
+    private static readonly Type DataGridAssemblyAnchor = typeof(Avalonia.Controls.DataGridRow);
+
     public HeadlessAvalonia()
     {
         lock (Gate)

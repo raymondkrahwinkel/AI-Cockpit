@@ -134,9 +134,17 @@ sealed class Program
         // #14 Plugins — phase 1, before the container is built: discover the plugins installed next to
         // cockpit.json and let each load-decided plugin register its own services. The manager isolates a
         // plugin that fails to load or configure; a discovery failure leaves the app running without plugins.
+        //
+        // AC-478 safe mode: a command-line switch, consistent with this file's other one-shot startup flags
+        // (--screenshot, --audio-spike) rather than an env var or a settings-file toggle — the whole point is a
+        // way in that does not depend on any UI (including the settings screen a broken plugin might have
+        // wedged) rendering successfully first. Discovery still runs below (a pending removal must still apply,
+        // and the operator still needs Plugin manager to see what is installed); only PluginManager's load
+        // phase is skipped.
+        var safeMode = args.Contains(PluginManager.SafeModeArgument);
         var pluginDiagnostics = new PluginDiagnostics();
         services.AddSingleton(pluginDiagnostics);
-        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics);
+        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics, safeMode);
         try
         {
             // The plugins this build ships (transcript search, git status) are put in place before discovery, so

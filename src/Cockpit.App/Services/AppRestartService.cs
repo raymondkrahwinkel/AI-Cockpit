@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia;
+using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 
 namespace Cockpit.App.Services;
@@ -75,8 +76,14 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     /// Any marker already there (this instance was itself started by a restart) is dropped first, so restart after
     /// restart carries exactly one and the argument list cannot grow without bound.
     /// </summary>
+    /// <remarks>
+    /// AC-478: also drops <see cref="PluginManager.SafeModeArgument"/> if present — safe mode is a one-shot
+    /// recovery flag for the process that carried it, not a state the operator has to remember to clear by hand.
+    /// Every restart, whichever button asked for it, is therefore the way back to a normal, fully-plugged-in
+    /// launch; nothing re-derives the safe-mode banner's "Restart" action separately from this one.
+    /// </remarks>
     internal static IReadOnlyList<string> BuildLaunchArguments(IReadOnlyList<string> currentArguments) =>
-        [.. currentArguments.Where(argument => argument != RestartArgument), RestartArgument];
+        [.. currentArguments.Where(argument => argument != RestartArgument && argument != PluginManager.SafeModeArgument), RestartArgument];
 
     private static void _ShutDownCurrentInstance()
     {

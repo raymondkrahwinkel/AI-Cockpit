@@ -862,6 +862,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   quieter ring on a field you clicked into is a tint of that accent, so it moved with it — it had been left behind
   on the old hue, which made the two blues on a focused field disagree by a shade nobody chose.
 
+- changed: the Autopilot side-menu entry and workspace title now read "Autopilot" instead of "Autopilot (CEO)" —
+  the suffix didn't distinguish anything and only added noise.
 - changed: Autopilot now plans its review gates to spend verification where the verdict is. A gate reviews, its
   findings get fixed, and it reviews again until a round finds nothing — the rounds in between are asked to build
   incrementally and run the tests around the change, and only the round that finds nothing does the whole-project

@@ -600,6 +600,29 @@ public class ThemeControlStateTests
     });
 
     [Fact]
+    public void APicker_KeyboardFocusWash_UsesTheCockpitAccentTint_NotTheSystemOne() => HeadlessAvalonia.Run(() =>
+    {
+        // AC-423: Fluent's ComboBox template carries a second overlay behind Border#Background — Border#Highlight
+        // Background — that its own :focus-visible trigger reveals with Avalonia's system accent (#0078d7) at
+        // 40%, a colour nothing in this theme named before this fix (found by the AC-338 palette baseline). The
+        // ring above already carries the focus signal, so this wash is retinted rather than left in the wrong hue.
+        var before = new Button { Content = "before" };
+        var picker = new ComboBox { ItemsSource = new[] { "a", "b" }, SelectedIndex = 0 };
+        using var host = RenderedScene.Show(new StackPanel { Children = { before, picker } });
+
+        before.Focus();
+        host.Window.UpdateLayout();
+        host.Window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.KeyReleaseQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        host.Window.UpdateLayout();
+
+        var wash = _Part<Border>(picker, "HighlightBackground");
+        Assert.True(picker.Classes.Contains(":focus-visible"), "a Tab press is exactly the keyboard route :focus-visible exists for");
+        Assert.True(wash.IsVisible, "Fluent's own trigger only reveals this part on :focus-visible");
+        Assert.Equal(RenderedScene.Token("CockpitAccentSelectionColor"), _ColourOf(wash.Background));
+    });
+
+    [Fact]
     public void APicker_ClickFocusAndHover_PaintDistinguishableColours() => HeadlessAvalonia.Run(() =>
     {
         // The ComboBox half of AC-438's third acceptance criterion — same pair, one control along. BorderThickness

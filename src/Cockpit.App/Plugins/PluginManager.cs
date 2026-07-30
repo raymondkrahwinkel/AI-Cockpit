@@ -13,12 +13,25 @@ namespace Cockpit.App.Plugins;
 /// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
 /// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
 /// </summary>
-internal sealed class PluginManager(
+public sealed class PluginManager(
     ILogger<PluginManager> logger,
     PluginDiagnostics diagnostics,
+    bool safeMode = false,
     Version? hostAbstractionsVersion = null,
     Func<ICockpitPlugin, Version?>? builtAgainstResolver = null) : IDisposable
 {
+    /// <summary>
+    /// The command-line switch (AC-478) that starts the cockpit with no plugins loaded at all — reachable even
+    /// when a UI plugin is the thing crashing on load, since nothing gets as far as instantiating one. Read once
+    /// in <c>Program.Main</c> and handed to this manager's constructor; a restart via
+    /// <c>Cockpit.App.Services.AppRestartService.BuildLaunchArguments</c> strips it again so safe mode is always
+    /// a one-shot recovery, never a state the operator has to remember to turn off by hand.
+    /// </summary>
+    public const string SafeModeArgument = "--safe-mode";
+
+    /// <summary>Whether this run skips the load phase entirely (AC-478) — read by the host to show the safe-mode marker.</summary>
+    public bool SafeMode { get; } = safeMode;
+
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
 
     // The abstractions version this app actually ships, and how to read the one a plugin was built against —
@@ -44,6 +57,18 @@ internal sealed class PluginManager(
         IServiceCollection services,
         Func<DiscoveredPlugin, ICockpitPlugin?> activate)
     {
+        // AC-478: safe mode skips the load phase outright — not even the discovery/decision breadcrumb below,
+        // since the point is a host that never instantiates a plugin, however many are on disk. discovered is
+        // still computed by the caller (housekeeping like a pending removal must still apply), it is simply
+        // never walked here.
+        if (SafeMode)
+        {
+            logger.LogInformation(
+                "Safe mode ({SafeModeArgument}): skipping the plugin load phase; {Count} discovered plugin(s) were not instantiated.",
+                SafeModeArgument, discovered.Count);
+            return;
+        }
+
         foreach (var candidate in discovered)
         {
             if (candidate.Decision != PluginLoadDecision.Load)

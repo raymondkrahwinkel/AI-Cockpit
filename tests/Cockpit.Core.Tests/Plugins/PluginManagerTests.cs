@@ -148,6 +148,50 @@ public class PluginManagerTests
         Assert.Empty(manager.Loaded);
     }
 
+    [Fact]
+    public void LoadAndConfigure_InSafeMode_InstantiatesNoPluginsEvenWhenSomeAreLoadDecided()
+    {
+        var discovered = _Discovered("keep", PluginLoadDecision.Load);
+        var activated = new List<string>();
+        var manager = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics(), safeMode: true);
+
+        manager.LoadAndConfigure([discovered], new ServiceCollection(), candidate =>
+        {
+            activated.Add(candidate.FolderId);
+            return new FakePlugin(candidate.FolderId);
+        });
+
+        Assert.Empty(activated);
+        Assert.Empty(manager.Loaded);
+    }
+
+    [Fact]
+    public void LoadAndConfigure_InSafeMode_LeavesInitializeSafeToCallOnAnEmptyPluginSet()
+    {
+        var discovered = _Discovered("keep", PluginLoadDecision.Load);
+        var manager = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics(), safeMode: true);
+        manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("keep"));
+
+        // The host still calls Initialize (phase 2) unconditionally after the container is built — safe mode
+        // must not turn that into a crash on a plugin set that simply has nothing in it.
+        var hostRequests = 0;
+        manager.Initialize(_ =>
+        {
+            hostRequests++;
+            return Substitute.For<ICockpitHost>();
+        });
+
+        Assert.Equal(0, hostRequests);
+    }
+
+    [Fact]
+    public void SafeModeArgument_IsTheSwitchProgramReadsFromTheCommandLine()
+    {
+        // Pinned so a rename here is caught: docs/plugins/PLUGIN-SDK.md and the startup notes both spell it
+        // exactly this way.
+        Assert.Equal("--safe-mode", PluginManager.SafeModeArgument);
+    }
+
     private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
 
     private static DiscoveredPlugin _Discovered(string id, PluginLoadDecision decision) => new(

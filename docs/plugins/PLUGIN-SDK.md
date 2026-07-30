@@ -833,6 +833,15 @@ What actually happens under the hood, so you can reason about the "restart to ap
   dialog opened via `ShowDialogAsync`/`AddSideMenuButton` is rebuilt fresh each time it opens. Only a
   contribution that cached settings-derived data at construction (e.g. a side-menu section's already-fetched
   list) needs to explicitly reload — via `host.OnSettingsSaved(...)`, documented in the [API reference](API-REFERENCE.md#icockpithost).
+- **Safe mode — the way out when a plugin won't let you in.** Start the cockpit with `--safe-mode` on the
+  command line and the manager skips the load phase entirely: nothing is instantiated, so a plugin that
+  crashes on load (or hangs the UI it contributes) can no longer block startup. A banner across the top of the
+  window makes the run impossible to mistake for normal — "Safe mode — no plugins were loaded" — with a
+  **Restart** button right on it. Everything else still works in safe mode: the Plugin manager is reachable as
+  usual, and its **Disable** action on the offending plugin is exactly the same one described above. The way
+  back out is therefore: disable the plugin causing trouble, then hit Restart (either the banner's button or
+  the app's own restart action) — the restart always drops `--safe-mode` again, so it is a one-shot recovery
+  switch, never a state you have to remember to turn off by hand.
 
 ## Getting the SDK outside the repo
 

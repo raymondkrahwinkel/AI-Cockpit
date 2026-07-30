@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 
 namespace Cockpit.Core.Tests.Services;
@@ -68,6 +69,16 @@ public class AppRestartServiceTests
         // This instance was itself started by a restart, so it already carries the marker. Without dropping it
         // first the list would gain one on every restart and grow without bound.
         var arguments = AppRestartService.BuildLaunchArguments(["--flag", AppRestartService.RestartArgument]);
+
+        Assert.Equal(new[] { "--flag", AppRestartService.RestartArgument }, arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_DropsTheSafeModeSwitch_SoRestartingAlwaysLeavesSafeMode()
+    {
+        // AC-478: safe mode is a one-shot recovery flag for the process that carried it — a restart, whichever
+        // button asked for it, is the way back to a normal cockpit, not another safe-mode launch.
+        var arguments = AppRestartService.BuildLaunchArguments(["--flag", PluginManager.SafeModeArgument]);
 
         Assert.Equal(new[] { "--flag", AppRestartService.RestartArgument }, arguments);
     }

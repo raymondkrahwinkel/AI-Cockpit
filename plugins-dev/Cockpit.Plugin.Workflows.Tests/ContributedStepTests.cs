@@ -1,6 +1,7 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Material.Icons;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -81,6 +82,23 @@ public class ContributedStepTests
     }
 
     [Fact]
+    public void ItsVectorIcon_CarriesThroughToTheDescriptor_SoThePickerDrawsItInsteadOfTheGlyph()
+    {
+        // NodeCatalogTests's "every step has an icon" check is an OR against the glyph string, so it stays green
+        // whether or not IconKind made it through — only an assertion on the exact kind catches this plumbing
+        // breaking (ContributedStep.Describe, ContributedStep.cs:59).
+        var type = ContributedStep.Describe(new IconedStep());
+
+        Assert.Equal(MaterialIconKind.SourceBranch, type.IconKind);
+    }
+
+    [Fact]
+    public void AStepThatDeclaresNoVectorIcon_LeavesTheDescriptorsIconKindNull_SoThePickerFallsBackToTheGlyph()
+    {
+        Assert.Null(ContributedStep.Describe(new FakeStep()).IconKind);
+    }
+
+    [Fact]
     public void AContributedTrigger_IsATrigger_SoNothingFlowsIntoIt()
     {
         var type = ContributedStep.Describe(new PickedTrigger());
@@ -157,6 +175,26 @@ public class ContributedStepTests
                 [new Dictionary<string, string> { ["state"] = "In Progress" }],
                 "WEB-14 → In Progress"));
         }
+    }
+
+    private sealed class IconedStep : IWorkflowStep
+    {
+        public string TypeId => "fake.iconed";
+
+        public string Name => "Cut a branch";
+
+        public string Description => "Creates a branch.";
+
+        public string Icon => "🌿";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.SourceBranch;
+
+        public string Category => "Test";
+
+        public IReadOnlyList<string> Parameters => [];
+
+        public Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(WorkflowStepResult.Done("branched"));
     }
 
     private sealed class SilentStep : IWorkflowStep
