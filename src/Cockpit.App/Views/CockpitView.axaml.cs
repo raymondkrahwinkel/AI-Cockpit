@@ -96,11 +96,14 @@ public partial class CockpitView : UserControl
             cockpit.SampleResources();
 
             // AC-439: same footing as the two timers above — the arithmetic (which panes collide) lives on the view
-            // model, only the tick lives here.
+            // model, only the tick lives here. The refresh itself hops to the thread pool for its filesystem
+            // canonicalization (see RefreshClaimCollisionsAsync), so this tick handler is fire-and-forget rather
+            // than awaited — a DispatcherTimer tick cannot be async void's usual footgun here since nothing on the
+            // UI thread is waiting on it.
             _claimCollisionTimer = new DispatcherTimer { Interval = ClaimCollisionCheckInterval };
-            _claimCollisionTimer.Tick += (_, _) => cockpit.RefreshClaimCollisions();
+            _claimCollisionTimer.Tick += (_, _) => _ = cockpit.RefreshClaimCollisionsAsync();
             _claimCollisionTimer.Start();
-            cockpit.RefreshClaimCollisions();
+            _ = cockpit.RefreshClaimCollisionsAsync();
         }
     }
 

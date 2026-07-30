@@ -55,7 +55,7 @@
                     <TextBlock MaxWidth="320" TextWrapping="Wrap"
                                Text="A resource this session has claimed is also claimed by an agent on a different workspace. Neither agent can see the other — claims are private to a desk — so this is shown to you here rather than to either of them. It clears on its own once one side releases the claim."/>
                 </ToolTip.Tip>
-                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="⚠ claim collision" FontSize="10" Foreground="{StaticResource CockpitTextOnStatusBrush}"/>
             </Border>
 
             <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content so it never renders past a

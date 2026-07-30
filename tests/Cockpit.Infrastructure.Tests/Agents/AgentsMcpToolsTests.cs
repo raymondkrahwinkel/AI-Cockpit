@@ -1375,6 +1375,54 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal(withoutPaneY.ListClaimsShape, withPaneY.ListClaimsShape);
     }
 
+    /// <summary>
+    /// The sharper half of criterion 2, which the spelling-mismatch test above cannot reach: <c>AgentsTools.Claim</c>
+    /// partitions by <c>workspacePaneIds</c> (AC-393's own exact-match rule), so even the identical resource
+    /// string claimed on another desk must never produce <see cref="AgentClaimOutcome.HeldByAnother"/> for pane-x —
+    /// that would be pane-x learning, through its own tool result, that another desk exists and is busy. This is
+    /// exactly the collision <see cref="IClaimCollisionMonitor"/> is built to surface to the operator instead.
+    /// </summary>
+    [Fact]
+    public async Task Claim_ForPaneX_StillSucceeds_WhenPaneYOnAnotherDeskHoldsTheIdenticalResourceString()
+    {
+        var gateway = Substitute.For<IWorkspaceAgentGateway>();
+        var coordinator = new WorkspaceAgentCoordinator();
+        var inbox = new AgentMessageInbox();
+        var claims = new AgentResourceClaims();
+        var auditPath = Path.Combine(Path.GetTempPath(), $"agent-notify-audit-{Guid.NewGuid():N}.jsonl");
+
+        var deskX = new WorkspaceAgentSnapshot("ws-x", [new WorkspaceAgentPane("pane-x", "pane-x", null, string.Empty, true)]);
+        var deskY = new WorkspaceAgentSnapshot("ws-y", [new WorkspaceAgentPane("pane-y", "pane-y", null, string.Empty, true)]);
+        gateway.GetWorkspaceSnapshotAsync("pane-x").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskX));
+        gateway.GetWorkspaceSnapshotAsync("pane-y").Returns(Task.FromResult<WorkspaceAgentSnapshot?>(deskY));
+
+        try
+        {
+            McpRequestContext.Set("pane-y");
+            await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+                .ClaimAsync("/repo/worktree-a");
+
+            McpRequestContext.Set("pane-x");
+            var result = await new AgentsMcpTools(gateway, coordinator, inbox, new AgentNotifyAuditLog(auditPath, NullLogger<AgentNotifyAuditLog>.Instance), claims)
+                .ClaimAsync("/repo/worktree-a");
+
+            // The Claimed shape (ok:true, alreadyHeld:false, no heldBy) — not HeldByAnother's ok:false/heldBy, which
+            // is what pane-x would see if pane-y's claim on another desk leaked into its own partition.
+            var json = _Json(result);
+            Assert.True(json["ok"]?.GetValue<bool>());
+            Assert.False(json["alreadyHeld"]?.GetValue<bool>());
+            Assert.Null(json["heldBy"]);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+            if (File.Exists(auditPath))
+            {
+                File.Delete(auditPath);
+            }
+        }
+    }
+
     private static async Task<(string ClaimShape, string ListClaimsShape)> _RunPaneXClaimAsync(bool includeCollidingPaneYOnAnotherDesk)
     {
         var gateway = Substitute.For<IWorkspaceAgentGateway>();

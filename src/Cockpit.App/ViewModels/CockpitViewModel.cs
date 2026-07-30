@@ -5906,15 +5906,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// and the resource sampler: the view model stays free of timers, and a test can call this whenever it likes. A
     /// no-op when no monitor was supplied (the design-time/unit-test graph), which reads as "no collisions" rather
     /// than an error.
+    /// <para>
+    /// <see cref="IClaimCollisionMonitor.PanesInCollision"/> canonicalizes every claimed resource, which for a
+    /// path-shaped one means real filesystem calls (<see cref="System.IO.File.Exists(string)"/>,
+    /// <see cref="System.IO.File.ResolveLinkTarget"/>) on strings an agent chose — a stalled network mount behind
+    /// one claim must not stall this UI-thread timer for every pane. The computation therefore runs on the thread
+    /// pool; only the property stamping below runs back on the UI thread once it completes.
+    /// </para>
     /// </summary>
-    internal void RefreshClaimCollisions()
+    internal async Task RefreshClaimCollisionsAsync()
     {
         if (_claimCollisionMonitor is null)
         {
             return;
         }
 
-        var colliding = _claimCollisionMonitor.PanesInCollision();
+        var monitor = _claimCollisionMonitor;
+        var colliding = await Task.Run(monitor.PanesInCollision).ConfigureAwait(true);
         foreach (var session in AllSessions())
         {
             session.HasClaimCollision = colliding.Contains(session.PaneId);
