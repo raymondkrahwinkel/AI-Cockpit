@@ -61,6 +61,72 @@ public class McpServerStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_TwoRowsHandEditedToShareAnId_DoNotBothAnswerToIt()
+    {
+        // AC-403 review finding. The dialog refuses two servers with the same name, but the id is not shown
+        // anywhere, so there is no equivalent gate on it — and copying an mcpServers block to add a second endpoint
+        // on the same host, changing the name and URL, leaves the id behind. Sharing an id is sharing a credential:
+        // a sign-out on either withdraws it, and for two paths on one host the origin check cannot tell them apart,
+        // so one row's bearer would go to the other's address. The first row keeps the id; the second is pushed off.
+        await File.WriteAllTextAsync(_configFilePath, """
+            {
+              "McpServers": [
+                { "Id": "shared", "Name": "alpha", "Transport": "Http", "Url": "https://one.example.com/alpha" },
+                { "Id": "shared", "Name": "beta", "Transport": "Http", "Url": "https://one.example.com/beta" }
+              ]
+            }
+            """);
+
+        var loaded = await new McpServerStore(_configFilePath).LoadAsync();
+
+        Assert.Equal("shared", Assert.Single(loaded, server => server.Name == "alpha").IdentityKey);
+        Assert.Equal(McpServerIdentity.LegacyIdFor("beta"), Assert.Single(loaded, server => server.Name == "beta").IdentityKey);
+    }
+
+    [Fact]
+    public async Task LoadAsync_RowsSharingBothAnIdAndAName_StillEndUpWithDistinctIdentities()
+    {
+        // The degenerate copy-paste: the block was duplicated and nothing was edited. Falling back to the name gets
+        // the second row nowhere, so it lands on an id nothing can ever have filed a token under — "sign in again"
+        // rather than two rows quietly holding one credential between them.
+        await File.WriteAllTextAsync(_configFilePath, """
+            {
+              "McpServers": [
+                { "Id": "shared", "Name": "alpha", "Transport": "Http", "Url": "https://one.example.com/alpha" },
+                { "Id": "shared", "Name": "alpha", "Transport": "Http", "Url": "https://one.example.com/alpha" }
+              ]
+            }
+            """);
+
+        var loaded = await new McpServerStore(_configFilePath).LoadAsync();
+
+        Assert.Equal(2, loaded.Count);
+        Assert.Equal(2, loaded.Select(server => server.IdentityKey).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public async Task LoadAsync_ReadTwice_GivesTheSameIdentitiesBothTimes()
+    {
+        // The de-duplication has to be a function of the file, not of the read: the dialog's post-save resync and
+        // the token lookups are two separate reads of this store, and a row that keyed differently between them
+        // would resync against nothing and report itself unsaved.
+        await File.WriteAllTextAsync(_configFilePath, """
+            {
+              "McpServers": [
+                { "Id": "shared", "Name": "alpha", "Transport": "Http", "Url": "https://one.example.com/alpha" },
+                { "Id": "shared", "Name": "alpha", "Transport": "Http", "Url": "https://one.example.com/alpha" }
+              ]
+            }
+            """);
+
+        var store = new McpServerStore(_configFilePath);
+
+        Assert.Equal(
+            (await store.LoadAsync()).Select(server => server.IdentityKey),
+            (await store.LoadAsync()).Select(server => server.IdentityKey));
+    }
+
+    [Fact]
     public async Task SaveAsync_ForAConfigCarryingNoIdAtAll_StillWritesOneToDisk()
     {
         // Nothing that reaches this store today hands it an idless config — a row read back off disk and a plugin

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Cockpit.Core.Mcp;
 
 /// <summary>
@@ -26,8 +28,23 @@ public static class McpServerIdentity
     /// </summary>
     private const string LegacyPrefix = "name:";
 
+    /// <summary>
+    /// Marks an id handed to a row that could not keep its own because another row had already claimed it. Its own
+    /// namespace again, for the same reason: nothing minted or derived can land on it, so a credential can never be
+    /// found under it — which is the point. A duplicate reads as "not signed in" rather than sharing somebody
+    /// else's token.
+    /// </summary>
+    private const string UnmatchablePrefix = "row:";
+
     /// <summary>A fresh id for a server being created now.</summary>
     public static string NewId() => Guid.NewGuid().ToString("n");
+
+    /// <summary>
+    /// An id for the row at <paramref name="row"/> that nothing will ever have a token filed under. Derived from the
+    /// row's position rather than minted, so two reads of the same config agree — a random one here would make the
+    /// same row key differently on every read.
+    /// </summary>
+    public static string UnmatchableIdForRow(int row) => UnmatchablePrefix + row.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The id a server that predates <see cref="McpServerConfig.Id"/> is known by, derived from its name.

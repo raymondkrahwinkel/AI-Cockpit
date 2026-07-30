@@ -20,9 +20,10 @@ namespace Cockpit.App.Plugins;
 /// ⚠️ <b>Why this may only run here.</b> Matching a token against a server's <em>current</em> name is the very
 /// mistake this ticket removes — two servers on one host that swap names would each adopt the other's token. It is
 /// safe exactly once, at a moment when no rename can have happened since the tokens were written: the first launch
-/// of a build that has ids, before any dialog is open and before any session starts. Called from
-/// <c>App.OnFrameworkInitializationCompleted</c> right after the plugins have registered themselves, which is the
-/// earliest point at which a plugin's own servers can be asked for at all.
+/// of a build that has ids, before any dialog is open and before any session starts. Called at the tail of
+/// <c>App._InitializePlugins</c> — the earliest point at which a plugin's own servers can be asked for at all, and
+/// still inside the stretch where the UI thread has not yet gone back to the operator, so nothing can be clicked
+/// while this runs.
 /// </para>
 /// <para>
 /// A plugin that is switched off at that moment contributes nothing and so is not migrated — and does not have to
