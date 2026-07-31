@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
@@ -505,6 +504,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // DI-backed session.
     public SessionViewModel()
     {
+        _eventQueue = new SessionEventQueue(Apply);
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
         KindLabel = "SDK";
@@ -574,6 +574,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
         SessionStateRecorder? sessionStateRecorder = null)
     {
+        _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
         _usageHistory = usageHistory;
         _turnInboxDelivery = turnInboxDelivery;
@@ -1410,7 +1411,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
     // thread is this panel's job, because it is the consumer that touches UI — a headless consumer of the same
     // runtime marshals nothing.
-    private void _OnSessionEvent(SessionEvent evt) => Dispatcher.UIThread.Post(() => Apply(evt));
+    //
+    // AC-529: through the queue rather than a post per event. A streaming turn raises hundreds of few-character
+    // deltas, and one post each meant one full re-realisation of the row's text and one re-measure each; the queue
+    // hands the UI thread whatever piled up since the last drain, with adjacent deltas folded into one. Order and
+    // content are unchanged — see SessionEventQueue for why nothing is left behind at the end of a turn.
+    private void _OnSessionEvent(SessionEvent evt) => _eventQueue.Enqueue(evt);
+
+    private readonly SessionEventQueue _eventQueue;
 
     /// <summary>
     /// Raised when the session makes real tool progress — a tool call surfacing or a tool result landing (AC-215/stall).
