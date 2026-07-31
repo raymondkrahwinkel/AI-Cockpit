@@ -116,6 +116,16 @@
                                                     ToolTip.Tip="Remove this worktree (asks to confirm; a tree with unsaved changes warns first). Disabled while a session is still using it — close the session first."
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"/>
+                                            <!-- Only for a row that is "in use" solely because of an open restore offer (AC-410)
+                                                 with nothing actually running behind it (AC-520 fix 6) — detaches ownership so
+                                                 Remove and Reattach become available, without waiting for the operator to start
+                                                 or close that pane by hand. -->
+                                            <Button Classes="RowAction" Content="Release"
+                                                    IsEnabled="{Binding CanRelease}"
+                                                    ToolTip.ShowOnDisabled="True"
+                                                    ToolTip.Tip="Detach this worktree from the session that claimed it, discarding its restore offer. Only offered while that offer is the only reason the row reads as in use."
+                                                    Command="{Binding ((vm:WorktreesViewModel)DataContext).ReleaseCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>

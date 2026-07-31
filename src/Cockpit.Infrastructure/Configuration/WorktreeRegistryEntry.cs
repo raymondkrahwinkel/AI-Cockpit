@@ -28,6 +28,9 @@ internal sealed class WorktreeRegistryEntry
 
     public bool IsRetained { get; set; }
 
+    /// <summary>Whether an agent made this worktree through the MCP tool (AC-520 fix 5); absent on entries written before this was tracked, which deserialize to false — read as "session-own, protected", the safe default.</summary>
+    public bool IsAgentCreated { get; set; }
+
     public static WorktreeRegistryEntry FromDomain(WorktreeRecord record) => new()
     {
         SessionId = record.SessionId,
@@ -39,6 +42,7 @@ internal sealed class WorktreeRegistryEntry
         CreatedAt = record.CreatedAt,
         IsLocked = record.IsLocked,
         IsRetained = record.IsRetained,
+        IsAgentCreated = record.IsAgentCreated,
     };
 
     public WorktreeRecord ToDomain() => new(SessionId, RepositoryRoot, Path, Branch, BaseCommit, CreatedAt)
@@ -46,5 +50,6 @@ internal sealed class WorktreeRegistryEntry
         BaseBranch = BaseBranch,
         IsLocked = IsLocked,
         IsRetained = IsRetained,
+        IsAgentCreated = IsAgentCreated,
     };
 }

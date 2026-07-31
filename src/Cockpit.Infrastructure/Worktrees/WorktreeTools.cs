@@ -27,7 +27,8 @@ internal sealed class WorktreeTools
 
     // The liveness registry and the consent broker are optional so the tool's own tests construct it without them;
     // the container injects the shared singletons, so a real removal is checked against the running sessions and a
-    // dirty removal is gated behind operator consent.
+    // dirty removal is gated behind operator consent. Absent liveness is not "assume dead": with no registry to ask,
+    // the cross-session guard in RemoveAsync stays categorical rather than treating silence as permission.
     public WorktreeTools(IWorktreeManager worktreeManager, ILiveSessionRegistry? liveSessions = null, IConsentBroker? consent = null)
     {
         _worktreeManager = worktreeManager;
@@ -36,7 +37,7 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_create")]
-    [Description("Create a git worktree to isolate a task on its own branch. The source branch is fetched and fast-forwarded first where that is safe, so the worktree starts on the latest state of the repository at `directory` rather than on whatever was last pulled. Returns the new worktree's path and branch — run the task's commands with that path — plus `sourceNotice` when the fork base is not the latest (offline, uncommitted changes, or a diverged branch). Pass your session id (the COCKPIT_PANE_ID environment variable) as `session` so the worktree is tied to this session and cleaned up when it closes.")]
+    [Description("Create a git worktree to isolate a task on its own branch. The source branch is fetched and fast-forwarded first where that is safe, so the worktree starts on the latest state of the repository at `directory` rather than on whatever was last pulled. Returns the new worktree's path and branch — run the task's commands with that path — plus `sourceNotice` when the fork base is not the latest (offline, uncommitted changes, or a diverged branch). Pass your session id (the COCKPIT_PANE_ID environment variable) as `session` so the worktree is tied to this session and cleaned up when it closes. Marked as made through this tool, so worktree_remove lets you clean it up yourself later — for example when the task is done — even while your own session is still running; that is unlike the worktree your session runs in, which stays off limits to worktree_remove no matter who asks.")]
     public async Task<string> CreateAsync(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         [Description("A folder inside the git repository to isolate; the worktree is forked from that repository's source branch, brought up to date first where possible.")] string directory,
@@ -53,9 +54,12 @@ internal sealed class WorktreeTools
             // whatever is checked out there. It still starts on the latest state — the worktree forks from the
             // upstream tip — but that repository's own branch and working tree are not written to on the strength of
             // an agent's say-so (AC-376).
+            // isAgentCreated: true (AC-520 fix 5) — this is the path that makes that distinction true: every worktree
+            // this tool creates is one an agent asked for, never the one a session runs in, so its own owning
+            // session may remove it later even while that session is still live.
             var record = string.IsNullOrWhiteSpace(branch)
-                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory, WorktreeSourceHandling.LeaveSourceAlone)
-                : await _worktreeManager.CreateAsync(owner, branch, directory, WorktreeSourceHandling.LeaveSourceAlone);
+                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory, WorktreeSourceHandling.LeaveSourceAlone, isAgentCreated: true)
+                : await _worktreeManager.CreateAsync(owner, branch, directory, WorktreeSourceHandling.LeaveSourceAlone, isAgentCreated: true);
 
             // The notice rides along only when there is one (AC-349): an agent that reads "forked from your local
             // main, 30 commits behind" can say so instead of quietly building on a base nobody meant it to have.
@@ -94,7 +98,7 @@ internal sealed class WorktreeTools
     }
 
     [McpServerTool(Name = "worktree_remove")]
-    [Description("Remove a git worktree the cockpit created — for example when a task is done. A clean worktree is removed right away; a worktree that still holds uncommitted changes or untracked files is removed only after the operator approves a consent prompt (which discards them — any committed history stays on the branch). Refuses a worktree a live session is still running in. The response carries `notice` when the removal left something behind that the repository could no longer be asked about — its worktree folder is never deleted in that case, only untracked from the cockpit — worth relaying rather than treating as a bare success. Use worktree_list to get the path.")]
+    [Description("Remove a git worktree the cockpit created — for example when a task is done. A clean worktree is removed right away; a worktree that still holds uncommitted changes or untracked files is removed only after the operator approves a consent prompt (which discards them — any committed history stays on the branch). You may remove a worktree worktree_create made for you even while your own session is still running — that is exactly the case this tool exists for. Refused either way: the worktree your own session actually runs in (made when the session started or was reattached, never through this tool), and any worktree owned by a *different* session that is still live — that cross-session cleanup is the operator's, from the managed-worktrees panel, not an agent's. The response carries `notice` when the removal left something behind that the repository could no longer be asked about — its worktree folder is never deleted in that case, only untracked from the cockpit — worth relaying rather than treating as a bare success. Use worktree_list to get the path.")]
     public async Task<string> RemoveAsync(
         [Description("The worktree's path, as returned by worktree_create or worktree_list.")] string path)
     {
@@ -106,18 +110,40 @@ internal sealed class WorktreeTools
             return _Serialize(new { ok = false, error = "No managed worktree at that path — call worktree_list for the current paths." });
         }
 
-        // AC-128: an agent may only remove a worktree it owns (created for its own verified pane). Removing another
-        // session's checkout by naming its path is a confused deputy — cross-session cleanup is the operator's, done
-        // from the managed panel, not an agent's. Off the verified path (operator/in-process) there is no caller to
-        // scope to, so the panel's own removals are unaffected.
-        if (McpRequestContext.CurrentPaneId is { } caller && !string.Equals(record.SessionId, caller, StringComparison.Ordinal))
+        // AC-128: an agent may only remove a worktree it owns (created for its own verified pane) — removing another
+        // session's checkout by naming its path is a confused deputy, and cross-session cleanup while that owner is
+        // still alive is the operator's, done from the managed panel, not an agent's. That protection only has
+        // something to protect while the owner is actually running, though: once it is provably dead (its id is
+        // absent from LiveSessionIds), there is no live session left to pull a working directory out from under, and
+        // refusing only leaves an orphan no session will ever come back to release — the fifth crashed-session
+        // worktree AC-524 measured. Liveness must be genuinely known before this loosens: with no registry to ask
+        // (_liveSessions is null) the guard stays categorical, exactly as it always has, because a missing
+        // registration must never silently read as "dead" and disable the protection it exists to give.
+        if (McpRequestContext.CurrentPaneId is { } caller
+            && !string.Equals(record.SessionId, caller, StringComparison.Ordinal)
+            && (_liveSessions is null || _liveSessions.LiveSessionIds.Contains(record.SessionId)))
         {
             return _Serialize(new { ok = false, error = "That worktree belongs to another session — you can only remove a worktree you created." });
         }
 
         // Never remove a worktree whose owning session is still running — that pulls the working directory out from
         // under it. The panel enforces the same guard; close the session first, or let its own teardown remove it.
-        if (_liveSessions is not null && _liveSessions.LiveSessionIds.Contains(record.SessionId))
+        // Still needed after the relaxation above: it is what catches an agent removing its own worktree while its
+        // own session is (for whatever reason) still counted live, a case the guard above never touches because the
+        // caller and the owner are the same session there.
+        //
+        // One exception (AC-520 fix 5): a pane can own two different kinds of worktree, and they need opposite
+        // answers here. The one it was started or reattached in (made by the UI, never through this tool) must stay
+        // protected even against its own session — that IS the working directory the session is running in. One it
+        // made for itself through worktree_create, for a subtask, has nobody running in it; refusing to remove it
+        // left the tool unusable for exactly the case its own description promises ("when a task is done").
+        // IsAgentCreated is what tells the two apart — set at creation time above, never by the UI's own create path
+        // — so only a caller cleaning up its own agent-made worktree is exempted; cross-session cleanup is still the
+        // operator's, from the panel, and still refused by the guard above regardless of this flag.
+        var removingOwnAgentMadeWorktree =
+            record.IsAgentCreated && string.Equals(record.SessionId, McpRequestContext.CurrentPaneId, StringComparison.Ordinal);
+
+        if (_liveSessions is not null && _liveSessions.LiveSessionIds.Contains(record.SessionId) && !removingOwnAgentMadeWorktree)
         {
             return _Serialize(new { ok = false, error = "That worktree's session is still running — it will be cleaned up when the session closes; do not remove a live session's worktree." });
         }

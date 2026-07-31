@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Managed worktrees dialog can release a worktree from a session that only ever showed a restore offer
+  and never actually started. A pane returning from a crash with nothing more than "resume or start fresh" used to
+  hold its worktree indefinitely — no timeout, Remove and Reattach both greyed out until you started or closed that
+  pane by hand. "Release" detaches the worktree from that offer (discarding it) without touching any files; Remove
+  and Reattach become available right after, the same as for any other worktree a session has let go of.
 - added: the YouTrack dialog's status filter now lists every stage the project actually has, instead of only the ones
   that happened to appear in the first hundred issues it loaded. Picking a status also searches the whole project
   rather than filtering the loaded page, so a ticket that never made it into that page is still found. Stages that
@@ -887,6 +892,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the Managed worktrees dialog now names the session that claims a worktree — "in use · claimed by
+  DEP-158" instead of the anonymous "in use · claimed by a pane" — and says whose it was after that session
+  closes or crashes ("session gone · was DEP-158"). Falls back to the previous, unnamed wording when no name is
+  known.
 - changed: the GitHub Pull Requests plugin's always-visible list under the session list is now a left-menu button
   with a live badge — your own open PR count next to how many are waiting on your review ("3 / 2"). Clicking it
   opens the same dialog listing every open PR as before; the always-visible list still exists as the Dashboard
@@ -1148,6 +1157,23 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an agent can now remove a worktree it made for itself, through its own "isolate this task" tool, even while
+  its own session is still open — the guard that (rightly) refuses to remove the worktree a session is actually
+  running in was refusing that case too, which made the tool's own "clean up when a task is done" description
+  impossible to follow. The worktree a session runs in stays off limits either way, including to that session's own
+  agent.
+- fixed: a worktree an agent created for itself mid-session (through its own "isolate this task" tool) is now
+  released when that session's pane closes, the same as a worktree the New-session dialog made. It used to sit on
+  disk until the next cockpit restart, because closing a pane only ever released a worktree the pane itself had
+  created.
+- fixed: removing a worktree in Cockpit now really means it is gone from disk, not just off the list. A folder git
+  can no longer recognise as a working tree — its own administration corrupted or pruned out from under it — is now
+  deleted for real once Cockpit can prove nothing is lost: no uncommitted or untracked files, and no commit that
+  exists only there. When that cannot be shown, the folder is left in place exactly as before, with the same notice
+  explaining why.
+- fixed: an agent can now clean up a worktree left behind by a session that has since crashed or closed, instead of
+  only ever being able to touch worktrees from its own session. A worktree whose owning session is still running is
+  still refused, as is one whose liveness cannot be determined at all.
 - fixed: the project editor's server dropdown no longer requires closing and reopening the dialog to notice a
   server you just created (or removed) through the "Servers…" button. It now shows the new server immediately,
   keeps a selection you already made when other servers change around it, and falls back to no selection rather

@@ -62,6 +62,36 @@ public sealed class WorktreeRegistryStoreTests : IDisposable
         Assert.Equal(Path.GetFullPath("/wt/two"), Assert.Single((await store.ListAsync())).Path);
     }
 
+    [Fact]
+    public async Task ListAsync_OldEntryWithoutTheAgentCreatedField_ReadsAsSessionOwnAndProtected()
+    {
+        // AC-520 fix 5: a record written before IsAgentCreated existed has no such property in its JSON at all —
+        // it must deserialize to false, read as "session-own, protected", rather than silently disabling the guard
+        // that field exists to loosen.
+        var json = """
+            {
+              "Worktrees": [
+                {
+                  "SessionId": "old-session",
+                  "RepositoryRoot": "/repo",
+                  "Path": "/wt/old",
+                  "Branch": "cockpit/old",
+                  "BaseCommit": "0123456789abcdef0123456789abcdef01234567",
+                  "CreatedAt": "2026-01-01T00:00:00+00:00",
+                  "IsLocked": true,
+                  "IsRetained": false
+                }
+              ]
+            }
+            """;
+        await File.WriteAllTextAsync(_configPath, json);
+        var store = new WorktreeRegistryStore(_configPath);
+
+        var record = Assert.Single(await store.ListAsync());
+
+        Assert.False(record.IsAgentCreated);
+    }
+
     private static WorktreeRecord _Record(string repositoryRoot, string path, string branch) =>
         new(
             SessionId: Guid.NewGuid().ToString("N"),

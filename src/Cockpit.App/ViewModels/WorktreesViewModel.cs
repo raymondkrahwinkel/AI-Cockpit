@@ -66,6 +66,22 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     /// <summary>Supplied by the cockpit: the ids of the sessions alive right now, so each worktree's owner shows as live or gone.</summary>
     public Func<IReadOnlySet<string>>? LiveSessionIds { get; set; }
 
+    /// <summary>
+    /// Supplied by the cockpit (AC-520): the display names of the sessions, by pane id — the live pane's title,
+    /// else the persisted <c>WorkspacePane.Title</c> for one that no longer has a pane, so a row still names its
+    /// owner after the session has closed or crashed. Taken as one snapshot alongside <see cref="LiveSessionIds"/>,
+    /// on the same thread and at the same moment: both read the cockpit's live collections.
+    /// </summary>
+    public Func<IReadOnlyDictionary<string, string>>? SessionNames { get; set; }
+
+    /// <summary>
+    /// Supplied by the cockpit (AC-520 fix 6): the pane ids that currently show an open restore offer (AC-410) —
+    /// live only on the strength of that offer, with nothing actually running behind it. Taken as one snapshot
+    /// alongside <see cref="LiveSessionIds"/> and <see cref="SessionNames"/>, on the same thread and at the same
+    /// moment, so a row can never disagree with itself about why its owner counts as live.
+    /// </summary>
+    public Func<IReadOnlySet<string>>? RestoreOfferPaneIds { get; set; }
+
     /// <summary>Raised when the operator reattaches to a gone worktree; the cockpit starts a new session in it.</summary>
     public event Action<WorktreeRecord>? ReattachRequested;
 
@@ -100,12 +116,15 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
 
         var live = LiveSessionIds?.Invoke() ?? new HashSet<string>();
+        var names = SessionNames?.Invoke() ?? ReadOnlyDictionary<string, string>.Empty;
+        var restoreOfferOwners = RestoreOfferPaneIds?.Invoke() ?? new HashSet<string>();
         var statuses = await _manager.GetStatusesAsync();
 
         Worktrees.Clear();
         foreach (var status in statuses)
         {
-            Worktrees.Add(new ManagedWorktreeRowViewModel(status, live.Contains(status.Record.SessionId)));
+            var owner = status.Record.SessionId;
+            Worktrees.Add(new ManagedWorktreeRowViewModel(status, live.Contains(owner), names.GetValueOrDefault(owner), restoreOfferOwners.Contains(owner)));
         }
 
         Count = Worktrees.Count;
@@ -167,6 +186,36 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         }
 
         ReattachRequested?.Invoke(row.Record);
+    }
+
+    /// <summary>
+    /// Gives up a worktree's claim on a session that is only "live" because of an open restore offer with nothing
+    /// running behind it (AC-520 fix 6, Raymond's explicit choice over a time-based expiry on the offer itself: "ik
+    /// ben wel voor die geef vrij actie in het paneel ... legt de keuze bij de gebruiker neer"). Detaches ownership
+    /// only — no worktree is removed here — so the row becomes an ordinary orphan afterwards: Remove and Reattach
+    /// become available, and the operator picks from there.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReleaseAsync(ManagedWorktreeRowViewModel? row)
+    {
+        if (_manager is null || row is null || !row.CanRelease)
+        {
+            return;
+        }
+
+        var confirmed = _dialogs is not null && await _dialogs.ShowConfirmationDialogAsync(
+            "Release this worktree?",
+            $"This detaches the worktree on branch '{row.Branch}' from the session that claimed it. That session's " +
+            "restore offer will no longer have a worktree to come back to, so it is discarded along with this. " +
+            "No files are touched — afterwards you can remove the worktree or start a new session in it.",
+            "Release");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await _manager.ReleaseOwnershipAsync(row.Record.Path);
+        await RefreshAsync();
     }
 
     /// <summary>Removes every worktree that is safe to remove — clean or already gone, no work to lose. Never touches one with unsaved changes.</summary>

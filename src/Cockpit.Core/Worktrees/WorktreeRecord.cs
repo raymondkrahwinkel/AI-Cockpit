@@ -30,6 +30,17 @@ public sealed record WorktreeRecord(
     public bool IsRetained { get; init; }
 
     /// <summary>
+    /// Whether an agent made this worktree itself, through the <c>worktree_create</c> MCP tool, for its own subtask —
+    /// as opposed to the worktree a session runs in, which the UI creates at session start or reattach (AC-520 fix 5).
+    /// Nobody runs "in" the first kind, so its own owning session may remove it even while that session is live; the
+    /// second kind stays protected against its own session too, because that IS the working directory the session is
+    /// using. Named for the case that gets the exception, not the default: an old record has no such field and
+    /// deserializes to <see langword="false"/>, which must read as "session-own, protected" — the safe reading — not
+    /// silently disable the guard it did not exist to loosen.
+    /// </summary>
+    public bool IsAgentCreated { get; init; }
+
+    /// <summary>
     /// How the source branch was brought up to date before this worktree forked from it (AC-349) — the one thing on
     /// this record that describes the moment of creation rather than the worktree itself. Deliberately not persisted:
     /// it is what the operator is told once, at start, and a record read back from the registry carries null here.
