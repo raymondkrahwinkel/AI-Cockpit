@@ -18,8 +18,10 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpToolProviderConnectAsyncTests
 {
-    // Each reachable server sleeps every request (initialize, tools/list, ...) by this much.
-    private static readonly TimeSpan DelayPerServer = TimeSpan.FromMilliseconds(200);
+    // Each reachable server sleeps every request (initialize, tools/list, ...) by this much. Large enough that a
+    // stray GC pause or a busy CI runner's scheduling jitter (measured: flaked under a 2-core squeeze at 200ms,
+    // exceeding the slack below) stays a small fraction of it rather than swallowing the parallelism signal.
+    private static readonly TimeSpan DelayPerServer = TimeSpan.FromMilliseconds(400);
 
     [Fact]
     public async Task ConnectAsync_ConnectsEnabledServers_InParallel()
@@ -54,9 +56,9 @@ public class McpToolProviderConnectAsyncTests
 
         // A sequential connect of two servers would take roughly double a single server's connect time; well
         // under that (vs. the just-measured single-server baseline) proves the two connects overlapped rather
-        // than running one after another. The 1.6x slack absorbs normal timing noise without hiding a real
+        // than running one after another. The 1.75x slack absorbs normal timing noise without hiding a real
         // regression to sequential (which would land close to 2x).
-        Assert.True(bothStopwatch.Elapsed < soloStopwatch.Elapsed * 1.6);
+        Assert.True(bothStopwatch.Elapsed < soloStopwatch.Elapsed * 1.75);
     }
 
     [Fact]

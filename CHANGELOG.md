@@ -1837,6 +1837,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   plugin had already registered a memory source, so a cockpit with none — or with the Depot plugin installed but no
   connection set up yet — showed a bare box and no way to see that anything other than a folder was possible. "Folder"
   is now always offered, and a plugin's entry appears beside it whether or not it has any servers configured yet.
+- fixed: several sessions for the same OAuth-protected MCP server starting at once could occasionally redeem the same
+  refresh token twice instead of sharing one renewal — risking the whole sign-in being revoked, since these servers
+  invalidate a refresh token's previous grant the moment it rotates. The renewal and the bookkeeping that tracks it
+  now happen as one step, closing the brief window where a session arriving at the wrong moment could miss that a
+  renewal was already under way, or already done.
 
 ### Removed
 
