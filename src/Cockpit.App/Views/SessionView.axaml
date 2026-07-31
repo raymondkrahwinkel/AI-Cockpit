@@ -246,14 +246,36 @@
 
                 <!-- "Thinking…" indicator: shown from send until the assistant's first output, so a local model
                      that sits silent while it loads/processes visibly signals it is working rather than hung. The
-                     dot pulses so it reads as live activity. -->
-                <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
+                     dot pulses so it reads as live activity. Hidden while the tool-activity band below is showing
+                     (AC-532) — the two occupy the same slot and are never both visible at once. -->
+                <Border DockPanel.Dock="Top" IsVisible="{Binding ShowThinkingIndicator}" Margin="2,0,0,8"
                         HorizontalAlignment="Left">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
                                    VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
                         <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Tool-activity indicator (AC-532): replaces "Thinking…" for exactly the stretch it used to
+                     leave blank — from a tool call surfacing to its result landing, the longest wait in a turn.
+                     Names the running step (reusing the same "Tool  ·  summary" header the tool-use row itself
+                     shows) plus a running elapsed time, so the composer never reads as idle while the session is
+                     doing the slowest part of its work. Same slot as "Thinking…" above — one row, not a panel. -->
+                <Border DockPanel.Dock="Top" IsVisible="{Binding HasActiveToolActivity}" Margin="2,0,0,8"
+                        HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
+                                   VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Text="{Binding ActiveToolActivityLabel}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        <!-- Third segment joined by the same "·" the mockup uses between all three (tool, step,
+                             elapsed) — not just the first two. -->
+                        <TextBlock Text="·" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding ActiveToolActivityAgeText}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
                 </Border>
 

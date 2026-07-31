@@ -15,6 +15,15 @@ public partial class SessionView : UserControl
     // read history, resume once they scroll back down (#21). Avalonia has no built-in stick-to-bottom.
     private bool _stickToBottom = true;
 
+    /// <summary>
+    /// Ticks the composer's tool-activity elapsed time once a second (AC-532) so "running 0:12" counts up
+    /// instead of freezing at whatever it read on first render. Lives here rather than in the view model: the
+    /// derived state (which tool, since when) has to stay dispatcher-free to be unit-testable outside a running
+    /// Avalonia app (<c>Cockpit.Core.Tests</c> calls <c>SessionViewModel.Apply</c> directly, with no platform
+    /// initialized), so only this purely cosmetic re-tick — a no-op when nothing is running — lives in the view.
+    /// </summary>
+    private DispatcherTimer? _activityAgeTicker;
+
     public SessionView()
     {
         InitializeComponent();
@@ -41,13 +50,23 @@ public partial class SessionView : UserControl
         TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
         // Land on the newest row if the panel re-attaches with an existing transcript.
         Dispatcher.UIThread.Post(() => { if (_stickToBottom) TranscriptScroll.ScrollToEnd(); });
+
+        _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _activityAgeTicker.Tick += _OnActivityAgeTick;
+        _activityAgeTicker.Start();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
+
+        _activityAgeTicker?.Stop();
+        _activityAgeTicker = null;
+
         base.OnDetachedFromVisualTree(e);
     }
+
+    private void _OnActivityAgeTick(object? sender, EventArgs e) => (DataContext as SessionViewModel)?.RefreshActiveToolActivityAge();
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {

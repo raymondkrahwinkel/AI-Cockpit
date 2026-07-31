@@ -136,6 +136,63 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Live sub-agent lanes, keyed by the parent Task tool call's own tool_use_id. Cleared on every <see cref="TurnCompleted"/>: a sub-agent does not outlive the turn that spawned it.</summary>
     private readonly Dictionary<string, SubAgentLane> _subAgentLanes = [];
 
+    /// <summary>One top-level tool call the turn is currently waiting on (AC-532).</summary>
+    private readonly record struct ActiveToolCall(string ToolUseId, string Label, DateTimeOffset StartedAt);
+
+    /// <summary>
+    /// Top-level tool calls requested but not yet resulted, oldest first (AC-532). Provider-neutral by
+    /// construction: driven only by <see cref="ToolUseRequested"/>/<see cref="ToolResult"/>, the two events every
+    /// provider that reports tool calls at all raises. Covers exactly the gap "Thinking…" used to leave blank —
+    /// a tool call surfacing to its result landing, the longest stretch of a turn with no visible signal. A
+    /// sub-agent's own tool calls never reach here (they nest under their Task row via <see cref="_ResolveSubAgentLane"/>,
+    /// which is already visible activity); a <see cref="PermissionRequested"/> for one of these does not remove
+    /// it either — the call is still outstanding, and the existing pending-permission chip is a separate, stronger
+    /// signal alongside it. Only <see cref="TurnCompleted"/>/<see cref="SessionError"/> clear this unconditionally,
+    /// so a driver that never sends a matching result (an interrupt, a crash) cannot leave the composer looking
+    /// like it is still running a tool that finished with everything else.
+    /// </summary>
+    private readonly List<ActiveToolCall> _activeToolCalls = [];
+
+    /// <summary>True while a top-level tool call is outstanding — drives the composer's activity band in place of "Thinking…" (AC-532).</summary>
+    public bool HasActiveToolActivity => _activeToolCalls.Count > 0;
+
+    /// <summary>The most recently requested outstanding tool call's label ("Bash  ·  dotnet build"), or empty when none is active.</summary>
+    public string ActiveToolActivityLabel => _activeToolCalls.Count > 0 ? _activeToolCalls[^1].Label : string.Empty;
+
+    /// <summary>"running m:ss" since the currently-shown activity's tool call was requested, recomputed against <see cref="DateTimeOffset.Now"/> each time it is read — <see cref="RefreshActiveToolActivityAge"/> is what makes it tick in the view.</summary>
+    public string ActiveToolActivityAgeText => _activeToolCalls.Count > 0
+        ? $"running {_FormatElapsed(DateTimeOffset.Now - _activeToolCalls[^1].StartedAt)}"
+        : string.Empty;
+
+    /// <summary>Re-raises the age text's change notification (AC-532) — called on a view-owned tick so the composer's elapsed time counts up instead of freezing at whatever it read on first render.</summary>
+    public void RefreshActiveToolActivityAge() => OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+
+    /// <summary>"m:ss", matching the approved mockup's notation (e.g. "0:12", "1:05") — the composer band is the first place this ships, so this is the notation a later background-task pop-out (AC-531) follows rather than inventing its own.</summary>
+    internal static string _FormatElapsed(TimeSpan elapsed)
+    {
+        var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
+        return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
+    }
+
+    /// <summary>
+    /// True while the "Thinking…" band should show (AC-532): awaiting the assistant's first visible output, and
+    /// no tool activity band already covering that same wait. The two bands occupy the same composer slot and are
+    /// never both visible — the activity band replaces "Thinking…" for the span it is active, rather than stacking
+    /// on top of it (composer height must not grow).
+    /// </summary>
+    public bool ShowThinkingIndicator => IsAwaitingResponse && !HasActiveToolActivity;
+
+    /// <summary>Raises every notification the active-tool-activity fields need after <see cref="_activeToolCalls"/> changes.</summary>
+    private void _RaiseActiveToolActivityChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveToolActivity));
+        OnPropertyChanged(nameof(ActiveToolActivityLabel));
+        OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+        OnPropertyChanged(nameof(ShowThinkingIndicator));
+    }
+
+    partial void OnIsAwaitingResponseChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
+
     /// <summary>
     /// AC-146 defensive fallback: accumulates streaming text for an event that names a parent tool_use_id this
     /// pane never resolved to a lane (the Task tool-use row it names as parent was never seen — a dropped event,
@@ -1702,14 +1759,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
                 _currentAssistantEntry = null;
                 _CloseThinkingRow();
-                Transcript.Add(new TranscriptEntryViewModel(
+                var toolUseRow = new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
                 {
                     ToolUseId = toolUse.ToolUseId,
                     ToolName = toolUse.ToolName,
                     InputJson = toolUse.InputJson,
-                });
+                };
+                Transcript.Add(toolUseRow);
+
+                // AC-532: this top-level call is now outstanding — reuses the row's own ToolHeader ("Bash  ·
+                // dotnet build") rather than re-deriving a summary from the input JSON a second time.
+                _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
+                _RaiseActiveToolActivityChanged();
                 break;
 
             case ToolResult toolResult:
@@ -1749,6 +1812,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Transcript.Add(new TranscriptEntryViewModel(
                         TranscriptEntryKind.ToolResult,
                         toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                }
+
+                // AC-532: this call is no longer outstanding, whichever way it resolved — success, error, or a
+                // permission denial the driver reported as a tool result.
+                var activeCallIndex = _activeToolCalls.FindIndex(call => call.ToolUseId == toolResult.ToolUseId);
+                if (activeCallIndex >= 0)
+                {
+                    _activeToolCalls.RemoveAt(activeCallIndex);
+                    _RaiseActiveToolActivityChanged();
                 }
 
                 // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row
@@ -1861,6 +1933,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
+                // AC-532 safety net: every turn ends here or in SessionError below, whether or not each of its
+                // tool calls got a matching ToolResult first (an interrupt ends the turn without one) — clearing
+                // unconditionally is what keeps the activity band from surviving into a turn that is not running
+                // anymore, the "stuck showing busy" failure mode a plain per-ToolResult clear cannot cover.
+                if (_activeToolCalls.Count > 0)
+                {
+                    _activeToolCalls.Clear();
+                    _RaiseActiveToolActivityChanged();
+                }
+
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
@@ -1892,6 +1974,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
                 _backgroundTasks = [];
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                // AC-532: same reasoning as the background-task list above — a crashed driver never sends the
+                // ToolResult that would otherwise have cleared this, so the composer must not go on showing a
+                // tool as running past the session that was running it.
+                if (_activeToolCalls.Count > 0)
+                {
+                    _activeToolCalls.Clear();
+                    _RaiseActiveToolActivityChanged();
+                }
+
                 _RecomputeStatus();
                 break;
 

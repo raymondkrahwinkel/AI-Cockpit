@@ -964,6 +964,150 @@ public class SessionViewModelTests
         Assert.True(toolUse.HasResult);
     }
 
+    // AC-532: "Thinking…" clears the moment a tool call surfaces and only re-arms on its result — the widest
+    // gap in a turn was left with no visible signal at all. These pin the replacement: a composer activity band
+    // driven purely by ToolUseRequested/ToolResult (provider-neutral — every provider that reports tool calls
+    // raises exactly these two), covering that gap without ever growing the composer or looking stuck.
+    [Fact]
+    public void Apply_ToolUseRequested_ShowsActiveToolActivity_UntilItsResultArrives()
+    {
+        var vm = NewVm();
+        Assert.False(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"dotnet build"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Bash  ·  dotnet build", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+
+        Assert.False(vm.HasActiveToolActivity);
+        Assert.Equal(string.Empty, vm.ActiveToolActivityLabel);
+    }
+
+    [Fact]
+    public void Apply_ToolUseRequested_ReplacesTheThinkingIndicator_NeverBothAtOnce()
+    {
+        var vm = NewVm();
+        vm.IsAwaitingResponse = true; // as a dispatched turn leaves it, per Apply_NonOutputEvent_LeavesTheThinkingIndicatorUp
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        // IsAwaitingResponse itself still clears (unchanged pre-existing behaviour) but the composer must show
+        // the activity band, not nothing — this is the property the view actually binds its "Thinking…" row to.
+        Assert.False(vm.IsAwaitingResponse);
+        Assert.False(vm.ShowThinkingIndicator);
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+
+        // The result re-arms IsAwaitingResponse (pre-existing behaviour: the model processes the result before
+        // its next output) and, with the activity band now empty, "Thinking…" is what shows again.
+        Assert.True(vm.IsAwaitingResponse);
+        Assert.True(vm.ShowThinkingIndicator);
+    }
+
+    [Fact]
+    public void Apply_TwoParallelToolCalls_ShowsTheMostRecentlyRequestedOne_NeverStuckAfterEitherResolves()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Read", InputJson = """{"file_path":"a.cs"}""" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Read", InputJson = """{"file_path":"b.cs"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
+
+        // The earlier call resolving first must not clear the band while the later one is still running. A
+        // ToolResult also re-arms IsAwaitingResponse (the model processes the result before its next output) —
+        // with a second tool still outstanding this is the real case ShowThinkingIndicator's guard exists for:
+        // both flags true at once, and the activity band, not "Thinking…", must be what the composer shows.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "a", IsError = false });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
+        Assert.True(vm.IsAwaitingResponse);
+        Assert.False(vm.ShowThinkingIndicator);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t2", Content = "b", IsError = false });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_ToolInterruptedByAPermissionQuestion_StaysActiveUntilItsOwnResultArrives()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        // A pending permission does not resolve the call — it is still outstanding, and the existing
+        // pending-permission chip is a separate, stronger signal alongside the activity band, not a replacement.
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_ClearsOutstandingToolActivity_EvenWhenNoResultEverArrived()
+    {
+        // AC-532 AC6: an interrupted turn (Stop/interrupt) ends via TurnCompleted with no ToolResult for
+        // whatever tool call was in flight — the activity band must not survive into a turn that is not running.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"long running"}""" });
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = null, IsError = true });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SessionError_ClearsOutstandingToolActivity_EvenWhenNoResultEverArrived()
+    {
+        // AC-532 AC6, the other failure path: the driver itself dies mid-call, so no ToolResult for the
+        // outstanding tool ever arrives either — mirrors AC-276's handling of _backgroundTasks.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"long running"}""" });
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "driver crashed" });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SubAgentToolCall_NeverReplacesTheTopLevelActivityBand()
+    {
+        // AC-146: a sub-agent's own tool call nests under its Task row, already visible activity there — it must
+        // not be promoted into the composer's top-level activity band, and must not clear the Task call's own.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-1", ToolName = "Read", InputJson = """{"file_path":"x"}""", ParentToolUseId = "task-1" });
+
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-1", Content = "x", IsError = false, ParentToolUseId = "task-1" });
+
+        // The sub-agent's own result must not clear the still-outstanding top-level Task call either.
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+    }
+
+    [Theory]
+    [InlineData(0, "0:00")]
+    [InlineData(12, "0:12")]
+    [InlineData(65, "1:05")]
+    [InlineData(-5, "0:00")] // a clock that moved back reads as "just started", not a negative duration
+    public void FormatElapsed_RendersMinutesColonSeconds(int seconds, string expected)
+    {
+        Assert.Equal(expected, SessionViewModel._FormatElapsed(TimeSpan.FromSeconds(seconds)));
+    }
+
     [Fact]
     public void Apply_TextThatStreamsAfterAToolCall_StartsANewRowBeneathTheTool_NotMergedAbove()
     {
