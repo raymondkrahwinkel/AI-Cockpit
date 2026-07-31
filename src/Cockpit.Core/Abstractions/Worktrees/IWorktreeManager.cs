@@ -38,24 +38,33 @@ public interface IWorktreeManager
     /// operator started — their checkout comes along — and may not for one an agent asked for against a folder it
     /// merely named, which forks from the upstream tip instead (AC-376).
     /// </para>
+    /// <para>
+    /// <paramref name="isAgentCreated"/> marks a worktree an agent made for its own subtask through the
+    /// <c>worktree_create</c> MCP tool (AC-520 fix 5), as opposed to the one a session runs in — the default,
+    /// <see langword="false"/>, which the UI's own session-start/reattach path leaves alone. See
+    /// <see cref="WorktreeRecord.IsAgentCreated"/> for what this changes about removing it.
+    /// </para>
     /// </summary>
     Task<WorktreeRecord> CreateAsync(
         string sessionId,
         string branch,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        bool isAgentCreated = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a worktree for a session, generating a collision-free branch name from <paramref name="sessionLabel"/>
     /// and <paramref name="sessionId"/> (AC-85) — the convenience both the SDK/headless start path and the TTY launch
-    /// path use, so branch naming lives in one place rather than each caller inventing its own.
+    /// path use, so branch naming lives in one place rather than each caller inventing its own. <paramref name="isAgentCreated"/>
+    /// carries the same meaning as on <see cref="CreateAsync"/>.
     /// </summary>
     Task<WorktreeRecord> CreateForSessionAsync(
         string sessionId,
         string? sessionLabel,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        bool isAgentCreated = false,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);
@@ -111,6 +120,16 @@ public interface IWorktreeManager
     /// old owner is gone (reattaching a live worktree would put two sessions on one tree).
     /// </summary>
     Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Strips a worktree's registry record of its owning session (AC-520 fix 6) — the operator's explicit "release"
+    /// on a row that only counts as live because of an open restore offer (AC-410) with nothing actually running
+    /// behind it. Turns the record into an ordinary orphan: the next <see cref="ReconcileAsync"/> sweep picks it up
+    /// like any other (clean removed, work retained for review), and the agent-facing remove guard admits it because
+    /// its owner is no longer in <c>LiveSessionIds</c>. Nothing is removed here — only ownership is given up; Remove
+    /// and Reattach on the row do the rest. A no-op when no registered worktree matches <paramref name="worktreePath"/>.
+    /// </summary>
+    Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tears down the worktrees a session owned when it closes (AC-85, cleanup-policy A): a provably clean one — no

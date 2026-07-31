@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
@@ -424,6 +425,103 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveAsync_LeftoverFolderMatchesWhatIsAlreadyCommitted_DeletesTheFolder()
+    {
+        // The other half of AC-524's fourth defect: a folder git can no longer recognise as a working tree (its own
+        // .git link broken, admin pruned) but that holds nothing beyond what its branch already committed — nothing
+        // is lost by deleting it, so "removed in Cockpit" must mean "gone from disk" here too.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _BreakWorktreeGitLink(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+        Assert.Single(_Git(_repo, "worktree", "list").Split('\n'));
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.False(Directory.Exists(record.Path), "everything on disk already matched the branch's own tip, so nothing was lost deleting it");
+        Assert.NotNull(notice);
+        Assert.Contains("deleted", notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_LeftoverFolderHasAFileThatNoLongerMatchesTheCommittedContent_KeepsTheFolder()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "README.md"), "edited after the checkout broke\n");
+        _BreakWorktreeGitLink(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(Directory.Exists(record.Path), "a file that no longer matches what the branch committed must not be discarded on a guess");
+        Assert.True(File.Exists(Path.Combine(record.Path, "README.md")));
+        Assert.NotNull(notice);
+        Assert.DoesNotContain("deleted", notice);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_LeftoverFolderHasACommitOnlyItsBranchHas_KeepsTheFolderEvenThoughDiskMatchesTheTip()
+    {
+        // Disk matching the branch's tip is not enough on its own: the tip itself must be reachable from somewhere
+        // other than this one worktree, or the commit that only lives on this branch goes with the folder.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "only-here.txt", "work nobody else has a copy of\n");
+        _BreakWorktreeGitLink(record.Path);
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+
+        var notice = await _manager.RemoveAsync(record);
+
+        Assert.Empty((await _manager.ListAsync()));
+        Assert.True(Directory.Exists(record.Path), "a commit that exists only on this branch must not be lost with the folder");
+        Assert.NotNull(notice);
+        Assert.DoesNotContain("deleted", notice);
+        Assert.NotEmpty(_Git(_repo, "branch", "--list", "wt"));
+    }
+
+    [Fact]
+    public async Task RemoveAsync_LeftoverFolderCouldNotBeProvenSafe_LogsWhyItWasLeftOnDisk()
+    {
+        var logger = Substitute.For<ILogger<WorktreeManager>>();
+        var manager = new WorktreeManager(new WorktreeRegistryStore(Path.Combine(_tempRoot, "logged.json")), _worktreesRoot, logger);
+        var record = await manager.CreateAsync(_sessionId, "wt-logged", _repo);
+        _BreakWorktreeGitLink(record.Path);
+        File.WriteAllText(Path.Combine(record.Path, "left-behind.txt"), "not on any branch\n");
+        _Git(_repo, "worktree", "unlock", record.Path);
+        _Git(_repo, "worktree", "prune");
+
+        await manager.RemoveAsync(record);
+
+        logger.Received(1).Log(
+            LogLevel.Information,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(state => state!.ToString()!.Contains("could not be proven safe")),
+            null,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // Breaks a worktree's own recognition as a working tree without touching anything it checked out — unlike
+    // _ClearCheckout, which wipes the whole folder. The tests above need the real, committed files to survive so
+    // they can be compared against what the branch has, while git itself can no longer find them from inside the
+    // folder any more (deleting record.Path/.git is exactly what a corrupted or manually-cleared worktree link
+    // leaves behind).
+    private static void _BreakWorktreeGitLink(string worktreePath)
+    {
+        var gitLink = Path.Combine(worktreePath, ".git");
+        if (File.Exists(gitLink))
+        {
+            File.Delete(gitLink);
+        }
+        else if (Directory.Exists(gitLink))
+        {
+            Directory.Delete(gitLink, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ReattachAsync_RepositoryGone_StillReownsTheWorktreeInsteadOfThrowing()
     {
         // AC-507 defect 3: the re-lock used to run unguarded, so a git that could not even start (repository folder
@@ -743,6 +841,29 @@ public sealed class WorktreeManagerTests : IDisposable
         var reattached = await _manager.ReattachAsync(Path.Combine(_tempRoot, "nope"), Guid.NewGuid().ToString("n"));
 
         Assert.Null(reattached);
+    }
+
+    [Fact]
+    public async Task ReleaseOwnershipAsync_DropsTheSessionId_SoTheWorktreeReadsAsOrphaned()
+    {
+        // AC-520 fix 6: releasing does not remove anything — it only gives up the claim, so the record's owner no
+        // longer matches any live session, and the row becomes an ordinary orphan (Remove/Reattach unblock from
+        // there, the same as any other worktree whose session closed or crashed).
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        await _manager.ReleaseOwnershipAsync(record.Path);
+
+        var reloaded = Assert.Single(await _manager.ListAsync());
+        Assert.NotEqual(_sessionId, reloaded.SessionId);
+        Assert.True(Directory.Exists(record.Path));
+    }
+
+    [Fact]
+    public async Task ReleaseOwnershipAsync_UnknownPath_IsANoOp()
+    {
+        await _manager.ReleaseOwnershipAsync(Path.Combine(_tempRoot, "nope"));
+
+        Assert.Empty(await _manager.ListAsync());
     }
 
     [Fact]

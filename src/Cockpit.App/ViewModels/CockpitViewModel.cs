@@ -2593,6 +2593,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IReadOnlySet<string> LivePaneIds() => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
         liveSessions?.SetSource(LivePaneIds);
         Worktrees.LiveSessionIds = liveSessions is { } registry ? () => registry.LiveSessionIds : LivePaneIds;
+        Worktrees.SessionNames = _SessionNames;
+        Worktrees.RestoreOfferPaneIds = _RestoreOfferPaneIds;
         Worktrees.ReattachRequested += record => _ = _ReattachSessionAsync(record);
         _ = Worktrees.RefreshCountAsync();
         _worktreeSettingsStore = worktreeSettingsStore;
@@ -5858,6 +5860,44 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.Concat(_embeddedSessions.Values.SelectMany(owned => owned));
 
     /// <summary>
+    /// The display names of the sessions by pane id, for the managed-worktrees panel (AC-520). The persisted
+    /// <see cref="WorkspacePane"/> title goes in first and a live pane's title overwrites it: the persisted one
+    /// survives the pane closing or crashing — which is exactly when the panel most needs a name instead of
+    /// "a pane" — while a live pane carries the title the operator sees right now. Read on the UI thread as one
+    /// snapshot; see <see cref="WorktreesViewModel.SessionNames"/>.
+    /// </summary>
+    private IReadOnlyDictionary<string, string> _SessionNames()
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pane in Workspaces.Settings.Workspaces.SelectMany(workspace => workspace.Panes))
+        {
+            if (!string.IsNullOrWhiteSpace(pane.Title))
+            {
+                names[pane.Id] = pane.Title;
+            }
+        }
+
+        foreach (var session in _AllSessions())
+        {
+            if (!string.IsNullOrWhiteSpace(session.Title))
+            {
+                names[session.PaneId] = session.Title;
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// The pane ids currently showing an open restore offer (AC-410), for the managed-worktrees panel's Release
+    /// action (AC-520 fix 6) — what tells apart a row that is "live" only because of that offer from one whose
+    /// session is genuinely doing something. Read on the UI thread as one snapshot; see
+    /// <see cref="WorktreesViewModel.RestoreOfferPaneIds"/>.
+    /// </summary>
+    private IReadOnlySet<string> _RestoreOfferPaneIds() =>
+        _AllSessions().Where(session => session.HasRestoreOffer).Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
     /// Renames a session — the title in its header and sidebar — by its <see cref="SessionPanelViewModel.PaneId"/>
     /// (#AC-13). A blank name is ignored. Returns whether a live session matched. Must be called on the UI thread.
     /// </summary>
@@ -6158,9 +6198,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
-        // was created for. Best-effort — closing a session must not fail on a worktree that will not release, and the
-        // startup reconcile is the net that catches whatever slips through.
-        if (_worktreeManager is not null && session.WorktreeBranch is not null)
+        // was created for, not on session.WorktreeBranch: that field is only ever set when the UI itself made the
+        // worktree at start or reattach — a worktree an agent created mid-session via the worktree_create MCP tool
+        // never sets it, and used to outlive its own pane's close because of that gap. ReleaseAsync itself already
+        // walks the registry for this pane id and is a no-op when it holds none, so calling it unconditionally costs
+        // nothing when there is nothing to release. Best-effort — closing a session must not fail on a worktree that
+        // will not release, and the startup reconcile is the net that catches whatever slips through.
+        if (_worktreeManager is not null)
         {
             try
             {
@@ -6734,12 +6778,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings, forget the agent-presence
-        // enrollment, the pane's unread inbox and its resource claims, and release the session's worktree.
+        // enrollment, the pane's unread inbox and its resource claims, and release the session's worktree. Not
+        // gated on session.WorktreeBranch — same reasoning as the grid close path above: that field misses a
+        // worktree an agent created mid-session via worktree_create, and ReleaseAsync is a no-op when the registry
+        // holds nothing for this pane anyway.
         _terminals?.SessionEnded(session.PaneId);
         _agentCoordinator?.Forget(session.PaneId);
         _agentMessages?.Forget(session.PaneId);
         _agentClaims?.Forget(session.PaneId);
-        if (_worktreeManager is not null && session.WorktreeBranch is not null)
+        if (_worktreeManager is not null)
         {
             try
             {

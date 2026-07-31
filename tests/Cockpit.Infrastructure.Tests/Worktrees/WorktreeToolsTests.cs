@@ -21,7 +21,7 @@ public class WorktreeToolsTests
     public async Task CreateAsync_AsksForTheSourceToBeLeftAlone()
     {
         var manager = Substitute.For<IWorktreeManager>();
-        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<CancellationToken>())
+        manager.CreateForSessionAsync("pane", null, "/repo", Arg.Any<WorktreeSourceHandling>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(_Record("pane", "/wt/path"));
         var tools = new WorktreeTools(manager);
 
@@ -29,11 +29,13 @@ public class WorktreeToolsTests
 
         // `directory` is a folder the agent named, and the session was never scoped to whatever is checked out
         // there — so this route may never be the reason that repository's branch or working tree is written to.
+        // isAgentCreated: true (AC-520 fix 5) — every worktree this tool creates is one an agent asked for.
         await manager.Received().CreateForSessionAsync(
             "pane",
             null,
             "/repo",
             WorktreeSourceHandling.LeaveSourceAlone,
+            true,
             Arg.Any<CancellationToken>());
     }
 
@@ -69,7 +71,7 @@ public class WorktreeToolsTests
     {
         var manager = Substitute.For<IWorktreeManager>();
         var record = _Record("pane", "/wt/path");
-        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, Arg.Any<CancellationToken>()).Returns(record);
+        manager.CreateForSessionAsync("pane", null, "/repo", WorktreeSourceHandling.LeaveSourceAlone, true, Arg.Any<CancellationToken>()).Returns(record);
         var tools = new WorktreeTools(manager);
 
         using var result = JsonDocument.Parse(await tools.CreateAsync("pane", "/repo"));
@@ -93,6 +95,61 @@ public class WorktreeToolsTests
     }
 
     [Fact]
+    public async Task Remove_OwnerSessionIsDeadAndLivenessIsKnown_AllowsTheCrossSessionRemoval()
+    {
+        // AC-524's third defect: guard 1 used to be categorical regardless of liveness, so a worktree an agent made
+        // in a session that has since crashed could never be cleaned up by any other agent — only a bare
+        // `git worktree remove --force --force` from outside Cockpit could reclaim it. Once the owner is provably
+        // dead (absent from LiveSessionIds), there is no live session left to protect from a confused deputy.
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("crashed-pane", "/wt/orphan");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
+        var live = Substitute.For<ILiveSessionRegistry>();
+        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal));
+        var tools = new WorktreeTools(manager, live);
+
+        McpRequestContext.Set("some-other-live-pane");
+        try
+        {
+            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/orphan"));
+
+            Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+            await manager.Received(1).RemoveAsync(record, false, Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task Remove_LivenessIsUnknown_KeepsGuard1CategoricalEvenForADeadLookingOwner()
+    {
+        // The load-bearing safety net for the relaxation above: with no ILiveSessionRegistry to ask, "dead" cannot
+        // be told apart from "we simply do not know" — treating a missing registration as permission would silently
+        // disable AC-128's confused-deputy protection instead of only loosening it for a provably dead owner.
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("some-pane", "/wt/unknown-liveness");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var tools = new WorktreeTools(manager, liveSessions: null);
+
+        McpRequestContext.Set("another-pane");
+        try
+        {
+            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/unknown-liveness"));
+
+            Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
+            Assert.Contains("another session", result.RootElement.GetProperty("error").GetString());
+            await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
     public async Task Remove_OwnerSessionStillLive_RefusesAndRemovesNothing()
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -106,6 +163,61 @@ public class WorktreeToolsTests
 
         Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
         await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Remove_AgentCreatedWorktree_OwnerSessionStillLive_AllowsSelfCleanup()
+    {
+        // AC-520 fix 5: an agent-made worktree (worktree_create) has nobody running "in" it — refusing to remove it
+        // just because its own session happens to still be live left the tool unusable for exactly the case its own
+        // description promises ("when a task is done").
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("my-pane", "/wt/agent-made") with { IsAgentCreated = true };
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        manager.HasUncommittedChangesAsync(record, Arg.Any<CancellationToken>()).Returns(false);
+        var live = Substitute.For<ILiveSessionRegistry>();
+        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "my-pane" });
+        var tools = new WorktreeTools(manager, live);
+
+        McpRequestContext.Set("my-pane");
+        try
+        {
+            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/agent-made"));
+
+            Assert.True(result.RootElement.GetProperty("ok").GetBoolean());
+            await manager.Received(1).RemoveAsync(record, false, Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task Remove_SessionOwnWorktree_OwnerSessionStillLive_RefusesEvenForItsOwnAgent()
+    {
+        // The other half of the same fix: a worktree the UI created (IsAgentCreated stays false, the default) is
+        // the working directory the session is actually running in — that stays refused even when the caller is
+        // that very session, unlike the agent-made case above.
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("my-pane", "/wt/session-own");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var live = Substitute.For<ILiveSessionRegistry>();
+        live.LiveSessionIds.Returns(new HashSet<string>(StringComparer.Ordinal) { "my-pane" });
+        var tools = new WorktreeTools(manager, live);
+
+        McpRequestContext.Set("my-pane");
+        try
+        {
+            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/session-own"));
+
+            Assert.False(result.RootElement.GetProperty("ok").GetBoolean());
+            await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
@@ -17,13 +18,15 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     private readonly IWorktreeRegistry _registry;
     private readonly Func<CancellationToken, Task<string>> _resolveRoot;
+    private readonly ILogger<WorktreeManager>? _logger;
 
     /// <inheritdoc />
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
 
-    public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings)
+    public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings, ILogger<WorktreeManager>? logger = null)
     {
         _registry = registry;
+        _logger = logger;
 
         // Resolved per create, so an override the operator changes in Options takes effect on the next worktree
         // rather than only on a restart. A blank override keeps the default under the app state root. An unreadable
@@ -46,10 +49,11 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     }
 
     /// <summary>Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.</summary>
-    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot)
+    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null)
     {
         _registry = registry;
         _resolveRoot = _ => Task.FromResult(worktreesRoot);
+        _logger = logger;
     }
 
     public async Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default)
@@ -87,6 +91,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         string branch,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        bool isAgentCreated = false,
         CancellationToken cancellationToken = default)
     {
         var repository = await DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false)
@@ -150,6 +155,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             // The branch we forked from — measured against its moving tip later so a merged worktree reads clean.
             // Null when HEAD was detached at creation; the status check falls back to the repository's default branch.
             BaseBranch = repository.CurrentBranch,
+            IsAgentCreated = isAgentCreated,
         };
         await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
 
@@ -163,8 +169,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         string? sessionLabel,
         string directory,
         WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate,
+        bool isAgentCreated = false,
         CancellationToken cancellationToken = default) =>
-        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, handling, cancellationToken);
+        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, handling, isAgentCreated, cancellationToken);
 
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);
@@ -277,36 +284,42 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     private static async Task<bool> _IsFullyInBaseAsync(WorktreeRecord record, CancellationToken cancellationToken) =>
         await _CommitsOutsideBaseAsync(record, treatPushedAsSafe: false, cancellationToken).ConfigureAwait(false) == 0;
 
-    private static async Task<int> _CommitsOutsideBaseAsync(WorktreeRecord record, bool treatPushedAsSafe, CancellationToken cancellationToken)
+    // Both existing callers measure the worktree's own HEAD from inside it; the leftover-folder safety check below
+    // (RemoveAsync) cannot do that — the folder is precisely the one git no longer recognises as a working tree —
+    // so it measures the branch by name from the repository root instead. Same question, two vantage points.
+    private static Task<int> _CommitsOutsideBaseAsync(WorktreeRecord record, bool treatPushedAsSafe, CancellationToken cancellationToken) =>
+        _CommitsOutsideBaseAsync(record, record.Path, "HEAD", treatPushedAsSafe, cancellationToken);
+
+    private static async Task<int> _CommitsOutsideBaseAsync(WorktreeRecord record, string gitContextPath, string tip, bool treatPushedAsSafe, CancellationToken cancellationToken)
     {
-        var baseRef = await _ResolveBaseRefAsync(record, cancellationToken).ConfigureAwait(false);
-        List<string> arguments = ["rev-list", "--count", "HEAD", "--not", baseRef];
+        var baseRef = await _ResolveBaseRefAsync(record with { Path = gitContextPath }, cancellationToken).ConfigureAwait(false);
+        List<string> arguments = ["rev-list", "--count", tip, "--not", baseRef];
         if (treatPushedAsSafe)
         {
             arguments.Add("--remotes");
         }
 
-        var raw = await GitCli.RunCheckedAsync(record.Path, arguments, cancellationToken).ConfigureAwait(false);
+        var raw = await GitCli.RunCheckedAsync(gitContextPath, arguments, cancellationToken).ConfigureAwait(false);
         if (!int.TryParse(raw, out var count) || count == 0)
         {
             return 0;
         }
 
-        return await _IsInBaseByContentAsync(record.Path, baseRef, cancellationToken).ConfigureAwait(false) ? 0 : count;
+        return await _IsInBaseByContentAsync(gitContextPath, tip, baseRef, cancellationToken).ConfigureAwait(false) ? 0 : count;
     }
 
     // Whether the base already holds this branch's work under different commits — the squash/rebase/cherry-pick case,
     // where comparing history by identity says "unmerged" about work that is demonstrably in the base.
-    private static async Task<bool> _IsInBaseByContentAsync(string path, string baseRef, CancellationToken cancellationToken)
+    private static async Task<bool> _IsInBaseByContentAsync(string path, string tip, string baseRef, CancellationToken cancellationToken)
     {
         // '+' marks a commit whose patch the base does not have; none of them means every commit arrived, however it
         // was rewritten on the way. Skipped when a merge commit is among them: git cherry compares patches and emits
         // no line at all for a merge, so a branch whose only unmerged commit IS a merge — an evil merge carrying
         // conflict resolution of its own — would read as "all present" on an empty answer.
-        var merges = await GitCli.RunAsync(path, ["rev-list", "--count", "--merges", "HEAD", "--not", baseRef], cancellationToken).ConfigureAwait(false);
+        var merges = await GitCli.RunAsync(path, ["rev-list", "--count", "--merges", tip, "--not", baseRef], cancellationToken).ConfigureAwait(false);
         var hasNoMergeCommit = merges.ExitCode == 0 && merges.StandardOutput.Trim() == "0";
 
-        var cherry = await GitCli.RunAsync(path, ["cherry", baseRef, "HEAD"], cancellationToken).ConfigureAwait(false);
+        var cherry = await GitCli.RunAsync(path, ["cherry", baseRef, tip], cancellationToken).ConfigureAwait(false);
         if (hasNoMergeCommit
             && cherry.ExitCode == 0
             && !cherry.StandardOutput.Split('\n').Any(line => line.StartsWith('+')))
@@ -320,7 +333,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         // "safe". Paths come from the fork point (three-dot), so files only the base changed are not consulted, and
         // -z because git quotes and octal-escapes a non-ASCII path by default — a pathspec that then matches nothing,
         // which git answers with "no difference" and would read as safe.
-        var touched = await GitCli.RunAsync(path, ["diff", "--name-only", "-z", $"{baseRef}...HEAD"], cancellationToken).ConfigureAwait(false);
+        var touched = await GitCli.RunAsync(path, ["diff", "--name-only", "-z", $"{baseRef}...{tip}"], cancellationToken).ConfigureAwait(false);
         var paths = touched.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries);
         if (touched.ExitCode != 0 || paths.Length == 0)
         {
@@ -329,7 +342,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         var difference = await GitCli.RunAsync(
             path,
-            ["diff", "--quiet", baseRef, "HEAD", "--", .. paths],
+            ["diff", "--quiet", baseRef, tip, "--", .. paths],
             cancellationToken).ConfigureAwait(false);
 
         return difference.ExitCode == 0;
@@ -461,6 +474,11 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         if (Directory.Exists(record.RepositoryRoot))
         {
             var refusal = await _AskGitToRemoveAsync(record, force, cancellationToken).ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                _logger?.LogInformation(
+                    "git refused to remove worktree '{Branch}' at '{Path}': {Refusal}", record.Branch, record.Path, refusal);
+            }
 
             // A refusal about a folder that still holds a working copy stands: it may hold work, and git said in its
             // own words why it would not go. With no working copy left there is nothing for git to remove — the
@@ -481,22 +499,42 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         // Whichever branch above got here is about to drop the registry entry as the only removal that is still
         // possible — git either was never asked (repository gone) or already agreed there is nothing left it can
-        // measure. Anything still sitting in the worktree folder is a filesystem fact either way, and it is never
-        // touched on this path: files left behind stay exactly where they are, simply no longer the cockpit's to
-        // manage. Checked uniformly here — not only for the repository-gone case — so an operator is told the same
-        // way regardless of which reason the drop happened for; a repository that is technically still a folder but
-        // no longer a working repository (its own .git corrupted or removed) used to fall through this silently.
+        // measure. "Removed from the cockpit" must still mean "gone from disk" whenever that is provable (Raymond:
+        // a worktree Cockpit shows as removed must actually be gone), so a folder that still holds content is only
+        // ever left in place when deleting it cannot be shown to be safe — never on a guess (cleanup-policy A).
         string? notice = null;
         try
         {
             if (Directory.Exists(record.Path) && Directory.EnumerateFileSystemEntries(record.Path).Any())
             {
-                notice =
-                    $"'{record.Branch}' could not be handed back to git and was only dropped from the list. " +
-                    $"Its worktree folder was left on disk at '{record.Path}' and is no longer managed by the cockpit. " +
-                    "If its repository only became unavailable temporarily (an unmounted drive, for example), this " +
-                    "worktree was created locked, so it will not be reclaimed automatically once the repository " +
-                    "comes back — run 'git worktree unlock' and 'git worktree prune' there by hand.";
+                if (await _CanDeleteLeftoverFolderAsync(record, cancellationToken).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        Directory.Delete(record.Path, recursive: true);
+                        notice =
+                            $"'{record.Branch}' could not be handed back to git, so its worktree folder at '{record.Path}' was " +
+                            "checked by hand: everything left in it was already safely committed on the branch, so the folder " +
+                            "itself was deleted.";
+                        _logger?.LogInformation(
+                            "Deleted leftover worktree folder '{Path}' for branch '{Branch}': its content matched what the branch already has committed.",
+                            record.Path, record.Branch);
+                    }
+                    catch (Exception)
+                    {
+                        notice = _LeftOnDiskNotice(record);
+                        _logger?.LogWarning(
+                            "Leftover worktree folder '{Path}' for branch '{Branch}' was provably safe to delete but the delete itself failed; left on disk.",
+                            record.Path, record.Branch);
+                    }
+                }
+                else
+                {
+                    notice = _LeftOnDiskNotice(record);
+                    _logger?.LogInformation(
+                        "Leftover worktree folder '{Path}' for branch '{Branch}' could not be proven safe to delete; left on disk.",
+                        record.Path, record.Branch);
+                }
             }
         }
         catch (Exception)
@@ -506,6 +544,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             // Dropping the entry must never depend on being able to enumerate what is left behind: silence here
             // would have reintroduced exactly the undeletable row this fix exists to remove.
             notice = $"'{record.Branch}''s worktree folder at '{record.Path}' could not be checked and was left on disk, untouched.";
+            _logger?.LogWarning(
+                "Could not even check what is left in '{Path}' for branch '{Branch}'; left on disk, untouched.", record.Path, record.Branch);
         }
 
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
@@ -513,6 +553,138 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         _TryRemoveIfEmpty(Path.GetDirectoryName(record.Path));
         return notice;
     }
+
+    private static string _LeftOnDiskNotice(WorktreeRecord record) =>
+        $"'{record.Branch}' could not be handed back to git and was only dropped from the list. " +
+        $"Its worktree folder was left on disk at '{record.Path}' and is no longer managed by the cockpit. " +
+        "If its repository only became unavailable temporarily (an unmounted drive, for example), this " +
+        "worktree was created locked, so it will not be reclaimed automatically once the repository " +
+        "comes back — run 'git worktree unlock' and 'git worktree prune' there by hand.";
+
+    // Whether a leftover worktree folder holds nothing beyond what a commit already safely preserves elsewhere, so
+    // deleting it destroys no work — the hard boundary Fix 2 exists to enforce: physical deletion only ever follows
+    // proof, never a guess (cleanup-policy A). Two questions, both answered from the repository root rather than the
+    // folder itself — that folder is precisely the one git no longer recognises as a working tree, which is why
+    // RemoveAsync is asking this at all:
+    //   1. Is every commit reachable only from this branch already reachable from the base or a remote?
+    //   2. Does every file physically on disk match, byte for byte, what that branch's own tip has committed?
+    // A "no", or an "I cannot tell" to either — the repository itself gone, a branch that no longer resolves, a rev-
+    // list that fails — answers false: left on disk is the safe fallback either way.
+    private static async Task<bool> _CanDeleteLeftoverFolderAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(record.RepositoryRoot))
+        {
+            // Nowhere to ask anything — the repository itself is what is gone (AC-507's own case), which must never
+            // be treated as "provably safe" by default.
+            return false;
+        }
+
+        try
+        {
+            var strandedElsewhere = await _CommitsOutsideBaseAsync(
+                record, record.RepositoryRoot, record.Branch, treatPushedAsSafe: true, cancellationToken).ConfigureAwait(false);
+            if (strandedElsewhere != 0)
+            {
+                return false;
+            }
+
+            return await _MatchesTrackedContentAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // git could not answer one of the two questions above (the branch no longer resolves, a rev-list
+            // failed) — the same "cannot prove, so do not touch it" fallback every other cleanup-policy-A check in
+            // this file takes.
+            return false;
+        }
+    }
+
+    // Whether every real file still sitting under the folder is exactly what the branch's own tip already
+    // committed — answered by comparing git's own tree listing to the files on disk, since the folder's local git
+    // recognition is gone (that is why this is being asked at all, rather than a plain `git status`). Any extra
+    // file, any content mismatch, or a folder that cannot even be walked (permissions, a dying mount) all read as
+    // "not provably safe": the cost of a false "safe" is somebody's lost work, the cost of a false "not sure" is
+    // only a folder left behind for the operator to look at by hand.
+    private static async Task<bool> _MatchesTrackedContentAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        var tracked = await _TrackedBlobsAsync(record.RepositoryRoot, record.Branch, cancellationToken).ConfigureAwait(false);
+        if (tracked is null)
+        {
+            return false;
+        }
+
+        List<string> onDisk;
+        try
+        {
+            onDisk = Directory.EnumerateFiles(record.Path, "*", SearchOption.AllDirectories)
+                .Where(file => !_IsGitLinkArtifact(record.Path, file))
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        foreach (var file in onDisk)
+        {
+            var relative = Path.GetRelativePath(record.Path, file).Replace(Path.DirectorySeparatorChar, '/');
+            if (!tracked.TryGetValue(relative, out var blobSha))
+            {
+                return false;
+            }
+
+            var hash = await GitCli.RunAsync(record.RepositoryRoot, ["hash-object", file], cancellationToken).ConfigureAwait(false);
+            if (hash.ExitCode != 0 || !string.Equals(hash.StandardOutput.Trim(), blobSha, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // The branch's own tracked files, by path, at its current tip — null when the branch itself no longer resolves
+    // to a commit (deleted, or never existed), which leaves nothing to compare the folder's content against.
+    private static async Task<Dictionary<string, string>?> _TrackedBlobsAsync(string repositoryRoot, string branch, CancellationToken cancellationToken)
+    {
+        if (!await _ResolvesToCommitAsync(repositoryRoot, branch, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        var listing = await GitCli.RunAsync(repositoryRoot, ["ls-tree", "-r", "-z", branch], cancellationToken).ConfigureAwait(false);
+        if (listing.ExitCode != 0)
+        {
+            return null;
+        }
+
+        var blobs = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var entry in listing.StandardOutput.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tab = entry.IndexOf('\t');
+            if (tab < 0)
+            {
+                continue;
+            }
+
+            // "<mode> <type> <sha>" before the tab; only a blob (a file) is a candidate here — a submodule's
+            // "commit" entry has nothing on disk in this folder that hash-object could ever match.
+            var metadata = entry[..tab].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (metadata.Length == 3 && metadata[1] == "blob")
+            {
+                blobs[entry[(tab + 1)..]] = metadata[2];
+            }
+        }
+
+        return blobs;
+    }
+
+    // The worktree's own dangling git-link file — the very thing broken here, which is why the folder needed asking
+    // about at all — is not "work" and is excluded from the comparison above rather than counted as an untracked
+    // file that blocks the delete.
+    private static bool _IsGitLinkArtifact(string worktreePath, string filePath) =>
+        Path.GetRelativePath(worktreePath, filePath).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0]
+            .Equals(".git", StringComparison.Ordinal);
 
     // Asks git to remove the worktree and reports what it refused with, or null when it went through. Unlocked
     // first because git declines a locked worktree without a second --force; that unlock may itself fail (already
@@ -597,6 +769,21 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         return reattached;
     }
 
+    public async Task ReleaseOwnershipAsync(string worktreePath, CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(worktreePath);
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (records.FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), fullPath, PathComparison)) is not { } existing)
+        {
+            return;
+        }
+
+        // Only the owner is given up — no git call, no removal. What that makes possible: the record reads as an
+        // ordinary orphan everywhere else that matters (the reconcile sweep, the MCP remove guard's liveness check),
+        // without this method having to know or duplicate either of their rules.
+        await _registry.AddAsync(existing with { SessionId = string.Empty }, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
@@ -609,18 +796,23 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     public async Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default)
     {
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        var orphans = records.Where(record => !liveSessionIds.Contains(record.SessionId)).ToList();
+        _logger?.LogInformation(
+            "Reconcile sweep: {OrphanCount} of {TotalCount} registered worktrees belong to no live session.",
+            orphans.Count, records.Count);
 
-        foreach (var record in records.Where(record => !liveSessionIds.Contains(record.SessionId)))
+        foreach (var record in orphans)
         {
             try
             {
                 await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
                 // One orphan that will not release (a stale lock, a folder still held) must not abort the sweep and
                 // strand every remaining orphan across restarts — skip it; the next reconcile retries it. This runs as
                 // a fire-and-forget at startup, so a throw here would also be an unobserved task exception.
+                _logger?.LogWarning(exception, "Reconcile sweep could not release orphaned worktree '{Path}'; left for the next sweep.", record.Path);
             }
         }
 

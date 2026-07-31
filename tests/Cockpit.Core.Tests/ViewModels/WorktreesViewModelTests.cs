@@ -195,6 +195,64 @@ public class WorktreesViewModelTests
         Assert.Contains("left second's folder behind", viewModel.RemoveNotice);
     }
 
+    /// <summary>
+    /// AC-520: the panel names the session that holds a worktree. The name is taken as one snapshot next to the
+    /// live-session ids, so a row cannot end up naming an owner the liveness check disagreed about.
+    /// </summary>
+    [Fact]
+    public async Task Refresh_OwnerNameIsKnown_RowNamesTheOwner()
+    {
+        var manager = _ManagerHolding("session-a");
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs())
+        {
+            LiveSessionIds = () => new HashSet<string>(["session-a"], StringComparer.Ordinal),
+            SessionNames = () => new Dictionary<string, string>(StringComparer.Ordinal) { ["session-a"] = "AC-520" },
+        };
+
+        await viewModel.RefreshAsync();
+
+        Assert.Equal("in use · claimed by AC-520", Assert.Single(viewModel.Worktrees).OwnerLabel);
+    }
+
+    [Fact]
+    public async Task Refresh_NoNamesSupplied_RowKeepsTheAnonymousLabel()
+    {
+        var manager = _ManagerHolding("session-a");
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs())
+        {
+            LiveSessionIds = () => new HashSet<string>(["session-a"], StringComparer.Ordinal),
+        };
+
+        await viewModel.RefreshAsync();
+
+        Assert.Equal("in use · claimed by a pane", Assert.Single(viewModel.Worktrees).OwnerLabel);
+    }
+
+    [Fact]
+    public async Task Refresh_OwnerIsGoneButNameSurvives_RowNamesWhoHeldIt()
+    {
+        var manager = _ManagerHolding("session-a");
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs())
+        {
+            LiveSessionIds = () => new HashSet<string>(StringComparer.Ordinal),
+            SessionNames = () => new Dictionary<string, string>(StringComparer.Ordinal) { ["session-a"] = "AC-520" },
+        };
+
+        await viewModel.RefreshAsync();
+
+        Assert.Equal("session gone · was AC-520", Assert.Single(viewModel.Worktrees).OwnerLabel);
+    }
+
+    private static IWorktreeManager _ManagerHolding(string sessionId)
+    {
+        var record = new WorktreeRecord(sessionId, "/repo", "/state/worktrees/ab/cockpit-x", "cockpit/x", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>())
+            .Returns([new WorktreeStatus(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0)]);
+
+        return manager;
+    }
+
     private static IWorktreeManager _RefusingManager(string message)
     {
         var manager = Substitute.For<IWorktreeManager>();
@@ -213,11 +271,52 @@ public class WorktreesViewModelTests
         return dialogs;
     }
 
-    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true, bool workingCopyMissing = false, string branch = "cockpit/x")
+    /// <summary>AC-520 fix 6: Release does nothing for a row that cannot be released — a genuinely running session.</summary>
+    [Fact]
+    public async Task Release_RowCannotRelease_DoesNothing()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+        var row = _Row(isOwnerLive: true, hasOpenRestoreOffer: false);
+
+        await viewModel.ReleaseCommand.ExecuteAsync(row);
+
+        await manager.DidNotReceive().ReleaseOwnershipAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Release_WithoutConfirmation_DoesNothing()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        var dialogs = Substitute.For<ISessionDialogService>();
+        dialogs.ShowConfirmationDialogAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+        var viewModel = new WorktreesViewModel(manager, dialogs);
+        var row = _Row(isOwnerLive: true, hasOpenRestoreOffer: true);
+
+        await viewModel.ReleaseCommand.ExecuteAsync(row);
+
+        await manager.DidNotReceive().ReleaseOwnershipAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Release_AfterConfirmation_GivesUpOwnershipAndRefreshes()
+    {
+        var manager = Substitute.For<IWorktreeManager>();
+        manager.GetStatusesAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var viewModel = new WorktreesViewModel(manager, _ConfirmingDialogs());
+        var row = _Row(isOwnerLive: true, hasOpenRestoreOffer: true);
+
+        await viewModel.ReleaseCommand.ExecuteAsync(row);
+
+        await manager.Received(1).ReleaseOwnershipAsync(row.Record.Path, Arg.Any<CancellationToken>());
+        await manager.Received(1).GetStatusesAsync(Arg.Any<CancellationToken>());
+    }
+
+    private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive, bool exists = true, bool workingCopyMissing = false, string branch = "cockpit/x", bool hasOpenRestoreOffer = false)
     {
         var record = new WorktreeRecord("session", "/repo", $"/state/worktrees/ab/{branch.Replace('/', '-')}", branch, "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
         var status = new WorktreeStatus(record, exists, HasUncommittedChanges: false, StrandableCommits: 0) { WorkingCopyMissing = workingCopyMissing };
 
-        return new ManagedWorktreeRowViewModel(status, isOwnerLive);
+        return new ManagedWorktreeRowViewModel(status, isOwnerLive, hasOpenRestoreOffer: hasOpenRestoreOffer);
     }
 }
