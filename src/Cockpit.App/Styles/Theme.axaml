@@ -295,21 +295,6 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
 
-    <!-- AC-528: a folded run's members nest under its "N steps run" line with a guide line, so the group's
-         hierarchy reads without expanding it. Plain (unstyled) for the anchor row itself, which shares the
-         base indent with the group-summary line above it. CockpitHairlineSoftBrush is calibrated against the
-         chrome band and is invisible on the transcript panel — CockpitHairlineBrush is the one that shows here. -->
-    <Style Selector="Border.stepIndent">
-        <Setter Property="Margin" Value="0"/>
-        <Setter Property="BorderThickness" Value="0"/>
-    </Style>
-    <Style Selector="Border.stepIndent.groupMember">
-        <Setter Property="Margin" Value="22,0,0,0"/>
-        <Setter Property="BorderThickness" Value="1,0,0,0"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
-        <Setter Property="Padding" Value="12,0,0,0"/>
-    </Style>
-
     <!-- A slowly pulsing dot, reused by the "still starting" banner and the "Thinking…" indicator so the
          opacity keyframes live in one place rather than being copied inline at each call site. -->
     <Style Selector="materialIcons|MaterialIcon.pulse">

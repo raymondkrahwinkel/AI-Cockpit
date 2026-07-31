@@ -294,14 +294,6 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>Whether this row shows the "N steps run" fold line — only the anchor of a run, at the Focus level.</summary>
     public bool ShowGroupSummary => ReadingLevel == ReadingLevel.Focus && IsInGroup && IsGroupAnchor;
 
-    /// <summary>
-    /// Whether this row is a non-anchor member of a folded run (AC-528): its content nests one step under the
-    /// "N steps run" line with a guide line, instead of sharing the anchor's own indent — without this, the fold's
-    /// hierarchy is not visible even with the group expanded, since the anchor's line and every member's own tool
-    /// chip all sit at the same margin.
-    /// </summary>
-    public bool IsGroupMember => IsInGroup && !IsGroupAnchor;
-
     /// <summary>The fold line's label, e.g. "3 steps run".</summary>
     public string GroupSummaryText => $"{GroupCount} steps run";
 
@@ -337,17 +329,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     partial void OnReadingLevelChanged(ReadingLevel value) => _RaiseReadingLevelPresentation();
 
-    partial void OnIsInGroupChanged(bool value)
-    {
-        _RaiseReadingLevelPresentation();
-        OnPropertyChanged(nameof(IsGroupMember));
-    }
+    partial void OnIsInGroupChanged(bool value) => _RaiseReadingLevelPresentation();
 
-    partial void OnIsGroupAnchorChanged(bool value)
-    {
-        _RaiseReadingLevelPresentation();
-        OnPropertyChanged(nameof(IsGroupMember));
-    }
+    partial void OnIsGroupAnchorChanged(bool value) => _RaiseReadingLevelPresentation();
 
     partial void OnGroupCountChanged(int value) => OnPropertyChanged(nameof(GroupSummaryText));
 
