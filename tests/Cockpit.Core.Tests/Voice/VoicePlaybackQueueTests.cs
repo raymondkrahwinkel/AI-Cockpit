@@ -1,5 +1,6 @@
 using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -163,6 +164,81 @@ public class VoicePlaybackQueueTests
         {
             Assert.Equal(new[] { true, false }, states);
         }
+    }
+
+    [Fact]
+    public async Task Enqueue_TwoSentences_LogsCompletion_WithBothSentencesPlayed_NeverAWarning()
+    {
+        var logger = new CapturingLogger<VoicePlaybackQueue>();
+        var textToSpeech = new FakeTextToSpeechService();
+        var audioPlayback = new FakeAudioPlaybackService();
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, logger);
+
+        queue.Enqueue(["First sentence.", "Second sentence."], speakerId: 1, language: "en");
+
+        await _WaitUntilAsync(() => audioPlayback.CallCount >= 2);
+        await _WaitUntilAsync(() => logger.Messages.Any(message => message.Contains("played", StringComparison.Ordinal)));
+
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        var completion = Assert.Single(logger.Messages, message => message.Contains("played", StringComparison.Ordinal));
+        Assert.Contains("2/2", completion, StringComparison.Ordinal);
+        Assert.DoesNotContain("aborted", completion, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StopAll_DuringPlayback_LogsTheUtteranceAsAborted_AtInformation_NotAWarning()
+    {
+        // AC-535: a barge-in cutting off read-aloud is expected behavior, not a fault — this must never surface
+        // as a warning, the same principle AC-533's noisy idle-kill line violated.
+        var logger = new CapturingLogger<VoicePlaybackQueue>();
+        var textToSpeech = new FakeTextToSpeechService();
+        var playbackStarted = new TaskCompletionSource();
+        var audioPlayback = new FakeAudioPlaybackService
+        {
+            OnPlay = cancellationToken =>
+            {
+                playbackStarted.TrySetResult();
+                return Task.Delay(Timeout.Infinite, cancellationToken);
+            },
+        };
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, logger);
+
+        queue.Enqueue(["First sentence."], speakerId: 1, language: "en");
+        await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        queue.StopAll();
+
+        await _WaitUntilAsync(() => logger.Messages.Any(message => message.Contains("aborted", StringComparison.Ordinal)));
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Enqueue_WhileABatchIsAlreadyQueuedBehindTheInFlightOne_LogsTheQueueDepth()
+    {
+        var logger = new CapturingLogger<VoicePlaybackQueue>();
+        var textToSpeech = new FakeTextToSpeechService();
+        var playbackStarted = new TaskCompletionSource();
+        var audioPlayback = new FakeAudioPlaybackService
+        {
+            OnPlay = async cancellationToken =>
+            {
+                playbackStarted.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            },
+        };
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, logger);
+
+        // The first batch is pulled off the channel immediately and blocks in "playback" forever; the second
+        // sits in the channel, so a third arrives behind exactly one already-queued batch.
+        queue.Enqueue(["First sentence."], speakerId: 1, language: "en");
+        await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        queue.Enqueue(["Second batch."], speakerId: 1, language: "en");
+        logger.Messages.Clear();
+
+        queue.Enqueue(["Third batch."], speakerId: 1, language: "en");
+
+        var enqueueMessage = Assert.Single(logger.Messages, message => message.Contains("enqueued", StringComparison.Ordinal));
+        Assert.Contains("1 batch(es) already queued", enqueueMessage, StringComparison.Ordinal);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

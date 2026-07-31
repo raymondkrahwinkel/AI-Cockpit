@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SherpaOnnx;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
@@ -35,8 +36,13 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
 
         // sherpa-onnx's OfflineTts.GenerateWithConfig is a synchronous, CPU-bound native call — run it off
         // the calling (UI/consumer) thread so it never blocks the playback queue's own async loop.
+        var stopwatch = Stopwatch.StartNew();
         var audio = await Task.Run(() => tts.GenerateWithConfig(text, config, ContinueGenerating), cancellationToken)
             .ConfigureAwait(false);
+
+        // AC-535: per-utterance synthesis trace — the playback queue logs its own play/abort side separately.
+        logger.LogDebug("TTS synthesized {Length} chars in {ElapsedMs} ms ({SampleCount} samples at {SampleRate} Hz).",
+            text.Length, stopwatch.ElapsedMilliseconds, audio.Samples.Length, audio.SampleRate);
 
         return new TtsAudio(audio.Samples, audio.SampleRate);
     }
@@ -57,6 +63,7 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
             }
 
             logger.LogInformation("Loading SupertonicTTS model (downloading on first use if not cached)...");
+            var stopwatch = Stopwatch.StartNew();
             var paths = await SupertonicModelCache.EnsureDownloadedAsync(cancellationToken).ConfigureAwait(false);
 
             var config = new OfflineTtsConfig
@@ -79,6 +86,9 @@ internal sealed class SherpaOnnxTextToSpeechService(ILogger<SherpaOnnxTextToSpee
             };
 
             _tts = new OfflineTts(config);
+            // The one truly expensive step (AC-535): it happens once per app run, so its cost is worth its own line
+            // rather than being folded into the first utterance's synthesis time.
+            logger.LogInformation("SupertonicTTS model loaded in {ElapsedMs} ms.", stopwatch.ElapsedMilliseconds);
             return _tts;
         }
         finally
