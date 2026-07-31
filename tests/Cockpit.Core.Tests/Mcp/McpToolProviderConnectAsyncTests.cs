@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
@@ -18,9 +17,9 @@ namespace Cockpit.Core.Tests.Mcp;
 /// </summary>
 public class McpToolProviderConnectAsyncTests
 {
-    // Each reachable server sleeps every request (initialize, tools/list, ...) by this much. Large enough that a
-    // stray GC pause or a busy CI runner's scheduling jitter (measured: flaked under a 2-core squeeze at 200ms,
-    // exceeding the slack below) stays a small fraction of it rather than swallowing the parallelism signal.
+    // Each reachable server sleeps every request (initialize, tools/list, ...) by this much — long enough that the
+    // recorded request windows below (see InProcessMcpHttpServer.RequestWindows) have a comfortable margin to prove
+    // overlap even under scheduling jitter.
     private static readonly TimeSpan DelayPerServer = TimeSpan.FromMilliseconds(400);
 
     [Fact]
@@ -28,25 +27,13 @@ public class McpToolProviderConnectAsyncTests
     {
         await using var serverA = await InProcessMcpHttpServer.StartAsync<McpTestToolA>(DelayPerServer);
         await using var serverB = await InProcessMcpHttpServer.StartAsync<McpTestToolB>(DelayPerServer);
-        var soloProvider = _ProviderFor(_DisableBuiltIns().Append(
-            new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = serverA.Url }));
         var bothProvider = _ProviderFor(_DisableBuiltIns().Concat(
         [
             new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = serverA.Url },
             new McpServerConfig { Name = "server-b", Transport = McpTransport.Http, Url = serverB.Url },
         ]));
 
-        // Warm up JIT/connection-pool costs on an untimed connect first, so the two timed connects below
-        // (one server vs. two) are comparable — a cold first HTTP call is not representative of the rest.
-        await (await soloProvider.ConnectAsync()).DisposeAsync();
-
-        var soloStopwatch = Stopwatch.StartNew();
-        await (await soloProvider.ConnectAsync()).DisposeAsync();
-        soloStopwatch.Stop();
-
-        var bothStopwatch = Stopwatch.StartNew();
         await using var session = await bothProvider.ConnectAsync();
-        bothStopwatch.Stop();
 
         // Both connected, in the same order the servers were listed (deterministic despite racing in parallel).
         Assert.Equal(new[] { "server-a", "server-b" }, session.ConnectedServerNames);
@@ -54,12 +41,19 @@ public class McpToolProviderConnectAsyncTests
         Assert.Contains("tool_a", toolNames);
         Assert.Contains("tool_b", toolNames);
 
-        // A sequential connect of two servers would take roughly double a single server's connect time; well
-        // under that (vs. the just-measured single-server baseline) proves the two connects overlapped rather
-        // than running one after another. The 1.75x slack absorbs normal timing noise without hiding a real
-        // regression to sequential (which would land close to 2x).
-        Assert.True(bothStopwatch.Elapsed < soloStopwatch.Elapsed * 1.75);
+        // Direct proof of overlap rather than an elapsed-time ratio against a separately measured baseline: each
+        // server's own request-window recordings show exactly when its requests were in flight. A genuine regression
+        // to sequential connects (server B's handshake starting only once server A's has fully finished) cannot
+        // produce overlapping windows no matter how a busy runner stretches both measurements — a wall-clock ratio
+        // can be fooled by exactly that kind of asymmetric noise, which is what made this test flake on CI.
+        Assert.True(_RequestsOverlapped(serverA.RequestWindows, serverB.RequestWindows));
     }
+
+    /// <summary>Whether any recorded request window from one server overlaps any from the other in wall-clock time.</summary>
+    private static bool _RequestsOverlapped(
+        IReadOnlyCollection<(DateTimeOffset Start, DateTimeOffset End)> a,
+        IReadOnlyCollection<(DateTimeOffset Start, DateTimeOffset End)> b) =>
+        a.Any(windowA => b.Any(windowB => windowA.Start < windowB.End && windowB.Start < windowA.End));
 
     [Fact]
     public async Task ConnectAsync_WithASessionSelection_ConnectsOnlyTheNamedServers()

@@ -139,6 +139,13 @@ public class YouTrackStateFilterServerSideTests
 
         await _WaitForAsync(() => _Options(stateFilter!), found => found.Count > 2, TimeSpan.FromSeconds(5));
 
+        // The dropdown's own population can echo a redundant, unguarded reload whose request may still be in
+        // flight the instant options.Count first crosses the threshold above — see the comment on
+        // SelectingAState_WhileTheRedundantPopulationTriggeredReloadIsStillInFlight for why. A settle grace period
+        // here (same value that test uses for the same reason) lets any such echo land before the baseline is
+        // pinned, so a slow-to-arrive echo on a busy runner cannot be mistaken for the state-driven reload below —
+        // without it, this flaked in CI: the wait after choosing "Ready" returned the echo instead.
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
         var queriesBeforeChoosingState = issueQueries.Count;
         Dispatcher.UIThread.Invoke(() => stateFilter!.SelectedItem = "Ready");
 
