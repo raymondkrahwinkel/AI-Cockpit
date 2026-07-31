@@ -24,6 +24,10 @@ internal sealed class WhisperWorkerSpeechToTextService(
     private static readonly TimeSpan IdleUnloadAfter = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan IdleCheckInterval = TimeSpan.FromMinutes(1);
 
+    // Matches the wire format DictationWorkerProtocol documents (16 kHz mono float32) — used only to turn a
+    // sample count back into a duration for the AC-535 trace, not to reinterpret the samples themselves.
+    private const int SampleRateHz = 16_000;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _stateLock = new();
     private Process? _worker;
@@ -34,6 +38,7 @@ internal sealed class WhisperWorkerSpeechToTextService(
     private long _lastUsedTicks;
     private Timer? _idleTimer;
     private bool _disposed;
+    private VoiceBackendPreference _lastBackend;
 
     /// <summary>Not surfaced in worker mode — the loaded backend lives in the child process. Null is the documented "unknown".</summary>
     public WhisperRuntimeBackend? ActiveBackend => null;
@@ -48,11 +53,18 @@ internal sealed class WhisperWorkerSpeechToTextService(
         try
         {
             Volatile.Write(ref _lastUsedTicks, DateTime.UtcNow.Ticks);
+            var recordingSeconds = samples.Length / (double)SampleRateHz;
+            var stopwatch = Stopwatch.StartNew();
             for (var attempt = 0; ; attempt++)
             {
                 try
                 {
-                    await _EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
+                    // Timed on its own: a cold start pays for the model coming down and the runtime activating,
+                    // and that is the single most expensive step in a dictation. Folded into one total it is
+                    // invisible — "3.8 s" says nothing about whether the machine is slow or the worker was cold.
+                    var startupStopwatch = Stopwatch.StartNew();
+                    var coldStart = await _EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
+                    startupStopwatch.Stop();
 
                     var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
                     lock (_stateLock)
@@ -65,7 +77,11 @@ internal sealed class WhisperWorkerSpeechToTextService(
                     await _WriteClipAsync(samples, cancellationToken).ConfigureAwait(false);
 
                     await using var registration = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
-                    return await pending.Task.ConfigureAwait(false);
+                    var text = await pending.Task.ConfigureAwait(false);
+
+                    _LogTranscribed(recordingSeconds, stopwatch.ElapsedMilliseconds, startupStopwatch.ElapsedMilliseconds, coldStart, text.Length);
+
+                    return text;
                 }
                 catch (OperationCanceledException)
                 {
@@ -103,11 +119,13 @@ internal sealed class WhisperWorkerSpeechToTextService(
         }
     }
 
-    private async Task _EnsureWorkerAsync(CancellationToken cancellationToken)
+    /// <summary>Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
+    /// (a cold start, AC-535) rather than reuse an already-warm process.</summary>
+    private async Task<bool> _EnsureWorkerAsync(CancellationToken cancellationToken)
     {
         if (_worker is { HasExited: false } && _stdin is not null && _ready is { Task.IsCompletedSuccessfully: true })
         {
-            return;
+            return false;
         }
 
         _KillWorker();
@@ -134,16 +152,14 @@ internal sealed class WhisperWorkerSpeechToTextService(
         startInfo.ArgumentList.Add(DictationWorkerProtocol.LanguageArgument);
         startInfo.ArgumentList.Add(language);
 
+        // Remembered, never logged directly (AC-534): whisper.cpp/CUDA stderr chatter is routine, and echoing every
+        // line at any level would repeat AC-533's mistake of one noisy source drowning out the rest of the log. The
+        // tail only surfaces once the worker actually fails, folded into the exception the caller already logs.
+        var stderrTail = new ProcessStderrTail();
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, args) => _OnWorkerLine(args.Data);
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data is { } line)
-            {
-                logger.LogDebug("Dictation worker (stderr): {Line}", line);
-            }
-        };
-        process.Exited += (_, _) => _OnWorkerExited();
+        process.OutputDataReceived += (_, args) => _OnWorkerLine(args.Data, stderrTail);
+        process.ErrorDataReceived += (_, args) => stderrTail.OnLine(args.Data);
+        process.Exited += (_, _) => _OnWorkerExited(stderrTail);
 
         lock (_stateLock)
         {
@@ -155,14 +171,16 @@ internal sealed class WhisperWorkerSpeechToTextService(
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         _stdin = process.StandardInput.BaseStream;
+        _lastBackend = backend;
         _idleTimer ??= new Timer(_ => _KillIfIdle(), null, IdleCheckInterval, IdleCheckInterval);
 
         // Wait for the worker to activate the native runtime and load the model. Throws if it died first (the Exited
         // handler faults the tcs), which the retry above turns into a CPU fallback.
         await ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
-    private void _OnWorkerLine(string? line)
+    private void _OnWorkerLine(string? line, ProcessStderrTail stderrTail)
     {
         if (line is null || DictationWorkerProtocol.Decode(line) is not { } message)
         {
@@ -182,21 +200,42 @@ internal sealed class WhisperWorkerSpeechToTextService(
                 break;
             case DictationChildMessage.KindError:
                 logger.LogWarning("Dictation worker reported an error: {Error}", message.Message);
-                var error = new InvalidOperationException(message.Message ?? "dictation worker error");
+                var error = new InvalidOperationException(_WithStderrTail(message.Message ?? "dictation worker error", stderrTail));
                 _ready?.TrySetException(error);
                 _pending?.TrySetException(error);
                 break;
         }
     }
 
-    private void _OnWorkerExited()
+    private void _OnWorkerExited(ProcessStderrTail stderrTail)
     {
         // Died before ready (a load abort) or mid-clip (an inference abort): fault whatever is waiting so the retry in
         // TranscribeAsync kicks in. The respawn itself happens there, under the gate — never from this callback.
-        var error = new InvalidOperationException("The dictation worker process exited unexpectedly.");
+        var error = new InvalidOperationException(_WithStderrTail("The dictation worker process exited unexpectedly.", stderrTail));
         _ready?.TrySetException(error);
         _pending?.TrySetException(error);
     }
+
+    /// <summary>Folds the worker's remembered stderr tail into a failure message, so "exited unexpectedly" says why
+    /// (AC-534) — or leaves the message alone if the worker said nothing on stderr before it died.</summary>
+    private static string _WithStderrTail(string message, ProcessStderrTail stderrTail)
+    {
+        var tail = stderrTail.Snapshot();
+        return tail.Length == 0 ? message : $"{message} Stderr tail:{Environment.NewLine}{tail}";
+    }
+
+    /// <summary>
+    /// The dictation trace (AC-535): recording length, backend, transcription time and outcome length, as one line
+    /// per successful clip. The startup time is reported separately rather than as a flag beside the total, because
+    /// a cold start is the most expensive step there is and folding it into one number hides which of the two was
+    /// slow. A failed clip is already logged (Warning on the CPU retry, Error if that fails too) — this only covers
+    /// the path that had nothing to say about itself before.
+    /// </summary>
+    private void _LogTranscribed(double recordingSeconds, long elapsedMs, long startupMs, bool coldStart, int textLength) =>
+        logger.LogInformation(
+            "Dictation transcribed {RecordingSeconds:F1}s of audio on {Backend} in {ElapsedMs} ms " +
+            "({StartupMs} ms of that starting the worker, cold start: {ColdStart}); {Length} chars.",
+            recordingSeconds, _lastBackend, elapsedMs, startupMs, coldStart, textLength);
 
     private async Task _WriteClipAsync(float[] samples, CancellationToken cancellationToken)
     {
@@ -214,18 +253,29 @@ internal sealed class WhisperWorkerSpeechToTextService(
 
     private void _KillIfIdle()
     {
-        var idle = DateTime.UtcNow - new DateTime(Volatile.Read(ref _lastUsedTicks), DateTimeKind.Utc) >= IdleUnloadAfter;
+        bool hasWorker;
         bool busy;
         lock (_stateLock)
         {
+            hasWorker = _worker is not null;
             busy = _pending is not null;
         }
 
-        if (idle && !busy)
+        // Nothing to do once a prior tick already killed the worker: without this, every later tick re-read the
+        // same stale _lastUsedTicks and fired the log again — every minute, forever (AC-533).
+        if (!hasWorker || busy)
         {
-            _KillWorker();
-            logger.LogInformation("Dictation worker idle for {Minutes} min; killed to free memory (respawns on next dictation).", (int)IdleUnloadAfter.TotalMinutes);
+            return;
         }
+
+        var idleFor = DateTime.UtcNow - new DateTime(Volatile.Read(ref _lastUsedTicks), DateTimeKind.Utc);
+        if (idleFor < IdleUnloadAfter)
+        {
+            return;
+        }
+
+        _KillWorker();
+        logger.LogInformation("Dictation worker idle for {Minutes:F1} min; killed to free memory (respawns on next dictation).", idleFor.TotalMinutes);
     }
 
     private void _KillWorker()

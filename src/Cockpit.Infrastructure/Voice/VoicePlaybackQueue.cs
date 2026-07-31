@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
@@ -87,7 +88,10 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             return;
         }
 
-        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s)", sentenceCount, segments.Count);
+        // Queue depth (AC-535): two sessions share this one playback line, so a deep queue here is a real
+        // explanation for "read-aloud feels slow" that the per-utterance timing below cannot show on its own.
+        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} language segment(s); {QueueDepth} batch(es) already queued.",
+            sentenceCount, segments.Count, _channel.Reader.Count);
         _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId));
     }
 
@@ -146,51 +150,69 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             return;
         }
 
-        var pending = _TrySynthesizeAsync(items[0].Text, utterance.SpeakerId, items[0].Language, cancellationToken);
-        for (var i = 0; i < items.Count; i++)
+        var stopwatch = Stopwatch.StartNew();
+        var sentencesPlayed = 0;
+        var aborted = false;
+        try
         {
-            if (cancellationToken.IsCancellationRequested)
+            var pending = _TrySynthesizeAsync(items[0].Text, utterance.SpeakerId, items[0].Language, cancellationToken);
+            for (var i = 0; i < items.Count; i++)
             {
-                return;
-            }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    aborted = true;
+                    return;
+                }
 
-            var audio = await pending.ConfigureAwait(false);
+                var audio = await pending.ConfigureAwait(false);
 
-            // Kick off the next synthesis before playing the current clip, so the two overlap and no silence opens up.
-            pending = i + 1 < items.Count
-                ? _TrySynthesizeAsync(items[i + 1].Text, utterance.SpeakerId, items[i + 1].Language, cancellationToken)
-                : Task.FromResult<TtsAudio?>(null);
+                // Kick off the next synthesis before playing the current clip, so the two overlap and no silence opens up.
+                pending = i + 1 < items.Count
+                    ? _TrySynthesizeAsync(items[i + 1].Text, utterance.SpeakerId, items[i + 1].Language, cancellationToken)
+                    : Task.FromResult<TtsAudio?>(null);
 
-            if (audio is null)
-            {
-                continue;
-            }
+                if (audio is null)
+                {
+                    continue;
+                }
 
-            // The first real clip of this window is the preparing→speaking boundary: until now it was synthesizing
-            // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here. The
-            // check-and-set is atomic under the gate because a UI-thread StopAll can reset the flag concurrently.
-            bool announce;
-            lock (_activeGate)
-            {
-                announce = !_speakingAnnounced;
-                _speakingAnnounced = true;
-            }
+                // The first real clip of this window is the preparing→speaking boundary: until now it was synthesizing
+                // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here. The
+                // check-and-set is atomic under the gate because a UI-thread StopAll can reset the flag concurrently.
+                bool announce;
+                lock (_activeGate)
+                {
+                    announce = !_speakingAnnounced;
+                    _speakingAnnounced = true;
+                }
 
-            if (announce)
-            {
-                SpeakingStarted?.Invoke(this, EventArgs.Empty);
-            }
+                if (announce)
+                {
+                    SpeakingStarted?.Invoke(this, EventArgs.Empty);
+                }
 
-            try
-            {
-                var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
-                await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
+                    await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
+                        .ConfigureAwait(false);
+                    sentencesPlayed++;
+                }
+                catch (OperationCanceledException)
+                {
+                    aborted = true;
+                    return;
+                }
             }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+        }
+        finally
+        {
+            // AC-535: one line per utterance regardless of how it ended, so "was this slow, and why" and "did it
+            // get cut off" are both answerable from the log alone. A barge-in is expected behavior, not a fault —
+            // logged at the same level either way, never a warning.
+            _logger.LogInformation(
+                "Read-aloud played {SentencesPlayed}/{TotalSentences} sentence(s) in {ElapsedMs} ms{Aborted}.",
+                sentencesPlayed, items.Count, stopwatch.ElapsedMilliseconds, aborted ? " (aborted)" : string.Empty);
         }
     }
 
@@ -199,7 +221,10 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     {
         try
         {
-            _logger.LogDebug("Read-aloud synthesizing sentence: \"{Sentence}\"", text);
+            // Length, never the sentence itself: this log is what gets shared when someone asks "why is read-aloud
+            // slow", and what it reads aloud is whatever the assistant just said — notes, names, customer detail.
+            // The rest of the voice tracing measures without quoting; this line used to be the exception.
+            _logger.LogDebug("Read-aloud synthesizing a sentence of {Length} chars.", text.Length);
             return await _textToSpeech.SynthesizeAsync(text, speakerId, language, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

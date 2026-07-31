@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -94,6 +95,7 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         }
 
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
@@ -107,12 +109,15 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
                 return rawText;
             }
 
+            _LogStepCompleted("Transcript cleanup", stopwatch.ElapsedMilliseconds, rawText.Length, cleaned.Length);
             return cleaned;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The caller cancelled (a barge-in / the session going away) — propagate rather than pass off the
-            // raw transcript as a completed cleanup.
+            // raw transcript as a completed cleanup. Not a failure (AC-535: a benign cancellation must not read as
+            // a warning), but worth a trace — without one, "why did cleanup stop" has no answer but "presumably".
+            _LogStepCancelled("Transcript cleanup", stopwatch.ElapsedMilliseconds);
             throw;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
@@ -133,16 +138,19 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         }
 
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply reads the same way.
             var spoken = (await _CompleteAsync(settings, SpeechPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken:", temperature: 0.3, _EstimateOutputCap(text.Length, divisor: 3, min: 64, max: 1024), SpeechTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
+            _LogStepCompleted("Read-aloud naturalization", stopwatch.ElapsedMilliseconds, text.Length, spoken.Length);
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            _LogStepCancelled("Read-aloud naturalization", stopwatch.ElapsedMilliseconds);
             throw;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
@@ -160,16 +168,19 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         }
 
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply summarizes the same way.
             var spoken = (await _CompleteAsync(settings, SummaryPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken summary:", temperature: 0.3, _EstimateOutputCap(text.Length, divisor: 6, min: 48, max: 512), SpeechTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
+            _LogStepCompleted("Read-aloud summarization", stopwatch.ElapsedMilliseconds, text.Length, spoken.Length);
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            _LogStepCancelled("Read-aloud summarization", stopwatch.ElapsedMilliseconds);
             throw;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
@@ -182,16 +193,20 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
     public async Task<string> AcknowledgeForSpeechAsync(string userMessage, CancellationToken cancellationToken = default)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
             // A little warmth so it does not read robotically; capped tiny and timed out fast — a preset phrase is
             // the fallback, so there is no reason to wait on a slow server for a nicety.
-            return (await _CompleteAsync(settings, AckPrompt(settings.ReadAloudLanguage), $"Request: {userMessage}\nAcknowledgement:", temperature: 0.6, maxOutputTokens: 24, AckTimeout, cancellationToken)
+            var acknowledgement = (await _CompleteAsync(settings, AckPrompt(settings.ReadAloudLanguage), $"Request: {userMessage}\nAcknowledgement:", temperature: 0.6, maxOutputTokens: 24, AckTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
+            _LogStepCompleted("Turn acknowledgement", stopwatch.ElapsedMilliseconds, userMessage.Length, acknowledgement.Length);
+            return acknowledgement;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            _LogStepCancelled("Turn acknowledgement", stopwatch.ElapsedMilliseconds);
             throw;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
@@ -200,6 +215,18 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
             return "";
         }
     }
+
+    /// <summary>
+    /// The local-model trace (AC-535). Every step this service runs reports the same two things — how long it took
+    /// and, when the caller pulled the plug, that this is why it stopped. On Debug and Information respectively:
+    /// a cancellation is a normal outcome (a barge-in, a session closing) and must never read as a fault, or real
+    /// failures drown among warnings that were never problems.
+    /// </summary>
+    private void _LogStepCompleted(string step, long elapsedMs, int inputLength, int outputLength) =>
+        logger.LogDebug("{Step} completed in {ElapsedMs} ms ({InputLength} -> {OutputLength} chars)", step, elapsedMs, inputLength, outputLength);
+
+    private void _LogStepCancelled(string step, long elapsedMs) =>
+        logger.LogInformation("{Step} cancelled by the caller after {ElapsedMs} ms.", step, elapsedMs);
 
     /// <summary>
     /// One non-streaming chat completion against the configured local server's OpenAI-compatible endpoint via the
