@@ -892,6 +892,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: the actions on a worktree row are icons now instead of labels, leaving the row room for the branch,
+  its state and its owner. Each name moved to the front of the button's tooltip. Release comes first, and only
+  appears on a row where releasing is actually possible — the other two stay put while disabled, because their
+  tooltip tells you why they cannot run right now.
 - changed: the Managed worktrees dialog now names the session that claims a worktree — "in use · claimed by
   DEP-158" instead of the anonymous "in use · claimed by a pane" — and says whose it was after that session
   closes or crashes ("session gone · was DEP-158"). Falls back to the previous, unnamed wording when no name is

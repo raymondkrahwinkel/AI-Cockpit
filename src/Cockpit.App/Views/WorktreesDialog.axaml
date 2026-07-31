@@ -81,18 +81,22 @@
                                                  button column once it started carrying a session name — AC-428's shape, a
                                                  data-driven element sharing a row with fixed buttons. The label takes the star
                                                  column and trims, so no name can push it out of its own row again. -->
-                                            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="8">
+                                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="8">
                                                 <!-- Status dot + branch chip: at a glance clean vs. work-to-lose. -->
                                                 <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
                                                          Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Branch, StringFormat='⑂ {0}'}" FontWeight="SemiBold" FontSize="12"
+                                                <!-- The branch mark was the glyph ⑂ inside the text; AC-33 maps that to SourceBranch,
+                                                     and a real icon renders the same on every machine where that character does not. -->
+                                                <materialIcons:MaterialIcon Grid.Column="1" Kind="SourceBranch" Width="12" Height="12" VerticalAlignment="Center"
+                                                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Branch}" FontWeight="SemiBold" FontSize="12"
                                                            Foreground="{StaticResource CockpitTextPrimaryBrush}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
-                                                <Border Grid.Column="2" Classes="tag">
+                                                <Border Grid.Column="3" Classes="tag">
                                                     <TextBlock Text="{Binding StatusLabel}" FontSize="10"
                                                                Foreground="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Border>
-                                                <TextBlock Grid.Column="3" Text="{Binding OwnerLabel}" FontSize="10" VerticalAlignment="Center"
+                                                <TextBlock Grid.Column="4" Text="{Binding OwnerLabel}" FontSize="10" VerticalAlignment="Center"
                                                            Foreground="{Binding OwnerBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding OwnerLabel}"/>
                                             </Grid>
@@ -109,34 +113,53 @@
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <!-- First, and hidden rather than disabled, unlike its neighbours (Raymond, AC-520):
+                                                 this is the action that unlocks the other two, so it reads first when it applies —
+                                                 and on every other row it does not apply at all. Reattach and Remove stay visible
+                                                 while disabled because their tooltip explains why they cannot run right now; a
+                                                 greyed-out Release would only add that noise to rows where releasing is not a
+                                                 question anyone is asking. -->
+                                            <!-- Icons, not labels (Raymond, AC-520): four labelled buttons crowded a row that
+                                                 also has to fit a branch, a state and an owner. The name each one lost lives in
+                                                 its tooltip, which already carried the explanation, and in AutomationProperties
+                                                 so a screen reader still announces the action rather than "button".
+                                                 Reattach and Release are deliberately a pair — link and link-off — because that
+                                                 is exactly what they do to the session that owns the tree. -->
+                                            <Button Classes="RowAction IconOnly"
+                                                    IsVisible="{Binding CanRelease}"
+                                                    AutomationProperties.Name="Release"
+                                                    ToolTip.Tip="Release — detach this worktree from the session that claimed it, discarding its restore offer. The row then becomes an ordinary orphan: remove it, or start a fresh session on it."
+                                                    Command="{Binding ((vm:WorktreesViewModel)DataContext).ReleaseCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <materialIcons:MaterialIcon Kind="LinkVariantOff" Width="14" Height="14"/>
+                                            </Button>
                                             <!-- Look at the files yourself in the OS file manager (read-only, always available). -->
-                                            <Button Classes="RowAction" Content="Open folder"
-                                                    ToolTip.Tip="Open the worktree folder in your file manager"
-                                                    Click="OnOpenFolder"/>
+                                            <Button Classes="RowAction IconOnly"
+                                                    AutomationProperties.Name="Open folder"
+                                                    ToolTip.Tip="Open folder — open the worktree folder in your file manager"
+                                                    Click="OnOpenFolder">
+                                                <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                                            </Button>
                                             <!-- Reattach only when the owning session is gone (Raymond: GONE only); a live tree
                                                  disables it so two sessions never land on one working tree. -->
-                                            <Button Classes="RowAction" Content="Reattach"
+                                            <Button Classes="RowAction IconOnly"
                                                     IsEnabled="{Binding CanReattach}"
                                                     ToolTip.ShowOnDisabled="True"
-                                                    ToolTip.Tip="Start a new session in this worktree. Only for a worktree whose session is gone."
+                                                    AutomationProperties.Name="Reattach"
+                                                    ToolTip.Tip="Reattach — start a new session in this worktree. Only for a worktree whose session is gone."
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).ReattachCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"/>
-                                            <Button Classes="RowAction" Content="Remove"
+                                                    CommandParameter="{Binding}">
+                                                <materialIcons:MaterialIcon Kind="LinkVariant" Width="14" Height="14"/>
+                                            </Button>
+                                            <Button Classes="RowAction IconOnly"
                                                     IsEnabled="{Binding CanRemove}"
                                                     ToolTip.ShowOnDisabled="True"
-                                                    ToolTip.Tip="Remove this worktree (asks to confirm; a tree with unsaved changes warns first). Disabled while a session is still using it — close the session first."
+                                                    AutomationProperties.Name="Remove"
+                                                    ToolTip.Tip="Remove — remove this worktree (asks to confirm; a tree with unsaved changes warns first). Disabled while a session is still using it — close the session first."
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"/>
-                                            <!-- Only for a row that is "in use" solely because of an open restore offer (AC-410)
-                                                 with nothing actually running behind it (AC-520 fix 6) — detaches ownership so
-                                                 Remove and Reattach become available, without waiting for the operator to start
-                                                 or close that pane by hand. -->
-                                            <Button Classes="RowAction" Content="Release"
-                                                    IsEnabled="{Binding CanRelease}"
-                                                    ToolTip.ShowOnDisabled="True"
-                                                    ToolTip.Tip="Detach this worktree from the session that claimed it, discarding its restore offer. Only offered while that offer is the only reason the row reads as in use."
-                                                    Command="{Binding ((vm:WorktreesViewModel)DataContext).ReleaseCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                    CommandParameter="{Binding}"/>
+                                                    CommandParameter="{Binding}">
+                                                <materialIcons:MaterialIcon Kind="DeleteOutline" Width="14" Height="14"/>
+                                            </Button>
                                         </StackPanel>
                                     </Grid>
                                 </Border>

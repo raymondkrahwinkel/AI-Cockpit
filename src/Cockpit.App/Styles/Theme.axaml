@@ -462,6 +462,19 @@
     <Style Selector="Button.RowAction:pointerover :is(TextBlock)">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
+    <!-- An icon-only row action carries its meaning in a tooltip, so it needs the same rest/hover treatment the
+         label gets — and by the same reasoning as AC-406 above, a rule naming the icon is the only thing that
+         reaches it: MaterialIcon is not a TextBlock, so the rules above skip it entirely and it would sit at the
+         inherited colour through every state. Square padding too, since there is no text to give the button width. -->
+    <Style Selector="Button.RowAction.IconOnly">
+        <Setter Property="Padding" Value="6,4"/>
+    </Style>
+    <Style Selector="Button.RowAction materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.RowAction:pointerover materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
     <!-- Disabled keeps the button shape (fill + border) so it still reads as a button, but dims the whole thing
          and fades the text — deterministically, rather than letting the base theme paint its own grey box. The
          text fade itself comes from the shared Button:disabled :is(TextBlock) rule below, which has to be
