@@ -208,7 +208,11 @@ internal sealed class TranscriptionCalibrator(
 
         var results = new List<CalibrationChildMessage>();
         var outputClosed = new TaskCompletionSource();
+        // Remembered, never logged directly (AC-534) — only surfaced below if the child produces no result, so
+        // a normal calibration run stays quiet about routine whisper.cpp/CUDA stderr chatter.
+        var stderrTail = new ProcessStderrTail();
         using var process = new Process { StartInfo = startInfo };
+        process.ErrorDataReceived += (_, args) => stderrTail.OnLine(args.Data);
         process.OutputDataReceived += (_, args) =>
         {
             // A null Data is the stdout EOF: the child has closed the pipe, so every line — including the final
@@ -262,6 +266,29 @@ internal sealed class TranscriptionCalibrator(
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         await outputClosed.Task.ConfigureAwait(false);
 
+        _LogChildFailureIfAny(process.ExitCode, label, stderrTail);
+
         return results;
+    }
+
+    /// <summary>
+    /// A non-zero exit with nothing decoded is the calibration equivalent of the dictation worker's "exited
+    /// unexpectedly" (AC-534): fold the remembered stderr tail in so the cause is not just "produced no result". A
+    /// zero exit or a child that said nothing on stderr logs nothing — routine calibration stays quiet.
+    /// </summary>
+    private void _LogChildFailureIfAny(int exitCode, string label, ProcessStderrTail stderrTail)
+    {
+        if (exitCode == 0)
+        {
+            return;
+        }
+
+        var tail = stderrTail.Snapshot();
+        if (tail.Length == 0)
+        {
+            return;
+        }
+
+        logger.LogWarning("Calibration child ({Label}) exited with code {ExitCode}. Stderr tail:{NewLine}{Tail}", label, exitCode, Environment.NewLine, tail);
     }
 }

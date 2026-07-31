@@ -43,6 +43,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   hold its worktree indefinitely — no timeout, Remove and Reattach both greyed out until you started or closed that
   pane by hand. "Release" detaches the worktree from that offer (discarding it) without touching any files; Remove
   and Reattach become available right after, the same as for any other worktree a session has let go of.
+- added: voice now leaves a trace you can read back. A dictation records how much audio it was, which backend ran
+  it, whether the worker had to start up first and how long the transcription took; reading aloud records how long
+  the model took to load once, and per turn how many sentences were spoken, in how long, and whether it was cut
+  short. Until now "dictation feels slow" could not be answered with anything but an impression — the load that a
+  cold start costs after an idle stretch is now visible as a number.
+
 - added: the YouTrack dialog's status filter now lists every stage the project actually has, instead of only the ones
   that happened to appear in the first hundred issues it loaded. Picking a status also searches the whole project
   rather than filtering the loaded page, so a ticket that never made it into that page is still found. Stages that
@@ -1188,6 +1194,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: an agent can now clean up a worktree left behind by a session that has since crashed or closed, instead of
   only ever being able to touch worktrees from its own session. A worktree whose owning session is still running is
   still refused, as is one whose liveness cannot be determined at all.
+- fixed: the log no longer claims every minute that the dictation worker was killed for being idle. It said so
+  whether or not a worker was still running, so a single quiet stretch filled the log with the same line over and
+  over — and the "5 min" in it stopped being true after the first one. The message now appears once per actual
+  shutdown and states how long the worker really sat idle.
+- fixed: when the dictation worker dies, the failure now carries the last lines the worker wrote about itself
+  instead of only "the process exited unexpectedly". Model, runtime and out-of-memory complaints reach the log
+  rather than a pipe nobody read, so a dictation that falls back to the slower CPU backend can be explained
+  afterwards instead of guessed at. The same goes for the calibration run.
+- fixed: a transcript cleanup that was cancelled because the recording itself was thrown away no longer reads as
+  a warning. It is a normal outcome, and dressing it as a fault made real failures harder to spot.
+
 - fixed: the project editor's server dropdown no longer requires closing and reopening the dialog to notice a
   server you just created (or removed) through the "Servers…" button. It now shows the new server immediately,
   keeps a selection you already made when other servers change around it, and falls back to no selection rather

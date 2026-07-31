@@ -4,6 +4,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Voice;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -191,7 +192,37 @@ public class OpenAiCompatTranscriptCleanupServiceTests
         return chatClient;
     }
 
-    private static OpenAiCompatTranscriptCleanupService _CreateService(IChatClient chatClient, out IChatClientFactory factory)
+    [Fact]
+    public async Task CleanupAsync_PlausibleOutput_LogsCompletion_AtDebugOnly_NeverAWarning()
+    {
+        var logger = new CapturingLogger<OpenAiCompatTranscriptCleanupService>();
+        var service = _CreateService(_Chat("Open the settings dialog for me."), out _, logger);
+
+        await service.CleanupAsync("open the settings dialog for me");
+
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Debug);
+    }
+
+    [Fact]
+    public async Task CleanupAsync_CallerCancels_LogsInformation_NotAWarning_ThenPropagates()
+    {
+        // AC-535: a barge-in/session-teardown cancelling cleanup mid-flight is benign, not a failure — the
+        // false-warning this guards against is the one from the ticket's own log excerpt.
+        var logger = new CapturingLogger<OpenAiCompatTranscriptCleanupService>();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var service = _CreateService(_Chat("unused"), out _, logger);
+
+        var act = () => service.CleanupAsync("open the settings dialog for me", cts.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Information);
+    }
+
+    private static OpenAiCompatTranscriptCleanupService _CreateService(
+        IChatClient chatClient, out IChatClientFactory factory, ILogger<OpenAiCompatTranscriptCleanupService>? logger = null)
     {
         var settingsStore = Substitute.For<IVoiceSettingsStore>();
         settingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Settings);
@@ -209,6 +240,6 @@ public class OpenAiCompatTranscriptCleanupServiceTests
             factory,
             settingsStore,
             resolver,
-            NullLogger<OpenAiCompatTranscriptCleanupService>.Instance);
+            logger ?? NullLogger<OpenAiCompatTranscriptCleanupService>.Instance);
     }
 }
