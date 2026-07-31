@@ -124,11 +124,14 @@ public class ReadingLevelTests
         Assert.True(rows[0].ShowGroupSummary);
         Assert.Equal("3 steps run", rows[0].GroupSummaryText);
         Assert.True(rows[0].IsRowVisible);
+        Assert.False(rows[0].IsGroupMember, "AC-528: the anchor carries the fold line itself, so it is not a nested member");
 
         Assert.True(rows[1].IsInGroup);
         Assert.False(rows[1].IsGroupAnchor);
         Assert.False(rows[1].IsRowVisible, "a folded member hides until the run is expanded");
         Assert.False(rows[2].IsRowVisible);
+        Assert.True(rows[1].IsGroupMember, "AC-528: a non-anchor member nests under the anchor's fold line");
+        Assert.True(rows[2].IsGroupMember);
     }
 
     [Fact]
@@ -164,6 +167,7 @@ public class ReadingLevelTests
         var rows = AddAutoRuns(vm, 3);
 
         Assert.All(rows, row => Assert.True(!row.IsInGroup && row.IsRowVisible));
+        Assert.All(rows, row => Assert.False(row.IsGroupMember, "AC-528: nothing is grouped outside Focus, so nothing nests"));
     }
 
     [Fact]

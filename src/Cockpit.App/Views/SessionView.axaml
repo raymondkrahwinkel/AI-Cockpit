@@ -514,7 +514,7 @@
                  produced and keeps it alive forever — hundreds of megabytes of UI nobody is looking at, in a long
                  session. An ItemsRepeater builds what is on screen. The rows the operator scrolled past cost what
                  they are worth: their view model, and nothing else. -->
-            <ItemsControl ItemsSource="{Binding Transcript}">
+            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <VirtualizingStackPanel/>
@@ -638,6 +638,12 @@
                                             <TextBlock Text="{Binding GroupSummaryText}"/>
                                         </StackPanel>
                                     </Button>
+
+                                    <!-- AC-528: a member of a folded run (not its anchor) nests one step under the "N steps
+                                         run" line with a guide line — the anchor's own line above stays at this row's base
+                                         margin, everything a member shows nests inside stepIndent instead. -->
+                                    <Border Classes="stepIndent" Classes.groupMember="{Binding IsGroupMember}">
+                                    <StackPanel Spacing="4">
 
                                     <!-- Plain-language consent line (AC-138 Simple): a tool call that asked for approval
                                          stays visible at every level; in Simple it reads in human words ("✓ Changed a
@@ -773,6 +779,9 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+
+                                    </StackPanel>
+                                    </Border>
                                 </StackPanel>
 
                                 <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
