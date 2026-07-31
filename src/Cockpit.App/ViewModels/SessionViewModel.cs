@@ -156,13 +156,64 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>True while a top-level tool call is outstanding — drives the composer's activity band in place of "Thinking…" (AC-532).</summary>
     public bool HasActiveToolActivity => _activeToolCalls.Count > 0;
 
-    /// <summary>The most recently requested outstanding tool call's label ("Bash  ·  dotnet build"), or empty when none is active.</summary>
-    public string ActiveToolActivityLabel => _activeToolCalls.Count > 0 ? _activeToolCalls[^1].Label : string.Empty;
+    /// <summary>
+    /// The call the composer's activity band currently reflects (AC-532): the oldest outstanding call still
+    /// waiting on a permission decision, if any — that is the one actually stalling the turn, and the whole point
+    /// of naming it here — else the most recently requested call, matching the pre-existing "what's the current
+    /// step" behaviour for two ordinary tool calls in flight at once.
+    /// </summary>
+    private ActiveToolCall? _CurrentActiveToolCall()
+    {
+        if (_activeToolCalls.Count == 0)
+        {
+            return null;
+        }
 
-    /// <summary>"running m:ss" since the currently-shown activity's tool call was requested, recomputed against <see cref="DateTimeOffset.Now"/> each time it is read — <see cref="RefreshActiveToolActivityAge"/> is what makes it tick in the view.</summary>
-    public string ActiveToolActivityAgeText => _activeToolCalls.Count > 0
-        ? $"running {_FormatElapsed(DateTimeOffset.Now - _activeToolCalls[^1].StartedAt)}"
-        : string.Empty;
+        foreach (var call in _activeToolCalls)
+        {
+            if (_IsAwaitingPermission(call.ToolUseId))
+            {
+                return call;
+            }
+        }
+
+        return _activeToolCalls[^1];
+    }
+
+    /// <summary>
+    /// Whether the transcript row for this outstanding tool call is currently paused on a permission prompt
+    /// (AC-532) — read straight from <see cref="TranscriptEntryViewModel.IsPendingPermission"/>, the same flag the
+    /// pending-permission chip already renders from, rather than a second ledger tracking the same fact.
+    /// </summary>
+    private bool _IsAwaitingPermission(string toolUseId) =>
+        Transcript.LastOrDefault(t => t.ToolUseId == toolUseId)?.IsPendingPermission ?? false;
+
+    /// <summary>The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active.</summary>
+    public string ActiveToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+
+    /// <summary>
+    /// "running m:ss" since the currently-shown activity's tool call was requested, recomputed against
+    /// <see cref="DateTimeOffset.Now"/> each time it is read — <see cref="RefreshActiveToolActivityAge"/> is what
+    /// makes it tick in the view. While that call is paused on a permission prompt this reads "waiting for
+    /// permission" instead: the tool is not running, it is blocked on the operator, and a still-climbing number
+    /// under a "running" label would misreport a human wait as tool work. No elapsed count is shown for that wait —
+    /// once it resolves (allow, deny, or the call otherwise completes) this reverts to the running text or goes
+    /// blank, per <see cref="_CurrentActiveToolCall"/>.
+    /// </summary>
+    public string ActiveToolActivityAgeText
+    {
+        get
+        {
+            if (_CurrentActiveToolCall() is not { } call)
+            {
+                return string.Empty;
+            }
+
+            return _IsAwaitingPermission(call.ToolUseId)
+                ? "waiting for permission"
+                : $"running {_FormatElapsed(DateTimeOffset.Now - call.StartedAt)}";
+        }
+    }
 
     /// <summary>Re-raises the age text's change notification (AC-532) — called on a view-owned tick so the composer's elapsed time counts up instead of freezing at whatever it read on first render.</summary>
     public void RefreshActiveToolActivityAge() => OnPropertyChanged(nameof(ActiveToolActivityAgeText));
@@ -1652,6 +1703,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         entry.PermissionDecision = allow ? "Allowed" : "Denied";
         entry.IsPendingPermission = false;
+        // AC-532: the operator's decision may be what the composer's activity band was showing "waiting for
+        // permission" for — re-raise so it reverts to the normal running text (or goes quiet, if this was the
+        // call's only reason to still be shown).
+        _RaiseActiveToolActivityChanged();
         await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow);
     }
 
@@ -1666,6 +1721,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? $"Always allowed ({entry.ToolName}:*)"
             : $"Always allowed (exact: {entry.ToolName})";
         entry.IsPendingPermission = false;
+        // AC-532: see RespondToPermissionAsync above — this decision can end the composer's "waiting for
+        // permission" text too.
+        _RaiseActiveToolActivityChanged();
 
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
@@ -2045,6 +2103,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 if (entry is not null)
                 {
                     entry.IsPendingPermission = true;
+                    // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
+                    // flip the composer's activity band from "running" to "waiting for permission" so that reads
+                    // as waiting on the operator rather than as the tool quietly still working.
+                    _RaiseActiveToolActivityChanged();
                 }
 
                 _needsAttention = true;

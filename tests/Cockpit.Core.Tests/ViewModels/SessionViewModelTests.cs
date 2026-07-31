@@ -1098,6 +1098,102 @@ public class SessionViewModelTests
         Assert.Equal("Task", vm.ActiveToolActivityLabel);
     }
 
+    // AC-532 permission-wait state: a tool call blocked on a permission prompt is not "running" — it is waiting on
+    // the operator, which is a different fact and reads misleadingly under a still-climbing "running m:ss".
+    [Fact]
+    public void Apply_PermissionRequested_ForTheOutstandingCall_SwitchesTheBandToWaitingForPermission()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+    }
+
+    [Fact]
+    public async Task AllowTool_WhileItWasTheReasonTheBandSaidWaitingForPermission_RevertsToRunning()
+    {
+        var (vm, _) = await StartedVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+
+        await vm.AllowToolCommand.ExecuteAsync(entry);
+
+        // Allowed, but the call itself has not resulted yet — the band reverts to the normal running text
+        // rather than disappearing, and must not still say "waiting for permission" for a decision already made.
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public async Task DenyTool_WhileItWasTheReasonTheBandSaidWaitingForPermission_RevertsToRunningUntilItsResultArrives()
+    {
+        var (vm, _) = await StartedVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+
+        await vm.DenyToolCommand.ExecuteAsync(entry);
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        // A denial is reported back as a tool result (see Apply_ToolInterruptedByAPermissionQuestion... above),
+        // which is what finally clears the band.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_TwoOutstandingCalls_OneWaitingOnPermission_SurfacesTheWaitingOneEvenWhenItIsNotTheMostRecent()
+    {
+        // t1 (Bash) is requested first and immediately pauses on a permission prompt; t2 (Read) is requested
+        // second and needs no approval, so on the pre-existing "most recently requested" rule alone t2 would be
+        // what the band shows — silently hiding the exact thing this ticket exists to surface.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Read", InputJson = """{"file_path":"b.cs"}""" });
+
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        // t2 finishing first must not disturb the band still waiting on t1's permission decision.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t2", Content = "b", IsError = false });
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SessionError_WhileATopLevelCallWasWaitingOnPermission_ClearsTheBandRatherThanLeavingItStuck()
+    {
+        // AC-532 AC6/pitfall: a permission prompt the SDK route has no safety-timeout for, followed by the
+        // session dying before the operator ever answers, must not leave the composer reading "waiting for
+        // permission" forever.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "driver crashed" });
+
+        Assert.False(vm.HasActiveToolActivity);
+        Assert.Equal(string.Empty, vm.ActiveToolActivityAgeText);
+    }
+
     [Theory]
     [InlineData(0, "0:00")]
     [InlineData(12, "0:12")]
