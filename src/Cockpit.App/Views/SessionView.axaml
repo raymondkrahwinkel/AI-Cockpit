@@ -406,7 +406,12 @@
                      what still says so. Always shown, like Stop/Screenshot; only the badge and the pop-out's own
                      contents change with the count (AC-531 #2: no badge at all at zero, not a "0" one). The detail
                      lives in the pop-out itself, not a separate pane (Raymond, 2026-07-31). -->
-                <Button x:Name="BackgroundWorkButton" DockPanel.Dock="Left" Classes="Compact" VerticalAlignment="Bottom" Margin="0,0,8,0" Padding="8,6"
+                <!-- Padding 8,8 rather than the 8,6 the icon buttons opposite use: bottom-aligned controls in this
+                     row only look aligned if they are the same height, and at 8,6 this one measured 30 against
+                     Send's 34 — same baseline, staggered tops (Raymond, live test 2026-07-31). Matched to Send
+                     because both are bottom-anchored text buttons; the input box beside it is the wrong thing to
+                     match, since it grows with a multi-line message. Pinned by SessionComposerAlignmentTests. -->
+                <Button x:Name="BackgroundWorkButton" DockPanel.Dock="Left" Classes="Compact" VerticalAlignment="Bottom" Margin="0,0,8,0" Padding="8,8"
                         ToolTip.Tip="Sub-agents and shells still running in the background">
                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                         <TextBlock Text="Background" FontSize="12.5" VerticalAlignment="Center"/>
@@ -421,7 +426,11 @@
                                                     Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </StackPanel>
                     <Button.Flyout>
-                        <Flyout Placement="Top">
+                        <!-- TopEdgeAlignedLeft, not Top: Top centres the pop-out on its button, and this button sits
+                             at the left edge of the composer, so a 410-wide pop-out centred on it hangs off the left
+                             of the session pane and over the sidebar (Raymond, live test 2026-07-31). Aligning the
+                             left edges instead makes it open rightwards, into the pane it belongs to. -->
+                        <Flyout Placement="TopEdgeAlignedLeft">
                             <StackPanel Spacing="0" Width="410">
                                 <DockPanel Margin="10,9,10,7">
                                     <TextBlock DockPanel.Dock="Left" Text="Running now" FontWeight="SemiBold" FontSize="12.5"/>
