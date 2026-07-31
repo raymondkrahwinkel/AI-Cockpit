@@ -455,6 +455,16 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- Composer action (session composer, beside the message box): Background, Screenshot, Stop and Send all sit
+         on one bottom-anchored row next to the input, so they only read as a row if they are the same height as
+         it. They were not — measured at 30 (Background), 34 (Send) and 28 (the icon buttons) against the input's
+         36, which with a shared bottom edge shows up as three different top edges (Raymond, live test
+         2026-07-31). One height in one place rather than four paddings tuned apart; SessionComposerAlignmentTests
+         fails if the input's own natural height ever drifts away from this number. -->
+    <Style Selector="Button.composerAction">
+        <Setter Property="MinHeight" Value="36"/>
+    </Style>
+
     <!-- Row-action button (Worktrees dialog list rows): unlike the chromeless Subtle buttons, these sit on the
          lighter secondary row surface and must READ as buttons — so they keep the base panel fill + hairline
          border and only shrink to a compact footprint. Disabled dims the whole button (fill, border and text) so

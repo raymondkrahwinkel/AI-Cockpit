@@ -83,8 +83,8 @@ public class SessionViewModelTests
         });
 
         Assert.True(vm.HasUsage);
-        Assert.True(vm.ShowTokenMeter);
         Assert.Equal("3.0k tok · $0.0500", vm.UsageSummary);
+        Assert.Contains(vm.UsagePillItems, i => i.DisplayText == "3.0k tok · $0.0500");
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class SessionViewModelTests
         });
 
         Assert.True(vm.HasUsage);
-        Assert.False(vm.ShowTokenMeter);
+        Assert.DoesNotContain(vm.UsagePillItems, i => i.DisplayText == "3.0k tok · $0.0500");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class SessionViewModelTests
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false, Usage = null });
 
         Assert.False(vm.HasUsage);
-        Assert.False(vm.ShowTokenMeter);
+        Assert.DoesNotContain(vm.UsagePillItems, i => i.DisplayText.Contains("tok", StringComparison.Ordinal));
     }
 
     [Fact]

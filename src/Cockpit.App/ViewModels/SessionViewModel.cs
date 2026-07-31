@@ -689,10 +689,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
     /// plain-language promise). Focus's own promise — "cost moves to the usage pill" — only holds once the
     /// operator has actually put <see cref="UsagePillField.SessionUsage"/> on the pill (AC-105, a global
-    /// preference defaulted to ctx only); Focus used to veto the meter regardless, so a Focus session on default
-    /// settings lost the token count with no reachable substitute (AC-536, measured). The base duplicate-avoidance
-    /// check in <see cref="ShowTokenMeter"/> already covers "don't show it twice" once this stops adding its own
-    /// blanket veto for Focus.
+    /// preference defaulted to ctx only); Focus used to veto the figure regardless, so a Focus session on default
+    /// settings lost the token count with no reachable substitute (AC-536, measured). Since the standalone meter
+    /// was retired the figure lives on the pill alone, so this veto now drops that segment — which is what keeps
+    /// Simple's promise true even when the operator has session usage selected.
     /// </summary>
     protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
 
@@ -709,7 +709,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _RecomputeReadingGroups();
-        OnPropertyChanged(nameof(ShowTokenMeter));
+        // Rebuild rather than just re-announce: the token/cost figure is a pill segment now, and Simple drops it
+        // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
+        RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
     }
 

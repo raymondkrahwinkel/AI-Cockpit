@@ -65,15 +65,6 @@
             <controls:PluginSessionHeaderHost Margin="8,0,0,0"
                                               IsVisible="{Binding ShowPluginHeaderItems}"/>
 
-            <!-- Token/cost meter (#8): the session's running token + cost total. Hidden until usage has accrued,
-                 and hidden once the operator puts session usage on the pill itself (AC-105) so the same figure
-                 never shows twice — see ShowTokenMeter. -->
-            <Border Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="8,0,0,0"
-                    IsVisible="{Binding ShowTokenMeter}" ToolTip.Tip="{Binding UsageTooltip}">
-                <TextBlock Text="{Binding UsageSummary}" FontSize="10" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </Border>
-
             <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
                  session has data for (each coloured by its own severity, amber/red on its threshold), the segments
                  butting together with a thin divider between them, and the chevron glued on as the final segment.
