@@ -410,8 +410,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
-    /// <summary>Focus and Simple hide the standalone "$" token/cost meter (AC-138), leaving usage on the subscription-friendly pill.</summary>
-    protected override bool SuppressCostMeter => ReadingLevel != ReadingLevel.Developer;
+    /// <summary>
+    /// Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
+    /// plain-language promise). Focus's own promise — "cost moves to the usage pill" — only holds once the
+    /// operator has actually put <see cref="UsagePillField.SessionUsage"/> on the pill (AC-105, a global
+    /// preference defaulted to ctx only); Focus used to veto the meter regardless, so a Focus session on default
+    /// settings lost the token count with no reachable substitute (AC-536, measured). The base duplicate-avoidance
+    /// check in <see cref="ShowTokenMeter"/> already covers "don't show it twice" once this stops adding its own
+    /// blanket veto for Focus.
+    /// </summary>
+    protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
 
     /// <summary>Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.</summary>
     public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
