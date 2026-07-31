@@ -7,11 +7,14 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Usage;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -33,6 +36,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>AC-409: written on a live permission-mode switch (see <see cref="OnSelectedPermissionModeChanged"/>). Null in the design-time/unit-test graph, where the switch simply is not persisted.</summary>
     private readonly SessionStateRecorder? _sessionStateRecorder;
 
+    /// <summary>
+    /// Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same
+    /// registry <see cref="Converters.ProfileDisplayConverter"/> uses for the profile picker, injected here rather
+    /// than reaching into that converter's static seam. Null in the design-time/unit-test graph, where a plugin
+    /// profile's chip falls back to nothing rather than a resolved name (see <see cref="StartWithProfileAsync"/>).
+    /// </summary>
+    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
     // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
@@ -48,7 +59,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     private SessionRestorePlan? _restoredOfferSnapshot;
 
-    /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
+    /// <summary>
+    /// The per-session MCP-server selection (#44) the session actually launches with — the New-session dialog's
+    /// explicit checklist result, or, when a caller passed none, the profile's own saved selection (AC-130), via
+    /// the same <see cref="McpServerRegistryFilter.EffectiveSessionSelection"/> merge <c>PluginSessionDriverAdapter
+    /// .StartAsync</c> applies before resolving the registry (<c>PluginSessionDriverAdapter.cs:139</c>) — computed
+    /// once here rather than read back from there, since nothing on the wire reports the resolved count after
+    /// start (<c>_ResolveMcpServersAsync</c> keeps its result local). Doubles as the header status line's MCP
+    /// count (AC-537). Re-merging an already-merged value through the same function downstream is a no-op
+    /// (<c>x ?? y</c> on a non-null <c>x</c>), so this changes nothing about what the session actually mounts.
+    /// <para>
+    /// Still null when neither the session nor the profile named anything (a programmatic launch — embedded/
+    /// Autopilot — against a profile with no saved selection either): a genuinely unknown, not-necessarily-zero
+    /// count from here, which the header treats the same as zero and says nothing about rather than guess.
+    /// </para>
+    /// <para>
+    /// Counts names, not resolved registry entries: every real caller's names already exclude the cockpit's own
+    /// always-there plumbing (<see cref="McpServerConfig.Internal"/>/<see cref="McpServerConfig.AlwaysMounted"/>)
+    /// because the New-session checklist only ever offers <see cref="McpServerRegistryFilter.OfferedToOperator"/>
+    /// servers (AC-130 profile selections are saved from that same checklist), so the header's number already
+    /// reads as "servers the operator picked", never the cockpit's own spawn-scoped tooling. The one caller that
+    /// can name an internal endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools
+    /// (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>'s own remarks) — would inflate the count by
+    /// one in that narrow case; resolving that correctly needs a live, project-scoped <see cref="IMcpServerCatalog"/>
+    /// read the header does not have and a cosmetic count does not justify adding. Accepted, not silently ignored:
+    /// pinned by <c>SessionHeaderStatusAndKindChipTests</c>.
+    /// </para>
+    /// </summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
 
     /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
@@ -505,7 +542,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public SessionViewModel()
     {
         _eventQueue = new SessionEventQueue(Apply);
-        Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
+        Status = "Connected (3 MCP servers).";
         ActiveProfileLabel = "raymond@work";
         KindLabel = "SDK";
 
@@ -572,13 +609,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
-        SessionStateRecorder? sessionStateRecorder = null)
+        SessionStateRecorder? sessionStateRecorder = null,
+        IPluginProviderRegistry? pluginProviderRegistry = null)
     {
         _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
         _usageHistory = usageHistory;
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
+        _pluginProviderRegistry = pluginProviderRegistry;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
@@ -662,7 +701,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedModel = model;
         LiveModelText = model.Value;
         SelectedEffort = effort;
-        _enabledMcpServerNames = enabledMcpServerNames;
+        // AC-537: fold in the profile's own saved selection here (same merge PluginSessionDriverAdapter.StartAsync
+        // applies before resolving the registry), so a caller that passed none — but whose profile has one — is
+        // not read back as "nothing" for the header. See _enabledMcpServerNames' own doc for why this is safe to
+        // do eagerly.
+        _enabledMcpServerNames = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
         // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
         _preApprovedTools = preApprovedTools is { Count: > 0 }
@@ -694,6 +737,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(IsSessionReady));
     }
 
+    /// <summary>
+    /// The header kind chip's label for a profile's provider (AC-537): a built-in provider's own label, nothing
+    /// for a plain Claude SDK session (the chip then falls back to "SDK"), and — for a Plugin-provider profile —
+    /// the specific plugin's own display name, resolved through <see cref="_pluginProviderRegistry"/> the same
+    /// way the New-session profile picker resolves it (<see cref="Converters.ProfileDisplayConverter"/>) rather
+    /// than the generic "Plugin" placeholder <see cref="SessionProviderCatalog"/> falls back to when it cannot
+    /// tell one plugin provider from another. No registry, or nothing registered under the profile's provider
+    /// id, yields no label at all — a placeholder that names nothing is worse than no chip. A registered but
+    /// blank/whitespace-only display name (a plugin author's own mistake, measured while proving this out) is
+    /// treated the same as nothing resolved, rather than showing a technically-visible, actually-empty chip.
+    /// </summary>
+    private string _ResolveProviderBadge(SessionProfile? profile)
+    {
+        if (profile?.Provider is null or SessionProvider.ClaudeCli)
+        {
+            return string.Empty;
+        }
+
+        if (profile.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return SessionProviderCatalog.Resolve(profile.Provider).Label;
+        }
+
+        var name = _pluginProviderRegistry?.Resolve(plugin.ProviderId)?.DisplayName;
+        return string.IsNullOrWhiteSpace(name) ? string.Empty : name;
+    }
+
     private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null, SessionResume? resume = null)
     {
         if (_sessionManager is null)
@@ -701,9 +771,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
-            ? string.Empty
-            : SessionProviderCatalog.Resolve(profile.Provider).Label;
+        ProviderBadge = _ResolveProviderBadge(profile);
         // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
         KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
 
@@ -1465,9 +1533,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     WorkingDirectory = init.Cwd;
                 }
 
-                Status = string.IsNullOrEmpty(init.Cwd)
-                    ? $"Connected ({init.Tools.Count} tools)."
-                    : $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
+                // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder
+                // icon's own tooltip (SessionHeaderBar.axaml). The MCP-server count is the one figure here that
+                // actually describes the session's setup; see _enabledMcpServerNames for why null reads as "say
+                // nothing" rather than "zero".
+                Status = _enabledMcpServerNames is { Count: > 0 } mcpServers
+                    ? $"Connected ({mcpServers.Count} MCP server{(mcpServers.Count == 1 ? string.Empty : "s")})."
+                    : "Connected.";
                 // The names themselves, on hover, so it is verifiable which tools are available — sorted, because a
                 // list you look something up in is sorted, and the order a server happened to announce them in is not
                 // an order.

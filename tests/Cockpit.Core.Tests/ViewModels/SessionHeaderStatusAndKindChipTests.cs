@@ -1,0 +1,212 @@
+using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
+
+namespace Cockpit.Core.Tests.ViewModels;
+
+/// <summary>
+/// AC-537: the SDK header's status line no longer names the tool count or the cwd (both said nothing an operator
+/// could act on, and the cwd duplicated the folder icon's own tooltip — SessionHeaderBar.axaml), naming the MCP
+/// server count instead; and the kind chip resolves a Plugin-provider profile's own name instead of showing the
+/// generic "Plugin" placeholder. TTY's own KindLabel ("TTY") is untouched — this all lives in SessionViewModel.
+/// </summary>
+public class SessionHeaderStatusAndKindChipTests
+{
+    private static readonly SessionProfile ClaudeCliProfile = new("default", new ClaudeConfig(@"C:\fake\.claude"));
+
+    [Fact]
+    public async Task SessionInitialized_NeverMentionsCwd_RegardlessOfMcpCount()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem", "git" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/home/raymond/work", Tools = ["Read", "Write"] });
+
+        Assert.DoesNotContain("cwd", vm.Status, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithMcpServers_NamesTheirCount()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem", "git", "youtrack" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read", "Write", "Bash"] });
+
+        Assert.Equal("Connected (3 MCP servers).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithOneMcpServer_UsesTheSingularForm()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected (1 MCP server).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithNoMcpServers_SaysNothingRatherThanZero()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string>());
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected.", vm.Status);
+        Assert.DoesNotContain("0", vm.Status, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithNoExplicitMcpSelection_AndNoProfileDefault_SaysNothingRatherThanGuess()
+    {
+        // Null all the way down (no session selection, no profile default either) is genuinely ambiguous — a
+        // programmatic launch's "host's usual selection" is an unknown, not-necessarily-zero count from here.
+        var vm = await _StartedVmAsync(enabledMcpServerNames: null, profile: ClaudeCliProfile);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected.", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_WithNoSessionSelection_FallsBackToTheProfilesSavedSelection()
+    {
+        // The concrete gap the adversarial review found: a caller (e.g. an embedded launch) passes no explicit
+        // selection, but the profile carries its own saved one (AC-130) — the session mounts those servers via
+        // PluginSessionDriverAdapter's own EffectiveSessionSelection merge, so the header must count them too
+        // rather than reading back "nothing".
+        var profile = ClaudeCliProfile with { EnabledMcpServerNames = ["filesystem", "git", "youtrack"] };
+        var vm = await _StartedVmAsync(enabledMcpServerNames: null, profile: profile);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected (3 MCP servers).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_AnExplicitSessionSelection_OverridesTheProfilesSavedOne()
+    {
+        // An explicit (even smaller) session selection wins outright — EffectiveSessionSelection never merges
+        // the two lists together, it picks one or the other.
+        var profile = ClaudeCliProfile with { EnabledMcpServerNames = ["filesystem", "git", "youtrack"] };
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem" }, profile: profile);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected (1 MCP server).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionInitialized_CountsNamesAsGiven_NotResolvedAgainstTheLiveRegistry()
+    {
+        // Pins the deliberate simplification (see _enabledMcpServerNames' own doc comment): the header counts the
+        // names it was handed, it does not re-check them against a live McpServerConfig registry to exclude
+        // Internal/AlwaysMounted entries. Every real UI-driven caller's names already exclude those (the
+        // New-session checklist only ever offers McpServerRegistryFilter.OfferedToOperator servers, and AC-130
+        // profile selections are saved from that same checklist) — this name deliberately looks like one of the
+        // cockpit's own internal endpoints to document that the header does not special-case it.
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem", "cockpit-session" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Equal("Connected (2 MCP servers).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PluginProviderProfile_WithARegisteredName_ShowsItInsteadOfThePlaceholder()
+    {
+        var registry = new PluginProviderRegistry();
+        registry.Register(_Registration("gemini-provider.gemini", "Gemini"));
+        var profile = new SessionProfile("default", new PluginProviderConfig("gemini-provider.gemini", "{}"));
+
+        var vm = await _StartedVmAsync(profile: profile, registry: registry);
+
+        Assert.Equal("Gemini", vm.ProviderBadge);
+        Assert.Equal("Gemini", vm.KindLabel);
+        Assert.True(vm.ShowKindChip);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PluginProviderProfile_WithNothingRegistered_ShowsNoChipAtAll()
+    {
+        var registry = new PluginProviderRegistry(); // nothing registered under this id
+        var profile = new SessionProfile("default", new PluginProviderConfig("unregistered.provider", "{}"));
+
+        var vm = await _StartedVmAsync(profile: profile, registry: registry);
+
+        Assert.Equal(string.Empty, vm.ProviderBadge);
+        Assert.Equal("SDK", vm.KindLabel);
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ClaudeCliProfile_KeepsShowingSdk_UnaffectedByTheRegistry()
+    {
+        var vm = await _StartedVmAsync(profile: ClaudeCliProfile, registry: new PluginProviderRegistry());
+
+        Assert.Equal(string.Empty, vm.ProviderBadge);
+        Assert.Equal("SDK", vm.KindLabel);
+
+        await vm.DisposeAsync();
+    }
+
+    private static SessionProviderRegistration _Registration(string providerId, string displayName) => new(
+        ProviderId: providerId,
+        DisplayName: displayName,
+        CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these header tests."),
+        Capabilities: new PluginSessionCapabilities(false, false),
+        CreateConfigView: _ => throw new NotSupportedException("Not exercised by these header tests."));
+
+    private static async Task<SessionViewModel> _StartedVmAsync(
+        IReadOnlySet<string>? enabledMcpServerNames = null, SessionProfile? profile = null, IPluginProviderRegistry? registry = null)
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(_EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(_FactoryFor(session)), pluginProviderRegistry: registry);
+
+        await vm.StartConfiguredAsync(
+            profile ?? ClaudeCliProfile,
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
+            enabledMcpServerNames);
+
+        return vm;
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _EmptyEvents(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    private static ISessionDriverFactory _FactoryFor(ISessionDriver driver)
+    {
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        return factory;
+    }
+}

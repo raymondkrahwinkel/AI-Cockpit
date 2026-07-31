@@ -59,6 +59,64 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-536: measured root cause was neither of the two candidates the ticket itself named (a dropped Usage, or
+    // the "Connected (…)" status text crowding the meter out of the layout) — both were fine. The actual break was
+    // a third one: SessionViewModel.SuppressCostMeter vetoed the standalone meter at every non-Developer reading
+    // level (AC-138), on the assumption the usage pill would carry it instead — but the pill only carries it when
+    // the operator has put UsagePillField.SessionUsage on it, which is not the default (default is ctx only). A
+    // Focus-level SDK session therefore lost the token count with no reachable substitute, while a TTY session
+    // (no reading level at all) always showed it. Confirmed with a throwaway harness driving the real Apply/turn
+    // path at all three levels before touching any production code (Developer/Focus showed it, Simple did not —
+    // matching Simple's explicit "no cost" promise, which this fix intentionally leaves alone).
+    [Theory]
+    [InlineData(ReadingLevel.Developer)]
+    [InlineData(ReadingLevel.Focus)]
+    public void TurnCompleted_WithUsage_ShowsTheTokenMeter_OnDeveloperAndFocus(ReadingLevel level)
+    {
+        var vm = NewVm();
+        vm.ReadingLevel = level;
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1", Subtype = "success", Result = "done", IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0), TotalCostUsd = 0.05,
+        });
+
+        Assert.True(vm.HasUsage);
+        Assert.True(vm.ShowTokenMeter);
+        Assert.Equal("3.0k tok · $0.0500", vm.UsageSummary);
+    }
+
+    [Fact]
+    public void TurnCompleted_WithUsage_OnSimple_KeepsTheTokenMeterHidden()
+    {
+        // Simple's own promise is "no cost" outright (SessionOptionCatalog.ReadingLevels) — unlike Focus, there is
+        // no substitute pill segment to fall back to here, by design.
+        var vm = NewVm();
+        vm.ReadingLevel = ReadingLevel.Simple;
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1", Subtype = "success", Result = "done", IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0), TotalCostUsd = 0.05,
+        });
+
+        Assert.True(vm.HasUsage);
+        Assert.False(vm.ShowTokenMeter);
+    }
+
+    [Fact]
+    public void TurnCompleted_WithNoUsage_NeverShowsTheTokenMeter()
+    {
+        // AC-536 AC3: a provider that reports no tokens must never surface a "0 tok" meter.
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false, Usage = null });
+
+        Assert.False(vm.HasUsage);
+        Assert.False(vm.ShowTokenMeter);
+    }
+
     [Fact]
     public async Task StartConfigured_AppliesTheChosenEffortsBudgetOnceLive()
     {
