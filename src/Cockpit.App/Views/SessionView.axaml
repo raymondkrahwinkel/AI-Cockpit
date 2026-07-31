@@ -81,7 +81,7 @@
                          Binds the enum straight through the option's Value, so the running session switches live. -->
                     <ComboBox x:Name="ReadingLevelPicker" ItemsSource="{Binding ReadingLevels}"
                               SelectedValueBinding="{Binding Value}" SelectedValue="{Binding ReadingLevel, Mode=TwoWay}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" VerticalAlignment="Center"
+                              DisplayMemberBinding="{Binding Label}" Classes="Compact pill" VerticalAlignment="Center"
                               ToolTip.Tip="How much of the session to show — Developer, Focus or Simple"/>
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
                          driver and rendered generically. An SDK session can carry three of them, which crowded the

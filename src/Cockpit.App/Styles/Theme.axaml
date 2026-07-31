@@ -680,6 +680,17 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- Reads as one of the header's own pills rather than as a form control parked beside them (Raymond, live
+         test 2026-07-31). Compact already shares the pill's fill and text colour, so only the shape and the type
+         size differ: measured 28px tall at radius 9 against the pill's 19 at radius 20. Must stay *after* the
+         Compact rule — Avalonia takes the last matching setter, so declared before it the two height and font
+         values would be taken straight back. Pinned by SessionReadingLevelPickerStyleTests. -->
+    <Style Selector="ComboBox.pill">
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="MinHeight" Value="19"/>
+    </Style>
+
     <!-- TextBox: an input sits a step *above* the window rather than sunk into it, so a form reads as a
          column of things you can type in. It shares its fill, radius and padding with ComboBox, which is
          what makes a label/field grid line up whether the row is typed or picked. -->
