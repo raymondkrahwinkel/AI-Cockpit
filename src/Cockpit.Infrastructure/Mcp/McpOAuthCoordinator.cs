@@ -304,23 +304,8 @@ internal sealed class McpOAuthCoordinator(
         {
             if (!_renewals.TryGetValue(server.IdentityKey, out var running))
             {
-                running = _RenewAsync(server);
+                running = _RenewAndClearAsync(server);
                 _renewals[server.IdentityKey] = running;
-
-                // Cleared when the renewal itself ends, not when a caller stops waiting for it. A TTY launch runs
-                // this under a five-second budget it will abandon; clearing on the abandoning caller would free the
-                // slot while the handshake is still in flight and let the next arrival redeem the same refresh
-                // token again — the exact race this gate exists for.
-                var identityKey = server.IdentityKey;
-                _ = running.ContinueWith(
-                    _ =>
-                    {
-                        lock (_renewalsLock)
-                        {
-                            _renewals.Remove(identityKey);
-                        }
-                    },
-                    TaskScheduler.Default);
             }
 
             renewal = running;
@@ -330,6 +315,37 @@ internal sealed class McpOAuthCoordinator(
         // not decide the fate of everyone who queued behind it.
         return renewal.WaitAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Runs the renewal on its own thread-pool work item and removes it from <see cref="_renewals"/> as the very
+    /// last thing it does, before anyone can observe the returned task as complete.
+    /// <para>
+    /// Both halves matter. Running off-thread keeps <see cref="_renewalsLock"/> held for nothing longer than the
+    /// dictionary check-and-set — <see cref="_RenewAsync"/>'s synchronous prefix (building the OAuth options, which
+    /// does a blocking loopback-port probe) must never run while that lock is held, or every caller queued behind it
+    /// on a busy machine blocks for as long as the renewal takes rather than for a dictionary lookup. And folding the
+    /// removal into the same task — rather than a detached continuation, which used to clear the slot on its own
+    /// schedule — closes the gap where a caller could find the slot already empty (renewal done, cleanup not yet
+    /// run) and start a needless second renewal, or find it still occupied by a task whose answer had already gone
+    /// stale (cleanup done, completion not yet observed) and wait on that instead of starting its own. Measured, not
+    /// theoretical: both shapes flaked in CI (<c>McpOAuthSessionMarginTests</c>) before this fix — a TTY launch's
+    /// five-second abandon budget is exactly the load that used to make the slower shape ordinary rather than rare.
+    /// </para>
+    /// </summary>
+    private Task<HandshakeOutcome> _RenewAndClearAsync(McpServerConfig server) => Task.Run(async () =>
+    {
+        try
+        {
+            return await _RenewAsync(server).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_renewalsLock)
+            {
+                _renewals.Remove(server.IdentityKey);
+            }
+        }
+    });
 
     // The shared renewal itself. It never faults, by construction: this task is handed to every waiting caller, and
     // a faulted one would be re-thrown into each of them — including onto paths that only ever read the store to
