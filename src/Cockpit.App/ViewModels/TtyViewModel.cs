@@ -272,6 +272,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
+    // The text from the OnVoiceTextReady that precedes a submit (AC-120) — a voice-hold transcript, or text injected
+    // via InjectAndSubmit/InjectVoiceTranscript (AC-152, plugin SendToSession, an embedded Autopilot step's opening
+    // brief), which this base already treats as "the same per-kind path as a finished voice transcript". Carried
+    // here because OnVoiceSubmitRequested has no text parameter of its own to hand SpeakTurnAcknowledgmentAsync.
+    private string? _lastVoiceText;
+
     /// <summary>
     /// No cleanup — the terminal has no input box to proofread in, so the text goes straight to the pty like a typed
     /// keystroke. Typed is all it may be: it is reduced to <see cref="_AsTypedText"/> first, so nothing in it can act
@@ -280,6 +286,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     protected override void OnVoiceTextReady(string text)
     {
+        _lastVoiceText = text;
         var typed = _AsTypedText(text);
         if (typed.Length > 0)
         {
@@ -298,8 +305,23 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// lands as a real Enter on every platform. Scheduled on the UI thread, so it is robust whether the request came
     /// from push-to-talk or open-mic.
     /// </para>
+    /// <para>
+    /// Also speaks the turn-start acknowledgement (AC-120, follow-up on AC-99's SDK-only wiring) for whatever text
+    /// just landed — matching the SDK session, which speaks it for every dispatched turn regardless of origin.
+    /// <see cref="SessionPanelViewModel.SpeakTurnAcknowledgmentAsync"/> itself no-ops unless read-aloud + a
+    /// non-Off ack mode are on, so this is safe to fire unconditionally.
+    /// </para>
     /// </summary>
-    protected override void OnVoiceSubmitRequested() => _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
+    protected override void OnVoiceSubmitRequested()
+    {
+        if (_lastVoiceText is { } voiceText)
+        {
+            _lastVoiceText = null;
+            _ = SpeakTurnAcknowledgmentAsync(voiceText);
+        }
+
+        _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
+    }
 
     /// <summary>
     /// A TTY session takes nothing here (AC-86): the text snapshot already reached the agent on the verify tool

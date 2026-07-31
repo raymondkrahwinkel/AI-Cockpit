@@ -880,6 +880,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   servers you mean, with a "Servers…" button beside it that opens that plugin's own settings. Have no servers set up
   yet? The line says so ("No Depot server configured yet") and offers the same button, so the way to add one is in
   front of you instead of on a screen the dialog never named.
+- added: the spoken turn-start acknowledgement now plays in a terminal (TTY) session too, not only in a chat
+  session — say something with auto-submit on and the cockpit answers back before the agent starts working,
+  instead of leaving the conversation silent. It stays quiet under the same conditions as before: read-aloud off,
+  or the acknowledgement mode set to Off.
 
 ### Changed
 

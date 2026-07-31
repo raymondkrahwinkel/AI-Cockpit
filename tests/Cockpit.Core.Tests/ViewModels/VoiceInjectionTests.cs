@@ -91,6 +91,81 @@ public class VoiceInjectionTests
     }
 
     [Fact]
+    public async Task TtySession_WhenAutoSubmitOn_AndReadAloudOn_SpeaksTheTurnAcknowledgement()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(true);
+        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+
+        var vm = new TtyViewModel(
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
+        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.ReadResponsesAloud = true;
+        vm.TurnAckMode = TurnAckMode.InstantPhrases;
+
+        Assert.True(vm.BeginVoiceHold());
+        await vm.EndVoiceHoldAsync(applyCleanup: false);
+
+        voicePlaybackQueue.Received(1).Enqueue(Arg.Any<IReadOnlyList<string>>(), vm.TtsVoiceSid, Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task TtySession_WhenTurnAckModeOff_AutoSubmitStillSendsTheCarriageReturn_ButSpeaksNoAcknowledgement()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(true);
+        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+
+        var vm = new TtyViewModel(
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
+        vm.SetAutoSubmitScheduler(submit => submit());
+        vm.ReadResponsesAloud = true;
+        vm.TurnAckMode = TurnAckMode.Off;
+
+        var writes = new List<string>();
+        vm.VoiceTranscriptReady += text => writes.Add(text);
+
+        Assert.True(vm.BeginVoiceHold());
+        await vm.EndVoiceHoldAsync(applyCleanup: false);
+
+        Assert.Equal(new[] { "open the settings dialog", "\r" }, writes);
+        voicePlaybackQueue.DidNotReceive().Enqueue(Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task TtySession_WhenReadAloudOff_AutoSubmitSpeaksNoAcknowledgement()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(true);
+        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+
+        var vm = new TtyViewModel(
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
+        vm.SetAutoSubmitScheduler(submit => submit());
+        // ReadResponsesAloud left at its off default (§35b is a per-session toggle, not settings-store-loaded).
+
+        Assert.True(vm.BeginVoiceHold());
+        await vm.EndVoiceHoldAsync(applyCleanup: false);
+
+        voicePlaybackQueue.DidNotReceive().Enqueue(Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    [Fact]
     public async Task BeginVoiceHold_WhenVoiceDisabled_NeverCallsTheService()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
