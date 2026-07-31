@@ -65,15 +65,6 @@
             <controls:PluginSessionHeaderHost Margin="8,0,0,0"
                                               IsVisible="{Binding ShowPluginHeaderItems}"/>
 
-            <!-- Token/cost meter (#8): the session's running token + cost total. Hidden until usage has accrued,
-                 and hidden once the operator puts session usage on the pill itself (AC-105) so the same figure
-                 never shows twice — see ShowTokenMeter. -->
-            <Border Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="8,0,0,0"
-                    IsVisible="{Binding ShowTokenMeter}" ToolTip.Tip="{Binding UsageTooltip}">
-                <TextBlock Text="{Binding UsageSummary}" FontSize="10" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-            </Border>
-
             <!-- Usage pill (AC-105): one segmented pill that reads as a whole — a segment per selected metric the
                  session has data for (each coloured by its own severity, amber/red on its threshold), the segments
                  butting together with a thin divider between them, and the chevron glued on as the final segment.
@@ -161,11 +152,17 @@
 
             <!-- Kind chip (TTY / SDK / provider tag); hidden when the session reports none. Its hover content is a slot
                  (KindChipTooltip) each view fills — the SDK header its connected-tools card, the TTY header its
-                 render diagnostics. -->
+                 render diagnostics. AC-537: this used to only ever carry a short built-in label ("SDK"/"TTY"/
+                 "Plugin"); now that it can carry a plugin-registered provider's own display name, it gets the same
+                 CharacterEllipsis trimming the Title uses, capped at its own, smaller 160 — a tag, not the
+                 session's own name — which comfortably fits the longest provider name registered anywhere in this
+                 repo today ("Gemini (OpenAI-compatible)", 26 characters) while still bounding an unbounded plugin
+                 string, so a plugin author's long name cannot widen the header (AC-537 AC6, pinned by
+                 SessionHeaderKindChipWidthTests). -->
             <Border Grid.Column="2" Classes="tag" Margin="7,0,0,0"
                     IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
-                <TextBlock Text="{Binding KindLabel}"/>
+                <TextBlock Text="{Binding KindLabel}" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
             </Border>
 
             <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status. -->

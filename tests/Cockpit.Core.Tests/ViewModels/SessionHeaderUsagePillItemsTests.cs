@@ -105,14 +105,19 @@ public class SessionHeaderUsagePillItemsTests
     }
 
     [Fact]
-    public void SelectingSessionUsage_HidesTheStandaloneTokenMeter()
+    public void DeselectingSessionUsage_RemovesTheFigureRatherThanMovingIt()
     {
+        // The header used to carry the same figure twice over: as a pill segment when selected, and as a
+        // standalone meter when not. Unticking the option therefore moved it instead of removing it, so there was
+        // no setting in which the operator could get rid of it — the meter has since been retired for that reason
+        // (Raymond, live test 2026-07-31). This pins that the option is now the only thing deciding.
         var vm = new SessionViewModel { HasUsage = true, UsageSummary = "1.0k tok" };
-        Assert.True(vm.ShowTokenMeter, "the standalone meter shows session usage by default");
-
         vm.UsagePillVisibleFields = [UsagePillField.SessionUsage];
+        Assert.Equal("1.0k tok", Assert.Single(vm.UsagePillItems).DisplayText);
 
-        Assert.False(vm.ShowTokenMeter, "session usage now shows as a pill, so the meter yields to avoid a duplicate badge");
+        vm.UsagePillVisibleFields = [UsagePillField.Context];
+
+        Assert.DoesNotContain(vm.UsagePillItems, i => i.DisplayText == "1.0k tok");
     }
 
     [Fact]

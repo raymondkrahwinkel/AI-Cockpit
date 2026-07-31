@@ -1,18 +1,20 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Usage;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -34,6 +36,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>AC-409: written on a live permission-mode switch (see <see cref="OnSelectedPermissionModeChanged"/>). Null in the design-time/unit-test graph, where the switch simply is not persisted.</summary>
     private readonly SessionStateRecorder? _sessionStateRecorder;
 
+    /// <summary>
+    /// Resolves a Plugin-provider profile's own display name for the header's kind chip (AC-537) — the same
+    /// registry <see cref="Converters.ProfileDisplayConverter"/> uses for the profile picker, injected here rather
+    /// than reaching into that converter's static seam. Null in the design-time/unit-test graph, where a plugin
+    /// profile's chip falls back to nothing rather than a resolved name (see <see cref="StartWithProfileAsync"/>).
+    /// </summary>
+    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
     // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
@@ -49,7 +59,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     private SessionRestorePlan? _restoredOfferSnapshot;
 
-    /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
+    /// <summary>
+    /// The per-session MCP-server selection (#44) the session actually launches with — the New-session dialog's
+    /// explicit checklist result, or, when a caller passed none, the profile's own saved selection (AC-130), via
+    /// the same <see cref="McpServerRegistryFilter.EffectiveSessionSelection"/> merge <c>PluginSessionDriverAdapter
+    /// .StartAsync</c> applies before resolving the registry (<c>PluginSessionDriverAdapter.cs:139</c>) — computed
+    /// once here rather than read back from there, since nothing on the wire reports the resolved count after
+    /// start (<c>_ResolveMcpServersAsync</c> keeps its result local). Doubles as the header status line's MCP
+    /// count (AC-537). Re-merging an already-merged value through the same function downstream is a no-op
+    /// (<c>x ?? y</c> on a non-null <c>x</c>), so this changes nothing about what the session actually mounts.
+    /// <para>
+    /// Still null when neither the session nor the profile named anything (a programmatic launch — embedded/
+    /// Autopilot — against a profile with no saved selection either): a genuinely unknown, not-necessarily-zero
+    /// count from here, which the header treats the same as zero and says nothing about rather than guess.
+    /// </para>
+    /// <para>
+    /// Counts names, not resolved registry entries: every real caller's names already exclude the cockpit's own
+    /// always-there plumbing (<see cref="McpServerConfig.Internal"/>/<see cref="McpServerConfig.AlwaysMounted"/>)
+    /// because the New-session checklist only ever offers <see cref="McpServerRegistryFilter.OfferedToOperator"/>
+    /// servers (AC-130 profile selections are saved from that same checklist), so the header's number already
+    /// reads as "servers the operator picked", never the cockpit's own spawn-scoped tooling. The one caller that
+    /// can name an internal endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools
+    /// (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>'s own remarks) — would inflate the count by
+    /// one in that narrow case; resolving that correctly needs a live, project-scoped <see cref="IMcpServerCatalog"/>
+    /// read the header does not have and a cosmetic count does not justify adding. Accepted, not silently ignored:
+    /// pinned by <c>SessionHeaderStatusAndKindChipTests</c>.
+    /// </para>
+    /// </summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
 
     /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
@@ -99,6 +135,281 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>Live sub-agent lanes, keyed by the parent Task tool call's own tool_use_id. Cleared on every <see cref="TurnCompleted"/>: a sub-agent does not outlive the turn that spawned it.</summary>
     private readonly Dictionary<string, SubAgentLane> _subAgentLanes = [];
+
+    /// <summary>One top-level tool call the turn is currently waiting on (AC-532).</summary>
+    private readonly record struct ActiveToolCall(string ToolUseId, string Label, DateTimeOffset StartedAt);
+
+    /// <summary>
+    /// Top-level tool calls requested but not yet resulted, oldest first (AC-532). Provider-neutral by
+    /// construction: driven only by <see cref="ToolUseRequested"/>/<see cref="ToolResult"/>, the two events every
+    /// provider that reports tool calls at all raises. Covers exactly the gap "Thinking…" used to leave blank —
+    /// a tool call surfacing to its result landing, the longest stretch of a turn with no visible signal. A
+    /// sub-agent's own tool calls never reach here (they nest under their Task row via <see cref="_ResolveSubAgentLane"/>,
+    /// which is already visible activity); a <see cref="PermissionRequested"/> for one of these does not remove
+    /// it either — the call is still outstanding, and the existing pending-permission chip is a separate, stronger
+    /// signal alongside it. Only <see cref="TurnCompleted"/>/<see cref="SessionError"/> clear this unconditionally,
+    /// so a driver that never sends a matching result (an interrupt, a crash) cannot leave the composer looking
+    /// like it is still running a tool that finished with everything else.
+    /// </summary>
+    private readonly List<ActiveToolCall> _activeToolCalls = [];
+
+    /// <summary>True while a top-level tool call is outstanding — drives the composer's activity band in place of "Thinking…" (AC-532).</summary>
+    public bool HasActiveToolActivity => _activeToolCalls.Count > 0;
+
+    /// <summary>
+    /// The call the composer's activity band currently reflects (AC-532): the oldest outstanding call still
+    /// waiting on a permission decision, if any — that is the one actually stalling the turn, and the whole point
+    /// of naming it here — else the most recently requested call, matching the pre-existing "what's the current
+    /// step" behaviour for two ordinary tool calls in flight at once.
+    /// </summary>
+    private ActiveToolCall? _CurrentActiveToolCall()
+    {
+        if (_activeToolCalls.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var call in _activeToolCalls)
+        {
+            if (_IsAwaitingPermission(call.ToolUseId))
+            {
+                return call;
+            }
+        }
+
+        return _activeToolCalls[^1];
+    }
+
+    /// <summary>
+    /// Whether the transcript row for this outstanding tool call is currently paused on a permission prompt
+    /// (AC-532) — read straight from <see cref="TranscriptEntryViewModel.IsPendingPermission"/>, the same flag the
+    /// pending-permission chip already renders from, rather than a second ledger tracking the same fact.
+    /// </summary>
+    private bool _IsAwaitingPermission(string toolUseId) =>
+        Transcript.LastOrDefault(t => t.ToolUseId == toolUseId)?.IsPendingPermission ?? false;
+
+    /// <summary>The currently-shown activity's label ("Bash  ·  dotnet build"), or empty when none is active.</summary>
+    public string ActiveToolActivityLabel => _CurrentActiveToolCall()?.Label ?? string.Empty;
+
+    /// <summary>
+    /// "running m:ss" since the currently-shown activity's tool call was requested, recomputed against
+    /// <see cref="DateTimeOffset.Now"/> each time it is read — <see cref="RefreshActiveToolActivityAge"/> is what
+    /// makes it tick in the view. While that call is paused on a permission prompt this reads "waiting for
+    /// permission" instead: the tool is not running, it is blocked on the operator, and a still-climbing number
+    /// under a "running" label would misreport a human wait as tool work. No elapsed count is shown for that wait —
+    /// once it resolves (allow, deny, or the call otherwise completes) this reverts to the running text or goes
+    /// blank, per <see cref="_CurrentActiveToolCall"/>.
+    /// </summary>
+    public string ActiveToolActivityAgeText
+    {
+        get
+        {
+            if (_CurrentActiveToolCall() is not { } call)
+            {
+                return string.Empty;
+            }
+
+            return _IsAwaitingPermission(call.ToolUseId)
+                ? "waiting for permission"
+                : $"running {_FormatElapsed(DateTimeOffset.Now - call.StartedAt)}";
+        }
+    }
+
+    /// <summary>Re-raises the age text's change notification (AC-532) — called on a view-owned tick so the composer's elapsed time counts up instead of freezing at whatever it read on first render.</summary>
+    public void RefreshActiveToolActivityAge() => OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+
+    /// <summary>"m:ss", matching the approved mockup's notation (e.g. "0:12", "1:05") — the composer band is the first place this ships, so this is the notation a later background-task pop-out (AC-531) follows rather than inventing its own.</summary>
+    internal static string _FormatElapsed(TimeSpan elapsed)
+    {
+        var totalSeconds = Math.Max(0, (int)elapsed.TotalSeconds);
+        return $"{totalSeconds / 60}:{totalSeconds % 60:00}";
+    }
+
+    /// <summary>
+    /// True while the "Thinking…" band should show (AC-532): awaiting the assistant's first visible output, and
+    /// no tool activity band already covering that same wait. The two bands occupy the same composer slot and are
+    /// never both visible — the activity band replaces "Thinking…" for the span it is active, rather than stacking
+    /// on top of it (composer height must not grow).
+    /// </summary>
+    public bool ShowThinkingIndicator => IsAwaitingResponse && !HasActiveToolActivity;
+
+    /// <summary>Raises every notification the active-tool-activity fields need after <see cref="_activeToolCalls"/> changes.</summary>
+    private void _RaiseActiveToolActivityChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveToolActivity));
+        OnPropertyChanged(nameof(ActiveToolActivityLabel));
+        OnPropertyChanged(nameof(ActiveToolActivityAgeText));
+        OnPropertyChanged(nameof(ShowThinkingIndicator));
+    }
+
+    partial void OnIsAwaitingResponseChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
+
+    /// <summary>
+    /// When this pane first saw each currently-outstanding <see cref="BackgroundTask.TaskId"/> in a
+    /// <see cref="BackgroundTasksChanged"/> snapshot (AC-531 #8) — the CLI reports no start time, so this stamp is
+    /// what each row's <see cref="BackgroundTaskViewModel.AgeText"/> counts up from. A TaskId no longer in the
+    /// latest snapshot is removed rather than kept: if the same id is ever reused, it starts a fresh clock instead
+    /// of resuming a stale one.
+    /// </summary>
+    private readonly Dictionary<string, DateTimeOffset> _backgroundTaskFirstSeen = [];
+
+    /// <summary>
+    /// Outstanding sub-agents, shells and unrecognised-kind tasks (AC-531), grouped the way the approved mockup
+    /// groups them. Built from the same <see cref="_backgroundTasks"/> list <see cref="HasOutstandingBackgroundShells"/>
+    /// already reads — the pop-out's own view of the identical, provider-neutral ledger, not a second one.
+    /// </summary>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
+
+    /// <inheritdoc cref="BackgroundSubAgents"/>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
+
+    /// <summary>A task kind this build does not recognise — carried rather than dropped, same reasoning as the
+    /// provider's own wire parser (see <see cref="BackgroundTaskKind.Unknown"/>).</summary>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
+
+    public bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
+
+    public bool HasBackgroundShells => BackgroundShells.Count > 0;
+
+    public bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
+
+    /// <summary>
+    /// True while at least one background task is outstanding. This gates the pop-out's own contents (list vs.
+    /// "no background work"); the button itself is always shown, and only its count badge follows this too
+    /// (AC-531 #2 — no badge at all at zero, not a "0" badge).
+    /// </summary>
+    public bool HasBackgroundTasks => _backgroundTasks.Count > 0;
+
+    /// <summary>The button's badge digit — every outstanding task counts, including a kind this build does not
+    /// recognise (AC-531 #2).</summary>
+    public int BackgroundTaskCount => _backgroundTasks.Count;
+
+    /// <summary>
+    /// "2 sub-agents · 1 shell" — the pop-out's own total line, segments joined the same way AC-532's activity
+    /// band joins its own. "nothing" when the list is empty (AC-531 #3, the mockup's empty state).
+    /// </summary>
+    public string BackgroundTaskSummary
+    {
+        get
+        {
+            if (_backgroundTasks.Count == 0)
+            {
+                return "nothing";
+            }
+
+            var parts = new List<string>();
+            if (BackgroundSubAgents.Count > 0)
+            {
+                parts.Add(BackgroundSubAgents.Count == 1 ? "1 sub-agent" : $"{BackgroundSubAgents.Count} sub-agents");
+            }
+
+            if (BackgroundShells.Count > 0)
+            {
+                parts.Add(BackgroundShells.Count == 1 ? "1 shell" : $"{BackgroundShells.Count} shells");
+            }
+
+            if (BackgroundOtherTasks.Count > 0)
+            {
+                parts.Add(BackgroundOtherTasks.Count == 1 ? "1 other" : $"{BackgroundOtherTasks.Count} other");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>Selects (or, on a second click of the same row, collapses) one background task's detail in the
+    /// pop-out (AC-531 #4). Only one row expands at a time, mirroring the mockup.</summary>
+    public void ToggleBackgroundTaskSelection(BackgroundTaskViewModel task)
+    {
+        var makeSelected = !task.IsSelected;
+        foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
+        {
+            row.IsSelected = false;
+        }
+
+        task.IsSelected = makeSelected;
+    }
+
+    /// <summary>
+    /// Rebuilds the pop-out's grouped rows from <see cref="_backgroundTasks"/> after every
+    /// <see cref="BackgroundTasksChanged"/> (and the wipe on <see cref="SessionError"/>). Reuses row instances by
+    /// TaskId rather than recreating them, so a row the operator has expanded stays expanded across an unrelated
+    /// task starting or ending elsewhere in the list. Deliberately never called from <see cref="TurnCompleted"/>:
+    /// unlike <see cref="_activeToolCalls"/>, background work does not end just because a turn did (AC-531) — a
+    /// detached sub-agent or shell keeps running, and this list (and the button's own count) is what still says so
+    /// while the composer's tool-activity band and "Thinking…" both go quiet.
+    /// </summary>
+    private void _RebuildBackgroundTaskRows()
+    {
+        var now = DateTimeOffset.Now;
+        var liveIds = new HashSet<string>();
+        foreach (var task in _backgroundTasks)
+        {
+            liveIds.Add(task.TaskId);
+            if (!_backgroundTaskFirstSeen.ContainsKey(task.TaskId))
+            {
+                _backgroundTaskFirstSeen[task.TaskId] = now;
+            }
+        }
+
+        // A TaskId no longer reported has finished (or the whole set was wiped, e.g. SessionError): forget its
+        // clock so a reused id someday starts fresh rather than resuming a stale one (AC-531 #8).
+        foreach (var staleId in _backgroundTaskFirstSeen.Keys.Where(id => !liveIds.Contains(id)).ToList())
+        {
+            _backgroundTaskFirstSeen.Remove(staleId);
+        }
+
+        _SyncBackgroundGroup(BackgroundSubAgents, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.SubAgent));
+        _SyncBackgroundGroup(BackgroundShells, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Shell));
+        _SyncBackgroundGroup(BackgroundOtherTasks, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Unknown));
+
+        OnPropertyChanged(nameof(HasBackgroundSubAgents));
+        OnPropertyChanged(nameof(HasBackgroundShells));
+        OnPropertyChanged(nameof(HasBackgroundOtherTasks));
+        OnPropertyChanged(nameof(HasBackgroundTasks));
+        OnPropertyChanged(nameof(BackgroundTaskCount));
+        OnPropertyChanged(nameof(BackgroundTaskSummary));
+    }
+
+    /// <summary>Adds/removes/updates rows in one kind's group to match <paramref name="tasks"/>, keeping the
+    /// existing <see cref="BackgroundTaskViewModel"/> instance for a TaskId that is still present.</summary>
+    private void _SyncBackgroundGroup(ObservableCollection<BackgroundTaskViewModel> group, IEnumerable<BackgroundTask> tasks)
+    {
+        var incoming = tasks.ToList();
+        var incomingIds = incoming.Select(task => task.TaskId).ToHashSet();
+
+        for (var i = group.Count - 1; i >= 0; i--)
+        {
+            if (!incomingIds.Contains(group[i].TaskId))
+            {
+                group.RemoveAt(i);
+            }
+        }
+
+        foreach (var task in incoming)
+        {
+            var existing = group.FirstOrDefault(row => row.TaskId == task.TaskId);
+            if (existing is null)
+            {
+                group.Add(new BackgroundTaskViewModel(task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId]));
+            }
+            else
+            {
+                existing.UpdateDescription(task.Description);
+            }
+        }
+    }
+
+    /// <summary>Re-raises AgeText's change notification for every row currently listed (AC-531 #8) — called on
+    /// the same view-owned tick <see cref="RefreshActiveToolActivityAge"/> uses, so the pop-out's elapsed times
+    /// count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.</summary>
+    public void RefreshBackgroundTaskAges()
+    {
+        foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
+        {
+            row.RaiseAgeChanged();
+        }
+    }
 
     /// <summary>
     /// AC-146 defensive fallback: accumulates streaming text for an event that names a parent tool_use_id this
@@ -374,8 +685,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private ReadingLevel _readingLevel = ReadingLevel.Developer;
 
-    /// <summary>Focus and Simple hide the standalone "$" token/cost meter (AC-138), leaving usage on the subscription-friendly pill.</summary>
-    protected override bool SuppressCostMeter => ReadingLevel != ReadingLevel.Developer;
+    /// <summary>
+    /// Only Simple hides the standalone "$" token/cost meter unconditionally (AC-138: "no cost" is that level's
+    /// plain-language promise). Focus's own promise — "cost moves to the usage pill" — only holds once the
+    /// operator has actually put <see cref="UsagePillField.SessionUsage"/> on the pill (AC-105, a global
+    /// preference defaulted to ctx only); Focus used to veto the figure regardless, so a Focus session on default
+    /// settings lost the token count with no reachable substitute (AC-536, measured). Since the standalone meter
+    /// was retired the figure lives on the pill alone, so this veto now drops that segment — which is what keeps
+    /// Simple's promise true even when the operator has session usage selected.
+    /// </summary>
+    protected override bool SuppressCostMeter => ReadingLevel == ReadingLevel.Simple;
 
     /// <summary>Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.</summary>
     public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
@@ -390,7 +709,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _RecomputeReadingGroups();
-        OnPropertyChanged(nameof(ShowTokenMeter));
+        // Rebuild rather than just re-announce: the token/cost figure is a pill segment now, and Simple drops it
+        // (SuppressCostMeter), so switching level changes which segments exist rather than one visibility flag.
+        RebuildUsagePillItems();
         OnPropertyChanged(nameof(ShowKindChip));
     }
 
@@ -505,7 +826,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // DI-backed session.
     public SessionViewModel()
     {
-        Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
+        _eventQueue = new SessionEventQueue(Apply);
+        Status = "Connected (3 MCP servers).";
         ActiveProfileLabel = "raymond@work";
         KindLabel = "SDK";
 
@@ -572,12 +894,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
-        SessionStateRecorder? sessionStateRecorder = null)
+        SessionStateRecorder? sessionStateRecorder = null,
+        IPluginProviderRegistry? pluginProviderRegistry = null)
     {
+        _eventQueue = new SessionEventQueue(Apply);
         _sessionManager = sessionManager;
         _usageHistory = usageHistory;
         _turnInboxDelivery = turnInboxDelivery;
         _sessionStateRecorder = sessionStateRecorder;
+        _pluginProviderRegistry = pluginProviderRegistry;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
@@ -661,7 +986,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedModel = model;
         LiveModelText = model.Value;
         SelectedEffort = effort;
-        _enabledMcpServerNames = enabledMcpServerNames;
+        // AC-537: fold in the profile's own saved selection here (same merge PluginSessionDriverAdapter.StartAsync
+        // applies before resolving the registry), so a caller that passed none — but whose profile has one — is
+        // not read back as "nothing" for the header. See _enabledMcpServerNames' own doc for why this is safe to
+        // do eagerly.
+        _enabledMcpServerNames = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
         // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
         _preApprovedTools = preApprovedTools is { Count: > 0 }
@@ -693,6 +1022,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(IsSessionReady));
     }
 
+    /// <summary>
+    /// The header kind chip's label for a profile's provider (AC-537): a built-in provider's own label, nothing
+    /// for a plain Claude SDK session (the chip then falls back to "SDK"), and — for a Plugin-provider profile —
+    /// the specific plugin's own display name, resolved through <see cref="_pluginProviderRegistry"/> the same
+    /// way the New-session profile picker resolves it (<see cref="Converters.ProfileDisplayConverter"/>) rather
+    /// than the generic "Plugin" placeholder <see cref="SessionProviderCatalog"/> falls back to when it cannot
+    /// tell one plugin provider from another. No registry, or nothing registered under the profile's provider
+    /// id, yields no label at all — a placeholder that names nothing is worse than no chip. A registered but
+    /// blank/whitespace-only display name (a plugin author's own mistake, measured while proving this out) is
+    /// treated the same as nothing resolved, rather than showing a technically-visible, actually-empty chip.
+    /// </summary>
+    private string _ResolveProviderBadge(SessionProfile? profile)
+    {
+        if (profile?.Provider is null or SessionProvider.ClaudeCli)
+        {
+            return string.Empty;
+        }
+
+        if (profile.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return SessionProviderCatalog.Resolve(profile.Provider).Label;
+        }
+
+        var name = _pluginProviderRegistry?.Resolve(plugin.ProviderId)?.DisplayName;
+        return string.IsNullOrWhiteSpace(name) ? string.Empty : name;
+    }
+
     private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null, SessionResume? resume = null)
     {
         if (_sessionManager is null)
@@ -700,9 +1056,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
-            ? string.Empty
-            : SessionProviderCatalog.Resolve(profile.Provider).Label;
+        ProviderBadge = _ResolveProviderBadge(profile);
         // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
         KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
 
@@ -1351,6 +1705,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         entry.PermissionDecision = allow ? "Allowed" : "Denied";
         entry.IsPendingPermission = false;
+        // AC-532: the operator's decision may be what the composer's activity band was showing "waiting for
+        // permission" for — re-raise so it reverts to the normal running text (or goes quiet, if this was the
+        // call's only reason to still be shown).
+        _RaiseActiveToolActivityChanged();
         await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow);
     }
 
@@ -1365,6 +1723,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? $"Always allowed ({entry.ToolName}:*)"
             : $"Always allowed (exact: {entry.ToolName})";
         entry.IsPendingPermission = false;
+        // AC-532: see RespondToPermissionAsync above — this decision can end the composer's "waiting for
+        // permission" text too.
+        _RaiseActiveToolActivityChanged();
 
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
@@ -1410,7 +1771,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
     // thread is this panel's job, because it is the consumer that touches UI — a headless consumer of the same
     // runtime marshals nothing.
-    private void _OnSessionEvent(SessionEvent evt) => Dispatcher.UIThread.Post(() => Apply(evt));
+    //
+    // AC-529: through the queue rather than a post per event. A streaming turn raises hundreds of few-character
+    // deltas, and one post each meant one full re-realisation of the row's text and one re-measure each; the queue
+    // hands the UI thread whatever piled up since the last drain, with adjacent deltas folded into one. Order and
+    // content are unchanged — see SessionEventQueue for why nothing is left behind at the end of a turn.
+    private void _OnSessionEvent(SessionEvent evt) => _eventQueue.Enqueue(evt);
+
+    private readonly SessionEventQueue _eventQueue;
 
     /// <summary>
     /// Raised when the session makes real tool progress — a tool call surfacing or a tool result landing (AC-215/stall).
@@ -1457,9 +1825,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     WorkingDirectory = init.Cwd;
                 }
 
-                Status = string.IsNullOrEmpty(init.Cwd)
-                    ? $"Connected ({init.Tools.Count} tools)."
-                    : $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
+                // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder
+                // icon's own tooltip (SessionHeaderBar.axaml). The MCP-server count is the one figure here that
+                // actually describes the session's setup; see _enabledMcpServerNames for why null reads as "say
+                // nothing" rather than "zero".
+                Status = _enabledMcpServerNames is { Count: > 0 } mcpServers
+                    ? $"Connected ({mcpServers.Count} MCP server{(mcpServers.Count == 1 ? string.Empty : "s")})."
+                    : "Connected.";
                 // The names themselves, on hover, so it is verifiable which tools are available — sorted, because a
                 // list you look something up in is sorted, and the order a server happened to announce them in is not
                 // an order.
@@ -1614,14 +1986,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
                 _currentAssistantEntry = null;
                 _CloseThinkingRow();
-                Transcript.Add(new TranscriptEntryViewModel(
+                var toolUseRow = new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
                 {
                     ToolUseId = toolUse.ToolUseId,
                     ToolName = toolUse.ToolName,
                     InputJson = toolUse.InputJson,
-                });
+                };
+                Transcript.Add(toolUseRow);
+
+                // AC-532: this top-level call is now outstanding — reuses the row's own ToolHeader ("Bash  ·
+                // dotnet build") rather than re-deriving a summary from the input JSON a second time.
+                _activeToolCalls.Add(new ActiveToolCall(toolUse.ToolUseId, toolUseRow.ToolHeader, DateTimeOffset.Now));
+                _RaiseActiveToolActivityChanged();
                 break;
 
             case ToolResult toolResult:
@@ -1661,6 +2039,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     Transcript.Add(new TranscriptEntryViewModel(
                         TranscriptEntryKind.ToolResult,
                         toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                }
+
+                // AC-532: this call is no longer outstanding, whichever way it resolved — success, error, or a
+                // permission denial the driver reported as a tool result.
+                var activeCallIndex = _activeToolCalls.FindIndex(call => call.ToolUseId == toolResult.ToolUseId);
+                if (activeCallIndex >= 0)
+                {
+                    _activeToolCalls.RemoveAt(activeCallIndex);
+                    _RaiseActiveToolActivityChanged();
                 }
 
                 // AC-146: a result naming a parent this pane never resolved to a lane (the anchor tool-use row
@@ -1718,6 +2105,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 if (entry is not null)
                 {
                     entry.IsPendingPermission = true;
+                    // AC-532: a top-level call stalling on this prompt is why the turn looks idle right now —
+                    // flip the composer's activity band from "running" to "waiting for permission" so that reads
+                    // as waiting on the operator rather than as the tool quietly still working.
+                    _RaiseActiveToolActivityChanged();
                 }
 
                 _needsAttention = true;
@@ -1773,6 +2164,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
+                // AC-532 safety net: every turn ends here or in SessionError below, whether or not each of its
+                // tool calls got a matching ToolResult first (an interrupt ends the turn without one) — clearing
+                // unconditionally is what keeps the activity band from surviving into a turn that is not running
+                // anymore, the "stuck showing busy" failure mode a plain per-ToolResult clear cannot cover.
+                if (_activeToolCalls.Count > 0)
+                {
+                    _activeToolCalls.Clear();
+                    _RaiseActiveToolActivityChanged();
+                }
+
+                // AC-531: deliberately no _backgroundTasks/_RebuildBackgroundTaskRows() call here, unlike
+                // _activeToolCalls just above. A sub-agent or shell does not end just because this turn did — that
+                // is the whole reason SessionStatus.WorkingBackground exists — so clearing it on TurnCompleted
+                // would reopen the exact gap this ticket closed: the composer's tool-activity band and
+                // "Thinking…" both go quiet here, and the background-work button is what still tells the operator
+                // something is running. It only ever changes on its own BackgroundTasksChanged event.
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
@@ -1804,6 +2211,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
                 _backgroundTasks = [];
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                _RebuildBackgroundTaskRows();
+                // AC-532: same reasoning as the background-task list above — a crashed driver never sends the
+                // ToolResult that would otherwise have cleared this, so the composer must not go on showing a
+                // tool as running past the session that was running it.
+                if (_activeToolCalls.Count > 0)
+                {
+                    _activeToolCalls.Clear();
+                    _RaiseActiveToolActivityChanged();
+                }
+
                 _RecomputeStatus();
                 break;
 
@@ -1813,6 +2230,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case BackgroundTasksChanged backgroundTasks:
                 _backgroundTasks = backgroundTasks.Tasks;
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                _RebuildBackgroundTaskRows();
                 _RecomputeStatus();
                 break;
 

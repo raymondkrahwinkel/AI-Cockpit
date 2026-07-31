@@ -59,6 +59,64 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    // AC-536: measured root cause was neither of the two candidates the ticket itself named (a dropped Usage, or
+    // the "Connected (…)" status text crowding the meter out of the layout) — both were fine. The actual break was
+    // a third one: SessionViewModel.SuppressCostMeter vetoed the standalone meter at every non-Developer reading
+    // level (AC-138), on the assumption the usage pill would carry it instead — but the pill only carries it when
+    // the operator has put UsagePillField.SessionUsage on it, which is not the default (default is ctx only). A
+    // Focus-level SDK session therefore lost the token count with no reachable substitute, while a TTY session
+    // (no reading level at all) always showed it. Confirmed with a throwaway harness driving the real Apply/turn
+    // path at all three levels before touching any production code (Developer/Focus showed it, Simple did not —
+    // matching Simple's explicit "no cost" promise, which this fix intentionally leaves alone).
+    [Theory]
+    [InlineData(ReadingLevel.Developer)]
+    [InlineData(ReadingLevel.Focus)]
+    public void TurnCompleted_WithUsage_ShowsTheTokenMeter_OnDeveloperAndFocus(ReadingLevel level)
+    {
+        var vm = NewVm();
+        vm.ReadingLevel = level;
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1", Subtype = "success", Result = "done", IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0), TotalCostUsd = 0.05,
+        });
+
+        Assert.True(vm.HasUsage);
+        Assert.Equal("3.0k tok · $0.0500", vm.UsageSummary);
+        Assert.Contains(vm.UsagePillItems, i => i.DisplayText == "3.0k tok · $0.0500");
+    }
+
+    [Fact]
+    public void TurnCompleted_WithUsage_OnSimple_KeepsTheTokenMeterHidden()
+    {
+        // Simple's own promise is "no cost" outright (SessionOptionCatalog.ReadingLevels) — unlike Focus, there is
+        // no substitute pill segment to fall back to here, by design.
+        var vm = NewVm();
+        vm.ReadingLevel = ReadingLevel.Simple;
+
+        vm.Apply(new TurnCompleted
+        {
+            SessionId = "S1", Subtype = "success", Result = "done", IsError = false,
+            Usage = new TokenUsage(1_000, 2_000, 0, 0), TotalCostUsd = 0.05,
+        });
+
+        Assert.True(vm.HasUsage);
+        Assert.DoesNotContain(vm.UsagePillItems, i => i.DisplayText == "3.0k tok · $0.0500");
+    }
+
+    [Fact]
+    public void TurnCompleted_WithNoUsage_NeverShowsTheTokenMeter()
+    {
+        // AC-536 AC3: a provider that reports no tokens must never surface a "0 tok" meter.
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false, Usage = null });
+
+        Assert.False(vm.HasUsage);
+        Assert.DoesNotContain(vm.UsagePillItems, i => i.DisplayText.Contains("tok", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task StartConfigured_AppliesTheChosenEffortsBudgetOnceLive()
     {
@@ -904,6 +962,246 @@ public class SessionViewModelTests
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
         Assert.True(toolUse.IsResultError);
         Assert.True(toolUse.HasResult);
+    }
+
+    // AC-532: "Thinking…" clears the moment a tool call surfaces and only re-arms on its result — the widest
+    // gap in a turn was left with no visible signal at all. These pin the replacement: a composer activity band
+    // driven purely by ToolUseRequested/ToolResult (provider-neutral — every provider that reports tool calls
+    // raises exactly these two), covering that gap without ever growing the composer or looking stuck.
+    [Fact]
+    public void Apply_ToolUseRequested_ShowsActiveToolActivity_UntilItsResultArrives()
+    {
+        var vm = NewVm();
+        Assert.False(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"dotnet build"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Bash  ·  dotnet build", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+
+        Assert.False(vm.HasActiveToolActivity);
+        Assert.Equal(string.Empty, vm.ActiveToolActivityLabel);
+    }
+
+    [Fact]
+    public void Apply_ToolUseRequested_ReplacesTheThinkingIndicator_NeverBothAtOnce()
+    {
+        var vm = NewVm();
+        vm.IsAwaitingResponse = true; // as a dispatched turn leaves it, per Apply_NonOutputEvent_LeavesTheThinkingIndicatorUp
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        // IsAwaitingResponse itself still clears (unchanged pre-existing behaviour) but the composer must show
+        // the activity band, not nothing — this is the property the view actually binds its "Thinking…" row to.
+        Assert.False(vm.IsAwaitingResponse);
+        Assert.False(vm.ShowThinkingIndicator);
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+
+        // The result re-arms IsAwaitingResponse (pre-existing behaviour: the model processes the result before
+        // its next output) and, with the activity band now empty, "Thinking…" is what shows again.
+        Assert.True(vm.IsAwaitingResponse);
+        Assert.True(vm.ShowThinkingIndicator);
+    }
+
+    [Fact]
+    public void Apply_TwoParallelToolCalls_ShowsTheMostRecentlyRequestedOne_NeverStuckAfterEitherResolves()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Read", InputJson = """{"file_path":"a.cs"}""" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Read", InputJson = """{"file_path":"b.cs"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
+
+        // The earlier call resolving first must not clear the band while the later one is still running. A
+        // ToolResult also re-arms IsAwaitingResponse (the model processes the result before its next output) —
+        // with a second tool still outstanding this is the real case ShowThinkingIndicator's guard exists for:
+        // both flags true at once, and the activity band, not "Thinking…", must be what the composer shows.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "a", IsError = false });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
+        Assert.True(vm.IsAwaitingResponse);
+        Assert.False(vm.ShowThinkingIndicator);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t2", Content = "b", IsError = false });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_ToolInterruptedByAPermissionQuestion_StaysActiveUntilItsOwnResultArrives()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        // A pending permission does not resolve the call — it is still outstanding, and the existing
+        // pending-permission chip is a separate, stronger signal alongside the activity band, not a replacement.
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_ClearsOutstandingToolActivity_EvenWhenNoResultEverArrived()
+    {
+        // AC-532 AC6: an interrupted turn (Stop/interrupt) ends via TurnCompleted with no ToolResult for
+        // whatever tool call was in flight — the activity band must not survive into a turn that is not running.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"long running"}""" });
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = null, IsError = true });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SessionError_ClearsOutstandingToolActivity_EvenWhenNoResultEverArrived()
+    {
+        // AC-532 AC6, the other failure path: the driver itself dies mid-call, so no ToolResult for the
+        // outstanding tool ever arrives either — mirrors AC-276's handling of _backgroundTasks.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"long running"}""" });
+        Assert.True(vm.HasActiveToolActivity);
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "driver crashed" });
+
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SubAgentToolCall_NeverReplacesTheTopLevelActivityBand()
+    {
+        // AC-146: a sub-agent's own tool call nests under its Task row, already visible activity there — it must
+        // not be promoted into the composer's top-level activity band, and must not clear the Task call's own.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "task-1", ToolName = "Task", InputJson = "{}" });
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "sub-1", ToolName = "Read", InputJson = """{"file_path":"x"}""", ParentToolUseId = "task-1" });
+
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "sub-1", Content = "x", IsError = false, ParentToolUseId = "task-1" });
+
+        // The sub-agent's own result must not clear the still-outstanding top-level Task call either.
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Task", vm.ActiveToolActivityLabel);
+    }
+
+    // AC-532 permission-wait state: a tool call blocked on a permission prompt is not "running" — it is waiting on
+    // the operator, which is a different fact and reads misleadingly under a still-climbing "running m:ss".
+    [Fact]
+    public void Apply_PermissionRequested_ForTheOutstandingCall_SwitchesTheBandToWaitingForPermission()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+    }
+
+    [Fact]
+    public async Task AllowTool_WhileItWasTheReasonTheBandSaidWaitingForPermission_RevertsToRunning()
+    {
+        var (vm, _) = await StartedVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+
+        await vm.AllowToolCommand.ExecuteAsync(entry);
+
+        // Allowed, but the call itself has not resulted yet — the band reverts to the normal running text
+        // rather than disappearing, and must not still say "waiting for permission" for a decision already made.
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public async Task DenyTool_WhileItWasTheReasonTheBandSaidWaitingForPermission_RevertsToRunningUntilItsResultArrives()
+    {
+        var (vm, _) = await StartedVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+
+        await vm.DenyToolCommand.ExecuteAsync(entry);
+
+        Assert.True(vm.HasActiveToolActivity);
+        Assert.StartsWith("running ", vm.ActiveToolActivityAgeText, StringComparison.Ordinal);
+
+        // A denial is reported back as a tool result (see Apply_ToolInterruptedByAPermissionQuestion... above),
+        // which is what finally clears the band.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_TwoOutstandingCalls_OneWaitingOnPermission_SurfacesTheWaitingOneEvenWhenItIsNotTheMostRecent()
+    {
+        // t1 (Bash) is requested first and immediately pauses on a permission prompt; t2 (Read) is requested
+        // second and needs no approval, so on the pre-existing "most recently requested" rule alone t2 would be
+        // what the band shows — silently hiding the exact thing this ticket exists to surface.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "Read", InputJson = """{"file_path":"b.cs"}""" });
+
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        // t2 finishing first must not disturb the band still waiting on t1's permission decision.
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t2", Content = "b", IsError = false });
+        Assert.Equal("Bash  ·  rm -rf x", vm.ActiveToolActivityLabel);
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "denied", IsError = true });
+        Assert.False(vm.HasActiveToolActivity);
+    }
+
+    [Fact]
+    public void Apply_SessionError_WhileATopLevelCallWasWaitingOnPermission_ClearsTheBandRatherThanLeavingItStuck()
+    {
+        // AC-532 AC6/pitfall: a permission prompt the SDK route has no safety-timeout for, followed by the
+        // session dying before the operator ever answers, must not leave the composer reading "waiting for
+        // permission" forever.
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = """{"command":"rm -rf x"}""" });
+        Assert.Equal("waiting for permission", vm.ActiveToolActivityAgeText);
+
+        vm.Apply(new SessionError { SessionId = "S1", Message = "driver crashed" });
+
+        Assert.False(vm.HasActiveToolActivity);
+        Assert.Equal(string.Empty, vm.ActiveToolActivityAgeText);
+    }
+
+    [Theory]
+    [InlineData(0, "0:00")]
+    [InlineData(12, "0:12")]
+    [InlineData(65, "1:05")]
+    [InlineData(-5, "0:00")] // a clock that moved back reads as "just started", not a negative duration
+    public void FormatElapsed_RendersMinutesColonSeconds(int seconds, string expected)
+    {
+        Assert.Equal(expected, SessionViewModel._FormatElapsed(TimeSpan.FromSeconds(seconds)));
     }
 
     [Fact]

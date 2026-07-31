@@ -948,7 +948,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <see cref="CockpitViewModel"/>. Defaults to just the context window — the original behaviour.
     /// </summary>
     [ObservableProperty]
-    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context];
+    // SessionUsage is in the default because the standalone meter it replaced had no opt-in at all: it simply
+    // showed whenever usage existed. Leaving it out would have silently dropped the token/cost figure from every
+    // header that never visited Options, which is a different change than the one being made here.
+    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context, UsagePillField.SessionUsage];
 
     /// <summary>
     /// The mini-pills the header renders (AC-105): one per selected field the session actually has data for, in
@@ -957,16 +960,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public ObservableCollection<UsagePillItem> UsagePillItems { get; } = [];
 
     /// <summary>
-    /// Whether the standalone token/cost meter shows (#8): only when there is usage, the operator has not put
-    /// session usage on the pill itself (AC-105) — so the same figure never appears twice on the header — and the
-    /// reading level is not suppressing it (AC-138: Focus/Simple prefer the usage pill over the "$" cost figure).
-    /// </summary>
-    public bool ShowTokenMeter => HasUsage && !UsagePillVisibleFields.Contains(UsagePillField.SessionUsage) && !SuppressCostMeter;
-
-    /// <summary>
-    /// Whether a reading level is hiding the standalone token/cost meter (AC-138): false on the base (TTY and the
-    /// developer default show it), overridden by the SDK session to hide the "$" figure at Focus and Simple, where
-    /// the subscription-friendly usage pill (ctx / rate windows) carries usage instead.
+    /// Whether a reading level vetoes the token/cost figure outright, regardless of the operator's pill selection
+    /// (AC-138): false on the base (TTY has no reading level) and on the SDK session except at Simple, whose "no
+    /// cost" promise has to hold even when session usage is selected.
     /// </summary>
     protected virtual bool SuppressCostMeter => false;
 
@@ -1005,13 +1001,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     partial void OnUsagePillVisibleFieldsChanged(IReadOnlyList<UsagePillField> value)
     {
         RebuildUsagePillItems();
-        OnPropertyChanged(nameof(ShowTokenMeter));
     }
 
     partial void OnHasUsageChanged(bool value)
     {
         RebuildUsagePillItems();
-        OnPropertyChanged(nameof(ShowTokenMeter));
     }
 
     partial void OnUsageSummaryChanged(string value) => RebuildUsagePillItems();
@@ -1025,7 +1019,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// value for — a selected field with no data (a rate window the provider never reported, usage on a session
     /// kind that has none) simply yields no pill, the same silence the single ctx pill kept.
     /// </summary>
-    private void RebuildUsagePillItems()
+    protected void RebuildUsagePillItems()
     {
         UsagePillItems.Clear();
         foreach (var field in UsagePillVisibleFields)
@@ -1045,7 +1039,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         UsagePillField.Context when ContextUsedPercent is { } percent =>
             new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used"),
-        UsagePillField.SessionUsage when HasUsage =>
+        // Gated on SuppressCostMeter as well as on being selected: this segment is now the only place the
+        // token/cost figure renders (the standalone meter beside the pill was the same UsageSummary and the same
+        // tooltip, so unticking "Session usage" moved the figure instead of removing it — Raymond, live test
+        // 2026-07-31). Simple's "no cost" promise therefore has to hold here rather than on the meter.
+        UsagePillField.SessionUsage when HasUsage && !SuppressCostMeter =>
             new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip),
         UsagePillField.FiveHourWindow => WindowPillItem("5h"),
         UsagePillField.WeeklyWindow => WindowPillItem("wk"),

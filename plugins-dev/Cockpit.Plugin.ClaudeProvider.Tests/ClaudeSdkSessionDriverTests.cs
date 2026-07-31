@@ -352,6 +352,36 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
+    [Fact]
+    public async Task ARealTurnPushedDownTheStdoutPump_ReachesTheDriversStatusFeed()
+    {
+        // AC-530: the seam the host polls is IPluginSessionDriver.Status, a member whose interface default is null —
+        // so the arithmetic being right proves nothing until the driver actually overrides and feeds it. This drives
+        // the verbatim CLI 2.1.220 capture through the real stdout pump and reads the property the host reads.
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        Assert.Null(driver.Status);
+
+        foreach (var line in ClaudeSdkUsageTests.RealTurnLines)
+        {
+            await fake.PushStdoutAsync(line);
+        }
+
+        // The result line is what closes the turn, and the host reads Status off the back of that event — so waiting
+        // for it is exactly the moment the header would look.
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+
+        var status = driver.Status;
+        Assert.NotNull(status);
+        Assert.True(status.HasAny);
+        Assert.Equal(3d, status.ContextUsedPercent);
+        var window = Assert.Single(status.RateLimits);
+        Assert.Equal("wk", window.Label);
+        Assert.Equal(98d, window.UsedPercent, precision: 10);
+    }
+
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>
         // A temp config dir keeps StartAsync's workspace-trust write off the real ~/.claude.json.
         new(() => fake, new ClaudeProviderConfig(ConfigDir: _tempDir), executablePath: "claude");
