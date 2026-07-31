@@ -9,11 +9,17 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// that JSON is Claude's business, it has moved between versions, and the core should carry no format knowledge of
 /// any one provider.
 /// <para>
-/// The statusline is the only machine-readable source for the rolling limits: they reach Claude Code in response
-/// headers the cockpit never sees, and they appear in no transcript, no session file and no CLI subcommand
-/// (checked against 2.1.209). The context percentage is served here pre-computed, which is also the reason not to
-/// add it up from the transcript's token counts — that sum is what a turn <em>cost</em>, not how full the window
-/// <em>is</em>.
+/// For a TTY session the statusline is the only machine-readable source for the rolling limits: they reach Claude
+/// Code in response headers the cockpit never sees, and they appear in no transcript, no session file and no CLI
+/// subcommand (checked against 2.1.209). The context percentage is served here pre-computed, which is also the
+/// reason not to add it up from the transcript's token counts — that sum is what a turn <em>cost</em>, not how full
+/// the window <em>is</em>.
+/// </para>
+/// <para>
+/// The SDK route reads the same two figures off its own stdout instead (AC-530) — measured against 2.1.220, the
+/// statusline command is never invoked when the CLI runs with <c>--output-format stream-json</c>, so that route
+/// cannot use the relay at all. See <see cref="ClaudeSdkUsage"/> for where those lines are folded into a status
+/// snapshot, and <see cref="WindowLabel"/> for the vocabulary the two routes share.
 /// </para>
 /// </summary>
 public static class ClaudeUsageSignals
@@ -53,6 +59,31 @@ public static class ClaudeUsageSignals
             DefaultResumePrompt = ResumePrompt,
         },
     ];
+
+    /// <summary>
+    /// The wire name of the five-hour window on the SDK route's <c>rate_limit_event</c> line. The statusline spells
+    /// it the same way; only the shape around it differs.
+    /// </summary>
+    public const string FiveHourWireType = "five_hour";
+
+    /// <summary>The wire name of the weekly window — <c>seven_day</c> on both routes, "wk" once it reaches a header.</summary>
+    public const string WeeklyWireType = "seven_day";
+
+    /// <summary>
+    /// The short header label for a window Claude names on the wire, so the SDK route spells "5h"/"wk" exactly as the
+    /// statusline route does instead of keeping a second copy of the vocabulary. A window this build has no
+    /// declaration for is passed through under its own wire name rather than dropped: a new Claude allowance then
+    /// shows up unlabelled-but-honest instead of silently going missing, and no contract has to change to admit it.
+    /// </summary>
+    public static string WindowLabel(string wireType) => wireType switch
+    {
+        FiveHourWireType => _LabelFor(FiveHourKey),
+        WeeklyWireType => _LabelFor(WeeklyKey),
+        _ => wireType,
+    };
+
+    private static string _LabelFor(string key) =>
+        Declarations.First(declaration => string.Equals(declaration.Key, key, StringComparison.Ordinal)).Label;
 
     /// <summary>
     /// Reads the JSON Claude Code hands its statusline command into readings for <see cref="Declarations"/>.

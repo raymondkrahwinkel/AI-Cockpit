@@ -47,6 +47,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // object there would make the CLI run the tool with no arguments (Bash with no command, Write with no content, …).
     private readonly ConcurrentDictionary<string, (string RequestId, string InputJson)> _pendingApprovals = new();
 
+    // The limits feed (#45 D7, AC-530). Fed from the stdout pump with every line and read by the host's poll at each
+    // turn boundary; it publishes its own immutable snapshot, so no lock is needed on this side either.
+    private readonly ClaudeSdkUsage _usage = new();
+
     private IClaudeSdkSubprocess? _subprocess;
     private Task? _stdoutPump;
     private Task? _stderrDrain;
@@ -86,6 +90,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     public string? SessionId => _sessionId;
 
     public int? ProcessId => _subprocess?.ProcessId;
+
+    // AC-530: the context window and the rolling allowances, read off this session's own stdout. Null until the CLI
+    // has reported at least one of them, which keeps the header's pill hidden rather than showing an invented zero.
+    public PluginSessionStatus? Status => _usage.Status;
 
     public IReadOnlyList<PluginSessionLaunchOption> LiveOptions => _liveOptions;
 
@@ -319,6 +327,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             {
                 _sessionId = sid.GetString();
             }
+
+            // Fold usage in before anything is published (AC-530). The turn's result line is both what closes the turn
+            // and what carries the context window size, and the host reads Status off the back of the resulting
+            // TurnCompleted — observing first is what makes that read see this turn rather than the previous one.
+            _usage.Observe(root);
 
             var type = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
                 ? typeProp.GetString()

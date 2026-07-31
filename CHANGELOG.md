@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a Claude session that runs headless (rather than as a terminal pane) now shows the usage pill in its header
+  too — how full the context window is, plus the rolling five-hour and weekly allowances. Those figures used to
+  appear only for terminal sessions, because they were read from Claude's status line, which a headless session
+  never runs; they are now taken from the session's own output instead. They are the same numbers a terminal session
+  shows, not an approximation. A window Claude does not report simply stays off the pill, so nothing ever reads as
+  "0% used" when it really means "not reported".
 - added: the Managed worktrees dialog can release a worktree from a session that only ever showed a restore offer
   and never actually started. A pane returning from a crash with nothing more than "resume or start fresh" used to
   hold its worktree indefinitely — no timeout, Remove and Reattach both greyed out until you started or closed that
