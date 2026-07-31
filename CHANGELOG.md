@@ -1157,6 +1157,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a row in the Managed worktrees dialog no longer draws its owner and path underneath the buttons on its
+  right — both lines now shrink and trim to the room the row actually has, with the full text on hover, so a long
+  session name or a deep path cannot push anything out of view. The dialog is also wider, and keeps a minimum size
+  so its buttons stay reachable when you make it smaller.
 - fixed: an agent can now remove a worktree it made for itself, through its own "isolate this task" tool, even while
   its own session is still open — the guard that (rightly) refuses to remove the worktree a session is actually
   running in was refusing that case too, which made the tool's own "clean up when a task is done" description
