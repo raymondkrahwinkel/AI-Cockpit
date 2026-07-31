@@ -36,7 +36,7 @@ public class ClaudeProviderPluginLoadTests
 
         Assert.NotNull(plugin);
         Assert.Equal("claude-provider", plugin!.Metadata.Id);
-        Assert.Equal("Claude (bundled)", plugin.Metadata.DisplayName);
+        Assert.Equal("Claude Code", plugin.Metadata.DisplayName);
 
         plugin.ConfigureServices(new ServiceCollection());
 
