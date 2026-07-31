@@ -194,6 +194,173 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     partial void OnIsAwaitingResponseChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
 
     /// <summary>
+    /// When this pane first saw each currently-outstanding <see cref="BackgroundTask.TaskId"/> in a
+    /// <see cref="BackgroundTasksChanged"/> snapshot (AC-531 #8) — the CLI reports no start time, so this stamp is
+    /// what each row's <see cref="BackgroundTaskViewModel.AgeText"/> counts up from. A TaskId no longer in the
+    /// latest snapshot is removed rather than kept: if the same id is ever reused, it starts a fresh clock instead
+    /// of resuming a stale one.
+    /// </summary>
+    private readonly Dictionary<string, DateTimeOffset> _backgroundTaskFirstSeen = [];
+
+    /// <summary>
+    /// Outstanding sub-agents, shells and unrecognised-kind tasks (AC-531), grouped the way the approved mockup
+    /// groups them. Built from the same <see cref="_backgroundTasks"/> list <see cref="HasOutstandingBackgroundShells"/>
+    /// already reads — the pop-out's own view of the identical, provider-neutral ledger, not a second one.
+    /// </summary>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
+
+    /// <inheritdoc cref="BackgroundSubAgents"/>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
+
+    /// <summary>A task kind this build does not recognise — carried rather than dropped, same reasoning as the
+    /// provider's own wire parser (see <see cref="BackgroundTaskKind.Unknown"/>).</summary>
+    public ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
+
+    public bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
+
+    public bool HasBackgroundShells => BackgroundShells.Count > 0;
+
+    public bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
+
+    /// <summary>
+    /// True while at least one background task is outstanding. This gates the pop-out's own contents (list vs.
+    /// "no background work"); the button itself is always shown, and only its count badge follows this too
+    /// (AC-531 #2 — no badge at all at zero, not a "0" badge).
+    /// </summary>
+    public bool HasBackgroundTasks => _backgroundTasks.Count > 0;
+
+    /// <summary>The button's badge digit — every outstanding task counts, including a kind this build does not
+    /// recognise (AC-531 #2).</summary>
+    public int BackgroundTaskCount => _backgroundTasks.Count;
+
+    /// <summary>
+    /// "2 sub-agents · 1 shell" — the pop-out's own total line, segments joined the same way AC-532's activity
+    /// band joins its own. "nothing" when the list is empty (AC-531 #3, the mockup's empty state).
+    /// </summary>
+    public string BackgroundTaskSummary
+    {
+        get
+        {
+            if (_backgroundTasks.Count == 0)
+            {
+                return "nothing";
+            }
+
+            var parts = new List<string>();
+            if (BackgroundSubAgents.Count > 0)
+            {
+                parts.Add(BackgroundSubAgents.Count == 1 ? "1 sub-agent" : $"{BackgroundSubAgents.Count} sub-agents");
+            }
+
+            if (BackgroundShells.Count > 0)
+            {
+                parts.Add(BackgroundShells.Count == 1 ? "1 shell" : $"{BackgroundShells.Count} shells");
+            }
+
+            if (BackgroundOtherTasks.Count > 0)
+            {
+                parts.Add(BackgroundOtherTasks.Count == 1 ? "1 other" : $"{BackgroundOtherTasks.Count} other");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary>Selects (or, on a second click of the same row, collapses) one background task's detail in the
+    /// pop-out (AC-531 #4). Only one row expands at a time, mirroring the mockup.</summary>
+    public void ToggleBackgroundTaskSelection(BackgroundTaskViewModel task)
+    {
+        var makeSelected = !task.IsSelected;
+        foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
+        {
+            row.IsSelected = false;
+        }
+
+        task.IsSelected = makeSelected;
+    }
+
+    /// <summary>
+    /// Rebuilds the pop-out's grouped rows from <see cref="_backgroundTasks"/> after every
+    /// <see cref="BackgroundTasksChanged"/> (and the wipe on <see cref="SessionError"/>). Reuses row instances by
+    /// TaskId rather than recreating them, so a row the operator has expanded stays expanded across an unrelated
+    /// task starting or ending elsewhere in the list. Deliberately never called from <see cref="TurnCompleted"/>:
+    /// unlike <see cref="_activeToolCalls"/>, background work does not end just because a turn did (AC-531) — a
+    /// detached sub-agent or shell keeps running, and this list (and the button's own count) is what still says so
+    /// while the composer's tool-activity band and "Thinking…" both go quiet.
+    /// </summary>
+    private void _RebuildBackgroundTaskRows()
+    {
+        var now = DateTimeOffset.Now;
+        var liveIds = new HashSet<string>();
+        foreach (var task in _backgroundTasks)
+        {
+            liveIds.Add(task.TaskId);
+            if (!_backgroundTaskFirstSeen.ContainsKey(task.TaskId))
+            {
+                _backgroundTaskFirstSeen[task.TaskId] = now;
+            }
+        }
+
+        // A TaskId no longer reported has finished (or the whole set was wiped, e.g. SessionError): forget its
+        // clock so a reused id someday starts fresh rather than resuming a stale one (AC-531 #8).
+        foreach (var staleId in _backgroundTaskFirstSeen.Keys.Where(id => !liveIds.Contains(id)).ToList())
+        {
+            _backgroundTaskFirstSeen.Remove(staleId);
+        }
+
+        _SyncBackgroundGroup(BackgroundSubAgents, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.SubAgent));
+        _SyncBackgroundGroup(BackgroundShells, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Shell));
+        _SyncBackgroundGroup(BackgroundOtherTasks, _backgroundTasks.Where(task => task.Kind == BackgroundTaskKind.Unknown));
+
+        OnPropertyChanged(nameof(HasBackgroundSubAgents));
+        OnPropertyChanged(nameof(HasBackgroundShells));
+        OnPropertyChanged(nameof(HasBackgroundOtherTasks));
+        OnPropertyChanged(nameof(HasBackgroundTasks));
+        OnPropertyChanged(nameof(BackgroundTaskCount));
+        OnPropertyChanged(nameof(BackgroundTaskSummary));
+    }
+
+    /// <summary>Adds/removes/updates rows in one kind's group to match <paramref name="tasks"/>, keeping the
+    /// existing <see cref="BackgroundTaskViewModel"/> instance for a TaskId that is still present.</summary>
+    private void _SyncBackgroundGroup(ObservableCollection<BackgroundTaskViewModel> group, IEnumerable<BackgroundTask> tasks)
+    {
+        var incoming = tasks.ToList();
+        var incomingIds = incoming.Select(task => task.TaskId).ToHashSet();
+
+        for (var i = group.Count - 1; i >= 0; i--)
+        {
+            if (!incomingIds.Contains(group[i].TaskId))
+            {
+                group.RemoveAt(i);
+            }
+        }
+
+        foreach (var task in incoming)
+        {
+            var existing = group.FirstOrDefault(row => row.TaskId == task.TaskId);
+            if (existing is null)
+            {
+                group.Add(new BackgroundTaskViewModel(task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId]));
+            }
+            else
+            {
+                existing.UpdateDescription(task.Description);
+            }
+        }
+    }
+
+    /// <summary>Re-raises AgeText's change notification for every row currently listed (AC-531 #8) — called on
+    /// the same view-owned tick <see cref="RefreshActiveToolActivityAge"/> uses, so the pop-out's elapsed times
+    /// count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.</summary>
+    public void RefreshBackgroundTaskAges()
+    {
+        foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
+        {
+            row.RaiseAgeChanged();
+        }
+    }
+
+    /// <summary>
     /// AC-146 defensive fallback: accumulates streaming text for an event that names a parent tool_use_id this
     /// pane never resolved to a lane (the Task tool-use row it names as parent was never seen — a dropped event,
     /// or a stray id; not expected with the current CLI/adapter, which always emits the Task tool-use row before
@@ -1943,6 +2110,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                     _RaiseActiveToolActivityChanged();
                 }
 
+                // AC-531: deliberately no _backgroundTasks/_RebuildBackgroundTaskRows() call here, unlike
+                // _activeToolCalls just above. A sub-agent or shell does not end just because this turn did — that
+                // is the whole reason SessionStatus.WorkingBackground exists — so clearing it on TurnCompleted
+                // would reopen the exact gap this ticket closed: the composer's tool-activity band and
+                // "Thinking…" both go quiet here, and the background-work button is what still tells the operator
+                // something is running. It only ever changes on its own BackgroundTasksChanged event.
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
@@ -1974,6 +2147,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // on WorkingBackground forever — and make closing it ask "still working?" on the way out.
                 _backgroundTasks = [];
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                _RebuildBackgroundTaskRows();
                 // AC-532: same reasoning as the background-task list above — a crashed driver never sends the
                 // ToolResult that would otherwise have cleared this, so the composer must not go on showing a
                 // tool as running past the session that was running it.
@@ -1992,6 +2166,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case BackgroundTasksChanged backgroundTasks:
                 _backgroundTasks = backgroundTasks.Tasks;
                 OnPropertyChanged(nameof(HasOutstandingBackgroundShells));
+                _RebuildBackgroundTaskRows();
                 _RecomputeStatus();
                 break;
 

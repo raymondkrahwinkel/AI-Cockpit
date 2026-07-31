@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -62,6 +63,60 @@ public class SessionActivityTickerTests
                 window.UpdateLayout();
             });
             Assert.InRange(ticksAfterReattach, 1, 3);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    /// <summary>
+    /// AC-531: the same ticker also re-raises AgeText on every outstanding background-task row, not just the
+    /// composer's own tool-activity band — verified directly on a task's own <see cref="BackgroundTaskViewModel"/>
+    /// rather than on the session, since that is the object whose PropertyChanged actually fires.
+    /// </summary>
+    [Fact]
+    public Task Ticker_AlsoReRaisesAgeTextOnOutstandingBackgroundTaskRows() => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var session = new SessionViewModel();
+        session.QueuedMessages.Clear();
+        session.PendingAttachments.Clear();
+        session.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks = [new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")],
+        });
+        var row = session.BackgroundSubAgents[0];
+
+        var view = new ContentControl { Content = session };
+        var window = new Window { Width = 620, Height = 480 };
+
+        try
+        {
+            var ticks = 0;
+            void OnRowChanged(object? sender, PropertyChangedEventArgs e)
+            {
+                if (e.PropertyName == nameof(BackgroundTaskViewModel.AgeText))
+                {
+                    ticks++;
+                }
+            }
+
+            row.PropertyChanged += OnRowChanged;
+            try
+            {
+                window.Content = view;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                await Task.Delay(AFewTicks);
+            }
+            finally
+            {
+                row.PropertyChanged -= OnRowChanged;
+            }
+
+            Assert.True(ticks >= 1, "the ticker never re-raised AgeText on a background task row while the view was attached");
         }
         finally
         {

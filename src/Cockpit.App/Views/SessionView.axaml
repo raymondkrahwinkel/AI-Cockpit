@@ -16,6 +16,45 @@
         <vm:SessionViewModel/>
     </Design.DataContext>
 
+    <UserControl.Resources>
+        <!-- One row template shared by all three background-work groups (AC-531) — sub-agents, shells and any
+             kind this build does not recognise render identically bar their StatusBrushKey/KindLabel, so one
+             template avoids tripling the same markup. -->
+        <DataTemplate x:Key="BackgroundTaskRowTemplate" x:DataType="vm:BackgroundTaskViewModel">
+            <StackPanel Margin="6,1,6,3">
+                <Border Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                        PointerPressed="_OnBackgroundTaskPressed">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                                 Margin="0,0,8,0"
+                                 Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="12.5"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text="{Binding AgeText}" FontSize="11.5" VerticalAlignment="Center"
+                                   Margin="8,0,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </Grid>
+                </Border>
+
+                <!-- Expanded detail (AC-531 #4): the full, untruncated description plus the kind spelled out — the
+                     only things the collapsed row above does not already show in full. BackgroundTask carries no
+                     richer per-task activity than kind + description, so this shows what exists rather than
+                     inventing a feed the contract does not have (AC-531 #7). -->
+                <Border IsVisible="{Binding IsSelected}" Margin="0,3,0,0" Padding="9,7"
+                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitControlRadius}">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="{Binding KindLabel}" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding Description}" FontSize="11.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
     <!-- Tight against the pane's own border on purpose: the pane already draws a frame and sits in a 4px grid
@@ -359,6 +398,83 @@
                         ToolTip.Tip="{Binding ScreenshotTooltip}" ToolTip.ShowOnDisabled="True">
                     <materialIcons:MaterialIcon Kind="Monitor" Width="15" Height="15"/>
                 </Button>
+                <!-- Background work (AC-531): a persistent button next to Send that says how much sub-agent/shell
+                     work is still running. Closes the exact gap AC-532 left open: TurnCompleted clears
+                     HasActiveToolActivity and "Thinking…" both, but a detached sub-agent or shell can keep going
+                     past that point, and this button's own count — driven straight off BackgroundTasksChanged,
+                     never cleared by TurnCompleted itself (see the comment on that case in SessionViewModel) — is
+                     what still says so. Always shown, like Stop/Screenshot; only the badge and the pop-out's own
+                     contents change with the count (AC-531 #2: no badge at all at zero, not a "0" one). The detail
+                     lives in the pop-out itself, not a separate pane (Raymond, 2026-07-31). -->
+                <Button x:Name="BackgroundWorkButton" DockPanel.Dock="Left" Classes="Compact" VerticalAlignment="Bottom" Margin="0,0,8,0" Padding="8,6"
+                        ToolTip.Tip="Sub-agents and shells still running in the background">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <TextBlock Text="Background" FontSize="12.5" VerticalAlignment="Center"/>
+                        <Border x:Name="BackgroundWorkBadge" Background="{StaticResource CockpitStatusBackgroundBrush}"
+                                CornerRadius="{StaticResource CockpitPillRadius}"
+                                Padding="6,1" MinWidth="18" HorizontalAlignment="Center"
+                                IsVisible="{Binding HasBackgroundTasks}">
+                            <TextBlock Text="{Binding BackgroundTaskCount}" FontSize="11" FontWeight="Bold"
+                                       Foreground="{StaticResource CockpitTextOnStatusBrush}" HorizontalAlignment="Center"/>
+                        </Border>
+                        <materialIcons:MaterialIcon Kind="ChevronUp" Width="11" Height="11"
+                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout Placement="Top">
+                            <StackPanel Spacing="0" Width="410">
+                                <DockPanel Margin="10,9,10,7">
+                                    <TextBlock DockPanel.Dock="Left" Text="Running now" FontWeight="SemiBold" FontSize="12.5"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding BackgroundTaskSummary}" FontSize="11.5"
+                                               HorizontalAlignment="Right"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </DockPanel>
+
+                                <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+
+                                <!-- Empty state (AC-531 #3, mockup beeld 3): a provider that reports no background
+                                     work at all lands here without error — same list, just nothing in it. -->
+                                <TextBlock Text="No background work." FontSize="12.5" Margin="10,16"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding !HasBackgroundTasks}"/>
+
+                                <StackPanel IsVisible="{Binding HasBackgroundTasks}" Margin="0,4,0,0">
+                                    <TextBlock Text="SUB-AGENTS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding HasBackgroundSubAgents}"/>
+                                    <ItemsControl ItemsSource="{Binding BackgroundSubAgents}"
+                                                  ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                  IsVisible="{Binding HasBackgroundSubAgents}"/>
+
+                                    <TextBlock Text="SHELLS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding HasBackgroundShells}"/>
+                                    <ItemsControl ItemsSource="{Binding BackgroundShells}"
+                                                  ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                  IsVisible="{Binding HasBackgroundShells}"/>
+
+                                    <!-- A task_type this build does not recognise (AC-276's Unknown): carried
+                                         rather than dropped, so it still shows up here instead of vanishing from
+                                         the count silently. -->
+                                    <TextBlock Text="OTHER" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding HasBackgroundOtherTasks}"/>
+                                    <ItemsControl ItemsSource="{Binding BackgroundOtherTasks}"
+                                                  ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
+                                                  IsVisible="{Binding HasBackgroundOtherTasks}"/>
+                                </StackPanel>
+
+                                <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                                        Padding="10,7" IsVisible="{Binding HasBackgroundTasks}">
+                                    <TextBlock Text="Disappears from the list once the work finishes." FontSize="10.5"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </Border>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+
                 <!-- IsEnabled binds IsInputEnabled (AC-174): an autonomous embedded run starts with its composer off so the
                      operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
                      box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->
