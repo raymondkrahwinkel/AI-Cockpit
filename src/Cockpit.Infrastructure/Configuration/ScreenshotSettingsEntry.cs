@@ -13,11 +13,14 @@ internal sealed class ScreenshotSettingsEntry
     /// <summary>The last region as four numbers, so the file stays readable and a hand-edited one cannot land a half-built rectangle in memory.</summary>
     public int[]? LastRegion { get; set; }
 
+    public bool PreviewEnabled { get; set; }
+
     public static ScreenshotSettingsEntry FromDomain(ScreenshotSettings settings) => new()
     {
         GlobalHotkeyEnabled = settings.GlobalHotkeyEnabled,
         HotkeyKeyName = settings.HotkeyKeyName,
         LastRegion = settings.LastRegion is { } region ? [region.X, region.Y, region.Width, region.Height] : null,
+        PreviewEnabled = settings.PreviewEnabled,
     };
 
     public ScreenshotSettings ToDomain() => new()
@@ -29,5 +32,6 @@ internal sealed class ScreenshotSettingsEntry
         // Anything other than four numbers is not a rectangle. A hand-edited file that got it wrong loses the
         // convenience of a remembered region, which is the harmless half of the choice.
         LastRegion = LastRegion is [var x, var y, var width, var height] ? new CaptureRect(x, y, width, height) : null,
+        PreviewEnabled = PreviewEnabled,
     };
 }

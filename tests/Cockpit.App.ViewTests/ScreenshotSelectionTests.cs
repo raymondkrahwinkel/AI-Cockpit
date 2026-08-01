@@ -220,6 +220,133 @@ public class ScreenshotSelectionTests
         Assert.Equal(new CapturePoint(100, 100), selection.ToImagePixel(100, 100));
     }
 
+    /// <summary>Dragging a corner grip resizes only that corner; the opposite one stays exactly where it was.</summary>
+    [Fact]
+    public void DraggingACornerGrip_MovesOnlyThatCorner()
+    {
+        var selection = _Surface();
+        // Dimensions divisible by three, so this ratio's every surface/image conversion below lands on an exact
+        // double rather than a repeating fraction that Math.Floor could round the wrong way.
+        selection.Selection = new CaptureRect(90, 90, 300, 300);
+
+        // The bottom-right grip sits at image pixel (390, 390), which is surface (260, 260) at this ratio.
+        Assert.True(selection.BeginDrag(260, 260));
+        selection.DragTo(300, 300);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(90, 90, 360, 360), selection.Selection);
+    }
+
+    /// <summary>An edge grip moves only the side it sits on — the sides next to it do not follow.</summary>
+    [Fact]
+    public void DraggingAnEdgeGrip_MovesOnlyThatSide()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(90, 90, 300, 300);
+
+        // The top grip sits at the middle of the top edge: image (240, 90), surface (160, 60).
+        Assert.True(selection.BeginDrag(160, 60));
+        selection.DragTo(160, 40);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(90, 60, 300, 330), selection.Selection);
+    }
+
+    /// <summary>
+    /// A grip dragged past the side it does not own tips the rectangle over rather than making it negative or
+    /// collapsing it to nothing (AC-565, criterion 6) — the same normalisation a mark's own two corners already
+    /// get from <c>_Between</c>.
+    /// </summary>
+    [Fact]
+    public void ACornerGripDraggedPastItsOpposite_TipsTheRectangleOver()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(150, 150, 300, 300);
+
+        // The top-left grip, at surface (100, 100), dragged well past the rectangle's own bottom-right corner.
+        Assert.True(selection.BeginDrag(100, 100));
+        selection.DragTo(400, 400);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(450, 450, 150, 150), selection.Selection);
+        Assert.True(selection.Selection is { Width: > 0, Height: > 0 });
+    }
+
+    /// <summary>Dragging inside the selection carries the whole rectangle; its size does not change.</summary>
+    [Fact]
+    public void DraggingInsideTheSelection_MovesItWithoutResizingIt()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(150, 150, 300, 300);
+
+        // Surface (150, 150) is image pixel (225, 225) — well inside the rectangle and nowhere near a grip.
+        Assert.True(selection.BeginDrag(150, 150));
+        selection.DragTo(200, 200);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(225, 225, 300, 300), selection.Selection);
+    }
+
+    /// <summary>
+    /// The grip's own reach is wider than the little square drawn for it (AC-565, criterion 8): landing a few
+    /// pixels short of dead centre on it still resizes rather than throwing the selection away and starting a new
+    /// one — the costliest and quietest way this surface could misread a press.
+    /// </summary>
+    [Fact]
+    public void ANearMissOnAGrip_StillResizes()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(90, 90, 300, 300);
+
+        // The bottom-right grip is at surface (260, 260); this presses 7 units off in each direction, well past
+        // its own 9x9 drawn square's half-width but inside the wider hit radius.
+        Assert.True(selection.BeginDrag(253, 253));
+        selection.DragTo(270, 270);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(90, 90, 315, 315), selection.Selection);
+    }
+
+    /// <summary>
+    /// With a mark tool in hand, a press over what would otherwise be a grip draws a mark instead — the grips do
+    /// nothing (AC-565, criterion 9). This is a decision recorded in AC-567, not a bug: two quick marks on the
+    /// selection's edge are still two marks.
+    /// </summary>
+    [Fact]
+    public void WithAMarkToolInHand_AGripPressDrawsAMarkInstead()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(100, 100, 200, 200);
+        selection.Outline(true);
+
+        // The same spot the bottom-right grip sits on.
+        Assert.True(selection.BeginDrag(200, 200));
+        selection.DragTo(230, 230);
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(100, 100, 200, 200), selection.Selection);
+        Assert.Single(selection.Marks);
+        Assert.IsType<OutlineMark>(selection.Marks[0]);
+    }
+
+    /// <summary>
+    /// The defect behind AC-567: before AC-565, any plain click inside an already-marked selection restarted the
+    /// drag as a fresh zero-size rectangle and then nulled it on release — which meant the second press of a real
+    /// double-click could never see a selection to confirm. A click that does not move must now leave the
+    /// selection exactly as it was, so the double-click check that follows it still has something to confirm.
+    /// </summary>
+    [Fact]
+    public void APlainClickInsideTheSelection_LeavesItIntactForADoubleClickToConfirm()
+    {
+        var selection = _Surface();
+        selection.Selection = new CaptureRect(150, 150, 300, 300);
+
+        Assert.True(selection.BeginDrag(150, 150));
+        selection.EndDrag();
+
+        Assert.Equal(new CaptureRect(150, 150, 300, 300), selection.Selection);
+    }
+
     private static ScreenshotSelectionViewModel _Surface(CaptureRect? lastRegion = null) =>
         new(_Capture(Panel), 2880, 1620, Accent, lastRegion) { SurfaceWidth = 1920, SurfaceHeight = 1080 };
 

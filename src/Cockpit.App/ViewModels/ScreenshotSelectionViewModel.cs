@@ -61,6 +61,31 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     private readonly List<CapturePoint> _trail = [];
     private CapturePoint? _anchor;
 
+    /// <summary>
+    /// The grip a resize drag took hold of, or nothing while the drag is something else. Set by
+    /// <see cref="BeginDrag"/> and read by <see cref="DragTo"/>, which is the only reason it needs to survive
+    /// between calls at all.
+    /// </summary>
+    private SelectionGrip? _resizingGrip;
+
+    /// <summary>Whether the current drag is carrying the whole selection rather than resizing or replacing it.</summary>
+    private bool _movingSelection;
+
+    /// <summary>
+    /// What the selection looked like when a move or a resize took hold of it. Both are worked out from this and
+    /// the pointer's current position rather than incrementally, the same way a fresh region already is — a drag
+    /// that gets clamped at an edge and then reverses has to be able to give back exactly what the clamp took.
+    /// </summary>
+    private CaptureRect? _dragBase;
+
+    /// <summary>
+    /// How much further than a grip's own drawn size the pointer may miss it by, in the window's own units
+    /// (AC-565). Wider than what gets drawn for it on purpose: missing a corner by a pixel used to throw the
+    /// whole selection away and start a new one in its place, which is the costliest way this surface can
+    /// misread a press, and it gave no sign that it had happened.
+    /// </summary>
+    private const double GripHitRadius = 10;
+
     /// <param name="markColour">
     /// What a mark is drawn in, as 0xAARRGGBB. Handed in without a default on purpose: the accent lives in the
     /// theme, which is the view's to read, and a default here would be a second copy of a colour that is supposed
@@ -386,6 +411,15 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
     public bool BeginDrag(double surfaceX, double surfaceY)
     {
         var point = ToImagePixel(surfaceX, surfaceY);
+
+        // Cleared unconditionally, not just where a grip or a move takes hold: a drag that ends without going
+        // through EndDrag — the pointer leaves for window-picking mid-grip and comes back, say — would otherwise
+        // leave a stale grip or base rectangle for the next, unrelated drag to resize instead of drawing what is
+        // actually being dragged.
+        _resizingGrip = null;
+        _movingSelection = false;
+        _dragBase = null;
+
         // A note is opened by a press rather than dragged out: it has no extent to drag, and what decides how big
         // it is, is what gets typed into it.
         if (MarkingWith == MarkTool.Text)
@@ -404,6 +438,32 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             return true;
         }
 
+        // A press on the existing selection means something other than starting over, and which of the two it
+        // means is decided here, once, rather than left to whichever branch of DragTo happens to run first. A
+        // grip takes priority over the plain "inside" case even though a grip sits right on the edge of it: the
+        // hit area is deliberately wider than the selection's own border, so a press that is on both answers to
+        // the one the operator most likely meant to reach.
+        // Not while everything is taken: that selection covers the whole window, so every press would read as
+        // "inside" and a smaller drag could never get away from it — the one thing taking everything already
+        // promises works like an ordinary drag the moment it stops being untouched (AC-358).
+        if (!TakingEverything && Selection is { Width: > 0, Height: > 0 } current)
+        {
+            if (GripAt(surfaceX, surfaceY) is { } grip)
+            {
+                _resizingGrip = grip;
+                _dragBase = current;
+                _anchor = point;
+                return true;
+            }
+
+            if (current.Contains(point))
+            {
+                _movingSelection = true;
+                _dragBase = current;
+                _anchor = point;
+                return true;
+            }
+        }
 
         // Asked in the image's own space, because that is the space the point is in. DisplayAt takes a desktop
         // point and would answer against DesktopBounds — which on a scaled display is the smaller rectangle, so
@@ -434,6 +494,22 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             return;
         }
 
+        if (_resizingGrip is { } grip && _dragBase is { } beforeResize)
+        {
+            Selection = _Resized(beforeResize, grip, point);
+            return;
+        }
+
+        if (_movingSelection && _dragBase is { } beforeMove)
+        {
+            Selection = beforeMove with
+            {
+                X = Math.Clamp(beforeMove.X + (point.X - anchor.X), 0, ImageWidth - beforeMove.Width),
+                Y = Math.Clamp(beforeMove.Y + (point.Y - anchor.Y), 0, ImageHeight - beforeMove.Height),
+            };
+            return;
+        }
+
         Selection = new CaptureRect(
             Math.Min(anchor.X, point.X),
             Math.Min(anchor.Y, point.Y),
@@ -441,11 +517,101 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
             Math.Abs(point.Y - anchor.Y));
     }
 
+    /// <summary>
+    /// The rectangle a grip dragged to that point makes, from the rectangle it started as. Only the edge or edges
+    /// the grip sits on move; the other side stays exactly where it was. Normalised the same way <see cref="_Between"/>
+    /// already normalises a mark's two corners (AC-565): a grip dragged past the side it does not own tips the
+    /// rectangle over rather than turning it negative, and the one-pixel floor keeps it from collapsing to
+    /// nothing when the drag lands exactly on that side.
+    /// </summary>
+    private static CaptureRect _Resized(CaptureRect original, SelectionGrip grip, CapturePoint point)
+    {
+        var left = original.X;
+        var top = original.Y;
+        var right = original.Right;
+        var bottom = original.Bottom;
+
+        if (grip is SelectionGrip.TopLeft or SelectionGrip.Top or SelectionGrip.TopRight)
+        {
+            top = point.Y;
+        }
+
+        if (grip is SelectionGrip.BottomLeft or SelectionGrip.Bottom or SelectionGrip.BottomRight)
+        {
+            bottom = point.Y;
+        }
+
+        if (grip is SelectionGrip.TopLeft or SelectionGrip.Left or SelectionGrip.BottomLeft)
+        {
+            left = point.X;
+        }
+
+        if (grip is SelectionGrip.TopRight or SelectionGrip.Right or SelectionGrip.BottomRight)
+        {
+            right = point.X;
+        }
+
+        var x1 = Math.Min(left, right);
+        var y1 = Math.Min(top, bottom);
+
+        return new CaptureRect(x1, y1, Math.Max(1, Math.Max(left, right) - x1), Math.Max(1, Math.Max(top, bottom) - y1));
+    }
+
+    /// <summary>
+    /// Where each of the selection's eight grips sits on the window right now, in the same units a pointer event
+    /// arrives in. Shared by the hit test below and by whatever draws the little handles, so the two cannot end
+    /// up disagreeing about where a grip is.
+    /// </summary>
+    public IReadOnlyList<(SelectionGrip Grip, double X, double Y)> GripPositions()
+    {
+        if (Selection is not { Width: > 0, Height: > 0 } region)
+        {
+            return [];
+        }
+
+        var (x, y, w, h) = ToSurface(region);
+        var midX = x + (w / 2);
+        var midY = y + (h / 2);
+        var right = x + w;
+        var bottom = y + h;
+
+        return
+        [
+            (SelectionGrip.TopLeft, x, y),
+            (SelectionGrip.Top, midX, y),
+            (SelectionGrip.TopRight, right, y),
+            (SelectionGrip.Right, right, midY),
+            (SelectionGrip.BottomRight, right, bottom),
+            (SelectionGrip.Bottom, midX, bottom),
+            (SelectionGrip.BottomLeft, x, bottom),
+            (SelectionGrip.Left, x, midY),
+        ];
+    }
+
+    /// <summary>
+    /// The grip a point on the window is close enough to for a drag to mean "resize this", or nothing where it is
+    /// closer to the middle of the selection than to any handle. The closest one wins rather than the first in
+    /// range, so a press near a corner cannot be answered by the side next to it instead.
+    /// </summary>
+    public SelectionGrip? GripAt(double surfaceX, double surfaceY) =>
+        GripPositions()
+            .Select(candidate => (candidate.Grip, distance: _DistanceSquared(candidate.X, candidate.Y, surfaceX, surfaceY)))
+            .Where(candidate => candidate.distance <= GripHitRadius * GripHitRadius)
+            .OrderBy(candidate => candidate.distance)
+            .Select(candidate => (SelectionGrip?)candidate.Grip)
+            .FirstOrDefault();
+
+    private static double _DistanceSquared(double x1, double y1, double x2, double y2) =>
+        ((x1 - x2) * (x1 - x2)) + ((y1 - y2) * (y1 - y2));
+
     /// <summary>Ends the drag. A press that never moved leaves a rectangle with no area, which is not a selection.</summary>
     public void EndDrag()
     {
         var anchor = _anchor;
         _anchor = null;
+        _resizingGrip = null;
+        _movingSelection = false;
+        _dragBase = null;
         if (MarkingWith is { } tool)
         {
             // The same call the preview was built from, so what is kept is exactly the shape that was on screen
@@ -799,6 +965,13 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         Result = null;
         IsClosed = true;
     }
+
+    /// <summary>
+    /// Takes back a confirm that a preview declined (AC-566). Nothing here touches the selection or its marks —
+    /// declining is not the same as cancelling, and the whole point of a preview is that seeing something you
+    /// want to adjust does not cost you the work you already did.
+    /// </summary>
+    public void ReopenAfterDeclinedPreview() => IsClosed = false;
 
     /// <summary>
     /// The display a point on the window falls on, as its rectangle in the image's pixels — or nothing where the

@@ -28,4 +28,11 @@ public sealed record ScreenshotSettings
     /// clamped when the desktop has since changed shape and it no longer fits.
     /// </summary>
     public CaptureRect? LastRegion { get; init; }
+
+    /// <summary>
+    /// Whether confirming a selection opens a preview first instead of injecting straight into the session
+    /// (AC-566). Off by default — Raymond's own argument: not everyone wants an extra window between a drag and
+    /// a screenshot landing.
+    /// </summary>
+    public bool PreviewEnabled { get; init; }
 }

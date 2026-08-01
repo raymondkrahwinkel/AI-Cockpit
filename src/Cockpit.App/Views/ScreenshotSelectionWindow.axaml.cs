@@ -63,6 +63,14 @@ public partial class ScreenshotSelectionWindow : Window
     /// <summary>Where the pointer was last seen, in the window's units. The control panel follows the display it is on.</summary>
     private Point _pointer;
 
+    /// <summary>
+    /// The gate a confirm passes through before this window actually closes (AC-566), or nothing where there is
+    /// none — the setting is off, or whoever built the surface has no preview to offer. Set once, before
+    /// <see cref="Show"/>, so none of the three ways to confirm can end up going around it: they all call
+    /// <see cref="_Confirm"/> instead of closing themselves.
+    /// </summary>
+    internal Func<ScreenshotSelection, Window, Task<bool>>? PreviewGate { get; set; }
+
     public ScreenshotSelectionWindow()
     {
         InitializeComponent();
@@ -75,12 +83,15 @@ public partial class ScreenshotSelectionWindow : Window
     /// Puts the surface over the desktop the capture came off and waits for the operator, handing back the
     /// region they marked out in the image's own pixels — or nothing, if they changed their mind.
     /// </summary>
-    public static async Task<ScreenshotSelection?> PickAsync(ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner)
+    public static async Task<ScreenshotSelection?> PickAsync(
+        ScreenCapture capture, CaptureRect? lastRegion, IDesktopWindows windows, Window owner,
+        Func<ScreenshotSelection, Window, Task<bool>>? previewGate = null)
     {
         using var stream = new MemoryStream(capture.Image);
         var bitmap = new Bitmap(stream);
 
         var window = Build(capture, bitmap, lastRegion, windows);
+        window.PreviewGate = previewGate;
         window._Cover(owner.Screens);
 
         // Shown rather than ShowDialog'd. A modal needs a visible owner, and the cockpit's main window is often
@@ -93,6 +104,64 @@ public partial class ScreenshotSelectionWindow : Window
 
         await closed.Task;
         return window._selection?.Result;
+    }
+
+    /// <summary>
+    /// Whether a confirm is already on its way through the preview gate — the gap between Confirm() and the
+    /// gate's own dialog opening spans a settings load and a crop-and-burn, both awaited, and the window still
+    /// has focus for every bit of that. A second Enter or click landing in it must not start a second confirm
+    /// that could close the window out from under a preview the operator is still looking at.
+    /// </summary>
+    private bool _confirming;
+
+    /// <summary>
+    /// Confirms, and — if a preview gate is set — asks it before this window actually closes (AC-566). The one
+    /// point all three ways to confirm run through, so none of them can end up bypassing it. A decline reopens
+    /// the surface exactly as it was: nothing here has touched the selection or its marks.
+    /// </summary>
+    private async void _Confirm(ScreenshotSelectionViewModel selection)
+    {
+        if (_confirming)
+        {
+            return;
+        }
+
+        _confirming = true;
+        try
+        {
+            selection.Confirm();
+            if (!selection.IsClosed)
+            {
+                return;
+            }
+
+            if (selection.Result is { } result && PreviewGate is { } gate)
+            {
+                var approved = false;
+                try
+                {
+                    approved = await gate(result, this).ConfigureAwait(true);
+                }
+                catch (Exception)
+                {
+                    // The preview is a courtesy on top of the confirm, not the confirm itself — a gate that fails
+                    // to even ask must not eat a selection the operator already marked out. Enter still confirms,
+                    // and reaches this same method.
+                }
+
+                if (!approved)
+                {
+                    selection.ReopenAfterDeclinedPreview();
+                    return;
+                }
+            }
+
+            Close();
+        }
+        finally
+        {
+            _confirming = false;
+        }
     }
 
     /// <summary>
@@ -267,12 +336,7 @@ public partial class ScreenshotSelectionWindow : Window
         // so the click that is meant to take the window is exactly what threw it away.
         if (selection.PickingWindow)
         {
-            selection.Confirm();
-            if (selection.IsClosed)
-            {
-                Close();
-            }
-
+            _Confirm(selection);
             return;
         }
 
@@ -285,12 +349,7 @@ public partial class ScreenshotSelectionWindow : Window
         if (e.ClickCount == 2 && selection.MarkingWith is null && selection.Selection is { } marked
             && marked.Contains(selection.ToImagePixel(e.GetPosition(Surface).X, e.GetPosition(Surface).Y)))
         {
-            selection.Confirm();
-            if (selection.IsClosed)
-            {
-                Close();
-            }
-
+            _Confirm(selection);
             return;
         }
 
@@ -338,7 +397,48 @@ public partial class ScreenshotSelectionWindow : Window
             selection.DragTo(e.GetPosition(Surface).X, e.GetPosition(Surface).Y);
             _Draw();
         }
+        else
+        {
+            // Only while nothing is held down — a cursor that changed mid-drag would say something other than
+            // what the drag already committed to doing.
+            _UpdateCursor(selection, e.GetPosition(Surface));
+        }
     }
+
+    /// <summary>
+    /// Shows what a press right now would do, before it happens (AC-565): a resize cursor over a grip, a move
+    /// cursor inside the selection, and the window's ordinary cross everywhere else — including every mode where
+    /// a press means something other than reshaping the selection, since a grip cursor there would promise a
+    /// drag the surface will not honour.
+    /// </summary>
+    private void _UpdateCursor(ScreenshotSelectionViewModel selection, Point pointer)
+    {
+        if (selection.DraggingRegion)
+        {
+            if (selection.GripAt(pointer.X, pointer.Y) is { } grip)
+            {
+                Cursor = new Cursor(_CursorFor(grip));
+                return;
+            }
+
+            if (selection.Selection is { } region && region.Contains(selection.ToImagePixel(pointer.X, pointer.Y)))
+            {
+                Cursor = new Cursor(StandardCursorType.SizeAll);
+                return;
+            }
+        }
+
+        Cursor = new Cursor(StandardCursorType.Cross);
+    }
+
+    /// <summary>The resize cursor that says which way a grip moves. The two diagonal corners share their axis with the corner opposite them, the same way dragging one tips the rectangle onto the other's side.</summary>
+    private static StandardCursorType _CursorFor(SelectionGrip grip) => grip switch
+    {
+        SelectionGrip.TopLeft or SelectionGrip.BottomRight => StandardCursorType.TopLeftCorner,
+        SelectionGrip.TopRight or SelectionGrip.BottomLeft => StandardCursorType.TopRightCorner,
+        SelectionGrip.Top or SelectionGrip.Bottom => StandardCursorType.SizeNorthSouth,
+        _ => StandardCursorType.SizeWestEast,
+    };
 
     /// <summary>
     /// The panel a press landed on, or nothing where it landed on the picture. Self and ancestors, because the
@@ -395,8 +495,12 @@ public partial class ScreenshotSelectionWindow : Window
                 selection.Cancel();
                 break;
             case Key.Enter:
-                selection.Confirm();
-                break;
+                // Its own return rather than falling into the switch's shared tail below: that tail closes the
+                // window the moment IsClosed turns true, which Confirm() does synchronously — before a preview
+                // gate has had any chance to be asked. Going through _Confirm keeps the close behind the gate.
+                e.Handled = true;
+                _Confirm(selection);
+                return;
             case Key.A:
                 _ChooseEverything(selection);
                 break;
@@ -744,6 +848,7 @@ public partial class ScreenshotSelectionWindow : Window
             _Place(ShadeBottom, 0, 0, 0, 0);
             _Place(ShadeLeft, 0, 0, 0, 0);
             _Place(ShadeRight, 0, 0, 0, 0);
+            _PlaceGrips(selection);
             Readout.IsVisible = false;
             return;
         }
@@ -754,6 +859,7 @@ public partial class ScreenshotSelectionWindow : Window
         _Place(ShadeBottom, 0, y + h, width, Math.Max(0, height - (y + h)));
         _Place(ShadeLeft, 0, y, x, h);
         _Place(ShadeRight, x + w, y, Math.Max(0, width - (x + w)), h);
+        _PlaceGrips(selection);
 
         // The size is reported in the image's pixels, which is what the session receives — the window's units
         // would be a different number on a scaled display and would read as a lie next to the attachment.
@@ -1033,6 +1139,43 @@ public partial class ScreenshotSelectionWindow : Window
 
         return new Point(onSurface.X - left, onSurface.Y - top);
     }
+
+    /// <summary>
+    /// Puts the eight grips where <see cref="ScreenshotSelectionViewModel.GripPositions"/> says they are, or
+    /// hides all of them where there is nothing to grab — no selection, or a mode where a grip would not do
+    /// anything anyway. A mark tool in hand still leaves a non-empty selection, and a grip lighting up over it
+    /// would promise a drag the surface will not honour (AC-565's ninth criterion).
+    /// </summary>
+    private void _PlaceGrips(ScreenshotSelectionViewModel selection)
+    {
+        var positions = selection.DraggingRegion ? selection.GripPositions() : [];
+        foreach (var grip in Enum.GetValues<SelectionGrip>())
+        {
+            _GripControl(grip).IsVisible = false;
+        }
+
+        foreach (var (grip, x, y) in positions)
+        {
+            var control = _GripControl(grip);
+            control.IsVisible = true;
+            Canvas.SetLeft(control, x - (control.Width / 2));
+            Canvas.SetTop(control, y - (control.Height / 2));
+        }
+    }
+
+    /// <summary>The shape standing in for a grip. Named lookup rather than a dictionary built every draw: the names are fixed by the XAML, and this is the one place that has to agree with it.</summary>
+    private Rectangle _GripControl(SelectionGrip grip) => grip switch
+    {
+        SelectionGrip.TopLeft => GripTopLeft,
+        SelectionGrip.Top => GripTop,
+        SelectionGrip.TopRight => GripTopRight,
+        SelectionGrip.Right => GripRight,
+        SelectionGrip.BottomRight => GripBottomRight,
+        SelectionGrip.Bottom => GripBottom,
+        SelectionGrip.BottomLeft => GripBottomLeft,
+        SelectionGrip.Left => GripLeft,
+        _ => throw new NotSupportedException($"There is no grip control for {grip}."),
+    };
 
     private static void _Place(Control shape, (double X, double Y, double Width, double Height) area) =>
         _Place(shape, area.X, area.Y, area.Width, area.Height);

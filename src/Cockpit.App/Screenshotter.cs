@@ -246,6 +246,12 @@ internal static class Screenshotter
         ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
+
+        // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
+        // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
+        // developer's own screen happens to produce.
+        ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
+        ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
     };
 
     /// <summary>
@@ -703,6 +709,15 @@ internal static class Screenshotter
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    /// <summary>A screenshot-shaped PNG at whatever aspect ratio a preview scene needs, from the same stand-in drawing the selection surface's own scenes use.</summary>
+    private static byte[] _StandInPng(int width, int height)
+    {
+        using var bitmap = StandInDesktop.Draw(width, height);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream);
+        return stream.ToArray();
     }
 
     // A pane as it comes back after a crash: materialised, nothing started, and carrying its restore offer. The
