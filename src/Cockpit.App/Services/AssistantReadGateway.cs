@@ -35,6 +35,11 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ? Task.FromResult(_ListSessions())
             : Dispatcher.UIThread.InvokeAsync(_ListSessions).GetTask();
 
+    public Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync() =>
+        Dispatcher.UIThread.CheckAccess()
+            ? Task.FromResult(_ListProjects())
+            : Dispatcher.UIThread.InvokeAsync(_ListProjects).GetTask();
+
     public Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count) =>
         Dispatcher.UIThread.CheckAccess()
             ? Task.FromResult(_ReadTranscript(paneId, count))
@@ -76,6 +81,21 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ]);
     }
 
+    /// <summary>
+    /// The operator's own project list, in the order the manager holds it. All of them, including the ones with no
+    /// folder: an administrative project is a project, and a reader that quietly dropped those would answer "which
+    /// projects do we have" with a subset and no sign that it had.
+    /// </summary>
+    private IReadOnlyList<AssistantProjectRow> _ListProjects() =>
+    [
+        .. cockpit.Projects.Projects.Select(project => new AssistantProjectRow(
+            project.Id,
+            project.Name,
+            project.Description,
+            project.SourceDirectory,
+            project.DefaultProfileLabel)),
+    ];
+
     private IReadOnlyList<AssistantSessionRow> _ListSessions()
     {
         // Resolved once for the whole sweep rather than per row: the workspace label is a lookup into the same
@@ -101,7 +121,11 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
                         session.ActiveProfileLabel ?? string.Empty,
                         session.Statusline,
                         workspaceId,
-                        workspaceId is not null && namesById.TryGetValue(workspaceId, out var name) ? name : null);
+                        workspaceId is not null && namesById.TryGetValue(workspaceId, out var name) ? name : null,
+                        session.SessionStatus.ToString(),
+                        // Only an SDK session has a permission to be stopped on; a terminal pane has no such state,
+                        // and reporting false for it is the truth rather than a gap.
+                        session is SessionViewModel { HasPendingPermission: true });
                 }),
         ];
     }

@@ -299,6 +299,28 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
     /// <summary>
+    /// Creates a Sessions desk called <paramref name="name"/> and returns it — the "+" menu's own act, but with the
+    /// name given rather than composed, for a caller that was told what to call it (AC-545: the assistant, asked out
+    /// loud for "a desk for the release work").
+    /// </summary>
+    /// <remarks>
+    /// It does become the active desk, because <see cref="WorkspaceSettings.WithWorkspace"/> makes what it adds
+    /// active. Deliberate and kept: asking for a desk to be made is asking to be shown it, and an empty new desk has
+    /// nothing on it to interrupt. That is the opposite of a <em>spawn</em> onto an existing desk, which must leave
+    /// the operator where they are — see <c>CockpitViewModel.StartSessionOnWorkspaceAsync</c>.
+    /// <para>
+    /// The name is taken as given and not made unique. Two desks may share a label the way two sessions may; what a
+    /// caller spawns onto afterwards is the id this returns, not the name.
+    /// </para>
+    /// </remarks>
+    public async Task<Workspace> CreateSessionsWorkspaceAsync(string name)
+    {
+        var created = Workspace.Create(name, WorkspaceType.Sessions);
+        await _ApplyAsync(Settings.WithWorkspace(created));
+        return created;
+    }
+
+    /// <summary>
     /// Brings the workspace of type <paramref name="workspaceTypeId"/> to the front, creating one when none is open
     /// — the programmatic entry behind a plugin surfacing its own workspace on an intent ("Start in Autopilot",
     /// AC-150) and behind the sidebar's way to the projects overview (AC-162). Mirrors

@@ -365,6 +365,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         if (e.PropertyName is null
                 or nameof(SessionViewModel.IsBusy)
                 or nameof(SessionViewModel.HasPendingPermission)
+                // The cockpit's own consent gate (#AC-47) is a second way to be waiting on the operator, and it
+                // moves a different property than the SDK's permission does. Left out, the chip read "Ready" while
+                // a k8s or terminal request sat unanswered over the chat window.
+                or nameof(SessionPanelViewModel.PendingConsent)
             && sender is SessionViewModel session)
         {
             _SyncActivityWithSession(session);
@@ -387,7 +391,9 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </para>
     /// </remarks>
     private void _SyncActivityWithSession(SessionViewModel session) =>
-        Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission);
+        // Either kind of waiting counts: the SDK's own permission row, and the cockpit's consent gate for a
+        // host-side tool. Both stop the turn dead until somebody clicks, and the chip's job is to say so.
+        Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission || session.PendingConsent is not null);
 
     /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
     /// <remarks>
@@ -482,11 +488,55 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     internal static IReadOnlySet<string> McpSelection(
         Cockpit.Core.Profiles.SessionProfile profile, IReadOnlyList<McpServerConfig> catalog)
     {
-        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AssistantIdentity.McpServerName };
+        // Both of the assistant's own endpoints, named here and nowhere else — the read half (AC-544) and the acting
+        // half (AC-545). Both are Internal, so this launch is the only way either is reached at all; and both check
+        // the caller's pane in every tool, so this being the only mount is the first of two gates rather than the
+        // only one. Adding the acting server here is what makes start_agent exist for the assistant — and a launch
+        // that named only the read server would leave AC-545's tools registered, mounted nowhere, and silently absent.
+        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            AssistantIdentity.McpServerName,
+            AssistantIdentity.ActMcpServerName,
+        };
+
+        // A saved selection is the operator's own answer and is taken whole — including anything below, if they
+        // ticked it deliberately. The filter is about what an assistant gets when nobody said.
         selection.UnionWith(profile.EnabledMcpServerNames
-            ?? [.. McpServerRegistryFilter.OfferedToOperator(catalog).Select(server => server.Name)]);
+            ?? [.. McpServerRegistryFilter.OfferedToOperator(catalog)
+                .Select(server => server.Name)
+                .Where(name => !NotFannedOutToTheAssistant.Contains(name))]);
         return selection;
     }
+
+    /// <summary>
+    /// Servers the assistant is deliberately not handed by the no-selection fan-out (AC-545, Raymond 2026-08-01).
+    /// </summary>
+    /// <remarks>
+    /// <b>One name, and the bar for a second one is high.</b> The assistant is meant to be over the whole cockpit
+    /// (AC-545: "hij is overkoepelend over alles"), so a server is kept out only when there is something structural
+    /// wrong with it being here — never because a category of tool feels like a lot of authority to hand to a voice.
+    /// The first draft of this list also held the shell, containers, the cluster, worktrees, the repo's checks and
+    /// its workflows, on that reasoning. It does not hold: every one of those raises its own Allow/Deny row in the
+    /// chat window with the literal action spelled out, which is the same gate this ticket built for spawning. A
+    /// tool that goes through the gate is not a reason to remove the tool.
+    /// <para>
+    /// <c>cockpit-orchestrator</c> is different in kind, not in degree. <c>delegate_task</c> starts real AI work with
+    /// <em>no pane</em>: it appears in no roster, raises no Allow row of the kind this ticket built, and is written
+    /// to no spawn trail — a second way to start work that goes around every guarantee AC-545 put in front of the
+    /// first, rather than through them. Asked for "the same profile but as an SDK session" before
+    /// <c>start_agent</c> had a route parameter, the assistant went looking for it there: a missing parameter and an
+    /// open side door meet, and the guardrail is what loses.
+    /// </para>
+    /// <para>
+    /// Still a default and not a boundary: an operator who wants it here ticks it on the Assistant Profile and gets
+    /// it, selection and all. <c>AlwaysMounted</c> endpoints (<c>cockpit-session</c>, <c>cockpit-agents</c>) are not
+    /// reachable from here by construction — they go to every session whatever any selection says.
+    /// </para>
+    /// </remarks>
+    internal static readonly HashSet<string> NotFannedOutToTheAssistant = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Cockpit.Core.Delegation.DelegationMcp.ServerName,
+    };
 
     /// <summary>
     /// The assistant's standing instruction, on the launch option every provider honours. The profile's own system

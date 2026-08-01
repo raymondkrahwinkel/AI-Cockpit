@@ -27,4 +27,18 @@ public static class AssistantIdentity
     /// that names it.
     /// </summary>
     public const string McpServerName = "cockpit-assistant";
+
+    /// <summary>
+    /// The MCP server the assistant's <em>acting</em> tools are hosted under (AC-545): starting, stopping and
+    /// placing sessions across every desk. Internal like <see cref="McpServerName"/>, mounted by the same single
+    /// launch, and guarded by the same per-tool check on <see cref="PaneId"/>.
+    /// </summary>
+    /// <remarks>
+    /// A second endpoint rather than more tools on the first, for two reasons that are not presentation. A cockpit
+    /// endpoint is one name to one tools class, so sharing would have meant reading and acting in one type — and
+    /// the read server's whole documented promise is that nothing on it changes anything. And the two are not the
+    /// same risk: if a future launch ever has cause to hand the assistant's read path to something else, that must
+    /// not carry the ability to start sessions along with it, silently, because they travelled under one name.
+    /// </remarks>
+    public const string ActMcpServerName = "cockpit-assistant-agents";
 }

@@ -72,6 +72,17 @@ public static class DependencyInjection
             typeof(Assistant.AssistantReadMcpTools),
             Internal: true));
 
+        // cockpit-assistant-agents (AC-545): the acting half — start_agent and stop_agent. Internal for exactly the
+        // same two-gate reason as its read neighbour above, and a second endpoint rather than two more tools on that
+        // one because the read server's documented promise is that nothing on it changes anything (see
+        // AssistantIdentity.ActMcpServerName). Internal is load-bearing, not tidiness: delete it and these tools fan
+        // out to every session that named no selection, where the only thing left between an ordinary agent and a
+        // spawn on any desk is the per-tool pane check.
+        services.AddSingleton(new CockpitMcpEndpoint(
+            Cockpit.Core.Assistant.AssistantIdentity.ActMcpServerName,
+            typeof(Assistant.AssistantAgentMcpTools),
+            Internal: true));
+
         // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
         // below) there is nothing for a platform switch to choose between.
         services.AddSingleton<IHotkeyExclusivityGuard, MutexHotkeyExclusivityGuard>();

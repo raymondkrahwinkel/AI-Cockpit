@@ -37,6 +37,7 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     private readonly IAssistantSessionHost _assistant;
     private readonly VoiceOverlayCoordinator _overlay;
     private readonly IVoicePushToTalkService _pushToTalk;
+    private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly IOpenMicState? _openMicState;
     private readonly ILogger<AssistantPushToTalkCoordinator> _logger;
 
@@ -49,12 +50,14 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         VoiceOverlayCoordinator overlay,
         IVoicePushToTalkService pushToTalk,
         ILogger<AssistantPushToTalkCoordinator> logger,
+        IVoicePlaybackQueue playbackQueue,
         IOpenMicState? openMicState = null)
     {
         _hotkeys = hotkeys;
         _assistant = assistant;
         _overlay = overlay;
         _pushToTalk = pushToTalk;
+        _playbackQueue = playbackQueue;
         _openMicState = openMicState;
         _logger = logger;
 
@@ -130,8 +133,15 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
 
-        // Talking over the assistant means "listen to me instead" — stop the read-aloud rather than let it
-        // narrate through your sentence, the same thing a dictation hold has always done.
+        // Talking over the assistant means "listen to me instead" — stop the read-aloud rather than let it narrate
+        // through your sentence.
+        //
+        // This line is the one that was missing while the comment above it claimed otherwise, and it is the whole
+        // bug: holding the key to interrupt left the assistant reading its previous answer out over the top of the
+        // next question. Unconditional, unlike open-mic's barge-in (AC-9), which weighs a VAD threshold because it
+        // has to tell speech from a cough. A held hotkey is not ambiguous — somebody pressed a key to talk.
+        _playbackQueue.StopAll();
+
         _isRecording = _pushToTalk.BeginHold();
         _overlay.SetPushToTalk(
             _isRecording ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,

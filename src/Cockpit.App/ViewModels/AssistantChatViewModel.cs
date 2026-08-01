@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -89,6 +90,13 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private readonly IAssistantSettingsStore _settingsStore;
     private readonly IVoicePlaybackQueue _playbackQueue;
 
+    // Optional (AC-545 criterion 5): a fake host in AssistantChatViewModelTests, Screenshotter's design-time data,
+    // and every other construction path predating this ticket build this view model with three arguments. Making
+    // the spawn trail a fourth required one would be a compile break in every one of them for a flyout most of
+    // those paths never open. Null reads as "no trail wired" — the flyout then shows the same empty state a real
+    // trail with nothing recorded in it would, rather than throwing.
+    private readonly IAssistantSpawnAuditLog? _spawnAuditLog;
+
     // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is
     // never assigned locally — it always reads straight through to the host. What can change is *which* session
     // the host reports, so change notification is driven by watching the host's own PropertyChanged instead
@@ -109,11 +117,16 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _speakReplies = true;
 
-    public AssistantChatViewModel(IAssistantSessionHost host, IAssistantSettingsStore settingsStore, IVoicePlaybackQueue playbackQueue)
+    public AssistantChatViewModel(
+        IAssistantSessionHost host,
+        IAssistantSettingsStore settingsStore,
+        IVoicePlaybackQueue playbackQueue,
+        IAssistantSpawnAuditLog? spawnAuditLog = null)
     {
         _host = host;
         _settingsStore = settingsStore;
         _playbackQueue = playbackQueue;
+        _spawnAuditLog = spawnAuditLog;
         _observedSession = _host.Session;
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
@@ -134,6 +147,17 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     public string? UnavailableReason => _host.UnavailableReason;
 
     public bool CanSend => !string.IsNullOrWhiteSpace(InputText);
+
+    /// <summary>
+    /// The spawn trail's most recent entries, newest first, for the flyout's <c>ItemsControl</c> — see
+    /// <see cref="LoadSpawnLogAsync"/> for why the trail and not the transcript is what answers "what has this
+    /// thing ever started". Empty until the flyout has been opened at least once, or forever if
+    /// <see cref="_spawnAuditLog"/> is null.
+    /// </summary>
+    public ObservableCollection<AssistantSpawnLogRowViewModel> SpawnLogEntries { get; } = new();
+
+    /// <summary>Backs the flyout's empty-state line. Raised by hand in <see cref="LoadSpawnLogAsync"/> — the load runs once per open rather than being observed continuously, so there is nothing to watch.</summary>
+    public bool HasSpawnLogEntries => SpawnLogEntries.Count > 0;
 
     /// <summary>
     /// Opens the window's view onto the assistant (criterion 1: the first chip click is the "operator handling"
@@ -218,6 +242,86 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
 
+    /// <summary>
+    /// Reads the spawn trail back for the flyout (AC-545 criterion 5), called only when the flyout actually opens
+    /// (<c>AssistantChatWindow._OnSpawnLogFlyoutOpened</c>) rather than every time this window does.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why the trail and not the transcript.</b> The transcript already shows every <c>start_agent</c>/
+    /// <c>stop_agent</c> tool row from this conversation — but only this one, and only for as long as it has not
+    /// been scrolled past or replaced by a restart. The trail is the thing that answers "what has this thing ever
+    /// started" regardless of which conversation is on screen, which is the question this affordance exists for.
+    /// <para>
+    /// <see cref="Task.Run(Func{Task})"/> pushes the read off the UI thread deliberately: <c>ReadRecentAsync</c>
+    /// walks the trail file backward a block at a time and every I/O call on the way is real file I/O, not the
+    /// no-op a mocked test makes it look like. A flyout opening is not the place to find out that trail has grown
+    /// large enough for that walk to be felt.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task LoadSpawnLogAsync()
+    {
+        if (_spawnAuditLog is null)
+        {
+            return;
+        }
+
+        var entries = await Task.Run(() => _spawnAuditLog.ReadRecentAsync()).ConfigureAwait(true);
+
+        SpawnLogEntries.Clear();
+        foreach (var entry in entries)
+        {
+            SpawnLogEntries.Add(AssistantSpawnLogRowViewModel.From(entry));
+        }
+
+        OnPropertyChanged(nameof(HasSpawnLogEntries));
+    }
+
+    /// <summary>
+    /// The conversation as plain text, for saving out of the window.
+    /// </summary>
+    /// <remarks>
+    /// Written here rather than in the view so it can be tested, and deliberately dumb: every row in the order it
+    /// happened, labelled by what it is, tool results included. This is for handing a conversation to somebody who
+    /// was not in the room — an agent asked to look at what went wrong, most of all — and the rows the window folds
+    /// away are exactly the ones such a reader needs. Nothing is summarised and nothing is dropped; the reading
+    /// levels are a display choice, not a statement about what happened.
+    /// </remarks>
+    public string TranscriptAsText()
+    {
+        if (Session is not { } session)
+        {
+            return string.Empty;
+        }
+
+        var text = new System.Text.StringBuilder()
+            .AppendLine($"Cockpit assistant conversation — {DateTimeOffset.Now:yyyy-MM-dd HH:mm}")
+            .AppendLine();
+
+        foreach (var entry in session.Transcript)
+        {
+            var label = entry.Kind switch
+            {
+                TranscriptEntryKind.UserText => "You",
+                TranscriptEntryKind.AssistantText => "Assistant",
+                TranscriptEntryKind.Thinking => "Thinking",
+                TranscriptEntryKind.ToolUse => "Tool",
+                TranscriptEntryKind.ToolResult => "Tool result",
+                var other => other.ToString(),
+            };
+
+            text.AppendLine($"[{label}] {entry.Text}");
+            if (entry.ResultText is { Length: > 0 } result)
+            {
+                text.AppendLine(result);
+            }
+
+            text.AppendLine();
+        }
+
+        return text.ToString();
+    }
+
     private void _OnHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is null or nameof(IAssistantSessionHost.Session))
@@ -290,4 +394,64 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _WatchTranscript(_observedSession, next: null);
     }
+}
+
+/// <summary>
+/// One row of the spawn trail (AC-545 criterion 5), formatted for the flyout in <c>AssistantChatWindow.axaml</c>.
+/// </summary>
+/// <remarks>
+/// The trail's own <see cref="AssistantSpawnAuditEntry"/> carries structured data — a <see cref="DateTimeOffset"/>,
+/// an <see cref="AssistantSpawnAction"/> enum, and several nullable fields each with its own fallback rule (a
+/// workspace shows its name and falls back to its id; a null working directory means the profile's default ran).
+/// Wrapping it here means that fallback logic lives in one place, in code that can be unit-tested directly, rather
+/// than as three separate converters or a MultiBinding the XAML would otherwise need.
+/// </remarks>
+public sealed record AssistantSpawnLogRowViewModel(
+    string When,
+    string What,
+    string Who,
+    string Where,
+    string Session,
+    string StartDetails,
+    string? Refusal)
+{
+    /// <summary>Whether this row carries a refusal reason — the row template shows the italic line only then.</summary>
+    public bool HasRefusal => Refusal is { Length: > 0 };
+
+    /// <summary>Whether there is a session to name. A refused start produced none, and a row that printed an empty line for it would read as a session with no name.</summary>
+    public bool HasSession => Session.Length > 0;
+
+    /// <summary>
+    /// Whether the profile-and-folder line applies. Only a start has them: a stop names a session that is already
+    /// running under a profile chosen long ago, and printing "(profile default)" under it would claim a folder for
+    /// an action that started nothing.
+    /// </summary>
+    public bool HasStartDetails => StartDetails.Length > 0;
+
+    public static AssistantSpawnLogRowViewModel From(AssistantSpawnAuditEntry entry) => new(
+        entry.At.ToLocalTime().ToString("dd MMM HH:mm"),
+        _DescribeWhat(entry),
+        // Criterion 5 names the caller first, and it is the whole reason SpawnCaller exists: once AC-436 lands, a
+        // coordinator's spawn and the assistant's are the same shape of entry and only this word tells them apart.
+        entry.Caller == SpawnCaller.Assistant ? "assistant" : $"coordinator ({entry.CallerPaneId ?? "unknown pane"})",
+        entry.WorkspaceName ?? (entry.WorkspaceId.Length > 0 ? entry.WorkspaceId : "—"),
+        entry.SessionName ?? entry.PaneId ?? string.Empty,
+        entry.Action == AssistantSpawnAction.Start
+            ? $"{entry.Profile ?? "—"}  ·  {entry.WorkingDirectory ?? "(profile default)"}"
+            : string.Empty,
+        entry.Refusal);
+
+    // A gate that only logs what it let through cannot show it working (IAssistantSpawnAuditLog's own remarks) —
+    // so a refusal gets its own label rather than reading identically to a spawn that actually happened.
+    private static string _DescribeWhat(AssistantSpawnAuditEntry entry) => (entry.Action, entry.Refusal) switch
+    {
+        (AssistantSpawnAction.Start, null) => "Started",
+        (AssistantSpawnAction.Start, _) => "Start refused",
+        (AssistantSpawnAction.Stop, null) => "Stopped",
+        (AssistantSpawnAction.Stop, _) => "Stop refused",
+        // An action this window predates — a trail written by a newer build, or a value added to the enum without
+        // this switch being revisited. It still has a row and still reads honestly, rather than throwing a
+        // MatchFailureException in a flyout the operator opened to check what had been started.
+        var (action, refusal) => refusal is null ? action.ToString() : $"{action} refused",
+    };
 }
