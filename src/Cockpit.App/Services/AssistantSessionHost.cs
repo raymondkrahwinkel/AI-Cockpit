@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -52,13 +54,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// The pane id the assistant is always known by. Fixed rather than a fresh guid per launch: the state store
     /// keys the last conversation on the pane, so an id that changed every start would leave yesterday's
     /// conversation on disk under a name nothing looks up again.
+    /// <para>
+    /// Now also the identity the broad read tools check against (AC-544), which is why the value itself lives in
+    /// Core: Infrastructure hosts those tools and cannot see this assembly, and two copies of a guardrail's
+    /// constant is a guardrail that can quietly stop matching.
+    /// </para>
     /// </summary>
-    internal const string AssistantPaneId = "cockpit-assistant";
+    internal const string AssistantPaneId = AssistantIdentity.PaneId;
 
     private readonly CockpitViewModel _cockpit;
     private readonly IAssistantSettingsStore _settings;
     private readonly IAssistantProfileStore _profiles;
     private readonly ISessionStateStore _sessionState;
+    private readonly IMcpServerCatalog _mcpServers;
     private readonly ILogger<AssistantSessionHost> _logger;
 
     /// <summary>Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.</summary>
@@ -69,12 +77,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         IAssistantSettingsStore settings,
         IAssistantProfileStore profiles,
         ISessionStateStore sessionState,
+        IMcpServerCatalog mcpServers,
         ILogger<AssistantSessionHost> logger)
     {
         _cockpit = cockpit;
         _settings = settings;
         _profiles = profiles;
         _sessionState = sessionState;
+        _mcpServers = mcpServers;
         _logger = logger;
     }
 
@@ -270,6 +280,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
             // than a retention rule invented here.
             resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
+            // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
+            enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
             launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
 
         Session = session;
@@ -288,6 +300,68 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             is { ConversationId: { Length: > 0 } conversationId }
             ? SessionResume.BySessionId(conversationId)
             : SessionResume.New;
+    }
+
+    /// <summary>
+    /// The MCP servers the assistant launches with: what it would have had anyway, plus the broad read server that
+    /// only it may mount (AC-544, criterion 2).
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the mount rule.</b> <c>cockpit-assistant</c> is registered as an internal endpoint, which means it
+    /// never reaches a session through the no-selection fan-out and never appears in a picker for anyone to tick —
+    /// it is mounted only by a launch that names it, and this line is the only one that does. That is exclusion by
+    /// construction rather than by permission check: the reason an ordinary session does not get these tools is that
+    /// nothing hands them to it, not that something decided not to.
+    /// <para>
+    /// <b>Why the rest of the selection has to be spelled out.</b> Passing an explicit set overrides the profile's own
+    /// saved one (<c>McpServerRegistryFilter.EffectiveSessionSelection</c>), and passing <em>only</em> the assistant
+    /// server would therefore leave the assistant with nothing else — no Depot, no YouTrack, none of what the epic
+    /// expects it to reach. So the profile's selection is carried through when it has one, and when it has none the
+    /// set is what the no-selection fan-out would have given it: every enabled server that is a choice at all.
+    /// <c>OfferedToOperator</c> is asked for that rather than a fourth hand-written copy of the same predicate — and
+    /// asking it is also what keeps <em>other</em> internal endpoints out of this set. Widening one privileged
+    /// launch into "and every internal endpoint too" is precisely the accident this rule exists to make impossible.
+    /// </para>
+    /// <para>
+    /// A catalog that cannot be read is not a reason to start with a crippled assistant, but it is also not a reason
+    /// to invent a selection: the failure is logged and the assistant launches with the broad server alone, which is
+    /// the one thing this method is actually responsible for. Reporting less would be a silent downgrade.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlySet<string>> _McpSelectionAsync(
+        Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
+    {
+        // The catalog is only needed for the no-saved-selection case, and a catalog that cannot be read is not a
+        // reason to fail the launch — but it is a reason to say so, because the assistant then comes up with fewer
+        // tools than the operator configured and nothing else would report that.
+        IReadOnlyList<McpServerConfig> catalog = [];
+        if (profile.EnabledMcpServerNames is null)
+        {
+            try
+            {
+                catalog = await _mcpServers.GetServersAsync(cancellationToken).ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "The MCP catalog could not be read for the assistant's launch; it starts with its own read tools only.");
+            }
+        }
+
+        return McpSelection(profile, catalog);
+    }
+
+    /// <summary>
+    /// The selection itself, as a pure function of the profile and the catalog — so the rule that matters can be
+    /// asserted directly rather than inferred from a started session. Internal for that test and for no other
+    /// caller.
+    /// </summary>
+    internal static IReadOnlySet<string> McpSelection(
+        Cockpit.Core.Profiles.SessionProfile profile, IReadOnlyList<McpServerConfig> catalog)
+    {
+        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AssistantIdentity.McpServerName };
+        selection.UnionWith(profile.EnabledMcpServerNames
+            ?? [.. McpServerRegistryFilter.OfferedToOperator(catalog).Select(server => server.Name)]);
+        return selection;
     }
 
     /// <summary>

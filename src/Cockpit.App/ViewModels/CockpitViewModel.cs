@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -5632,6 +5633,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
+            if (string.Equals(pane.Id, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                // AC-544: the assistant's pane id is what its broad read tools check callers against, and this is the
+                // one place in the app where a pane id arrives from disk. The check above cannot catch this case —
+                // the assistant is never in Sessions, so a workspace pane claiming its id looks unused. Restoring it
+                // would mint a per-session MCP token for that id (SessionMcpKeyring.TokenFor replaces the previous
+                // one), which both hands an ordinary session the cross-workspace read path and takes the identity
+                // away from the assistant, silently and for the rest of the run.
+                //
+                // Only reachable through a hand-edited or corrupted cockpit.json — the app never writes the assistant
+                // as a workspace pane, because it belongs to no workspace. That is inside the operator's own trust
+                // boundary, the same as reading COCKPIT_MCP_KEY out of a neighbour's environment, so this is not a
+                // defence against an attacker. It is a defence against a config that has gone wrong quietly, where
+                // the failure would otherwise be a guardrail that stopped holding with nothing on screen to say so.
+                _logger?.LogWarning(
+                    "A saved pane claims the assistant's reserved id '{PaneId}' and was not restored. Remove it from cockpit.json; the assistant owns that id.",
+                    pane.Id);
+                continue;
+            }
+
             try
             {
                 var state = states.FirstOrDefault(record => record.PaneId == pane.Id);
@@ -5863,6 +5884,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         target.Statusline = statusline ?? string.Empty;
         return true;
     }
+
+    // The shape a ticket id takes everywhere this codebase already writes one by hand ("AC-13", "AC-544") — two or
+    // more uppercase letters, a dash, digits — kept as the one pattern every brief-seeded statusline is read against
+    // (AC-544) rather than reinvented per caller. Compiled: matched once per embedded session start, never in a hot
+    // loop, but the pattern is fixed for the process's life so there is no reason to re-parse it.
+    //
+    // Anchored at the start, which is the whole difference between this seeding something useful and something wrong.
+    // Unanchored, the same shape matches "UTF-8", "SHA-256", "GPT-4", "RFC-2119" and "ISO-9001", and a brief that
+    // mentions any of them before naming its ticket would seed a statusline saying the session is working on UTF-8.
+    // Anchoring costs the case where a brief buries its ticket mid-sentence; that seeds nothing, which is the right
+    // way to be wrong here. The convention this reads is real and narrow — a brief opens with its ticket
+    // (AutopilotStepBrief puts step.Title first, and a run label reads "AC-251 - persist usage") — so anchoring
+    // matches the convention rather than hunting for a ticket anywhere in free text.
+    private static readonly Regex _TicketIdPattern = new(@"^[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The ticket id a session's brief text opens with, if any (AC-544) — the small, tracker-neutral pattern every
+    /// hand-written brief in this codebase already uses ("AC-13", "AC-544"). Lets a host-side spawn path seed a fresh
+    /// session's statusline deterministically, from what it already knows, instead of leaving the line blank until
+    /// (or unless) the agent inside calls <c>set_status</c> itself.
+    /// <para>
+    /// Null for text that does not open with one — and a caller with nothing to find here must seed nothing rather
+    /// than invent a line. A blank statusline is read, correctly, as "this session has not said"; a confidently wrong
+    /// one is read as fact, and it is the assistant that would go on to repeat it.
+    /// </para>
+    /// </summary>
+    private static string? _TicketFromBrief(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text.TrimStart()) is { Success: true } match
+            ? match.Value
+            : null;
 
     /// <summary>
     /// A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
@@ -6357,6 +6408,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RunLabel = request.RunLabel;
         session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
         _SeedSessionPreferences(session);
+
+        // AC-544: the host already knows the ticket a briefed run picked up — it is sitting right there in the
+        // request, the embedder (Autopilot's step brief, its run label) wrote it before this session ever started.
+        // Seed the statusline from it now rather than leave the line blank until the agent inside remembers to call
+        // set_status itself: a model that never calls it, or dies before its first turn, otherwise never shows one at
+        // all. Checked in the order a caller is likeliest to have put the ticket: the visible opening turn first
+        // (a step's own brief, e.g. "AC-13 — …"), the run's human label second. Neither carrying one seeds nothing —
+        // an invented line would be worse than a blank one.
+        if ((_TicketFromBrief(request.InitialUserMessage) ?? _TicketFromBrief(request.RunLabel)) is { } ticket)
+        {
+            session.Statusline = ticket;
+        }
 
         // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
         // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded

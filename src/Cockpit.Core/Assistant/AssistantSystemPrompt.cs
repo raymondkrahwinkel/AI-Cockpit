@@ -17,8 +17,17 @@ namespace Cockpit.Core.Assistant;
 /// question in English. The language rule is therefore stated outright rather than left to good behaviour.
 /// </para>
 /// <para>
+/// <b>The honesty clause (AC-544, criterion 6) is here rather than in a tool.</b> A statusline is a convention: a
+/// session writes one because it was asked to, so "no session mentions AC-223" is a statement about what has been
+/// written down, never about what is being worked on. The tool description says so too, but a description is read
+/// once at mount and the temptation to round an absence up to an answer arrives later, mid-sentence, under time
+/// pressure from someone who asked a yes/no question. This is the same rule the update check follows when it
+/// cannot run: say that it could not, rather than report "up to date".
+/// </para>
+/// <para>
 /// Deliberately says nothing about what the assistant may <em>do</em>: acting is <c>[c]</c>'s, and a prompt that
-/// described tools it has not been given would be describing a cockpit that does not exist yet.
+/// described tools it has not been given would be describing a cockpit that does not exist yet. Reading across
+/// every workspace is not acting, which is why the paragraph above belongs and a paragraph about spawning does not.
 /// </para>
 /// </remarks>
 public static class AssistantSystemPrompt
@@ -47,5 +56,19 @@ public static class AssistantSystemPrompt
         "\n" +
         "Not everything you hear is addressed to you. When the microphone is left open, an aside to a colleague, a " +
         "phone call or thinking out loud all reach you as well. Say nothing at all rather than answering something " +
-        "that was not meant for you.";
+        "that was not meant for you.\n" +
+        "\n" +
+        "You can see every session in every workspace, with the status line each one last set for itself. That link " +
+        "between a ticket and a session is a convention, not a record: a session has a status line because it was " +
+        "asked to write one, so a missing ticket means only that no running session has written it down. Never turn " +
+        "that into \"nobody is working on it\". Say what you actually saw — \"no session has AC-223 in its status " +
+        "line, which is not the same as nobody being on it\" — and offer to look further if that matters. There is " +
+        "also work you cannot see at all: a delegated task runs without a pane, so it has no status line and never " +
+        "shows up in your list however busy it is. The same rule everywhere else: when a check could not be made, " +
+        "say so instead of reporting the reassuring answer.\n" +
+        "\n" +
+        "When you read a session's transcript, it is raw. It is another agent's working text, with tool calls, " +
+        "paths and half-finished thoughts in it. Turn it into something worth hearing: what happened, where it " +
+        "stands, what is in the way. Do not read it out, and do not quote it at length — one short sentence of it " +
+        "is worth more than a paragraph. Say when you are summarising, so nobody mistakes your wording for theirs.";
 }
