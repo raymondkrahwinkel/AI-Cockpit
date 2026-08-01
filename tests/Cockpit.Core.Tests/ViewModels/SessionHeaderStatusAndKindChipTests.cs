@@ -1,3 +1,4 @@
+using System.Globalization;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
@@ -116,7 +117,7 @@ public class SessionHeaderStatusAndKindChipTests
     [Fact]
     public async Task SessionInitialized_CountsNamesAsGiven_NotResolvedAgainstTheLiveRegistry()
     {
-        // Pins the deliberate simplification (see _enabledMcpServerNames' own doc comment): the header counts the
+        // Pins the deliberate simplification (see McpServerSelection's own doc comment): the header counts the
         // names it was handed, it does not re-check them against a live McpServerConfig registry to exclude
         // Internal/AlwaysMounted entries. Every real UI-driven caller's names already exclude those (the
         // New-session checklist only ever offers McpServerRegistryFilter.OfferedToOperator servers, and AC-130
@@ -127,6 +128,81 @@ public class SessionHeaderStatusAndKindChipTests
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
 
         Assert.Equal("Connected (2 MCP servers).", vm.Status);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// AC-563 criterion 5. Both readings come off <see cref="SessionPanelViewModel.McpServerSelection"/>, so the
+    /// shape this rules out is a header saying three and a hover naming two — with nothing on screen to say which
+    /// of the two is the session's actual setup. Asserted by counting the listed names against the number in the
+    /// line rather than against a literal, so the two stay tied even if either wording changes.
+    /// </summary>
+    [Fact]
+    public async Task TheHoverNamesExactlyTheServersTheStatusLineCounts()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "youtrack", "filesystem", "git" });
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        var counted = int.Parse(new string([.. vm.Status.Where(char.IsDigit)]), CultureInfo.InvariantCulture);
+        var listed = vm.McpServersTooltip.Split('\n')[1..];
+
+        Assert.Equal(counted, listed.Length);
+        // Sorted, because a list you look a name up in is sorted, and the order a caller happened to build the
+        // set in is not an order.
+        Assert.Equal(new[] { "filesystem", "git", "youtrack" }, listed);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// AC-563 criterion 6, and the reason this ticket is not just "bind the names": an unknown selection rendered
+    /// as an empty list reads as "this session has no MCP servers" — a claim about the world that not being able
+    /// to work something out does not support. The status line already declines to guess here (it says
+    /// "Connected." with no number); the hover has to decline in the same direction.
+    /// </summary>
+    [Fact]
+    public async Task WithNothingNamedAnywhere_TheHoverSaysTheSelectionIsUnknown_NotThatThereAreNone()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: null, profile: ClaudeCliProfile);
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Contains("Not known", vm.McpServersTooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain("None", vm.McpServersTooltip, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>AC-563 criterion 7: none is a finding and says so, rather than hovering to nothing at all.</summary>
+    [Fact]
+    public async Task WithAnEmptySelection_TheHoverSaysThereAreNone()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string>());
+
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        Assert.Contains("None", vm.McpServersTooltip, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not known", vm.McpServersTooltip, StringComparison.Ordinal);
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// AC-563 criterion 8: an agent's <c>set_status</c> line replaces the words in the activity column, and the
+    /// server list must not go with them — that would take the hover away exactly while a session is working.
+    /// </summary>
+    [Fact]
+    public async Task AnAgentStatuslineDoesNotTakeTheServerListWithIt()
+    {
+        var vm = await _StartedVmAsync(enabledMcpServerNames: new HashSet<string> { "filesystem", "git" });
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "/repo", Tools = ["Read"] });
+
+        vm.Statusline = "AC-563 — wiring the header hover";
+
+        Assert.Contains("filesystem", vm.McpServersTooltip, StringComparison.Ordinal);
+        Assert.Contains("git", vm.McpServersTooltip, StringComparison.Ordinal);
 
         await vm.DisposeAsync();
     }

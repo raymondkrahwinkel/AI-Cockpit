@@ -162,8 +162,8 @@ public partial class CockpitView : UserControl
         else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
         {
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
-            // keyboard focus onto the newly active session's terminal so typing lands there straight away.
-            _FocusSelectedSessionTerminal();
+            // keyboard focus onto the newly active session's own input so typing lands there straight away.
+            _FocusSelectedSessionInput();
         }
     }
 
@@ -1150,16 +1150,19 @@ public partial class CockpitView : UserControl
 
         cockpit.SelectSessionCommand.Execute(session);
 
-        if (e.Source is not (Button or ToggleButton or TextBox))
+        // SelectableTextBlock joins the list now that this focuses an SDK pane's composer too: the transcript is
+        // selectable text, and stealing focus on the press that starts a drag-select would take the selection
+        // with it. On a terminal pane there was nothing to exclude — the terminal handles its own selection.
+        if (e.Source is not (Button or ToggleButton or TextBox or SelectableTextBlock))
         {
-            _FocusTerminalIn(container);
+            _FocusInputIn(container);
         }
     }
 
     // The other half of the click path: focus that lands in a pane by any route — the keyboard, a restored
     // window, a plugin moving it — makes that session the selected one, so the accent border, InjectText and
     // the F9 voice hold all follow the pane the operator is actually in (AC-65). Guarded on the current
-    // selection so the focus a selection-change itself moves (see _FocusSelectedSessionTerminal) is a no-op
+    // selection so the focus a selection-change itself moves (see _FocusSelectedSessionInput) is a no-op
     // and cannot loop.
     private void OnSessionPaneGotFocus(object? sender, FocusChangedEventArgs e)
     {
@@ -1173,9 +1176,9 @@ public partial class CockpitView : UserControl
         cockpit.SelectSessionCommand.Execute(session);
     }
 
-    // Puts keyboard focus on the currently selected session's terminal, once layout has settled (a newly
+    // Puts keyboard focus on the currently selected session's own input, once layout has settled (a newly
     // revealed pane in single/zoom mode isn't realised until then).
-    private void _FocusSelectedSessionTerminal()
+    private void _FocusSelectedSessionInput()
     {
         if (DataContext is not CockpitViewModel cockpit || cockpit.SelectedSession is not { } session)
         {
@@ -1193,7 +1196,7 @@ public partial class CockpitView : UserControl
             {
                 if (ReferenceEquals(child.DataContext, session))
                 {
-                    _FocusTerminalIn(child);
+                    _FocusInputIn(child);
                     return;
                 }
             }
@@ -1215,13 +1218,28 @@ public partial class CockpitView : UserControl
         return null;
     }
 
-    private static void _FocusTerminalIn(Control container)
+    /// <summary>
+    /// Puts keyboard focus on whatever this pane types into: a terminal pane's terminal, an SDK pane's composer.
+    /// </summary>
+    /// <remarks>
+    /// This only ever looked for a terminal, so switching to an SDK session moved the selection and left focus
+    /// where it was — on the session the operator had just left, which is where the next keystroke went. It reads
+    /// as the app ignoring the switch, and on a terminal pane it never showed, because there the one control it
+    /// knew about is the one that wanted focus. Fixed here rather than at the selection-change caller: the pane
+    /// click path goes through the same helper and had the same hole.
+    /// </remarks>
+    internal static void _FocusInputIn(Control container)
     {
-        foreach (var terminal in container.GetVisualDescendants().OfType<TerminalControl>())
+        if (container.GetVisualDescendants().OfType<TerminalControl>().FirstOrDefault() is { } terminal)
         {
             terminal.Focus();
             return;
         }
+
+        // By name, not "the first TextBox": a pane also carries the inline rename box and the usage warning's
+        // resume prompt, and either would swallow the focus the composer is owed.
+        container.GetVisualDescendants().OfType<TextBox>()
+            .FirstOrDefault(box => box.Name == "InputBox")?.Focus();
     }
 
     // Inline rename: Enter commits, Escape cancels; losing focus commits an in-progress rename.

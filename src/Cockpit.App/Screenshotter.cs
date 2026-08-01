@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
@@ -141,6 +143,18 @@ internal static class Screenshotter
         // this ticket's own acceptance criteria demanded be eyeballed on screen, not just asserted in a test.
         ["session-subagent"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: false) },
         ["session-subagent-expanded"] = (width, height) => new Window { Width = width, Height = height, Content = _SubAgentSession(expanded: true) },
+        // AC-558: the transcript lines Raymond reported — a bare URL, and a link wrapped in bold that used to
+        // print its own markdown syntax on screen. Rendered rather than only asserted on the parser, because
+        // "a link is there" and "it reads as a link, and the one next to it is a different link" are separate
+        // claims and only the second is visible.
+        ["session-links"] = (width, height) => new Window { Width = width, Height = height, Content = _LinkTranscript() },
+        ["session-settings-flyout"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: true) },
+        ["session-settings-flyout-no-live-controls"] = (width, height) => new Window { Width = width, Height = height, Content = _SessionSettingsFlyout(withLiveControls: false) },
+        // AC-563, staged open by the Hovers table below. See _McpHeader for why each of these four is its own.
+        ["session-kind-chip-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot" }) },
+        ["session-mcp-hover"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader(servers: new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
+        ["session-mcp-hover-statusline"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader("AC-563 — wiring the header hover", new HashSet<string> { "youtrack", "depot", "cockpit-local-ci", "github-issues" }) },
+        ["session-mcp-hover-unknown"] = (width, height) => new Window { Width = width, Height = height, Content = _McpHeader() },
         ["tty"] = (width, height) => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
         // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
         // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
@@ -278,8 +292,46 @@ internal static class Screenshotter
             ScreenshotSelectionScene.Stage(surface, scene);
         }
 
+        if (Hovers.TryGetValue(scene ?? string.Empty, out var open))
+        {
+            open(window);
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+        }
+
         return window;
     }
+
+    /// <summary>
+    /// Scenes whose subject is a flyout or a tooltip. Both attach to a host that does not exist until the window
+    /// is up, so — like the selection surface's modes above — they are opened here rather than built into the
+    /// scene. Headless renders them into the parent window's own frame, so the capture still shows them in place
+    /// on the header they belong to.
+    /// </summary>
+    private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
+    {
+        ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
+        ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
+        ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),
+        ["session-mcp-hover-unknown"] = window => _OpenTooltip(window, "ActivityColumn"),
+    };
+
+    private static void _OpenFlyout(Window window, string buttonName)
+    {
+        var button = _Named<Button>(window, buttonName);
+        button.Flyout?.ShowAt(button);
+    }
+
+    private static void _OpenTooltip(Window window, string controlName) =>
+        ToolTip.SetIsOpen(_Named<Control>(window, controlName), true);
+
+    // By name over the whole rendered tree, because the header bar is a control of its own and its named parts
+    // are not in the view's name scope — FindControl on the view would come back empty.
+    private static T _Named<T>(Window window, string name)
+        where T : Control
+        => window.GetVisualDescendants().OfType<T>().First(control => control.Name == name);
 
     /// <summary>
     /// The window a scene name asks for, built and sized but not shown. Its own step so the table above can be
@@ -756,6 +808,61 @@ internal static class Screenshotter
     // A live-looking transcript with a Task tool call whose sub-agent is (or just was) active — its own text,
     // tool call and result — nested under the Task row (AC-146), either at rest (collapsed, the default) or
     // expanded so the nested activity actually shows.
+    /// <summary>
+    /// AC-563: the header in the states its two hovers read differently. The provider chip is expected to show
+    /// nothing at all once opened — the tools card is gone, and an absence is exactly what a passing test suite
+    /// also looks like, so it gets a render of its own. The activity column carries the MCP servers instead:
+    /// named, unknown (criterion 6 — never an empty list), and with an agent's statusline in the column
+    /// (criterion 8 — the list must not leave with the words it replaced).
+    /// </summary>
+    private static SessionView _McpHeader(string? statusline = null, IReadOnlySet<string>? servers = null)
+    {
+        var viewModel = new SessionViewModel { Statusline = statusline ?? string.Empty, McpServerSelection = servers };
+        // Off the selection, never typed out beside it — a scene that staged its own count would be free to stage
+        // one the hover disagrees with, which is the very thing these renders exist to rule out.
+        viewModel.Status = viewModel.ConnectedStatusLine;
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    /// <summary>
+    /// AC-562: the sliders flyout with the reading level in it, in both states criterion 3 separates — a
+    /// provider that declares live controls, and one that declares none, where the button used to disappear
+    /// and take the reading level with it.
+    /// </summary>
+    private static SessionView _SessionSettingsFlyout(bool withLiveControls)
+    {
+        var viewModel = new SessionViewModel();
+        if (!withLiveControls)
+        {
+            viewModel.LiveControls.Clear();
+        }
+
+        return new SessionView { DataContext = viewModel };
+    }
+
+    private static SessionView _LinkTranscript()
+    {
+        var viewModel = new SessionViewModel { Title = "personal - webshop" };
+
+        viewModel.Apply(new AssistantTextDelta
+        {
+            SessionId = "s1",
+            BlockIndex = 0,
+            Text = """
+                   PR created: https://github.com/raymondkrahwinkel/AI-Cockpit/pull/365
+
+                   Pushed and PR'd: **[#365](https://github.com/raymondkrahwinkel/AI-Cockpit/pull/365)**
+
+                   Notes are in the *[release page](https://github.com/raymondkrahwinkel/AI-Cockpit/releases)*
+                   (https://github.com/raymondkrahwinkel/AI-Cockpit/wiki), and `curl https://api.github.com/rate_limit`
+                   stays plain text.
+                   """,
+        });
+
+        return new SessionView { DataContext = viewModel };
+    }
+
     private static SessionView _SubAgentSession(bool expanded)
     {
         var viewModel = new SessionViewModel { Title = "personal - webshop" };
