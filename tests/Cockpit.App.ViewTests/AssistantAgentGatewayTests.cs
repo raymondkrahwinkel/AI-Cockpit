@@ -1,4 +1,5 @@
 using System.Reflection;
+using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
@@ -21,7 +22,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Core.Workspaces;
 using NSubstitute;
 
-namespace Cockpit.Core.Tests.Assistant;
+namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// The host-side spawn service (AC-545): <see cref="AssistantAgentGateway"/> over a real
@@ -29,16 +30,28 @@ namespace Cockpit.Core.Tests.Assistant;
 /// desk it was told to and leaves the operator where they were.
 /// </summary>
 /// <remarks>
+/// <b>Why this file lives in the view tests.</b> It used to sit in <c>Cockpit.Core.Tests</c>, which stands up no
+/// Avalonia application and therefore has no dispatcher anyone pumps. Every call here goes through the gateway's
+/// UI-thread marshalling, and with no dispatcher that step has two outcomes, decided by nothing more than which
+/// thread happened to touch <c>Dispatcher.UIThread</c> first: on that thread the marshalling is skipped inline and
+/// the test proves nothing about it, on any other it queues onto a loop nobody runs and the whole test host hangs.
+/// A test that is green for the first reason is worse than no test, and the second cost an eighteen-minute CI job
+/// that never printed a summary. Here the collection fixture owns a real UI thread with a running main loop, so the
+/// marshalling is the real thing: set-up runs on that thread, and the gateway is awaited from the test thread —
+/// which is the branch production actually takes.
+/// <para>
 /// <b>What these tests are for.</b> Not the scoping rule — that is <see cref="SpawnTarget"/>'s two doors and is
 /// decided before this class is reached. What is pinned here is the duller half the gateway does own: that a
 /// request it cannot carry out comes back as a <em>reason</em> rather than an exception, that every one of those
 /// refusals reaches the trail (a gate that only logs what it let through cannot show it working), and that a
 /// refusal leaves nothing behind — the next call is served normally.
+/// </para>
 /// <para>
 /// <b>Why the audit log is a real recorder and not a substitute.</b> Every assertion here about a refusal is an
 /// assertion about what was <em>written</em>, so the fake keeps the entries rather than a call count.
 /// </para>
 /// </remarks>
+[Collection("avalonia")]
 public class AssistantAgentGatewayTests
 {
     private const string ProfileLabel = "work";
@@ -46,7 +59,8 @@ public class AssistantAgentGatewayTests
     [Fact]
     public async Task SpawnOntoAWorkspaceIdThatNamesNothing_IsRefusedWithAReason_AndTheRefusalReachesTheTrail()
     {
-        var (gateway, _, trail) = _Gateway(_Settings(_Desk("Sessions", WorkspaceType.Sessions)));
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Sessions", WorkspaceType.Sessions))));
 
         var result = await gateway.SpawnAsync(_Request("no-such-desk"));
 
@@ -85,7 +99,7 @@ public class AssistantAgentGatewayTests
         // A dashboard (or a projects overview, or a plugin's own desk) would take the session and never draw it:
         // the pane would run, cost money and be unreachable. Refusing is the kinder half of that pair.
         var desk = _Desk("Monitoring", WorkspaceType.FromId(workspaceTypeId));
-        var (gateway, _, trail) = _Gateway(_Settings(desk));
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id));
 
@@ -105,7 +119,7 @@ public class AssistantAgentGatewayTests
         // The other side of the theory above: the refusal is about the type, not about every desk. Without this
         // the theory would still pass if the gateway refused everything.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, _) = _Gateway(_Settings(desk));
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id));
 
@@ -118,7 +132,7 @@ public class AssistantAgentGatewayTests
         // By label and never by "the first one that looks close": the profile decides provider and model, so a
         // near-miss is a bill the operator did not agree to.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, trail) = _Gateway(_Settings(desk));
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id) with { ProfileLabel = "opus-everything" });
 
@@ -139,7 +153,8 @@ public class AssistantAgentGatewayTests
         // that the assistant is told, in a sentence it can say out loud, rather than the tool call blowing up as
         // "the tool failed", which is the one answer that helps nobody.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, trail) = _Gateway(_Settings(desk), _CockpitWithoutSessionMachinery());
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(desk), _CockpitWithoutSessionMachinery()));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id));
 
@@ -160,17 +175,21 @@ public class AssistantAgentGatewayTests
         // and not a rule. Here the pane is deliberately findable and an ordinary agent session in every other
         // respect — the only thing wrong with it is who it is.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = _Gateway(_Settings(desk));
-        var impostor = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
-        impostor.AdoptPaneId(AssistantIdentity.PaneId);
-        cockpit.Sessions.Add(impostor);
-        Assert.NotNull(cockpit.FindSession(AssistantIdentity.PaneId));
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            var impostor = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
+            impostor.AdoptPaneId(AssistantIdentity.PaneId);
+            cockpit.Sessions.Add(impostor);
+            Assert.NotNull(cockpit.FindSession(AssistantIdentity.PaneId));
+        });
 
         var result = await gateway.StopAsync(AssistantIdentity.PaneId);
 
         Assert.False(result.Ok);
         Assert.Contains("my own session", result.Error);
-        Assert.Contains(cockpit.Sessions, session => session.PaneId == AssistantIdentity.PaneId);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Sessions, session => session.PaneId == AssistantIdentity.PaneId));
 
         var entry = Assert.Single(trail.Entries);
         Assert.Equal(AssistantSpawnAction.Stop, entry.Action);
@@ -181,7 +200,8 @@ public class AssistantAgentGatewayTests
     [Fact]
     public async Task StoppingAPaneIdNothingIsRunningUnder_IsRefused_AndTheRefusalReachesTheTrail()
     {
-        var (gateway, _, trail) = _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions)));
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(
+            () => _Gateway(_Settings(_Desk("Release", WorkspaceType.Sessions))));
 
         var result = await gateway.StopAsync("pane-that-closed");
 
@@ -200,15 +220,20 @@ public class AssistantAgentGatewayTests
         // A terminal has a pane id and no agent on the other end — the same test the read path lists by, so what
         // can be stopped is exactly what could be seen.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = _Gateway(_Settings(desk));
-        var terminal = new TtyViewModel { WorkspaceId = desk.Id, Title = "pwsh", ShowPluginHeaderItems = false };
-        cockpit.Sessions.Add(terminal);
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        var terminal = Dispatcher.UIThread.Invoke(() =>
+        {
+            var tty = new TtyViewModel { WorkspaceId = desk.Id, Title = "pwsh", ShowPluginHeaderItems = false };
+            cockpit.Sessions.Add(tty);
+            return tty;
+        });
 
         var result = await gateway.StopAsync(terminal.PaneId);
 
         Assert.False(result.Ok);
         Assert.Contains("is a terminal pane", result.Error);
-        Assert.Contains(cockpit.Sessions, session => session.PaneId == terminal.PaneId);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.Contains(cockpit.Sessions, session => session.PaneId == terminal.PaneId));
 
         var entry = Assert.Single(trail.Entries);
         Assert.Equal(AssistantSpawnAction.Stop, entry.Action);
@@ -224,22 +249,29 @@ public class AssistantAgentGatewayTests
         // selected session, and where the pane actually ends up.
         var here = _Desk("Here", WorkspaceType.Sessions);
         var elsewhere = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = _Gateway(_Settings(here, elsewhere));
-        var watching = new SessionViewModel { WorkspaceId = here.Id, Title = "What the operator is reading" };
-        cockpit.Sessions.Add(watching);
-        cockpit.SelectedSession = watching;
-        Assert.Equal(here.Id, cockpit.Workspaces.Settings.Active?.Id);
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(here, elsewhere)));
+        var watching = Dispatcher.UIThread.Invoke(() =>
+        {
+            var session = new SessionViewModel { WorkspaceId = here.Id, Title = "What the operator is reading" };
+            cockpit.Sessions.Add(session);
+            cockpit.SelectedSession = session;
+            Assert.Equal(here.Id, cockpit.Workspaces.Settings.Active?.Id);
+            return session;
+        });
 
         var result = await gateway.SpawnAsync(_Request(elsewhere.Id));
 
         Assert.True(result.Ok, result.Error);
         Assert.NotNull(result.PaneId);
-        var spawned = cockpit.FindSession(result.PaneId!);
+        var spawned = Dispatcher.UIThread.Invoke(() => cockpit.FindSession(result.PaneId!));
         Assert.NotNull(spawned);
         Assert.Equal(elsewhere.Id, spawned!.WorkspaceId);
 
-        Assert.Equal(here.Id, cockpit.Workspaces.Settings.Active?.Id);
-        Assert.Same(watching, cockpit.SelectedSession);
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            Assert.Equal(here.Id, cockpit.Workspaces.Settings.Active?.Id);
+            Assert.Same(watching, cockpit.SelectedSession);
+        });
     }
 
     [Fact]
@@ -248,7 +280,7 @@ public class AssistantAgentGatewayTests
         // Criterion 5 names four things the trail must carry. One entry, not two: the refusal path and the
         // success path must not both fire for the same request.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, _, trail) = _Gateway(_Settings(desk));
+        var (gateway, _, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var result = await gateway.SpawnAsync(_Request(desk.Id) with { WorkingDirectory = @"C:\repo", SessionName = "AC-545" });
 
@@ -274,14 +306,18 @@ public class AssistantAgentGatewayTests
         // most likely to be wanted, and it has no session to be inferred from.
         var busy = _Desk("Here", WorkspaceType.Sessions);
         var empty = _Desk("Empty", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = _Gateway(_Settings(busy, empty, _Desk("Monitoring", WorkspaceType.Dashboard)));
-        cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(busy, empty, _Desk("Monitoring", WorkspaceType.Dashboard)));
+            built.Cockpit.Sessions.Add(new SessionViewModel { WorkspaceId = busy.Id, Title = "AC-545" });
+            return built;
+        });
 
         var rows = await gateway.ListWorkspacesAsync();
 
         // Derived from the settings the cockpit actually holds, not from a list repeated here.
         Assert.Equal(
-            cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id),
+            Dispatcher.UIThread.Invoke(() => cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Id).ToArray()),
             rows.Select(row => row.Id));
         Assert.Equal(1, rows.Single(row => row.Id == busy.Id).SessionCount);
         Assert.Equal(0, rows.Single(row => row.Id == empty.Id).SessionCount);
@@ -295,11 +331,12 @@ public class AssistantAgentGatewayTests
         // Reported rather than left for the assistant to infer from the type id, and derived here from the same
         // open set WorkspaceType itself defines.
         var desks = _AllKnownWorkspaceTypes().Select((type, index) => _Desk($"Desk {index}", type)).ToArray();
-        var (gateway, cockpit, _) = _Gateway(_Settings(desks));
+        var (gateway, cockpit, _) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desks)));
 
         var rows = await gateway.ListWorkspacesAsync();
 
-        var typesById = cockpit.Workspaces.Settings.Workspaces.ToDictionary(w => w.Id, w => w.Type);
+        var typesById = Dispatcher.UIThread.Invoke(
+            () => cockpit.Workspaces.Settings.Workspaces.ToDictionary(w => w.Id, w => w.Type));
         Assert.All(rows, row => Assert.Equal(typesById[row.Id] == WorkspaceType.Sessions, row.CanHostSessions));
         Assert.Contains(rows, row => row.CanHostSessions);
         Assert.Contains(rows, row => !row.CanHostSessions);
@@ -312,12 +349,16 @@ public class AssistantAgentGatewayTests
         // a desk on purpose and left looking like an ordinary agent session in every other way, so the only thing
         // that can keep it out of the count is the check on its identity.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, _) = _Gateway(_Settings(desk));
-        var assistant = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
-        assistant.AdoptPaneId(AssistantIdentity.PaneId);
-        cockpit.Sessions.Add(assistant);
-        var ordinary = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
-        cockpit.Sessions.Add(ordinary);
+        var (gateway, _, _) = Dispatcher.UIThread.Invoke(() =>
+        {
+            var built = _Gateway(_Settings(desk));
+            var assistant = new SessionViewModel { WorkspaceId = desk.Id, Title = "The assistant" };
+            assistant.AdoptPaneId(AssistantIdentity.PaneId);
+            built.Cockpit.Sessions.Add(assistant);
+            var ordinary = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
+            built.Cockpit.Sessions.Add(ordinary);
+            return built;
+        });
 
         var rows = await gateway.ListWorkspacesAsync();
 
@@ -330,7 +371,7 @@ public class AssistantAgentGatewayTests
         // Criterion 7. A refusal is a sentence the assistant says and then carries on from; nothing about it may
         // leave the gateway unusable, which is what a cached failure or a half-applied state would do.
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = _Gateway(_Settings(desk));
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
 
         var refused = await gateway.SpawnAsync(_Request("no-such-desk"));
         Assert.False(refused.Ok);
@@ -342,7 +383,7 @@ public class AssistantAgentGatewayTests
         // And a valid spawn straight after the refusal still starts.
         var started = await gateway.SpawnAsync(_Request(desk.Id));
         Assert.True(started.Ok, started.Error);
-        Assert.NotNull(cockpit.FindSession(started.PaneId!));
+        Assert.NotNull(Dispatcher.UIThread.Invoke(() => cockpit.FindSession(started.PaneId!)));
 
         // Both outcomes on the trail, in order, so the refusal is visible next to the spawn that followed it.
         Assert.Equal(2, trail.Entries.Count);
@@ -354,9 +395,13 @@ public class AssistantAgentGatewayTests
     public async Task ARefusedStop_IsNotADeadEnd_TheNextStopStillWorks()
     {
         var desk = _Desk("Release", WorkspaceType.Sessions);
-        var (gateway, cockpit, trail) = _Gateway(_Settings(desk));
-        var session = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
-        cockpit.Sessions.Add(session);
+        var (gateway, cockpit, trail) = Dispatcher.UIThread.Invoke(() => _Gateway(_Settings(desk)));
+        var session = Dispatcher.UIThread.Invoke(() =>
+        {
+            var added = new SessionViewModel { WorkspaceId = desk.Id, Title = "AC-545" };
+            cockpit.Sessions.Add(added);
+            return added;
+        });
 
         Assert.False((await gateway.StopAsync(AssistantIdentity.PaneId)).Ok);
 
@@ -364,7 +409,8 @@ public class AssistantAgentGatewayTests
 
         Assert.True(stopped.Ok, stopped.Error);
         Assert.Equal("AC-545", stopped.SessionName);
-        Assert.DoesNotContain(cockpit.Sessions, live => live.PaneId == session.PaneId);
+        Dispatcher.UIThread.Invoke(
+            () => Assert.DoesNotContain(cockpit.Sessions, live => live.PaneId == session.PaneId));
         Assert.Equal(2, trail.Entries.Count);
         Assert.Null(trail.Entries[1].Refusal);
     }
@@ -394,6 +440,10 @@ public class AssistantAgentGatewayTests
     private static WorkspaceSettings _Settings(params Workspace[] workspaces) =>
         new() { Workspaces = workspaces, ActiveWorkspaceId = workspaces[0].Id };
 
+    /// <summary>
+    /// Built on the UI thread by every caller: <c>CockpitViewModel</c> and its collections belong to the thread
+    /// the headless platform owns, and the gateway marshals onto that same thread when it is called.
+    /// </summary>
     private static (AssistantAgentGateway Gateway, CockpitViewModel Cockpit, RecordingSpawnTrail Trail) _Gateway(
         WorkspaceSettings settings, CockpitViewModel? host = null)
     {

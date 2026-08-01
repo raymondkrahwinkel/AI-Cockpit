@@ -27,11 +27,13 @@ namespace Cockpit.App.ViewTests;
 /// arriving off the UI thread is marshalled onto it, and what creating a desk actually does.
 /// </summary>
 /// <remarks>
-/// <b>Why these live here and not with the rest of the gateway's tests.</b> Those run in <c>Cockpit.Core.Tests</c>,
-/// which stands up no Avalonia application — so <c>Dispatcher.UIThread.CheckAccess()</c> answers true there and every
-/// call takes the inline branch. The branch that matters in production is the other one: an MCP tool call arrives on
-/// a Kestrel request thread, and <c>CockpitViewModel.Sessions</c> and the workspace settings are UI-thread state.
-/// A gateway that got that wrong would pass every test in that file and corrupt a collection in the app.
+/// <b>Why a real dispatcher is the whole point.</b> The branch that matters in production is the marshalling one: an
+/// MCP tool call arrives on a Kestrel request thread, and <c>CockpitViewModel.Sessions</c> and the workspace settings
+/// are UI-thread state. Without an Avalonia application there is no dispatcher anyone pumps, and that branch either
+/// collapses into the inline one (<c>CheckAccess()</c> answers true on whichever thread touched the dispatcher first)
+/// or queues onto a loop nobody runs and hangs the test host — which is why the rest of the gateway's tests moved
+/// here too, into <see cref="AssistantAgentGatewayTests"/>. What is left in this file is the part that needs more
+/// than marshalling: a spawn crossing threads on purpose, and what creating a desk actually does.
 /// </remarks>
 [Collection("avalonia")]
 public class AssistantAgentGatewayUiThreadTests
