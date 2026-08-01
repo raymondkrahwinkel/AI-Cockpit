@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -108,6 +109,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         _settingsStore = settingsStore;
         _playbackQueue = playbackQueue;
         _observedSession = _host.Session;
+        _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
     }
 
@@ -212,6 +214,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             var session = _host.Session;
             if (!ReferenceEquals(_observedSession, session))
             {
+                _WatchTranscript(_observedSession, session);
                 _observedSession = session;
                 OnPropertyChanged(nameof(Session));
                 OnPropertyChanged(nameof(HasSession));
@@ -231,9 +234,49 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>
-    /// Detaches from the host — nothing more. Deliberately does not touch <see cref="Session"/> in any way: this
-    /// runs when the window closes, and closing this window must never end the assistant's conversation
-    /// (criterion 7). It only stops this peephole listening for host changes it can no longer show anyone.
+    /// Moves the transcript watch from one session to the next, so <see cref="HasMessages"/> is re-raised as rows
+    /// arrive rather than only when the session itself is swapped.
     /// </summary>
-    public void Dispose() => _host.PropertyChanged -= _OnHostPropertyChanged;
+    /// <remarks>
+    /// <b>Why this is needed at all.</b> <see cref="HasMessages"/> is what the window switches on: the transcript
+    /// scroller is bound to it, and the "type a message to start talking" placeholder to its inverse. It was only
+    /// ever re-raised from the <c>Session</c> branch above — and at that exact moment the transcript is empty,
+    /// because the session is set the instant it starts and the first row does not exist until the turn produces
+    /// it. So it read false, nothing raised it again, and the window sat on its placeholder for the whole life of
+    /// the session while the assistant answered behind it. The rows were arriving the whole time;
+    /// <c>ItemsSource</c> is an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/> and was
+    /// updating perfectly inside a scroller nobody could see.
+    /// <para>
+    /// Watching the collection rather than polling <c>HasTranscript</c>: the collection is the thing that changes,
+    /// and it already announces itself.
+    /// </para>
+    /// </remarks>
+    private void _WatchTranscript(SessionViewModel? previous, SessionViewModel? next)
+    {
+        if (previous is not null)
+        {
+            previous.Transcript.CollectionChanged -= _OnTranscriptChanged;
+        }
+
+        if (next is not null)
+        {
+            next.Transcript.CollectionChanged += _OnTranscriptChanged;
+        }
+    }
+
+    // Only HasMessages: the rows themselves are bound straight to the collection and need no help from here.
+    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        OnPropertyChanged(nameof(HasMessages));
+
+    /// <summary>
+    /// Detaches from the host and from the transcript it was watching — nothing more. Deliberately does not touch
+    /// <see cref="Session"/> in any way: this runs when the window closes, and closing this window must never end
+    /// the assistant's conversation (criterion 7). It only stops this peephole listening for changes it can no
+    /// longer show anyone.
+    /// </summary>
+    public void Dispose()
+    {
+        _host.PropertyChanged -= _OnHostPropertyChanged;
+        _WatchTranscript(_observedSession, next: null);
+    }
 }

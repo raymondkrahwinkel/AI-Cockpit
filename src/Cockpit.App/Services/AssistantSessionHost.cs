@@ -285,9 +285,52 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
 
         Session = session;
-        Activity = AssistantActivity.Ready;
+
+        // The wire that makes Thinking end. Everything else here sets Activity at a moment the host knows about —
+        // a hold, a send, a start, a failure — and none of those is the moment a turn finishes, because only the
+        // session knows that. Without this the chip is written to on the way in and never on the way out: the
+        // first send lands on Ready (set two lines up, after the send) while the assistant is plainly thinking,
+        // and every send after that leaves it on Thinking for good, because EnsureStartedAsync returns a live
+        // instance without touching Activity. Both are the same missing subscription rather than two bugs.
+        session.PropertyChanged += _OnSessionPropertyChanged;
+        _SyncActivityWithSession(session);
         return session;
     }
+
+    private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(SessionViewModel.SessionStatus) && sender is SessionViewModel session)
+        {
+            _SyncActivityWithSession(session);
+        }
+    }
+
+    /// <summary>
+    /// Maps the session's own status onto what the chip reports.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrow. It only ever moves between <see cref="AssistantActivity.Thinking"/> and
+    /// <see cref="AssistantActivity.Ready"/>, and it refuses to speak over the two states the host owns and the
+    /// session knows nothing about: <see cref="AssistantActivity.Unavailable"/> is a fact about the feature rather
+    /// than about a turn, and <see cref="AssistantActivity.Listening"/> is a key being held right now — a turn
+    /// completing mid-hold must not tell the operator the microphone closed.
+    /// <para>
+    /// Written as the set that means "working" rather than the set that means "done", so a status added later
+    /// arrives as Ready and has to be argued into Thinking deliberately — the same direction
+    /// <c>WorkspaceAgentGateway</c>'s wake check is written in, and for the same reason.
+    /// </para>
+    /// </remarks>
+    private void _SyncActivityWithSession(SessionViewModel session) =>
+        Activity = ActivityFor(Activity, session.SessionStatus);
+
+    /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
+    internal static AssistantActivity ActivityFor(AssistantActivity current, SessionStatus status) => current switch
+    {
+        AssistantActivity.Unavailable or AssistantActivity.Listening => current,
+        _ => status is SessionStatus.Busy or SessionStatus.WorkingBackground
+            ? AssistantActivity.Thinking
+            : AssistantActivity.Ready,
+    };
 
     /// <summary>
     /// The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
@@ -411,6 +454,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // Before the dispose, and outside the try: the host wired this session up when it minted it, and that
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
+        session.PropertyChanged -= _OnSessionPropertyChanged;
         _cockpit.ReleaseAssistantSession(session);
 
         try

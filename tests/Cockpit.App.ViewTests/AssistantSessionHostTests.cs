@@ -126,6 +126,35 @@ public class AssistantSessionHostTests
         Assert.Null(host.Session);
     }
 
+    // ── The chip's Thinking state has to end, and only the session knows when ──────────────────────────────────
+
+    [Theory]
+    [InlineData(SessionStatus.Busy, AssistantActivity.Thinking)]
+    [InlineData(SessionStatus.WorkingBackground, AssistantActivity.Thinking)]
+    [InlineData(SessionStatus.Idle, AssistantActivity.Ready)]
+    [InlineData(SessionStatus.Done, AssistantActivity.Ready)]
+    [InlineData(SessionStatus.WaitingForInput, AssistantActivity.Ready)]
+    public void ActivityFor_FollowsTheSessionsOwnStatus(SessionStatus status, AssistantActivity expected)
+    {
+        // The defect this pins was visible on the very first real use and invisible to every test: Activity was
+        // written on the way in (a hold, a send, a start) and never on the way out, because nothing watched the
+        // session. So the first send showed Ready while the assistant was plainly thinking, and every send after
+        // that left the chip on "Thinking…" for good — EnsureStartedAsync hands back a live instance without
+        // touching Activity.
+        Assert.Equal(expected, AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, status));
+    }
+
+    [Theory]
+    [InlineData(AssistantActivity.Unavailable)]
+    [InlineData(AssistantActivity.Listening)]
+    public void ActivityFor_NeverSpeaksOverTheTwoStatesTheSessionKnowsNothingAbout(AssistantActivity current)
+    {
+        // Unavailable is a fact about the feature, not about a turn; Listening is a key being held right now, and a
+        // turn finishing mid-hold must not tell the operator the microphone closed.
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Idle));
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Busy));
+    }
+
     // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──
 
     [Fact]
