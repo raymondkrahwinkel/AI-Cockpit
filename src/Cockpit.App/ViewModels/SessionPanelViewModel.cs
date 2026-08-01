@@ -975,6 +975,47 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnKindLabelChanged(string? value) => OnPropertyChanged(nameof(ShowKindChip));
 
+    /// <summary>
+    /// AC-549: a window the operator ticked in Options that this provider has not reported. Ticking "5-hour
+    /// window" on a session whose provider never sends one used to do nothing at all — no segment, no bar, no
+    /// word — which reads as a broken setting rather than as a provider that has nothing to say. The pill itself
+    /// stays empty (AC-530 criterion 5 — an unknown window must not render as 0%); this is the flyout's line,
+    /// where the operator looks when they wonder where it went. Empty when every ticked window has arrived.
+    /// </summary>
+    [ObservableProperty]
+    private string _unreportedWindowsNotice = string.Empty;
+
+    // Which selected fields name a rate window, by the label that window carries. Session usage and ctx are not
+    // windows; anything else a future field adds is not one either until it is listed here.
+    private static readonly Dictionary<UsagePillField, string> _WindowFieldLabels = new()
+    {
+        [UsagePillField.FiveHourWindow] = "5h",
+        [UsagePillField.WeeklyWindow] = "wk",
+    };
+
+    private string _DescribeUnreportedWindows()
+    {
+        // Nothing has been reported at all yet (a session that has not had its first usage event): silence is the
+        // honest answer there, not a claim about what the provider can do.
+        if (!HasUsagePill)
+        {
+            return string.Empty;
+        }
+
+        var missing = UsagePillVisibleFields
+            .Where(field => _WindowFieldLabels.ContainsKey(field))
+            .Select(field => _WindowFieldLabels[field])
+            .Where(label => RateLimits.All(window => window.Label != label))
+            .ToList();
+
+        return missing.Count switch
+        {
+            0 => string.Empty,
+            1 => $"{missing[0]}: not reported by this provider.",
+            _ => $"{string.Join(", ", missing)}: not reported by this provider.",
+        };
+    }
+
     /// <summary>Whether the usage pill shows at all: at least one metric segment, or the chevron's detail flyout.</summary>
     public bool HasUsagePillRegion => UsagePillItems.Count > 0 || HasUsagePill;
 
@@ -1030,6 +1071,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 UsagePillItems.Add(item with { ShowLeadingDivider = UsagePillItems.Count > 0 });
             }
         }
+
+        UnreportedWindowsNotice = _DescribeUnreportedWindows();
 
         OnPropertyChanged(nameof(HasUsagePillRegion));
         OnPropertyChanged(nameof(ShowChevronDivider));
