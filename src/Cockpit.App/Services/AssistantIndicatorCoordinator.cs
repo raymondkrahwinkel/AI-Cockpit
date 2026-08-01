@@ -33,6 +33,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly VoiceOverlayCoordinator _overlay;
     private readonly IAssistantSettingsStore _settings;
     private readonly IVoicePlaybackQueue _playbackQueue;
+    private readonly IAssistantSpawnAuditLog _spawnAuditLog;
 
     /// <summary>The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).</summary>
     private AssistantChatWindow? _chatWindow;
@@ -42,13 +43,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         OpenMicCoordinator openMic,
         VoiceOverlayCoordinator overlay,
         IAssistantSettingsStore settings,
-        IVoicePlaybackQueue playbackQueue)
+        IVoicePlaybackQueue playbackQueue,
+        IAssistantSpawnAuditLog spawnAuditLog)
     {
         _assistant = assistant;
         _openMic = openMic;
         _overlay = overlay;
         _settings = settings;
         _playbackQueue = playbackQueue;
+        _spawnAuditLog = spawnAuditLog;
     }
 
     /// <summary>The chip the sidebar binds to. One instance, fed from here.</summary>
@@ -172,7 +175,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         {
             _chatWindow = new AssistantChatWindow
             {
-                DataContext = new AssistantChatViewModel(_assistant, _settings, _playbackQueue),
+                DataContext = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog),
             };
 
             // Dropped on close so the next click builds a fresh window — but nothing about the session is touched

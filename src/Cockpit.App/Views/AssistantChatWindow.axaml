@@ -3,6 +3,7 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
         xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -10,7 +11,7 @@
         x:Class="Cockpit.App.Views.AssistantChatWindow"
         x:DataType="vm:AssistantChatViewModel"
         Title="Assistant"
-        Width="360" Height="520" MinWidth="300" MinHeight="360"
+        Width="420" Height="560" MinWidth="340" MinHeight="360"
         WindowStartupLocation="CenterOwner"
         Topmost="True"
         WindowDecorations="None"
@@ -21,7 +22,8 @@
          workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),
          a small floating window rather than another tab. No "bigger" affordance (COMMENT 6 #1, decided): an
          affordance that does not know where it would go is worse than none. -->
-    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10">
+    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+        <Grid>
         <DockPanel>
 
             <!-- Header: profile name, the read-aloud switch (criterion 9 — the same switch Options carries, via
@@ -33,7 +35,7 @@
             <Border DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
                     BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
                     Padding="12,9" PointerPressed="_OnHeaderPressed">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                     <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
                         <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -52,7 +54,85 @@
                         <materialIcons:MaterialIcon Kind="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
                                                     Width="14" Height="14"/>
                     </ToggleButton>
-                    <Button Grid.Column="3" Classes="Subtle Compact" VerticalAlignment="Center"
+
+                    <!-- AC-545 criterion 5: "what has this thing ever started" — the spawn trail, not the
+                         transcript. The transcript above shows this conversation's own start_agent/stop_agent tool
+                         rows; it goes blank on a fresh window and says nothing once scrolled past. The trail
+                         answers the question across restarts and across a conversation that has since been
+                         replaced, which is why it gets its own affordance instead of riding on the transcript's.
+                         Loaded lazily — only when this flyout actually opens, not on every window open — because
+                         reading it is a file read (AssistantChatViewModel.LoadSpawnLogCommand), and a window that
+                         is opened far more often than this history is actually consulted should not pay for it
+                         every time. -->
+                    <Button Grid.Column="3" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            ToolTip.Tip="What the assistant has started or stopped">
+                        <materialIcons:MaterialIcon Kind="History" Width="14" Height="14"/>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight" Opened="_OnSpawnLogFlyoutOpened">
+                                <StackPanel Width="280" Spacing="0">
+                                    <TextBlock Text="Spawn log" FontSize="11.5" FontWeight="SemiBold"
+                                               Margin="10,8,10,6"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"/>
+
+                                    <!-- Empty state: nothing recorded yet — a fresh install, or a window opened
+                                         before the assistant has ever asked to start anything. -->
+                                    <TextBlock Text="The assistant has not started anything yet." FontSize="11.5"
+                                               Margin="10,14" TextWrapping="Wrap" TextAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding !HasSpawnLogEntries}"/>
+
+                                    <ScrollViewer MaxHeight="320" IsVisible="{Binding HasSpawnLogEntries}">
+                                        <ItemsControl ItemsSource="{Binding SpawnLogEntries}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:AssistantSpawnLogRowViewModel">
+                                                    <StackPanel Spacing="2" Margin="10,7">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <TextBlock Text="{Binding When}" FontSize="10.5"
+                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                            <TextBlock Text="{Binding What}" FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                                            <!-- Criterion 5's first field. One word today, because
+                                                                 the assistant is the only caller there is; the day
+                                                                 AC-436's coordinator writes to this trail its rows
+                                                                 are otherwise indistinguishable from these. -->
+                                                            <TextBlock Text="{Binding Who}" FontSize="10.5"
+                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Where}" FontSize="11"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                        <!-- The session by name, so the trail reads without anyone
+                                                             having to match pane ids by eye. Absent on a refused
+                                                             start, which produced no session to name. -->
+                                                        <TextBlock Text="{Binding Session}" FontSize="10.5"
+                                                                   IsVisible="{Binding HasSession}"
+                                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding StartDetails}" FontSize="10.5" TextWrapping="Wrap"
+                                                                   IsVisible="{Binding HasStartDetails}"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        <TextBlock Text="{Binding Refusal}" FontSize="10.5" FontStyle="Italic"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                   IsVisible="{Binding HasRefusal}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- Save the conversation as text. This window is the assistant's only surface, so a
+                         conversation that went wrong here can only be shown to anyone else by describing it from
+                         memory or photographing the screen. Plain text, every row, folded ones included. -->
+                    <Button Grid.Column="4" Classes="Subtle Compact" VerticalAlignment="Center" Margin="0,0,4,0"
+                            Click="_OnExportClick" ToolTip.Tip="Save this conversation as a text file">
+                        <materialIcons:MaterialIcon Kind="TrayArrowDown" Width="14" Height="14"/>
+                    </Button>
+
+                    <Button Grid.Column="5" Classes="Subtle Compact" VerticalAlignment="Center"
                             Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
                         <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
                     </Button>
@@ -274,5 +354,14 @@
                 </ScrollViewer>
             </Grid>
         </DockPanel>
+
+        <!-- The cockpit's own consent gate (#AC-47), which is a different thing from the SDK's Allow/Deny row in
+             the transcript above: a k8s, docker or terminal tool asks the host, not the model's runtime. It is
+             routed here because the assistant has no pane and CockpitViewModel cannot find it — until it was, every
+             one of those requests was denied before anything reached the screen, and the tool came back "the
+             operator did not approve this action" for an action they were never shown. Same control the session
+             panes use, so it looks and behaves identically, over this window instead of over a pane. -->
+        <controls:ConsentBannerHost DataContext="{Binding Session}"/>
+        </Grid>
     </Border>
 </Window>

@@ -92,6 +92,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<TtyViewModel>? _ttySessionFactory;
     private readonly ISessionProfileStore? _sessionProfileStore;
+    private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly IWorkspaceAgentCoordinator? _agentCoordinator;
@@ -2553,7 +2554,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SessionRestorePlanner? sessionRestorePlanner = null,
         IWorktreeReconcileGate? worktreeReconcileGate = null,
         PluginManager? pluginManager = null,
-        ILogger<CockpitViewModel>? logger = null)
+        ILogger<CockpitViewModel>? logger = null,
+        // AC-545: only so a spawn the assistant asked for starts on the route the profile is set to, the way the
+        // New-session dialog would have (SessionKindDefaults). Optional like every neighbour here — absent, the
+        // resolver's own rule falls back to SDK, which is what a graph with no TTY providers can start anyway.
+        ITtySessionProviderResolver? ttyProviderResolver = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2673,6 +2678,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
         _sessionProfileStore = sessionProfileStore;
+        _ttyProviderResolver = ttyProviderResolver;
         _dialogService = dialogService;
         _captureService = captureService;
         _playbackService = playbackService;
@@ -2755,8 +2761,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
             // PaneId) surfaces on the active session. Either way, if there is nowhere to show it, deny — never hang.
+            //
+            // The assistant is looked up separately because FindSession cannot find it and must not learn to: it is
+            // in neither Sessions nor the embedded table by construction, and widening that lookup would hand every
+            // caller of it a session the cockpit deliberately keeps out of reach. Without this branch its consents
+            // were denied here, before anything reached the screen — a k8s or terminal tool call came back "the
+            // operator did not approve this action" while the operator had been shown nothing to approve, and the
+            // Allow they had clicked was the SDK's own permission one layer above.
             var pane = prompt.Request.Source.PaneId is { } paneId
-                ? FindSession(paneId)
+                ? FindSession(paneId) ?? _AssistantSessionWithPaneId(paneId)
                 : SelectedSession;
             if (pane is null)
             {
@@ -2775,8 +2788,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             pane.PendingConsent = new ConsentPromptViewModel(prompt, _consentBroker!);
 
-            // If the pane needing consent is not the one in view, point the operator at it.
-            if (!ReferenceEquals(pane, SelectedSession))
+            // If the pane needing consent is not the one in view, point the operator at it. The assistant gets a
+            // toast with no Review action: selecting it would put a session that belongs to no workspace into the
+            // grid, and its consent is answered in the chat window, which is the one place it can be.
+            if (ReferenceEquals(pane, _assistantSession))
+            {
+                ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, actionLabel: null, onAction: null);
+            }
+            else if (!ReferenceEquals(pane, SelectedSession))
             {
                 ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
             }
@@ -4844,7 +4863,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId
     // (#AC-96) so a caller that opened the dialog on a plugin's behalf can hand that id back — null when nothing
     // started (no factories, or isolation failed and running unisolated was declined).
-    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result)
+    //
+    // targetWorkspaceId is the one thing a caller may decide for itself (AC-545); see AddSession for what naming it
+    // changes and why. Null is every caller that came before, unchanged.
+    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result, string? targetWorkspaceId = null)
     {
         if (_sessionFactory is null || _ttySessionFactory is null)
         {
@@ -4861,7 +4883,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         SessionPanelViewModel session = result.Kind == SessionKind.Sdk ? _sessionFactory() : _ttySessionFactory();
         session.LaunchResult = result;
-        AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen);
+        AddSession(session, result.SessionName, result.Profile.Label, result.NameIsChosen, targetWorkspaceId);
 
         // AC-410: written now, before the session actually starts — see _PersistNewSessionPane for why this order
         // is the crash-safe one.
@@ -5448,7 +5470,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AllSettingsStatus = "Saved";
     }
 
-    private void AddSession(SessionPanelViewModel session, string? name, string profileLabel, bool nameIsChosen = false)
+    /// <summary>
+    /// Attaches a freshly minted session panel: gives it a desk, a title, and a place in <see cref="Sessions"/>.
+    /// </summary>
+    /// <param name="targetWorkspaceId">
+    /// The desk to put it on when something already knows which one (AC-545: a spawn the assistant asked for, naming
+    /// a workspace the operator may not be looking at). Null — every caller that existed before — keeps the original
+    /// behaviour exactly: the desk is worked out here and the operator is taken to the new session.
+    /// <para>
+    /// Named, this is deliberately <em>three</em> departures from that and not one, because a spawn onto a desk that
+    /// is not on screen must not move the operator. The id is stamped directly, the way
+    /// <see cref="_AttachRestoredSession"/> does it, rather than through <c>EnsureSessionWorkspace</c> — which would
+    /// switch the active workspace to it; and <see cref="SelectedSession"/> is left alone — which would pull the grid
+    /// and the sidebar onto a session nobody asked to look at. Whether the id names a desk that can host a session at
+    /// all is settled before this is reached (<c>AssistantAgentGateway</c>): this method takes an id it is told, and a
+    /// session stamped onto a dashboard would run invisibly rather than not at all.
+    /// </para>
+    /// </param>
+    private void AddSession(
+        SessionPanelViewModel session, string? name, string profileLabel, bool nameIsChosen = false, string? targetWorkspaceId = null)
     {
         _sessionCounter++;
         // A session always lives on a Sessions workspace (Raymond): the one showing, else the first there is,
@@ -5456,14 +5496,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // show it — invisible rather than absent, which is the worse of the two. Deliberately not used on the
         // restore path (see _AttachRestoredSession): bringing a saved pane back must not activate the desk it
         // was on, which EnsureSessionWorkspace would do for a Dashboard/Projects workspace currently on screen.
-        session.WorkspaceId = Workspaces.EnsureSessionWorkspace();
+        session.WorkspaceId = targetWorkspaceId ?? Workspaces.EnsureSessionWorkspace();
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
         // shows which profile — and therefore which provider — each session runs under. Whether that name is one
         // somebody meant is not worked out here: NewSessionResult.NameIsChosen says so, and this applies it (#AC-324).
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
         session.HasGeneratedName = !nameIsChosen;
         _AttachSession(session);
-        SelectedSession = session;
+
+        if (targetWorkspaceId is null)
+        {
+            SelectedSession = session;
+        }
     }
 
     /// <summary>
@@ -6349,6 +6393,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// The stable id the assistant is always known by, so the state store's record for the last conversation is
     /// found again after a restart — the same identity trick a restored pane uses (AC-410).
     /// </param>
+    /// <summary>
+    /// The live assistant instance, or null before it has been woken. Held only so a consent naming its pane can be
+    /// routed to it — <see cref="FindSession"/> cannot, and teaching it to would hand every other caller of it a
+    /// session the cockpit keeps out of both collections on purpose.
+    /// </summary>
+    private SessionViewModel? _assistantSession;
+
+    private SessionViewModel? _AssistantSessionWithPaneId(string paneId) =>
+        string.Equals(paneId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal)
+            ? _assistantSession
+            : null;
+
     internal SessionViewModel? CreateAssistantSession(string paneId)
     {
         if (_sessionFactory is null)
@@ -6367,6 +6423,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // operator, and its host is the only thing that ever ends it.
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
+        _assistantSession = session;
 
         return session;
     }
@@ -6386,7 +6443,139 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         session.PropertyChanged -= OnSessionPropertyChanged;
         _lastStatus.Remove(session);
+
+        // Cleared only when it is still the one being held: the host stands a replacement up before releasing the
+        // dead instance, and clearing unconditionally would drop the live one's routing on the floor.
+        if (ReferenceEquals(_assistantSession, session))
+        {
+            _assistantSession = null;
+        }
     }
+
+    /// <summary>
+    /// Whether <paramref name="profile"/> has a terminal route of its own — Claude's, or one a plugin registered.
+    /// Asked by the spawn service before honouring a request for a TTY session, so "that profile cannot run as a
+    /// terminal" is a sentence the assistant can say rather than a launch that silently comes up as something else.
+    /// </summary>
+    internal bool ProfileHasTtyRoute(SessionProfile profile) =>
+        SessionKindDefaults.HasTtyRoute(profile, _ttyProviderResolver);
+
+    /// <summary>
+    /// Starts an ordinary session on <paramref name="workspaceId"/> for a host-side spawn service (AC-545) — the
+    /// assistant asking for work to be set up on a desk it named. Returns the pane it landed on and what that pane is
+    /// called, or null when nothing started.
+    /// </summary>
+    /// <remarks>
+    /// <b>What is deliberately the same as every other launch.</b> The session goes through
+    /// <see cref="_LaunchSessionFromResultAsync"/> and therefore through <see cref="_StartSessionAsync"/>: the same
+    /// worktree isolation, the same session-state record, the same project marking, the same pane record written
+    /// before the start (AC-410) so it survives a restart. A second launch path here would be a second one to teach
+    /// every time one of those changes, and the ones it forgot would fail silently for the sessions nobody was
+    /// watching — which, by construction, is all of these.
+    /// <para>
+    /// <b>What is deliberately different.</b> Only the desk: <paramref name="workspaceId"/> is stamped rather than
+    /// worked out, the workspace is not activated and <see cref="SelectedSession"/> does not move. See
+    /// <see cref="AddSession"/>. This is the whole of the difference, and it stays that small on purpose.
+    /// </para>
+    /// <para>
+    /// <b>The assistant is not one of these.</b> A session started here is an ordinary pane — it joins
+    /// <see cref="Sessions"/>, takes a tile and a sidebar row, is found by <see cref="FindSession"/>, appears in the
+    /// assistant's own <c>list_sessions</c>, and is closed by the ordinary close path. The assistant itself is in none
+    /// of that (<see cref="CreateAssistantSession"/> keeps it out of both collections), so it neither lists nor can
+    /// stop itself by accident — and <c>AssistantAgentGateway.StopAsync</c> refuses its pane id explicitly anyway
+    /// rather than relying on it being unfindable.
+    /// </para>
+    /// <para>
+    /// Whether the desk exists, whether it can host a session and whether the profile is real are all settled before
+    /// this is called. This executes; it does not scope — see <c>IAssistantAgentGateway</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="prompt">
+    /// The brief to hand the session once it is up. Injected <em>and submitted</em>, unlike the plugin path's
+    /// <see cref="StartSessionForPluginAsync"/>, which leaves the text in the composer for the operator to send: a
+    /// spawn is approved on screen with this prompt spelled out in the Allow row, so starting the work is what was
+    /// agreed to, and a worker sitting on an unsent message would be a session the operator was told had started.
+    /// </param>
+    internal async Task<(string PaneId, string Name)?> StartSessionOnWorkspaceAsync(
+        string workspaceId,
+        SessionProfile profile,
+        string? prompt,
+        string? workingDirectory,
+        string? sessionName,
+        // The operator's own words override the profile's route, exactly as the New-session dialog's Kind toggle
+        // does — "the same profile, but as an SDK session" is an ordinary request and this is where it lands.
+        SessionKind? requestedKind = null)
+    {
+        var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
+
+        // Everything the profile itself decides, resolved the way the New-session dialog and the project quick start
+        // resolve it — the promise of a spawn is "the dialog, skipped", and a session that came up on a route the
+        // operator did not choose is not that. This started as a hardcoded SDK launch, and a profile set to TTY came
+        // up as an SDK session with the profile's own start options applied to the wrong vocabulary: it looked like
+        // it had worked, which is the only reason it took a live test to notice.
+        var kind = requestedKind ?? SessionKindDefaults.ResolveDefaultKind(profile, _ttyProviderResolver);
+        var isSdk = kind == SessionKind.Sdk;
+
+        // No project — nobody named one and there is no session this descends from — so this yields the profile's own
+        // half: its working directory and its identity system prompt (AC-142), which a spawn had been dropping.
+        var defaults = SessionStartDefaults.Resolve(project: null, profile);
+        var directory = string.IsNullOrWhiteSpace(workingDirectory) ? defaults.WorkingDirectory : workingDirectory;
+
+        var result = new NewSessionResult(
+            kind,
+            profile,
+            // The typed Claude vocabulary is migration-only, and the dialog seeds it with the app defaults whatever
+            // the profile says; a spawn has no operator at the dialog to override them either, so it does the same.
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
+            name,
+            WorkingDirectory: directory,
+            // The provider's own declared start defaults, saved on the profile. Only ever for the kind that is
+            // actually starting: the two vocabularies never both apply.
+            PluginTtyOptions: isSdk ? null : profile.Defaults?.OptionDefaults,
+            SdkLaunchOptions: isSdk ? profile.Defaults?.OptionDefaults : null,
+            ReadingLevel: isSdk ? SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel).Value : null,
+            // Nobody said which project this is for and there is no session it descends from, so the folder answers
+            // (AC-320) — the same rule the plugin and embedded paths are placed by.
+            ProjectId: await _ProjectIdForDirectoryAsync(directory),
+            SystemPrompt: defaults.SystemPrompt)
+        {
+            NameIsComposed = string.IsNullOrWhiteSpace(sessionName),
+        };
+
+        // IsolateInWorktree is deliberately not carried across. Isolation can raise a modal question on the main
+        // window, and this launch is answered for on the chat window's Allow row by an operator who may be looking at
+        // another desk entirely — a dialog they never see would stall the assistant's turn on a question it cannot
+        // report (criterion 7). Worktree isolation for a spawned session is its own decision, not a side effect.
+
+        if (await _LaunchSessionFromResultAsync(result, workspaceId) is not { } paneId)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(prompt))
+        {
+            // By pane id rather than "the one just added": a session the operator opened at the same moment must not
+            // catch a brief meant for this one.
+            FindSession(paneId)?.InjectAndSubmit(prompt);
+        }
+
+        return (paneId, name);
+    }
+
+    /// <summary>
+    /// Closes <paramref name="session"/> for the host-side spawn service (AC-545) — the assistant asked, and the
+    /// operator clicked Allow on the row that named this pane.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CloseSessionAsync"/> and not <see cref="RequestCloseSessionAsync"/>: that one raises the "this
+    /// session is still running, close it?" confirmation, which for this caller would be a second dialog about a
+    /// decision the operator has just made in the chat window — and one drawn on the main window, which is not where
+    /// they were looking. The gateway settles what may be closed (an agent session, never the assistant's own); this
+    /// carries it out.
+    /// </remarks>
+    internal Task StopSessionForAssistantAsync(SessionPanelViewModel session) => CloseSessionAsync(session);
 
     // --- IEmbeddedSessionHost (AC-122): sessions a plugin workspace runs inside its own full-surface body. ---
     //

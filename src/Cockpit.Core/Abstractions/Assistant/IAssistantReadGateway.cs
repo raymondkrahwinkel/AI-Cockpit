@@ -59,7 +59,37 @@ public interface IAssistantReadGateway
     /// <param name="paneId">The session to read, as <see cref="AssistantSessionRow.PaneId"/> reports it.</param>
     /// <param name="count">How many of the most recent entries to return; already clamped by the caller.</param>
     Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count);
+
+    /// <summary>
+    /// The projects this cockpit knows — the operator's own list, not a folder scan.
+    /// </summary>
+    /// <remarks>
+    /// A project is not a workspace and not a session, and it was the one first-class thing in the cockpit the
+    /// assistant could not see. Asked "which projects do we have", it answered with the desks — the nearest thing
+    /// it had a tool for, and wrong. Added from the live test rather than designed in: what a model reaches for
+    /// when it has no tool for the question is the most reliable way to find out which tool is missing.
+    /// </remarks>
+    Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync();
 }
+
+/// <summary>
+/// One project as the assistant is shown it.
+/// </summary>
+/// <param name="Id">The project's id, so a later answer can name the same one unambiguously.</param>
+/// <param name="Name">What the operator calls it, and what they will say out loud.</param>
+/// <param name="Description">Their own note on what it is, or null. Often the only thing that distinguishes two similarly named projects.</param>
+/// <param name="SourceDirectory">
+/// The folder its sessions start in, or null for a project that has none — an administrative project is a project
+/// too. Worth having here rather than only in the manager: it is exactly the working directory a session started
+/// "for that project" ought to run in.
+/// </param>
+/// <param name="DefaultProfileLabel">The profile its sessions default to, by label, or null when it names none.</param>
+public sealed record AssistantProjectRow(
+    string Id,
+    string Name,
+    string? Description,
+    string? SourceDirectory,
+    string? DefaultProfileLabel);
 
 /// <summary>
 /// The tail of one session's transcript, plus what it takes to know that it <em>is</em> a tail.
@@ -113,10 +143,26 @@ public sealed record AssistantTranscriptEntry(string Kind, string Text, string? 
 /// That workspace's tab label — the name the operator would actually recognise, since the id is never shown
 /// anywhere. Null when there is no workspace, and null rather than the id when the workspace has since gone.
 /// </param>
+/// <param name="Status">
+/// The coarse state the sidebar draws — Idle, Busy, WorkingBackground, Done. The statusline says what a session
+/// chose to write down; this says whether it is doing anything, which is the other half of the question and the one
+/// no session has to opt into.
+/// </param>
+/// <param name="NeedsYou">
+/// Whether this session is stopped on a permission nobody has answered.
+/// </param>
+/// <remarks>
+/// <b>Why <paramref name="NeedsYou"/> is worth its own field.</b> "Who is waiting for me" is the most ordinary
+/// question to ask a cockpit out loud, and until this existed the assistant could only answer it by reading
+/// transcripts one at a time and inferring. A stalled session looks exactly like an idle one from a statusline, and
+/// the difference is the whole point: one is finished, the other is burning the afternoon waiting for a click.
+/// </remarks>
 public sealed record AssistantSessionRow(
     string PaneId,
     string Name,
     string Profile,
     string Statusline,
     string? WorkspaceId,
-    string? WorkspaceName);
+    string? WorkspaceName,
+    string Status = "",
+    bool NeedsYou = false);

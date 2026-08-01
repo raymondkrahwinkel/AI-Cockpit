@@ -57,7 +57,7 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "list_sessions")]
-    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), and its statusline: whatever that session last set for itself with cockpit-session__set_status. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. There is also one whole class of worker this list cannot see at all — a delegated task (delegate_task) runs without a pane and therefore without a statusline, so it never appears here however busy it is. Report the difference rather than turning an absence of evidence into an answer.")]
+    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), its statusline (whatever that session last set for itself with cockpit-session__set_status), its status — Idle, Busy, WorkingBackground or Done — and needsYou. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". NEEDSYOU IS THE ONE TO VOLUNTEER: it means that session is stopped on a permission nobody has answered, so it is not working and will not start again until the operator clicks. If any session has it, say so out loud and name it, even when the question was about something else — a stalled session reads exactly like a finished one from a statusline, and nobody goes looking for a question they were never told about. Status and statusline answer different things: the statusline is what a session chose to write down, the status is whether it is doing anything at all. IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. There is also one whole class of worker this list cannot see at all — a delegated task (delegate_task) runs without a pane and therefore without a statusline, so it never appears here however busy it is. Report the difference rather than turning an absence of evidence into an answer.")]
     public async Task<string> ListSessionsAsync()
     {
         try
@@ -142,6 +142,26 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
     /// </para>
     /// </summary>
     internal const int MaxEntryTextLength = 2000;
+
+    [McpServerTool(Name = "list_projects")]
+    [Description("Lists the projects this cockpit knows: name, what the operator wrote about each, the folder its work lives in, and the profile its sessions default to. A PROJECT IS NOT A DESK AND NOT A SESSION — it is the operator's own idea of a body of work, it outlives every session, and asking \"which projects do we have\" is this tool and never list_workspaces. A project with no folder is an ordinary project, not a broken one: administrative work is work. The folder is also the honest answer to \"start something for that project\": it is where that project's sessions are meant to run, so pass it as the working directory rather than guessing a path.")]
+    public async Task<string> ListProjectsAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var projects = await gateway.ListProjectsAsync().ConfigureAwait(false);
+            return _Serialize(new { ok = true, projects });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
 
     [McpServerTool(Name = "read_transcript")]
     [Description("Reads the raw transcript of one AI session, named by its pane id — any session in any workspace, not just one desk. Take the pane id from list_sessions. Returns the entries as they happened, oldest first: each has a kind (UserText, AssistantText, ToolUse, ToolResult, Thinking, Question, Error, TurnCompleted), the text of the row, and — on a tool call — the result that call returned. It is passed through raw and unedited, exactly as the operator's own screen shows it; reading it, making sense of it and saying what it means in a sentence is your job, not the cockpit's. BOUNDED: by default you get the last 30 entries, not the whole session, which is the recent end where nearly every spoken question is actually pointed. The reply always says totalEntries and omitted, so you can tell a short session from a long one you only saw the tail of — never report a session as having started with what is simply the first line you were given. Ask for more with count (up to 100) only when the question really is about earlier on, e.g. \"what did it try before that\". A single very long entry is cut to 2000 characters and marked truncated: that is a shortened tool result, not a complete one.")]
