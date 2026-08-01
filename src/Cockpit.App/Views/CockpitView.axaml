@@ -293,6 +293,14 @@
                     </Border>
                 </StackPanel>
 
+                <!-- AC-543: the assistant chip, at the very bottom of the sidebar (Raymond: "linksonder").
+                     Declared as the FIRST Dock="Bottom" child on purpose — a DockPanel stacks those from the
+                     outer edge inward, so first-declared is the one actually against the bottom and everything
+                     below in this file sits above it. It is also why it must not be the last child at all: the
+                     panel fills with its last child, which ignores Dock and takes the middle. -->
+                <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
+                                          DataContext="{Binding AssistantIndicator}"/>
+
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
                      primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
@@ -367,13 +375,6 @@
                      entirely when no plugin contributes a section (no visual noise at zero plugins). -->
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
-                <!-- AC-543: the assistant chip, at the foot of the sidebar. Below the session list on purpose —
-                     the list grows downward and this does not move with it, so the one thing that says who is
-                     listening is never somewhere you have to go looking. Declared before the ScrollViewer, not
-                     after: this DockPanel fills with its last child, so a Dock="Bottom" declared last is ignored
-                     and takes the middle instead (which is exactly what it did on the first render). -->
-                <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
-                                          DataContext="{Binding AssistantIndicator}"/>
 
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
