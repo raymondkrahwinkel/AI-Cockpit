@@ -1887,6 +1887,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private string _screenshotHotkeyTrigger = string.Empty;
 
     /// <summary>
+    /// Mirrors <see cref="Cockpit.Core.Screenshots.ScreenshotSettings.PreviewEnabled"/> (AC-566): whether
+    /// confirming a selection opens a preview of the exact image before it is sent, instead of injecting it
+    /// straight away. Off by default — not everyone wants the extra window.
+    /// </summary>
+    [ObservableProperty]
+    private bool _screenshotPreviewEnabled;
+
+    /// <summary>
     /// Names two desktop-wide keys that want the same key, or empty when there is no clash (AC-220). Shown live
     /// while the operator is typing a key rather than after saving, since after saving one of the two features
     /// has already silently stopped working — which is the whole failure this exists to prevent.
@@ -1927,6 +1935,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _screenshotSettingsStore.LoadAsync();
         ScreenshotGlobalHotkeyEnabled = settings.GlobalHotkeyEnabled;
         ScreenshotHotkeyKeyName = settings.HotkeyKeyName;
+        ScreenshotPreviewEnabled = settings.PreviewEnabled;
     }
 
     /// <summary>Persists the screenshot settings edited in Options (AC-220). Re-arming is <c>GlobalHotkeyCoordinator</c>'s, driven by the same saved event push-to-talk uses.</summary>
@@ -1942,6 +1951,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             GlobalHotkeyEnabled = ScreenshotGlobalHotkeyEnabled,
             HotkeyKeyName = string.IsNullOrWhiteSpace(ScreenshotHotkeyKeyName) ? "F8" : ScreenshotHotkeyKeyName.Trim(),
+            PreviewEnabled = ScreenshotPreviewEnabled,
         });
     }
 

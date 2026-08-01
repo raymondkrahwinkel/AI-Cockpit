@@ -28,6 +28,13 @@ internal static class ScreenshotSelectionScene
     /// <summary>A region dragged out — the marquee, the size readout, and everything outside it dimmed.</summary>
     public const string Region = "screenshot-selection-region";
 
+    /// <summary>
+    /// A region with its eight grips showing (AC-565), dragged well clear of the window's own edges so none of
+    /// them sit off the visible surface. The grips already draw on <see cref="Region"/>'s own selection — this
+    /// scene exists so a reviewer does not have to know that to find them.
+    /// </summary>
+    public const string Grips = "screenshot-selection-grips";
+
     /// <summary>Window mode, with the window under the pointer marked out.</summary>
     public const string WindowPick = "screenshot-selection-window";
 
@@ -88,7 +95,7 @@ internal static class ScreenshotSelectionScene
     /// added here cannot be missing from whatever walks the scenes — the theme baseline (AC-338) reads it.
     /// </summary>
     public static IReadOnlyList<string> Names { get; } =
-        [Idle, Region, WindowPick, Redaction, Marks, Arrow, Highlight, Stroke, Text, TwoDisplays];
+        [Idle, Region, Grips, WindowPick, Redaction, Marks, Arrow, Highlight, Stroke, Text, TwoDisplays];
 
     /// <summary>Whether a scene name is one of this surface's, so the harness knows to build and stage it.</summary>
     public static bool Covers(string? scene) => scene is not null && Names.Contains(scene);
@@ -125,6 +132,12 @@ internal static class ScreenshotSelectionScene
         {
             case Region:
                 _Drag(surface, new Point(width * 0.22, height * 0.26), new Point(width * 0.70, height * 0.74));
+                break;
+
+            case Grips:
+                // Clear of every edge on all four sides, so the corner and side grips this scene exists to show
+                // are not clipped by the window's own border.
+                _Drag(surface, new Point(width * 0.30, height * 0.30), new Point(width * 0.65, height * 0.65));
                 break;
 
             case WindowPick:

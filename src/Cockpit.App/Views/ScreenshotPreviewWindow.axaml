@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Cockpit.App.Views.ScreenshotPreviewWindow"
+        Width="720" Height="640"
+        MinWidth="420" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+  <DockPanel Margin="20,16">
+    <TextBlock Name="DestinationText" DockPanel.Dock="Top" Margin="0,0,0,12"
+               FontSize="12.5" TextWrapping="Wrap"
+               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
+      <Button Classes="Ghost" Content="Back" Click="OnBack"/>
+      <Button Classes="Accent" Content="Send" Click="OnSend" IsDefault="True"/>
+    </StackPanel>
+
+    <!-- Byte-for-byte the image that gets injected (AC-566): Stretch="Uniform" only scales how it is drawn on
+         screen, the same as any other Image control — the bytes behind Preview.Source are untouched. -->
+    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+      <Image Name="Preview" Stretch="Uniform"/>
+    </Border>
+  </DockPanel>
+</Window>

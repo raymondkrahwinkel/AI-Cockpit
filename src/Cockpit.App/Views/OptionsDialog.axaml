@@ -167,6 +167,15 @@
                                        IsVisible="{Binding ScreenshotHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
 
+                            <!-- AC-566: a preview between confirming a selection and it landing in the session.
+                                 Off by default — Raymond's own argument, not everyone wants the extra window. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Preview before sending"
+                                          IsChecked="{Binding ScreenshotPreviewEnabled}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Shows exactly what would be sent — the cropped image with any marks already burnt in — and asks before it goes, whether you confirmed with Enter, a double-click, or a single click while picking a window."/>
+                            </StackPanel>
+
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                             <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->

@@ -97,6 +97,17 @@
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}" />
     </Style>
+
+    <!-- The eight handles on a marked-out selection (AC-565). Drawn well inside the size the pointer is actually
+         given to reach one — see GripHitRadius in the view model — because the square is a hint of where to aim,
+         not the whole of what a drag can land on. -->
+    <Style Selector="Rectangle.grip">
+      <Setter Property="Width" Value="9" />
+      <Setter Property="Height" Value="9" />
+      <Setter Property="Fill" Value="{StaticResource CockpitPanelBgBrush}" />
+      <Setter Property="Stroke" Value="{StaticResource CockpitAccentBrush}" />
+      <Setter Property="StrokeThickness" Value="1.5" />
+    </Style>
   </Window.Styles>
 
   <!-- The captured image is the background, not a transparent layer over the live screen: what feels like
@@ -131,6 +142,18 @@
       <Rectangle Name="ShadeLeft" Fill="#99000000" />
       <Rectangle Name="ShadeRight" Fill="#99000000" />
       <Rectangle Name="Marquee" Stroke="{StaticResource CockpitAccentBrush}" StrokeThickness="1" />
+
+      <!-- The eight grips (AC-565), placed from ScreenshotSelectionViewModel.GripPositions so the shapes here and
+           the hit test in BeginDrag can never disagree about where one is. -->
+      <Rectangle Name="GripTopLeft" Classes="grip" />
+      <Rectangle Name="GripTop" Classes="grip" />
+      <Rectangle Name="GripTopRight" Classes="grip" />
+      <Rectangle Name="GripRight" Classes="grip" />
+      <Rectangle Name="GripBottomRight" Classes="grip" />
+      <Rectangle Name="GripBottom" Classes="grip" />
+      <Rectangle Name="GripBottomLeft" Classes="grip" />
+      <Rectangle Name="GripLeft" Classes="grip" />
+
       <Border Name="Readout"
               Background="{StaticResource CockpitSecondaryBgBrush}"
               BorderBrush="{StaticResource CockpitHairlineBrush}"

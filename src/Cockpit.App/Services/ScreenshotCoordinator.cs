@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
@@ -43,9 +44,12 @@ public sealed class ScreenshotCoordinator : ISingletonService
     /// <summary>
     /// What puts the selection surface in front of the operator, or null where there is no window to put one
     /// over — a headless or design-time graph, which takes the whole capture rather than losing screenshots
-    /// altogether. Swappable so the crop-and-remember path can be tested without a desktop.
+    /// altogether. Swappable so the crop-and-remember path can be tested without a desktop. The destination name
+    /// travels alongside the capture rather than being closed over once at construction, because it names
+    /// whichever session this particular call is for — the composer button's session, not necessarily the one
+    /// selected when the coordinator was built.
     /// </summary>
-    private Func<ScreenCapture, CaptureRect?, Task<ScreenshotSelection?>>? _showSelection;
+    private Func<ScreenCapture, CaptureRect?, string, Task<ScreenshotSelection?>>? _showSelection;
 
     public ScreenshotCoordinator(
         GlobalHotkeyCoordinator hotkeys,
@@ -68,7 +72,9 @@ public sealed class ScreenshotCoordinator : ISingletonService
 
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
         {
-            _showSelection = (capture, lastRegion) => ScreenshotSelectionWindow.PickAsync(capture, lastRegion, _windows, window);
+            _showSelection = (capture, lastRegion, destination) => ScreenshotSelectionWindow.PickAsync(
+                capture, lastRegion, _windows, window,
+                previewGate: (chosen, selectionWindow) => _ShowPreviewAsync(capture, chosen, destination, selectionWindow));
         }
 
         hotkeys.Pressed += (_, id) =>
@@ -85,7 +91,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     }
 
     /// <summary>Test seam: stands in for the selection surface, which needs a desktop to be put over.</summary>
-    internal void UseSelection(Func<ScreenCapture, CaptureRect?, Task<ScreenshotSelection?>> showSelection) =>
+    internal void UseSelection(Func<ScreenCapture, CaptureRect?, string, Task<ScreenshotSelection?>> showSelection) =>
         _showSelection = showSelection;
 
     /// <summary>Test seam, like push-to-talk's: puts what the desktop bound where the operator can see it. What the cases are is <see cref="GlobalHotkeyCoordinator.DescribeTrigger"/>'s; the words for this key are here.</summary>
@@ -154,7 +160,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
                 return;
             }
 
-            if (await _PickAsync(capture).ConfigureAwait(true) is not { } png)
+            if (await _PickAsync(capture, session).ConfigureAwait(true) is not { } png)
             {
                 _logger.LogInformation("The selection was dismissed, so nothing was taken.");
                 return;
@@ -194,7 +200,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
     /// graph has nothing to show it on, and failing there would take screenshots away from a test harness that
     /// only ever wanted the bytes.
     /// </remarks>
-    private async Task<byte[]?> _PickAsync(ScreenCapture capture)
+    private async Task<byte[]?> _PickAsync(ScreenCapture capture, SessionPanelViewModel session)
     {
         if (_showSelection is not { } show)
         {
@@ -202,7 +208,7 @@ public sealed class ScreenshotCoordinator : ISingletonService
         }
 
         var settings = await _settings.LoadAsync().ConfigureAwait(true);
-        if (await show(capture, settings.LastRegion).ConfigureAwait(true) is not { } chosen)
+        if (await show(capture, settings.LastRegion, session.Title).ConfigureAwait(true) is not { } chosen)
         {
             return null;
         }
@@ -225,5 +231,28 @@ public sealed class ScreenshotCoordinator : ISingletonService
         await _settings.SaveAsync(settings with { LastRegion = chosen.Region }).ConfigureAwait(true);
 
         return marked;
+    }
+
+    /// <summary>
+    /// The preview gate behind Confirm() (AC-566): the one place all three ways to confirm run through, so a
+    /// setting switched off costs nothing and one switched on cannot be skipped by picking a different key or
+    /// click. Renders exactly the bytes the real crop would produce — the same <see cref="_editor"/>, the same
+    /// region and marks — and asks before they leave the selection window.
+    /// </summary>
+    private async Task<bool> _ShowPreviewAsync(ScreenCapture capture, ScreenshotSelection chosen, string destination, Window owner)
+    {
+        var settings = await _settings.LoadAsync().ConfigureAwait(true);
+        if (!settings.PreviewEnabled)
+        {
+            return true;
+        }
+
+        var burned = await Task.Run(() =>
+        {
+            var cropped = _editor.Crop(capture.Image, chosen.Region);
+            return _editor.Burn(cropped, chosen.Marks);
+        }).ConfigureAwait(true);
+
+        return await ScreenshotPreviewWindow.ShowAsync(burned, destination, owner).ConfigureAwait(true);
     }
 }
