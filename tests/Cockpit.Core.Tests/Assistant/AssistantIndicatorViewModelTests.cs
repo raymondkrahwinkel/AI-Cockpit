@@ -113,9 +113,9 @@ public class AssistantIndicatorViewModelTests
 
     [Theory]
     [InlineData(AssistantActivity.Ready, "F10")]
-    [InlineData(AssistantActivity.Listening, "release F10")]
-    [InlineData(AssistantActivity.Speaking, "Esc to stop")]
-    [InlineData(AssistantActivity.Dictating, "release F9")]
+    [InlineData(AssistantActivity.Listening, "F10")]
+    [InlineData(AssistantActivity.Speaking, "Esc")]
+    [InlineData(AssistantActivity.Dictating, "F9")]
     public void KeyHint_NamesTheKeyBoundToThatState(AssistantActivity activity, string expected)
     {
         var vm = new AssistantIndicatorViewModel { Activity = activity };
@@ -278,21 +278,6 @@ public class AssistantIndicatorViewModelTests
         var vm = new AssistantIndicatorViewModel { Activity = activity };
 
         Assert.Equal(expected, vm.IsMicIcon);
-    }
-
-    [Theory]
-    [InlineData(AssistantActivity.Listening, true)]
-    [InlineData(AssistantActivity.Speaking, true)]
-    [InlineData(AssistantActivity.Dictating, true)]
-    [InlineData(AssistantActivity.Ready, false)]
-    [InlineData(AssistantActivity.ListeningContinuously, false)]
-    [InlineData(AssistantActivity.Thinking, false)]
-    [InlineData(AssistantActivity.Unavailable, false)]
-    public void ShowWaveform_IsTrueOnlyWhileAudioIsActuallyMoving(AssistantActivity activity, bool expected)
-    {
-        var vm = new AssistantIndicatorViewModel { Activity = activity };
-
-        Assert.Equal(expected, vm.ShowWaveform);
     }
 
     [Fact]

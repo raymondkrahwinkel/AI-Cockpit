@@ -106,6 +106,33 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private string? _profileLabel;
 
     /// <summary>
+    /// The assistant hotkey went down or came back up. Reported here rather than left for the indicator to infer
+    /// from the shared voice pill — see <see cref="IAssistantSessionHost.ReportHoldListening"/> for what that
+    /// inference got wrong.
+    /// </summary>
+    /// <remarks>
+    /// Only moves between Ready and Listening: a hold that ends hands over to <see cref="SendAsync"/>, which sets
+    /// Thinking, and neither may overwrite an Unavailable the operator still needs to read.
+    /// </remarks>
+    public void ReportHoldListening(bool listening)
+    {
+        if (listening)
+        {
+            if (Activity == AssistantActivity.Ready)
+            {
+                Activity = AssistantActivity.Listening;
+            }
+
+            return;
+        }
+
+        if (Activity == AssistantActivity.Listening)
+        {
+            Activity = AssistantActivity.Ready;
+        }
+    }
+
+    /// <summary>
     /// Brings the assistant up if it is not already, and returns it. Idempotent, and the recovery path too: an
     /// instance that died is replaced rather than handed back dead.
     /// </summary>

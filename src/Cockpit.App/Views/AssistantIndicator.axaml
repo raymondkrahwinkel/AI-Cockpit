@@ -28,7 +28,8 @@
              badge's edge (Theme.axaml's Ellipse.assistantIndicatorPulseRing) has to be a sibling, not a child. -->
         <Button Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="{Binding IsCollapsed}"
                 ToolTip.Tip="{Binding Label}">
-            <Panel>
+            <!-- Pinned to the rail badge's 30px, clipping off — same reason as the chip's badge Panel. -->
+            <Panel Width="30" Height="30" ClipToBounds="False">
                 <Ellipse Classes="assistantIndicatorPulseRingRail" IsVisible="{Binding IsListening}"/>
                 <Border Classes="assistantIndicatorRing"
                         Classes.listening="{Binding IsListening}"
@@ -67,8 +68,17 @@
                     Classes.dictating="{Binding IsDictating}"
                     Classes.unavailable="{Binding IsUnavailable}"
                     Command="{Binding ClickCommand}">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <Panel Grid.Column="0">
+                <!-- Three columns, not four. The mockup lays badge / label / meter / key across 340px; this chip
+                     gets about 164 in the sidebar, and with the meter and the key both taking their width first
+                     the star column collapsed — "Listening" and "Speaking" rendered with no label at all, and
+                     "Dictating" broke one letter per line. The label is the one thing criterion 6 is about, so it
+                     wins the width and the meter moves down beside the detail line, which has room to spare. -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- Pinned to the badge's own size, with clipping off: the pulse ring grows past it and must
+                         be free to do so visually while contributing nothing to measure. Without this the ring's
+                         animation resizes this Panel every frame, which resizes the chip — the jumping that
+                         reached Raymond twice. -->
+                    <Panel Grid.Column="0" Width="26" Height="26" ClipToBounds="False">
                         <Ellipse Classes="assistantIndicatorPulseRing" IsVisible="{Binding IsListening}"/>
                         <Border Classes="assistantIndicatorRing small"
                                 Classes.listening="{Binding IsListening}"
@@ -91,27 +101,26 @@
                          "Listening continu…", which is the one state whose whole point is that it is visibly
                          different from the momentary one. Found by rendering it in the real sidebar rather than
                          in the component's own roomier scene. -->
-                    <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="1" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="1" Margin="10,0,6,0" Spacing="1" VerticalAlignment="Center">
                         <TextBlock Classes="assistantIndicatorLabel" Text="{Binding Label}" TextWrapping="Wrap"/>
+                        <!-- The detail line carries the meter beside it. The meter is a live-capture cue, shown
+                             only while something is actually moving through the mic or the speaker — Listening,
+                             Speaking, Dictating. Thinking has no audio to meter, and ListeningContinuously is a
+                             standing mode rather than a handeling, so neither shows it. -->
+                        <!-- No level meter here, unlike the mockup. Its chip is 340px wide; this one gets ~164 in
+                             the sidebar, and the five bars took exactly the width the word "Assistant" needed —
+                             it rendered as "Assistan/t". Criterion 6 is about the chip saying who is listening in
+                             colour AND in words, so the words win. Nothing is lost that is not said twice over:
+                             the pulse ring on the badge already means live, and the push-to-talk overlay — which
+                             has a full screen's width and is what you are actually looking at during a hold —
+                             still carries the real waveform. -->
                         <TextBlock Classes="assistantIndicatorDetail" Text="{Binding Detail}" TextWrapping="Wrap"
                                    IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    </StackPanel>
-                    <!-- The waveform (mockup's five-bar level meter): a live-capture cue shown only while
-                         something is actually moving through the mic or the speaker — Listening, Speaking,
-                         Dictating. Thinking has no audio to meter and ListeningContinuously is a standing mode,
-                         not a handeling, so neither shows it (ViewModel's ShowWaveform remarks). -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
-                                Margin="8,0,0,0" IsVisible="{Binding ShowWaveform}">
-                        <Rectangle x:Name="WaveBar1" Classes="assistantIndicatorWaveBar"/>
-                        <Rectangle x:Name="WaveBar2" Classes="assistantIndicatorWaveBar"/>
-                        <Rectangle x:Name="WaveBar3" Classes="assistantIndicatorWaveBar"/>
-                        <Rectangle x:Name="WaveBar4" Classes="assistantIndicatorWaveBar"/>
-                        <Rectangle x:Name="WaveBar5" Classes="assistantIndicatorWaveBar"/>
                     </StackPanel>
                     <!-- The key hint (mockup's .key badge): only the states that actually have a key bound to
                          them right now get one — ViewModel.KeyHint returns null for the rest and the badge
                          hides rather than showing empty. -->
-                    <Border Grid.Column="3" Classes="assistantIndicatorKey" Margin="8,0,0,0"
+                    <Border Grid.Column="2" Classes="assistantIndicatorKey" VerticalAlignment="Center"
                             IsVisible="{Binding KeyHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                         <TextBlock Text="{Binding KeyHint}"/>
                     </Border>

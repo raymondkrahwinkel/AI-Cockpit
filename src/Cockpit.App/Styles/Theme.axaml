@@ -1459,11 +1459,13 @@
         <Setter Property="Width" Value="26"/>
         <Setter Property="Height" Value="26"/>
         <Setter Property="Opacity" Value="0.6"/>
-        <!-- Grown via Width/Height rather than a RenderTransform scale: Avalonia has no keyframe animator
-             registered for RenderTransform (confirmed by running this scene — "No animator registered for the
-             property RenderTransform"; that string value only animates through the Transitions system the
-             Switch knob above uses, a different subsystem from Style.Animations). Centred alignment makes
-             growing the actual size read identically to a scale transform, so nothing is lost. -->
+        <!-- Grows its actual size, because this Avalonia has no keyframe animator for RenderTransform — a
+             scale() string only animates through the Transitions system, which needs a value change rather than a
+             loop. That would normally be a layout pass per frame, and a ring growing past its badge would drag
+             the chip's measurement with it (the jumping Raymond saw). It does not, because the Panel holding the
+             ring in AssistantIndicator.axaml is pinned to the badge's size with ClipToBounds off: the ring
+             overflows it visually and contributes nothing to measure. Fixing the container rather than the
+             property is what the mockup's "laat de layout rekenen terwijl er niets verschuift" is really about. -->
         <Style.Animations>
             <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
                 <KeyFrame Cue="0%">
@@ -1549,69 +1551,6 @@
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
         <Setter Property="FontSize" Value="10"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
-    </Style>
-
-    <!-- The waveform (mockup's .wave): five bars levelling up and down. currentColor in the mockup resolves to
-         the ordinary text colour there (no state-specific rule sets it), so all five stay the same colour
-         regardless of which state is showing the wave — this reuses CockpitTextPrimaryBrush rather than
-         inventing a per-state tint the mockup itself does not have. Each bar gets its own named selector with an
-         increasing Animation Delay (0/.12/.24/.36/.48s, the mockup's own stagger) rather than an
-         nth-child selector, since the five bars are five fixed, named elements in one control instance, not a
-         repeated template item. Animates Height rather than a RenderTransform scaleY, for the same reason the
-         pulse ring above does — Avalonia has no keyframe animator for RenderTransform in this version. Centred
-         VerticalAlignment makes a Height change grow/shrink the bar around its middle, the same look scaleY gives. -->
-    <Style Selector="Rectangle.assistantIndicatorWaveBar">
-        <Setter Property="Width" Value="2"/>
-        <Setter Property="Height" Value="4"/>
-        <Setter Property="RadiusX" Value="1"/>
-        <Setter Property="RadiusY" Value="1"/>
-        <Setter Property="Fill" Value="{StaticResource CockpitTextPrimaryBrush}"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar1">
-        <Style.Animations>
-            <Animation Duration="0:0:1" IterationCount="INFINITE" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
-                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
-                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar2">
-        <Style.Animations>
-            <Animation Duration="0:0:1" Delay="0:0:0.12" IterationCount="INFINITE" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
-                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
-                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar3">
-        <Style.Animations>
-            <Animation Duration="0:0:1" Delay="0:0:0.24" IterationCount="INFINITE" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
-                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
-                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar4">
-        <Style.Animations>
-            <Animation Duration="0:0:1" Delay="0:0:0.36" IterationCount="INFINITE" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
-                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
-                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
-            </Animation>
-        </Style.Animations>
-    </Style>
-    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar5">
-        <Style.Animations>
-            <Animation Duration="0:0:1" Delay="0:0:0.48" IterationCount="INFINITE" Easing="SineEaseInOut">
-                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
-                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
-                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
-            </Animation>
-        </Style.Animations>
     </Style>
 
     <!-- Listening-mode picker buttons (Off / Always on): Button.Compact already carries the mockup's control

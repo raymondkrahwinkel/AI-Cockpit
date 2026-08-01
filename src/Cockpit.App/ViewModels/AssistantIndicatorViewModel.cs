@@ -29,7 +29,6 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsDictating))]
     [NotifyPropertyChangedFor(nameof(IsUnavailable))]
     [NotifyPropertyChangedFor(nameof(IsMicIcon))]
-    [NotifyPropertyChangedFor(nameof(ShowWaveform))]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     /// <summary>
@@ -153,14 +152,20 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     /// The key hint shown at the right of the chip (mockup's <c>.key</c> badge) — only for the states that
     /// actually have a key bound to them right now; <see langword="null"/> hides it rather than showing an empty
     /// badge. <see cref="AssistantActivity.ListeningContinuously"/> gets none: it is a standing mode switched on
-    /// from the picker below, not a key held down, so there is no "release" to name.
+    /// from the picker below, not a key held down, so there is no key to name.
+    /// <para>
+    /// The key alone, not the mockup's "release F10" / "Esc to stop". Those were written for a 340px chip; in the
+    /// sidebar's ~164px the phrase took the width the label needed, and the label is what criterion 6 is about.
+    /// The verb was never carrying much anyway — a badge on a chip that is visibly listening reads as "this is
+    /// the key doing it" either way.
+    /// </para>
     /// </summary>
     public string? KeyHint => Activity switch
     {
         AssistantActivity.Ready => "F10",
-        AssistantActivity.Listening => "release F10",
-        AssistantActivity.Speaking => "Esc to stop",
-        AssistantActivity.Dictating => "release F9",
+        AssistantActivity.Listening => "F10",
+        AssistantActivity.Speaking => "Esc",
+        AssistantActivity.Dictating => "F9",
         _ => null,
     };
 
@@ -192,14 +197,6 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     /// <summary>Whether the mic glyph is the badge's icon — every state except Thinking, Speaking and Unavailable, which draw their own (a thought bubble, a speaker, an alert triangle).</summary>
     public bool IsMicIcon => Activity is AssistantActivity.Ready or AssistantActivity.Listening
         or AssistantActivity.ListeningContinuously or AssistantActivity.Dictating;
-
-    /// <summary>
-    /// Whether the waveform shows: a live-capture cue for the three states where audio is actually moving through
-    /// the mic or the speaker right now. Not Thinking (nothing is being captured or played), and not
-    /// <see cref="AssistantActivity.ListeningContinuously"/> — a standing mode gets the steady mode dot instead of
-    /// a meter, the same "handeling vs stand" split the ring's own pulse animation already draws (criterion 19).
-    /// </summary>
-    public bool ShowWaveform => Activity is AssistantActivity.Listening or AssistantActivity.Speaking or AssistantActivity.Dictating;
 
     public bool IsListeningModeOff => ListeningMode == AssistantListeningMode.Off;
     public bool IsListeningModeAlwaysOn => ListeningMode == AssistantListeningMode.AlwaysOn;

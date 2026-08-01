@@ -124,6 +124,12 @@ internal static class Screenshotter
         // The component has scenes of its own below, but those render it alone — what neither of them can show is
         // whether it survives the collapse in place, which is the half of criterion 6 that is about the sidebar
         // rather than about the chip.
+        // Every chip state at once, at the width the sidebar actually gives it. One scene rather than seven,
+        // because what goes wrong at this size is comparative — a label that wraps mid-word, a key hint that
+        // squeezes the text out, one state sitting taller than its neighbours — and none of that is visible in a
+        // render of a single state in a roomy window. Raymond's idea, after two rounds of exactly those defects
+        // reaching him instead of me.
+        ["assistant-indicator-all-states"] = (_, _) => _AssistantIndicatorGallery(),
         ["sidebar-assistant"] = (_, _) => _SidebarWithAssistant(collapsed: false),
         ["sidebar-assistant-rail"] = (_, _) => _SidebarWithAssistant(collapsed: true),
         // Off means no chip at all, not a chip reporting that it is off (AC-542's own wording). Its own scene
@@ -993,6 +999,58 @@ internal static class Screenshotter
         return new VoiceOverlayWindow { DataContext = viewModel };
     }
 
+    /// <summary>
+    /// Every assistant chip state stacked at the width the sidebar really gives it, so they can be judged against
+    /// each other rather than one at a time in a window with room to spare.
+    /// </summary>
+    /// <remarks>
+    /// The width is the point. Rendered at 340px every state looks fine; at the sidebar's own ~164px the label
+    /// wraps mid-word, the key hint pushes the text out, and the states stop lining up — which is how two rounds
+    /// of visual defects got past a full set of green renders and reached the operator instead.
+    /// </remarks>
+    private static Window _AssistantIndicatorGallery()
+    {
+        const double SidebarContentWidth = 164;
+
+        var states = new (Cockpit.Core.Assistant.AssistantActivity Activity, string? Reason)[]
+        {
+            (Cockpit.Core.Assistant.AssistantActivity.Ready, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Listening, null),
+            (Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Thinking, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Speaking, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Dictating, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Unavailable, "No model on this machine"),
+        };
+
+        var column = new StackPanel { Spacing = 10, Margin = new Avalonia.Thickness(12) };
+        foreach (var (activity, reason) in states)
+        {
+            column.Children.Add(new Views.AssistantIndicator
+            {
+                Width = SidebarContentWidth,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                DataContext = new ViewModels.AssistantIndicatorViewModel
+                {
+                    Activity = activity,
+                    UnavailableReason = reason,
+                    ProfileLabel = "default (Claude CLI)",
+                    ListeningMode = activity == Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously
+                        ? Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn
+                        : Cockpit.Core.Assistant.AssistantListeningMode.Off,
+                },
+            });
+        }
+
+        return new Window
+        {
+            Width = 220,
+            Height = 720,
+            Background = Application.Current?.FindResource("CockpitSecondaryBgBrush") as Avalonia.Media.IBrush,
+            Content = new ScrollViewer { Content = column },
+        };
+    }
+
     // AC-543 criterion 11: the whole window, with the assistant chip where it actually sits. The chip is fed by
     // AssistantIndicatorCoordinator at runtime; here it is set directly, for the reason the component takes its
     // state rather than fetching it — a scene that had to stand up a session host to draw a sidebar would be
@@ -1089,6 +1147,10 @@ internal static class Screenshotter
         // A scene is staged into the state its name describes and then rendered; re-reading settings would only
         // move it off that state.
         public Task ApplySettingsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void ReportHoldListening(bool listening)
+        {
+        }
     }
 
     // Bare-minimum IAssistantSettingsStore: hands back a fixed AssistantSettings with SpeakReplies pre-set to

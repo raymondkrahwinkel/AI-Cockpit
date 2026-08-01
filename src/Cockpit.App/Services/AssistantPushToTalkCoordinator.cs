@@ -137,6 +137,14 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
             _isRecording ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,
             _isRecording ? null : "The microphone could not be opened");
 
+        // Say out loud that the assistant is the one listening. The pill this coordinator just wrote to is shared
+        // with dictation and open-mic, so without this the chip read a held F10 as dictation — and told the
+        // operator to release F9.
+        if (_isRecording)
+        {
+            _assistant.ReportHoldListening(true);
+        }
+
         _logger.LogInformation("Assistant push-to-talk hold started: capturing={Capturing}", _isRecording);
     }
 
@@ -144,6 +152,10 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     internal async Task HandleHoldEndedAsync()
     {
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
+
+        // The hold is over whatever comes next: a transcript hands over to SendAsync (which reports Thinking), and
+        // an empty one has to fall back to Ready rather than leave the chip listening to nobody.
+        _assistant.ReportHoldListening(false);
 
         // Nothing was captured, so there is nothing to transcribe — and the reason the pill is showing is the one
         // thing worth leaving on screen for the moment the key is still down.

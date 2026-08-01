@@ -38,6 +38,18 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// included, which is the point of it being a separate call rather than something checked on the next use.
     /// </summary>
     Task ApplySettingsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The assistant hotkey went down or came back up, so the assistant is (or is no longer) the one listening.
+    /// </summary>
+    /// <remarks>
+    /// Told, not inferred. The indicator used to read "who is listening" off the shared voice pill, which every
+    /// microphone path writes to — so holding the assistant key lit the chip up as <em>dictation</em>, complete
+    /// with "release F9" while F9 was not being touched. That is the single mistake this chip exists to prevent,
+    /// made by the chip itself. The assistant's own coordinator knows when the assistant is listening; it says so
+    /// here instead of leaving the question to be guessed from a signal it shares with two other paths.
+    /// </remarks>
+    void ReportHoldListening(bool listening);
 }
 
 /// <summary>
