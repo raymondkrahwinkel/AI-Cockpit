@@ -105,7 +105,7 @@ internal sealed class BackupService(
                 await JsonSerializer.SerializeAsync(stream, manifest, Json, cancellationToken);
             }
 
-            File.Move(staging, archivePath, overwrite: true);
+            await MoveIntoPlaceAsync(staging, archivePath, cancellationToken);
 
             logger.LogInformation(
                 "Wrote a backup to {Path} ({Credentials}, {Secrets} secret(s) stripped)",
@@ -123,6 +123,71 @@ internal sealed class BackupService(
             }
         }
     }
+
+    /// <summary>How long the move waits out whatever is holding one of the two files. Past this it is not contention.</summary>
+    private static readonly TimeSpan MoveContentionWindow = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan MoveContentionInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Puts the finished archive where the operator asked for it, waiting out a file that is briefly busy — the
+    /// same shape as <c>CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync</c>, for the same reason.
+    /// </summary>
+    /// <remarks>
+    /// Windows hands a freshly closed file straight to whatever is watching it, and a new .zip is exactly what a
+    /// virus scanner opens and unpacks before anything else may touch it. This move lands microseconds after the
+    /// archive's own handle closes, so it loses that race — the bigger the backup, the longer the scan, and the
+    /// more reliably it loses. The operator saw "the process cannot access the file … because it is being used by
+    /// another process", naming a staging path they have never heard of, and got no backup. Nothing here can stop
+    /// the scan; it only has to outlast it.
+    /// <para>
+    /// The two files fail differently, which is the only reason the refusal can say which one is stuck: a held
+    /// <em>source</em> is an <see cref="IOException"/> naming the staging file, a held <em>destination</em> an
+    /// <see cref="UnauthorizedAccessException"/> naming nothing at all. Both are waited out — the destination is a
+    /// path the operator chose, so it can just as well be an earlier backup open in an archive tool.
+    /// </para>
+    /// <para>
+    /// A destination that is genuinely not writable looks identical to one that is merely held, so that case now
+    /// spends the window before failing. It is worth it: the message at the end says both possibilities rather
+    /// than picking one, and a folder the operator cannot write to is not what the file picker usually hands back.
+    /// </para>
+    /// </remarks>
+    /// <param name="contentionWindow">
+    /// Overridable so the test that proves the refusal does not have to sit out the real five seconds to see it.
+    /// </param>
+    internal static async Task MoveIntoPlaceAsync(
+        string staging,
+        string archivePath,
+        CancellationToken cancellationToken,
+        TimeSpan? contentionWindow = null)
+    {
+        var deadline = DateTimeOffset.UtcNow + (contentionWindow ?? MoveContentionWindow);
+        while (true)
+        {
+            try
+            {
+                File.Move(staging, archivePath, overwrite: true);
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                if (DateTimeOffset.UtcNow < deadline)
+                {
+                    await Task.Delay(MoveContentionInterval, cancellationToken);
+                    continue;
+                }
+
+                throw new IOException($"The backup could not be put in place: {_WhatIsStuck(exception, archivePath)}", exception);
+            }
+        }
+    }
+
+    private static string _WhatIsStuck(Exception exception, string archivePath) =>
+        exception is UnauthorizedAccessException
+            ? $"'{archivePath}' could not be written. It is open in another program, or you do not have permission "
+              + "to write there. Close anything using it, or pick another location, and try again."
+            : "the finished archive is still held by something else — a virus scanner unpacking a newly written "
+              + ".zip is the usual culprit. Try again in a moment.";
 
     public async Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default)
     {

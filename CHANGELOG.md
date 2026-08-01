@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: "Create backup…" no longer fails with "the process cannot access the file … because it is being used by
+  another process". The backup is built as a temporary file and then moved to the place you picked, and on Windows
+  that move happened the instant the archive was closed — the same instant a virus scanner opens a newly written
+  .zip to look inside it. The bigger the backup, the longer that scan, and the more reliably the move lost the
+  race. It now waits for the file to be released instead of giving up on it. If something really is holding a file
+  after several seconds, the message says which one and what to do about it, rather than naming an internal
+  temporary file you have never seen.
 - fixed: a long reply from a headless Claude session no longer eats the machine's memory. With a session streaming,
   the cockpit's memory use climbed by tens of megabytes a second — one report reached 25 GB and was about a minute
   from taking the machine down — and on Windows the window froze for seconds at a time. The reply's text was redrawn
