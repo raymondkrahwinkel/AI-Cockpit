@@ -297,14 +297,12 @@
                      primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-                    <!-- Runtime open-mic toggle: listens continuously and types into the selected session.
-                         Disabled until Voice is enabled in Options (open-mic needs the mic pipeline). -->
-                    <ToggleButton Content="Open mic" HorizontalAlignment="Stretch"
-                                  IsChecked="{Binding OpenMic.IsListening, Mode=OneWay}"
-                                  Command="{Binding OpenMic.ToggleOpenMicCommand}"
-                                  IsEnabled="{Binding OpenMic.IsAvailable}"
-                                  ToolTip.ShowOnDisabled="True"
-                                  ToolTip.Tip="Toggle open-mic dictation on/off — listens continuously and types into the selected session (enable Voice in Options first)"/>
+                    <!-- The "Open mic" toggle that stood here is gone (AC-543). It drove exactly the command the
+                         assistant chip's listening mode now drives, so the two were one state with two switches —
+                         and its label still promised the old behaviour, dictating into the selected session, which
+                         open mic stopped doing. Comment 5 on the ticket puts that switch in the indicator on
+                         purpose: the chip is where you look to see who is listening, so it is where you reach to
+                         change it. -->
                     <!-- The plugin store sits in the menu column rather than inside the menu: it is where the plugins
                          and the workflow templates come from, and it is the one thing in that menu people go looking
                          for. A door you have to open a drawer to find is a door most people never open. -->
