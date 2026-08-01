@@ -52,9 +52,9 @@ public sealed record VoiceSettings
     public int TtsVoiceSid { get; init; } = 1;
 
     /// <summary>
-    /// Preferred base language for read-aloud, as an ISO-639-1 code ("en"/"nl"). Text with no language marker
-    /// (verbatim, or a reply the naturalize/summarize pass left untagged) speaks in it, and that pass is told to
-    /// lean to it — keeping code, names and genuinely foreign terms in their own language. Default "en".
+    /// Preferred base language for read-aloud, as an ISO-639-1 code ("en"/"nl") — the language every enqueued
+    /// batch is synthesized in. One multilingual voice speaks it, so this is the language, not the timbre (that is
+    /// <see cref="TtsVoiceSid"/>). Default "en".
     /// </summary>
     public string ReadAloudLanguage { get; init; } = "en";
 

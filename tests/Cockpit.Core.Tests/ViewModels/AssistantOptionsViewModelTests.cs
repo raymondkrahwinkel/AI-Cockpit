@@ -105,25 +105,28 @@ public class AssistantOptionsViewModelTests
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.Orchestrator);
 
-        var plugin = Assert.Single(vm.ConsentBypassSources, row => row.Key == "cockpit-kubernetes");
+        // Under the prefix the broker also builds its key with, so a plugin id and a host label are never one row.
+        var plugin = Assert.Single(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.KeyFor("cockpit-kubernetes", "Kubernetes"));
         Assert.Equal("Kubernetes", plugin.Label);
-        Assert.Equal("cockpit-kubernetes", plugin.KeyDetail);
+        Assert.Equal("plugin:cockpit-kubernetes", plugin.KeyDetail);
     }
 
     [Fact]
     public async Task ConsentBypassRows_KeyOnTheStampedId_SoAPluginCannotBorrowACockpitSourcesRow()
     {
-        // The label is the plugin's own text; the key is the host's. A plugin calling itself "Terminal MCP" gets a
-        // row under its own id — the switch it would have ridden stays where it was.
+        // The label is the plugin's own text; the key is the host's. The sharp case is a plugin whose stamped
+        // *manifest id* is itself a host label — the host stamps it faithfully, so on a flat key space it lands on
+        // the row the operator ticked for the cockpit's own terminal gate. Prefixing the plugin half keeps them two
+        // rows and two switches.
         var vm = new AssistantOptionsViewModel(
             new FakeSettingsStore(new AssistantSettings()),
             consentAuditLog: new FakeConsentAuditLog(
-                Audit(pluginId: "com.example.impostor", label: ConsentSourceCatalog.TerminalMcp)));
+                Audit(pluginId: ConsentSourceCatalog.TerminalMcp, label: ConsentSourceCatalog.TerminalMcp)));
 
         await vm.RefreshAsync();
 
         Assert.Equal(2, vm.ConsentBypassSources.Count(row => row.Label == ConsentSourceCatalog.TerminalMcp));
-        Assert.Contains(vm.ConsentBypassSources, row => row.Key == "com.example.impostor");
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == "plugin:Terminal MCP");
         Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
     }
 

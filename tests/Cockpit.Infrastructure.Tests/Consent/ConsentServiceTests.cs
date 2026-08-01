@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -371,9 +372,9 @@ public sealed class ConsentServiceTests
     [Fact]
     public async Task RequestConsentAsync_AskingTheBypass_PassesTheVerifiedPane_AndTheHostStampedSource()
     {
-        // The three facts the decision may rest on, and no others. The source key is PluginId ?? Label — never the
-        // scope or the action, which are text an agent influences; keying on those is how a bypass for one thing
-        // becomes a bypass for another.
+        // The three facts the decision may rest on, and no others. The source key is the host-stamped plugin id
+        // under its own prefix, or the label — never the scope or the action, which are text an agent influences;
+        // keying on those is how a bypass for one thing becomes a bypass for another.
         var policy = new StubPolicy(answer: false);
         var broker = new ConsentService(_audit, policy);
         _RecordPrompts(broker);
@@ -384,8 +385,58 @@ public sealed class ConsentServiceTests
             await broker.RequestConsentAsync(Request(ConsentRisk.Dangerous, paneId: "pane-the-agent-typed"));
             await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, pluginId: null!));
 
-            Assert.Equal(("cockpit-assistant", "workflows", true), policy.Asked[0]);
+            Assert.Equal(("cockpit-assistant", "plugin:workflows", true), policy.Asked[0]);
             Assert.Equal(("cockpit-assistant", "Workflows", false), policy.Asked[1]);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task RequestConsentAsync_APluginWhoseIdIsAHostLabel_DoesNotShareThatSourcesSwitch()
+    {
+        // A plugin declares its own manifest id, and the host stamps it faithfully — so a plugin published as
+        // "Terminal MCP" would, on a flat key space, be handed the row the operator ticked for the cockpit's own
+        // terminal gate. The two live in separate spaces: the host's label is bare, a plugin's id is prefixed.
+        var policy = new StubPolicy(answer: false);
+        var broker = new ConsentService(_audit, policy);
+        _RecordPrompts(broker);
+
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk, pluginId: ConsentSourceCatalog.TerminalMcp));
+            await broker.RequestConsentAsync(
+                new ConsentRequest("The terminal wants to run a command", "ls", new ConsentSource("pane-1", null, ConsentSourceCatalog.TerminalMcp), "terminal.run", ConsentRisk.LowRisk));
+
+            Assert.Equal("plugin:Terminal MCP", policy.Asked[0].SourceKey);
+            Assert.Equal(ConsentSourceCatalog.TerminalMcp, policy.Asked[1].SourceKey);
+            Assert.NotEqual(policy.Asked[0].SourceKey, policy.Asked[1].SourceKey);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    [Fact]
+    public async Task RequestConsentAsync_ARiskClassThisBuildDoesNotKnow_IsOfferedOnlyToTheDangerousSwitch()
+    {
+        // Polarity, and it has to fail closed. A risk value added later — or one an older host reads off a newer
+        // plugin — is not low risk, so it must arrive at the policy as dangerous and need the deliberate second
+        // switch. Asking "is it Dangerous?" would let it through on the everyday one instead.
+        var policy = new StubPolicy(answer: false);
+        var broker = new ConsentService(_audit, policy);
+        _RecordPrompts(broker);
+
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            await broker.RequestConsentAsync(Request((ConsentRisk)99));
+
+            Assert.True(Assert.Single(policy.Asked).Dangerous);
         }
         finally
         {

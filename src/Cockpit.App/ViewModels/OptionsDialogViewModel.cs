@@ -152,7 +152,9 @@ public sealed partial class AssistantOptionsViewModel(
         {
             foreach (var entry in await _consentAuditLog.ReadRecentAsync(500, cancellationToken).ConfigureAwait(true))
             {
-                names.TryAdd(entry.PluginId ?? entry.SourceLabel, entry.SourceLabel);
+                // The same key the broker matches on (ConsentService._SourceKey) — built from the one definition, so
+                // a plugin id and a host label can never collide into a single shared row.
+                names.TryAdd(ConsentSourceCatalog.KeyFor(entry.PluginId, entry.SourceLabel), entry.SourceLabel);
             }
         }
 

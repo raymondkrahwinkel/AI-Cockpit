@@ -19,10 +19,11 @@ namespace Cockpit.App.Services;
 /// together would mean a branch at each of those steps, and the failure mode of getting one branch wrong is the
 /// exact thing the indicator exists to prevent — words landing in the wrong place.
 /// <para>
-/// <b>Straight through, no cleanup.</b> <c>EndHoldAsync(applyCleanup: false)</c>: what Whisper heard is what the
-/// assistant gets (decision 10). The tidying that the removed rewrite step used to do is the system prompt's job
-/// now, and a cleanup pass here would be the second copy of it — running on every utterance, for a model that
-/// reads through filler words on its own.
+/// <b>Straight through, no cleanup.</b> What Whisper heard is what the assistant gets (decision 10): this
+/// coordinator hands <see cref="IVoicePushToTalkService.EndHoldAsync"/>'s transcript to
+/// <see cref="IAssistantSessionHost.SendAsync"/> unaltered. Tidying it is the system prompt's job, and a pass here
+/// would be a second copy of it — running on every utterance, for a model that reads through filler words on its
+/// own.
 /// </para>
 /// <para>
 /// Threading matches <see cref="VoicePushToTalkCoordinator"/>'s: the hotkey events arrive on the backend's own
@@ -257,8 +258,15 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     {
         var generation = _pushToTalkGeneration;
         _overlay.SetPushToTalk(VoiceOverlayState.Unavailable, message);
-        _ = _ClearAfterLingerAsync(generation);
+        PendingLingerClear = _ClearAfterLingerAsync(generation);
     }
+
+    /// <summary>
+    /// Test seam: the linger started by the last failed hold, so a test can await the clear itself instead of
+    /// sleeping for longer than it hopes the linger takes. Completed when there is none — the resting state, and
+    /// what a test that never triggered a failure message awaits.
+    /// </summary>
+    internal Task PendingLingerClear { get; private set; } = Task.CompletedTask;
 
     private async Task _ClearAfterLingerAsync(int generation)
     {

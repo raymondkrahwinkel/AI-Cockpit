@@ -119,10 +119,16 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     /// <summary>
     /// Whether the operator has switched the consent bypass on for at least one source (#AC-575) — shown in this
-    /// window's header, and on the chip for when the window is closed. Read on open, alongside
-    /// <see cref="SpeakReplies"/>; it changes only in Options, which cannot be reached without this window losing
-    /// focus and its next open re-reading it.
+    /// window's header, and on the chip for when the window is closed. Read on open alongside
+    /// <see cref="SpeakReplies"/>, and again on every Options save through <see cref="ApplySettingsAsync"/>.
     /// </summary>
+    /// <remarks>
+    /// The second half is what makes this true rather than merely usually true. This window is ownerless and is kept
+    /// between openings (<c>AssistantIndicatorCoordinator</c>, criterion 7), so it can sit open while Options is used:
+    /// losing focus is not closing, <c>Show()</c> on a live window raises no new <c>Opened</c>, and a mark that were
+    /// only read in <see cref="EnsureOpenedAsync"/> would be read once per window lifetime — stale in exactly the
+    /// state the operator is in most.
+    /// </remarks>
     [ObservableProperty]
     private bool _consentBypassActive;
 
@@ -180,6 +186,14 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         await _LoadSpeakRepliesAsync(cancellationToken).ConfigureAwait(true);
         await _host.EnsureStartedAsync(cancellationToken).ConfigureAwait(true);
     }
+
+    /// <summary>
+    /// Re-reads the settings this window mirrors, for an Options save that landed while it was open — the same
+    /// saved signal the chip already follows (<c>AssistantPushToTalkCoordinator._OnSettingsSavedAsync</c> →
+    /// <c>AssistantIndicatorCoordinator.ApplySettingsAsync</c>), so the two cannot disagree about the bypass mark.
+    /// </summary>
+    public Task ApplySettingsAsync(CancellationToken cancellationToken = default) =>
+        _LoadSpeakRepliesAsync(cancellationToken);
 
     private async Task _LoadSpeakRepliesAsync(CancellationToken cancellationToken)
     {

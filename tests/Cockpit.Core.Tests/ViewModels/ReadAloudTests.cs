@@ -82,8 +82,12 @@ public class ReadAloudTests
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "First sentence. Second sentence. Third sentence." });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
 
+        // The joined text, not just the count of one: "keep the first sentence and drop the rest" also yields one
+        // entry, and would silently throw away everything after the first full stop of every reply the assistant
+        // gives. Counting alone let that mutation through with all nine tests green.
         voicePlaybackQueue.Received(1).Enqueue(
-            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Count == 1),
+            Arg.Is<IReadOnlyList<string>>(sentences =>
+                sentences.Count == 1 && sentences[0] == "First sentence. Second sentence. Third sentence."),
             vm.TtsVoiceSid,
             "en");
     }
@@ -190,6 +194,49 @@ public class ReadAloudTests
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "First, the setup." })), 3, "en");
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Now, the result." })), 3, "en");
+    }
+
+    /// <summary>
+    /// A queue whose <see cref="NotifyPreparing"/> cancels read-aloud — the barge-in that lands while the overlay
+    /// event is still firing, which is what the generation check exists for. A substitute cannot express this:
+    /// <c>Generation</c> has to change as a consequence of the call.
+    /// </summary>
+    private sealed class BargesInWhilePreparing : IVoicePlaybackQueue
+    {
+        public List<IReadOnlyList<string>> Enqueued { get; } = [];
+
+        public int Generation { get; private set; }
+
+        public void NotifyPreparing() => StopAll();
+
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language) => Enqueued.Add(sentences);
+
+        public void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId) =>
+            Enqueued.Add([.. segments.SelectMany(segment => segment.Sentences)]);
+
+        public void StopAll() => Generation++;
+
+        public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
+
+        public event EventHandler? SpeakingStarted { add { } remove { } }
+    }
+
+    [Fact]
+    public void TurnCompleted_ABargeInWhilePreparing_DropsTheBatch_RatherThanSpeakingOverTheInterrupt()
+    {
+        // The generation is read before NotifyPreparing and checked after it. Read afterwards it is compared to
+        // itself, which is always equal — so the batch was queued and the assistant spoke over the interrupt the
+        // operator had just made.
+        var voicePlaybackQueue = new BargesInWhilePreparing();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        Assert.Empty(voicePlaybackQueue.Enqueued);
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

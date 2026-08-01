@@ -297,6 +297,16 @@
          const; a driver that never reads it is unaffected. Additions only — a minor; major and abstractionsVersion
          stay 1. A plugin that reads the key raises its manifest's minHostVersion, since an older host states nothing
          and the key would simply be absent. -->
+    <!-- 1.45.0 (AC-546): REMOVED IPluginTranscriptReader.ReadAssistantTextAsync — the per-turn spoken text tail that
+         fed the host's TTY read-aloud (#35b). Read-aloud is the assistant's alone now, and it reads the assistant's
+         own session, so nothing on the host side calls this any more. ReadActivityAsync and SnapshotTranscripts stay
+         untouched: they carry the TTY status dot (#39), which this change does not touch. Only the second removal
+         this SDK has ever made (after 1.13.0's session-image sink), and the same reasoning applies — the two in-repo
+         providers that implement the interface were updated in the same change, and an implicitly implemented member
+         that disappears breaks no already-compiled plugin binary (it is only a compile-time break, and only for a
+         plugin that implements this interface and is rebuilt). AbstractionsContract.Version — the gate
+         PluginLoadPolicy enforces — stays 1, so no installed plugin is refused. On balance a removal that no shipped
+         binary can observe; the package version follows suit as a minor. -->
     <Version>1.45.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

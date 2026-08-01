@@ -11,6 +11,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -624,6 +625,26 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         {
             return;
         }
+
+        // AC-575/AC-89: from here on this flow acts for *this task's* owner, whoever happened to trigger the start.
+        // McpRequestContext is an AsyncLocal identifying the request that entered the process, and it is inherited by
+        // everything that request awaits — so the queue drainer (_StartNextQueuedAsync, reached inline from StopAsync,
+        // from a timeout, and from a task's own completion event) used to run another owner's start under the
+        // stopper's identity. The consent broker reads that ambient id for both the AC-575 bypass and the remember
+        // key, so a task queued by pane X could be started above its ceiling on the strength of the assistant's
+        // bypass, with the audit line written in the assistant's name and no card ever shown.
+        //
+        // Restamping rather than clearing, and no weakening of AC-89: OwnerPaneId was itself stamped from
+        // McpRequestContext at delegate time (see DelegateAsync/OrchestratorTools), so it is the transport-verified
+        // identity of the session that asked for this task and never anything a caller declared. It is null for a
+        // task delegated off the verified path, which then reaches the broker as "no verified identity" — the
+        // fail-closed case, where nothing is ever bypassed.
+        //
+        // Scoped to this method by construction: an async method's builder saves and restores the ExecutionContext
+        // around its synchronous run, so this assignment flows down into the start (and the consent call inside it)
+        // and never back out to the caller that triggered the drain. _StartAsync is the single chokepoint every
+        // start goes through, so every caller is covered at once.
+        McpRequestContext.Set(entry.OwnerPaneId);
 
         try
         {

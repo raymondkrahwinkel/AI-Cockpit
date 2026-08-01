@@ -1291,7 +1291,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _ttsVoiceSid = 1;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the preferred base language ("en"/"nl") for read-aloud (#35): unmarked text speaks in it and the naturalize/summarize pass leans to it.</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the language ("en"/"nl") this session's read-aloud is synthesized in (#35), passed on every enqueue.</summary>
     [ObservableProperty]
     private string _readAloudLanguage = "en";
 
@@ -1373,16 +1373,21 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return Task.CompletedTask;
         }
 
+        // Read before the call, not after it: a barge-in that lands while NotifyPreparing is running — a subscriber
+        // to its PlaybackActiveChanged event calling StopAll, or the push-to-talk hold doing so from its own thread —
+        // bumps the generation in between. Taking the reading afterwards compares a value to itself and lets every
+        // such batch through, which is what this guard did before AC-546 removed the awaited rewrite step it used to
+        // straddle.
+        var generation = _voicePlaybackQueue.Generation;
+
         // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
         // heard, and that gap otherwise reads as nothing happening.
         _voicePlaybackQueue.NotifyPreparing();
-        var generation = _voicePlaybackQueue.Generation;
 
-        // A barge-in that lands synchronously while NotifyPreparing's event is still firing bumps the
-        // generation before this line runs — drop this batch instead of speaking over the interrupt the
-        // operator just made.
         if (_voicePlaybackQueue.Generation != generation)
         {
+            // Read-aloud was cancelled while this batch was being prepared — drop it instead of speaking over the
+            // interrupt the operator just made.
             return Task.CompletedTask;
         }
 

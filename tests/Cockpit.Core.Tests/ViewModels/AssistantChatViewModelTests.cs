@@ -39,6 +39,32 @@ public class AssistantChatViewModelTests
         return store;
     }
 
+    /// <summary>
+    /// AC-575 criterion 5: the "some of these were never shown to you" mark has to be true while the window is open,
+    /// not only at the moment it opened. The window is ownerless and kept between openings, so Options is reachable
+    /// without it closing — and it only ever read the flag in <see cref="AssistantChatViewModel.EnsureOpenedAsync"/>,
+    /// once per window lifetime. Turning the bypass on while the window sat there left it saying the opposite, in
+    /// the state the operator is in most.
+    /// </summary>
+    [Fact]
+    public async Task ABypassSwitchedOnWhileTheWindowIsOpen_ReachesTheHeaderOnTheSaveSignal()
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
+        var vm = new AssistantChatViewModel(FakeHost(), store, Substitute.For<IVoicePlaybackQueue>());
+
+        await vm.EnsureOpenedAsync();
+        Assert.False(vm.ConsentBypassActive);
+
+        // Options saves a bypass. The window is still the same instance — nothing reopened.
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new AssistantSettings { IsEnabled = true, ConsentBypassSources = ["Terminal MCP"] }));
+        await vm.ApplySettingsAsync();
+
+        Assert.True(vm.ConsentBypassActive);
+    }
+
     [Fact]
     public void ARowArrivingInTheTranscript_RaisesHasMessages_SoTheWindowStopsShowingItsPlaceholder()
     {

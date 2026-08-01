@@ -31,12 +31,26 @@ namespace Cockpit.Infrastructure.Tests.Assistant;
 /// </para>
 /// <para>
 /// <b>Known ceilings, written down rather than implied.</b> The walk follows <c>call</c>, <c>callvirt</c>,
-/// <c>newobj</c> and <c>ldftn</c>/<c>ldvirtftn</c> through methods declared in the cockpit's own assemblies. It does
-/// not follow a call made by reflection or by a delegate handed in from outside those assemblies, and it does not
-/// see a plugin, which is a separately-installed assembly this test cannot enumerate. A plugin that wrote the
-/// assistant's settings would be doing so with the operator's install-time consent, which is a larger decision than
-/// this ticket's; a tool that reached the door by <c>MethodInfo.Invoke</c> would not be caught here. Both are the
-/// price of a test that is derived rather than listed, and both are smaller holes than the list would have been.
+/// <c>newobj</c> and <c>ldftn</c>/<c>ldvirtftn</c> through methods declared in the cockpit's own assemblies, and at a
+/// virtually dispatched call it also queues every implementation in those assemblies (see
+/// <see cref="_WithImplementations"/>) rather than stopping on the bodyless declaration. It does not follow a call
+/// made by reflection or by a delegate handed in from outside those assemblies, and it does not see a plugin, which
+/// is a separately-installed assembly this test cannot enumerate. A plugin that wrote the assistant's settings would
+/// be doing so with the operator's install-time consent, which is a larger decision than this ticket's; a tool that
+/// reached the door by <c>MethodInfo.Invoke</c> would not be caught here. Both are the price of a test that is
+/// derived rather than listed, and both are smaller holes than the list would have been.
+/// </para>
+/// <para>
+/// <b>The ceiling this walk cannot close at all: the file, not the code.</b> The switches live in
+/// <c>cockpit.json</c>, and a call graph says nothing about who can write that file. With the operator's Terminal
+/// bypass on for the dangerous class, <c>terminal.drive</c> is a tool that types arbitrary text into a shell — so it
+/// can rewrite <c>cockpit.json</c> directly and widen the bypass, taking effect at the next start (the settings are
+/// read on load, so it is not immediate, which is the only thing that makes this less than total). No call-graph
+/// analysis can cover that route: the write never passes through a cockpit method, and the same is true of any
+/// general-purpose command execution the operator switches on. It is the shape of the trade AC-575 makes — the
+/// dangerous switch is a second, separate, default-off decision precisely because turning it on for a source that
+/// runs shell commands hands over more than the source's own name suggests. Named here so it is a known ceiling
+/// rather than a gap this file's green implies is absent.
 /// </para>
 /// </remarks>
 public sealed class AssistantSettingsWritersTests
@@ -130,6 +144,30 @@ public sealed class AssistantSettingsWritersTests
         Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.AsyncTool))!));
     }
 
+    /// <summary>
+    /// A call through an interface has to be followed into the implementation. <c>ResolveMethod</c> on the
+    /// <c>callvirt</c> yields <c>IWriteDoorHop.Hop</c>, which is abstract and has no body, so the walk used to stop
+    /// on the declaration and report nothing — one <c>private readonly IFoo</c> between a tool and the door was
+    /// enough to hide it. Not a path that exists in the cockpit today, which is exactly why it needs a control
+    /// rather than a comment.
+    /// </summary>
+    [Fact]
+    public void TheWalkerFollowsAnInterfaceCallIntoItsImplementation()
+    {
+        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.ThroughAnInterface))!));
+    }
+
+    /// <summary>
+    /// The same hole one step over: a <c>virtual</c> that does nothing and an override that writes. Here the
+    /// declared method does have a body, so the walk happily read the base's empty one and never looked at the
+    /// override the call actually lands on.
+    /// </summary>
+    [Fact]
+    public void TheWalkerFollowsAVirtualCallIntoItsOverride()
+    {
+        Assert.NotNull(_PathToAWriteDoor(typeof(WritesTheSettings).GetMethod(nameof(WritesTheSettings.ThroughAVirtual))!));
+    }
+
     /// <summary>A stand-in tool that does the forbidden thing, so the walker's own correctness is asserted rather than assumed.</summary>
     public sealed class WritesTheSettings(IAssistantSettingsStore store)
     {
@@ -145,7 +183,35 @@ public sealed class AssistantSettingsWritersTests
             return "done";
         }
 
+        /// <summary>Reaches the door through an interface the caller's IL only names abstractly.</summary>
+        public Task ThroughAnInterface(IWriteDoorHop hop) => hop.Hop(store);
+
+        /// <summary>And through a virtual whose base body does nothing at all.</summary>
+        public Task ThroughAVirtual(WriteDoorHopBase hop) => hop.Hop(store);
+
         private Task _OneStepRemoved() => Tool();
+    }
+
+    /// <summary>The interface half of the indirection controls above.</summary>
+    public interface IWriteDoorHop
+    {
+        Task Hop(IAssistantSettingsStore store);
+    }
+
+    public sealed class WriteDoorHop : IWriteDoorHop
+    {
+        public Task Hop(IAssistantSettingsStore store) => store.SaveAsync(new AssistantSettings());
+    }
+
+    /// <summary>The virtual half: a base that writes nothing, and an override that does.</summary>
+    public class WriteDoorHopBase
+    {
+        public virtual Task Hop(IAssistantSettingsStore store) => Task.CompletedTask;
+    }
+
+    public sealed class WriteDoorHopOverride : WriteDoorHopBase
+    {
+        public override Task Hop(IAssistantSettingsStore store) => store.SaveAsync(new AssistantSettings());
     }
 
     // ── The walk ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -166,7 +232,7 @@ public sealed class AssistantSettingsWritersTests
         {
             var (method, path) = queue.Dequeue();
 
-            foreach (var callee in _Callees(method))
+            foreach (var callee in _Callees(method).SelectMany(_WithImplementations))
             {
                 var trail = $"{path} -> {callee.DeclaringType?.Name}.{callee.Name}";
                 if (_IsAWriteDoor(callee))
@@ -190,6 +256,93 @@ public sealed class AssistantSettingsWritersTests
 
     private static bool _IsOurs(Type? type) =>
         type?.Assembly.GetName().Name?.StartsWith("Cockpit.", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// <paramref name="callee"/> and, when the call is dispatched virtually, every implementation of it in the
+    /// cockpit's own assemblies.
+    /// </summary>
+    /// <remarks>
+    /// <c>Module.ResolveMethod</c> on a <c>callvirt</c> hands back the method as <em>declared</em>. For an interface
+    /// or abstract member that method has no body at all, so the walk stopped dead at the declaration; for an
+    /// ordinary <c>virtual</c> it walked the base implementation and never saw the override. Either way a door
+    /// reached through one layer of indirection — a tool calling <c>ISomething.Do()</c> whose implementation writes
+    /// the settings — went unreported, which is wider than the ceilings this file writes down. Each implementation
+    /// is a real place the call can land, so each one is queued.
+    /// </remarks>
+    private static IEnumerable<MethodBase> _WithImplementations(MethodBase callee)
+    {
+        yield return callee;
+
+        // Bounded to declarations in our own assemblies, matching the walk itself: expanding every virtual call into
+        // the BCL would mean scanning every cockpit type for an override of ToString on each instruction.
+        if (callee is not MethodInfo { IsVirtual: true } declared
+            || declared.DeclaringType is not { } declaringType
+            || !_IsOurs(declaringType))
+        {
+            yield break;
+        }
+
+        var baseDefinition = declared.GetBaseDefinition();
+        foreach (var type in OurConcreteTypes.Value)
+        {
+            if (type == declaringType || !declaringType.IsAssignableFrom(type))
+            {
+                continue;
+            }
+
+            if (declaringType.IsInterface)
+            {
+                InterfaceMapping mapping;
+                try
+                {
+                    mapping = type.GetInterfaceMap(declaringType);
+                }
+                catch (Exception)
+                {
+                    // A generic definition, or a type this runtime will not map. Nothing to add.
+                    continue;
+                }
+
+                for (var i = 0; i < mapping.InterfaceMethods.Length; i++)
+                {
+                    if (mapping.InterfaceMethods[i] == declared)
+                    {
+                        yield return mapping.TargetMethods[i];
+                    }
+                }
+
+                continue;
+            }
+
+            foreach (var candidate in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (candidate.IsVirtual && candidate.GetBaseDefinition() == baseDefinition)
+                {
+                    yield return candidate;
+                }
+            }
+        }
+    }
+
+    /// <summary>Every concrete type the cockpit's own loaded assemblies define — the candidates an override can live on.</summary>
+    private static readonly Lazy<IReadOnlyList<Type>> OurConcreteTypes = new(() =>
+        [.. AppDomain.CurrentDomain.GetAssemblies()
+            .Where(assembly => assembly.GetName().Name?.StartsWith("Cockpit.", StringComparison.Ordinal) == true)
+            .SelectMany(_TypesOf)
+            .Where(type => type is { IsInterface: false, IsAbstract: false, IsGenericTypeDefinition: false })]);
+
+    private static IEnumerable<Type> _TypesOf(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException exception)
+        {
+            // A type whose own dependencies did not load cannot hold an override anyone can reach either.
+            return exception.Types.OfType<Type>();
+        }
+    }
 
     /// <summary>
     /// Every method named by a call-like instruction in <paramref name="method"/>'s body. Read by walking the IL

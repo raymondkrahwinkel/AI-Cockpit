@@ -36,4 +36,23 @@ public static class ConsentSourceCatalog
     /// <summary>Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.</summary>
     public static IReadOnlyList<string> HostSources { get; } =
         [TerminalMcp, WorktreesMcp, VerifyMcp, Orchestrator, Debug];
+
+    /// <summary>
+    /// The bypass key for one source: the host-stamped <paramref name="pluginId"/> under a <c>plugin:</c> prefix, or
+    /// the <paramref name="label"/> — a constant above — for a host-internal caller that has no plugin id.
+    /// </summary>
+    /// <remarks>
+    /// The prefix keeps the two halves in separate key spaces. Without it a plugin whose manifest id happens to be
+    /// <c>"Terminal MCP"</c> shares a row, and a switch, with the host's own terminal gate: the operator switches one
+    /// on and silently arms the other. One definition, used by both the broker (which builds the key a request is
+    /// matched on) and the Options list (which builds the key a row is stored under), so the two cannot drift.
+    /// <para>
+    /// A <c>cockpit.json</c> written before the prefix existed holds bare plugin ids. Those no longer match any
+    /// request, so the effect on an existing install is that a plugin's bypass reads as off until the operator ticks
+    /// it again — never as on for something it was not set for. The stale keys stay visible: Options lists anything
+    /// already switched on, so an orphaned row can still be switched off rather than sitting there unreachable.
+    /// </para>
+    /// </remarks>
+    public static string KeyFor(string? pluginId, string label) =>
+        pluginId is null ? label : "plugin:" + pluginId;
 }

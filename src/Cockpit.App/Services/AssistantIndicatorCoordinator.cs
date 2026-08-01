@@ -38,6 +38,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     /// <summary>The pop-out, kept between openings rather than rebuilt: closing it must not disturb the conversation behind it (criterion 7).</summary>
     private AssistantChatWindow? _chatWindow;
 
+    /// <summary>The open pop-out's view model, so a settings change can reach it without touching the window off the UI thread. Null whenever <see cref="_chatWindow"/> is.</summary>
+    private AssistantChatViewModel? _chatViewModel;
+
     public AssistantIndicatorCoordinator(
         AssistantSessionHost assistant,
         OpenMicCoordinator openMic,
@@ -97,6 +100,16 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.IsFeatureEnabled = settings.IsEnabled;
         Indicator.IsConsentBypassActive = settings.HasConsentBypass;
         _Refresh();
+
+        // The pop-out too, when it is open. It is kept between openings and is ownerless, so Options can be used
+        // while it sits there — and Show() on a live window raises no new Opened, which means its own open-time read
+        // would never run again. Without this the chip refreshed its bypass mark and the window behind it did not.
+        // Held as its own field rather than read back off Window.DataContext: this runs on whatever thread the
+        // Options save left it on, and an Avalonia property read off the UI thread throws.
+        if (_chatViewModel is { } chat)
+        {
+            await chat.ApplySettingsAsync(cancellationToken).ConfigureAwait(true);
+        }
     }
 
     /// <summary>Mirrors the sidebar's collapsed state onto the chip, which drops to its bare badge for the rail.</summary>
@@ -175,14 +188,12 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
         if (_chatWindow is null)
         {
-            _chatWindow = new AssistantChatWindow
-            {
-                DataContext = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog),
-            };
+            _chatViewModel = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog);
+            _chatWindow = new AssistantChatWindow { DataContext = _chatViewModel };
 
             // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
             // here, which is the whole of criterion 7: the window is a peephole, not the owner.
-            _chatWindow.Closed += (_, _) => _chatWindow = null;
+            _chatWindow.Closed += (_, _) => { _chatWindow = null; _chatViewModel = null; };
 
             // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
             // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
