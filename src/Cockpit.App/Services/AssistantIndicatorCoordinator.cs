@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -177,11 +178,28 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             // Dropped on close so the next click builds a fresh window — but nothing about the session is touched
             // here, which is the whole of criterion 7: the window is a peephole, not the owner.
             _chatWindow.Closed += (_, _) => _chatWindow = null;
+
+            // Shown without an owner, and closed with the cockpit by hand instead. Ownerless is deliberate: an owned
+            // window minimises and restores with its owner, and this one has to stay reachable while the cockpit is
+            // in the background — that is the whole point of a global hotkey. But Avalonia's default shutdown is
+            // "when the last window closes", so an ownerless window that outlives the main one keeps the entire
+            // process alive: the cockpit vanished from the screen, the chat pop-out stayed sitting there, and the
+            // app went on running with its global hotkeys still registered — which is what then refused F10 to the
+            // next launch, since the key was still held by a process nobody could see.
+            if (Avalonia.Application.Current?.ApplicationLifetime
+                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            {
+                main.Closed += _OnMainWindowClosed;
+                _chatWindow.Closed += (_, _) => main.Closed -= _OnMainWindowClosed;
+            }
         }
 
         _chatWindow.Show();
         _chatWindow.Activate();
     }
+
+    /// <summary>The cockpit's own window closed, so the pop-out onto it goes too — see <see cref="_OpenChatAsync"/> for why by hand.</summary>
+    private void _OnMainWindowClosed(object? sender, EventArgs e) => _chatWindow?.Close();
 
     /// <summary>
     /// Switches the microphone between held-only and held-open — the only two modes the chip offers.

@@ -128,6 +128,29 @@ public class AssistantSessionHostTests
 
     // ── The chip's Thinking state has to end, and only the session knows when ──────────────────────────────────
 
+    [Fact]
+    public void ActivityFor_WhileAPermissionIsActuallyPending_SaysItNeedsYou()
+    {
+        Assert.Equal(
+            AssistantActivity.AwaitingOperator,
+            AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, SessionStatus.Busy, hasPendingPermission: true));
+    }
+
+    [Theory]
+    [InlineData(SessionStatus.NeedsAttention)]
+    [InlineData(SessionStatus.Done)]
+    public void ActivityFor_OnceThePermissionIsAnswered_StopsSayingItNeedsYou(SessionStatus status)
+    {
+        // The defect this pins: the first version read SessionStatus.NeedsAttention, which is sticky by design —
+        // it is cleared only when the operator sends their next message, not when they answer the prompt. So the
+        // chip sat on "Needs you" through the rest of the answer and the read-aloud, and because that state
+        // outranks the others it never showed Thinking or Speaking again either. A test that only drove the
+        // status enum would have gone on passing.
+        Assert.Equal(
+            AssistantActivity.Ready,
+            AssistantSessionHost.ActivityFor(AssistantActivity.AwaitingOperator, status, hasPendingPermission: false));
+    }
+
     [Theory]
     [InlineData(SessionStatus.Busy, AssistantActivity.Thinking)]
     [InlineData(SessionStatus.WorkingBackground, AssistantActivity.Thinking)]
@@ -141,7 +164,7 @@ public class AssistantSessionHostTests
         // session. So the first send showed Ready while the assistant was plainly thinking, and every send after
         // that left the chip on "Thinking…" for good — EnsureStartedAsync hands back a live instance without
         // touching Activity.
-        Assert.Equal(expected, AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, status));
+        Assert.Equal(expected, AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, status, hasPendingPermission: false));
     }
 
     [Theory]
@@ -151,8 +174,8 @@ public class AssistantSessionHostTests
     {
         // Unavailable is a fact about the feature, not about a turn; Listening is a key being held right now, and a
         // turn finishing mid-hold must not tell the operator the microphone closed.
-        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Idle));
-        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Busy));
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Idle, hasPendingPermission: false));
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, SessionStatus.Busy, hasPendingPermission: false));
     }
 
     // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──

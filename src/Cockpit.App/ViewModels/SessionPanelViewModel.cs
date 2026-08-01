@@ -1281,7 +1281,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     protected Task EnqueueReadAloudAsync(string text) =>
         _voicePlaybackQueue is null
             ? Task.CompletedTask
-            : ReadAloudPipeline.SpeakAsync(_voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage);
+            : ReadAloudPipeline.SpeakAsync(
+                _voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage,
+                ReadAloudAsOneUtterance);
+
+    /// <summary>
+    /// Whether this session's replies are spoken as one synthesis rather than sentence by sentence — see
+    /// <see cref="ReadAloudPipeline.SpeakAsync"/>'s <c>asOneUtterance</c> for the measurement behind it. False
+    /// here, because a session's reply can run for paragraphs; the assistant sets it, because its answers are
+    /// short by instruction and the gaps between sentences are the whole of how it sounds.
+    /// </summary>
+    public bool ReadAloudAsOneUtterance { get; set; }
 
     /// <summary>
     /// Speaks a short acknowledgement as a turn starts (AC-99) so a voice conversation is not met with silence while

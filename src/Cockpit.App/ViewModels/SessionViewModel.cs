@@ -739,8 +739,26 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         if (e.PropertyName is nameof(TranscriptEntryViewModel.IsPendingPermission) or nameof(TranscriptEntryViewModel.PermissionDecision))
         {
             _RecomputeReadingGroups();
+            OnPropertyChanged(nameof(HasPendingPermission));
         }
     }
+
+    /// <summary>
+    /// Whether a tool call is waiting on the operator's Allow/Deny <em>right now</em>.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="SessionStatus.NeedsAttention"/>, which is deliberately stickier: <c>_needsAttention</c>
+    /// is set when a prompt appears and cleared only when the operator sends the next message, so a session keeps
+    /// flagging itself in the sidebar until someone has actually been back to it. That is right for a list of panes
+    /// you are not looking at, and wrong for anything reporting a live state — read as "now", it says a session is
+    /// waiting long after it was answered and the turn finished.
+    /// <para>
+    /// Recomputed from the rows rather than tracked as a second flag: the rows are where a permission is answered
+    /// (<c>RespondToPermissionAsync</c> clears <c>IsPendingPermission</c> on the entry), so anything keeping its own
+    /// copy would be one more thing to clear on every path that resolves one.
+    /// </para>
+    /// </remarks>
+    public bool HasPendingPermission => Transcript.Any(entry => entry.IsPendingPermission);
 
     // Re-forms the Focus "N steps run" fold groups (AC-138): a group is a maximal run of two or more consecutive
     // auto tool calls, its first row the anchor that carries the expand toggle and the rest folding under it. Only

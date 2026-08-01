@@ -337,6 +337,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // is the operator's to choose as the Assistant Profile and nowhere else — never machinery underneath it.
         session.TurnAckMode = TurnAckMode.InstantPhrases;
 
+        // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
+        // sentence spent about as long synthesising as speaking, so every full stop came with an audible hole in
+        // it — for a surface whose entire output is speech, that is not a rough edge but the product.
+        session.ReadAloudAsOneUtterance = true;
+
         session.TtsVoiceSid = _cockpit.SelectedTtsVoice.Sid;
         session.ReadAloudLanguage = _cockpit.SelectedReadAloudLanguage.Code;
         session.ReadResponsesAloud = settings.SpeakReplies;
@@ -357,7 +362,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
     private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is null or nameof(SessionViewModel.SessionStatus) && sender is SessionViewModel session)
+        if (e.PropertyName is null
+                or nameof(SessionViewModel.SessionStatus)
+                or nameof(SessionViewModel.HasPendingPermission)
+            && sender is SessionViewModel session)
         {
             _SyncActivityWithSession(session);
         }
@@ -379,21 +387,27 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </para>
     /// </remarks>
     private void _SyncActivityWithSession(SessionViewModel session) =>
-        Activity = ActivityFor(Activity, session.SessionStatus);
+        Activity = ActivityFor(Activity, session.SessionStatus, session.HasPendingPermission);
 
     /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
-    internal static AssistantActivity ActivityFor(AssistantActivity current, SessionStatus status) => current switch
+    /// <remarks>
+    /// <paramref name="hasPendingPermission"/> rather than <see cref="SessionStatus.NeedsAttention"/> is the whole
+    /// correctness of the waiting state. NeedsAttention is sticky by design — it survives until the operator sends
+    /// the next message, so a pane keeps flagging itself in a sidebar nobody is looking at — and reading it as a
+    /// live state left the chip on "Needs you" long after the approval was given, the answer written and the reply
+    /// spoken. Worse than merely stale: with the chip stuck there it never showed Thinking or Speaking again
+    /// either, so the one surface that reports the assistant reported nothing for the rest of the conversation.
+    /// </remarks>
+    internal static AssistantActivity ActivityFor(
+        AssistantActivity current, SessionStatus status, bool hasPendingPermission) => current switch
     {
         AssistantActivity.Unavailable or AssistantActivity.Listening => current,
+        // First, and ahead of Busy: a session can still read as busy while it stands on a prompt, and what the
+        // operator needs to know is the half they can act on.
+        _ when hasPendingPermission => AssistantActivity.AwaitingOperator,
         _ => status switch
         {
             SessionStatus.Busy or SessionStatus.WorkingBackground => AssistantActivity.Thinking,
-            // The case this mapping originally got wrong. A permission prompt or a question sets NeedsAttention and
-            // deliberately leaves the session looking not-busy — which it is, because it has stopped. Reading that
-            // as Ready told the operator nothing was happening while the assistant stood waiting on an approval it
-            // had no other way to ask for: the chip is not in the grid and not in the sidebar's session rows, so
-            // this is the only place that can say so.
-            SessionStatus.NeedsAttention => AssistantActivity.AwaitingOperator,
             _ => AssistantActivity.Ready,
         },
     };
