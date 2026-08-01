@@ -15,6 +15,22 @@ public partial class SessionView : UserControl
     // read history, resume once they scroll back down (#21). Avalonia has no built-in stick-to-bottom.
     private bool _stickToBottom = true;
 
+    /// <summary>True while <see cref="_FollowNewest"/> is moving the viewport itself, so the scroll changes it
+    /// causes are never mistaken for the operator's — and never re-enter it.</summary>
+    private bool _following;
+
+    /// <summary>
+    /// An operator gesture that can scroll happened, and the scroll change it produces is the next one to arrive.
+    /// The delta fields cannot stand in for this: a virtualising panel corrects its own offset after arrange, and
+    /// such a correction moves the offset with the extent and viewport both standing still — which is precisely
+    /// the fingerprint the old code called "a real user scroll". Three rounds of this ticket died on that
+    /// ambiguity. The wheel is a single event, so this is a one-shot flag; a scrollbar drag lasts as long as the
+    /// button is held, which is what <see cref="_pointerHeld"/> is for.
+    /// </summary>
+    private bool _wheelTurned;
+
+    private bool _pointerHeld;
+
     /// <summary>
     /// Ticks the composer's tool-activity elapsed time once a second (AC-532), so "running 0:12" counts up
     /// instead of freezing at whatever it read on first render — and, since AC-531, the background-work
@@ -49,8 +65,14 @@ public partial class SessionView : UserControl
         Dispatcher.UIThread.Post(() => InputBox.Focus());
 
         TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
+        // Tunnel, and handled events too: the ScrollViewer's own presenter marks the wheel handled while
+        // scrolling on it, and a scrollbar thumb handles its own pointer press.
+        TranscriptScroll.AddHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        TranscriptScroll.AddHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         // Land on the newest row if the panel re-attaches with an existing transcript.
-        Dispatcher.UIThread.Post(() => { if (_stickToBottom) TranscriptScroll.ScrollToEnd(); });
+        Dispatcher.UIThread.Post(() => { if (_stickToBottom) _FollowNewest(); });
 
         _activityAgeTicker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _activityAgeTicker.Tick += _OnActivityAgeTick;
@@ -60,6 +82,10 @@ public partial class SessionView : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
+        TranscriptScroll.RemoveHandler(InputElement.PointerWheelChangedEvent, _OnTranscriptWheel);
+        TranscriptScroll.RemoveHandler(InputElement.PointerPressedEvent, _OnTranscriptPointerPressed);
+        TranscriptScroll.RemoveHandler(InputElement.PointerReleasedEvent, _OnTranscriptPointerReleased);
+        TranscriptScroll.RemoveHandler(InputElement.PointerCaptureLostEvent, _OnTranscriptPointerReleased);
 
         _activityAgeTicker?.Stop();
         _activityAgeTicker = null;
@@ -82,37 +108,105 @@ public partial class SessionView : UserControl
 
     private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        // Content grew/shrank (a new row streamed in), or the viewport itself resized (the "Thinking…"
-        // row, the starting banner, the usage-warning and pending-resume bars all dock above the
-        // composer and take their band out of the transcript, AC-459): keep following the bottom if we
-        // were parked there. Neither is a user scroll, so neither should re-derive the stick state —
-        // only a real user scroll (offset moves while the extent AND the viewport stay put) flips
-        // whether we follow.
-        if (e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0)
+        // Our own correction, and the layout passes it drives: not something to draw conclusions from.
+        if (_following)
         {
-            if (_stickToBottom)
-            {
-                TranscriptScroll.ScrollToEnd();
-            }
-
             return;
         }
 
-        if (e.OffsetDelta.Y != 0)
+        var byOperator = _wheelTurned || _pointerHeld;
+        _wheelTurned = false;
+
+        if (byOperator)
         {
-            _stickToBottom = TranscriptScrollAnchor.IsAtBottom(
-                TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
+            // Only the operator can stop the follow, and only the operator can resume it, so only a change they
+            // caused re-derives it. Where they ended up is the same fact after a wheel turn as after a scrollbar
+            // drag — no need to tell those two apart.
+            _stickToBottom = _NewestRowIsFullyVisible()
+                || TranscriptScrollAnchor.IsAtBottom(
+                    TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
+        }
+        else if (_stickToBottom)
+        {
+            // Content grew or shrank (a row streamed in), or the viewport resized (the composer's activity line,
+            // the starting banner, the usage-warning and pending-resume bars all dock above the transcript and
+            // take their band out of it, AC-459). Nobody scrolled: keep the newest row in view.
+            _FollowNewest();
         }
 
         // Offer the jump-to-newest button only while scrolled up (i.e. not following the tail).
         ScrollToBottomButton.IsVisible = !_stickToBottom;
     }
 
+    private void _OnTranscriptWheel(object? sender, PointerWheelEventArgs e) => _wheelTurned = true;
+
+    private void _OnTranscriptPointerPressed(object? sender, PointerPressedEventArgs e) => _pointerHeld = true;
+
+    private void _OnTranscriptPointerReleased(object? sender, RoutedEventArgs e) => _pointerHeld = false;
+
     private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
     {
         _stickToBottom = true;
-        TranscriptScroll.ScrollToEnd();
+        _FollowNewest();
         ScrollToBottomButton.IsVisible = false;
+    }
+
+    /// <summary>
+    /// Puts the viewport on the newest row. It asks for the row rather than for an offset, because the offset
+    /// this used to use — <c>ScrollToEnd()</c>, i.e. <c>Extent - Viewport</c> — is computed from an estimate the
+    /// panel then corrects on its next arrange: measured at four window sizes with a folded run streaming in, it
+    /// left the transcript some 300px short of the bottom the panel would accept, which is the row that kept
+    /// half-hiding under the composer hairline (AC-528, criterion 5). Worse, the correction raises another
+    /// ScrollChanged, so following it lands right back on a fresh estimate — measured, that is a layout loop the
+    /// manager gives up on ("Infinite layout loop detected"). Asking for the last row terminates instead: once it
+    /// is in view the guard above says so and this does nothing.
+    /// </summary>
+    private void _FollowNewest()
+    {
+        // ScrollIntoView drives a layout pass then and there, and the ScrollViewer raises ScrollChanged from that
+        // pass — so without this guard the handler calls itself until the stack runs out (measured: it does).
+        if (_following || TranscriptItems.ItemCount == 0 || _NewestRowIsFullyVisible())
+        {
+            return;
+        }
+
+        _following = true;
+        try
+        {
+            TranscriptItems.ScrollIntoView(TranscriptItems.ItemCount - 1);
+        }
+        finally
+        {
+            _following = false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the newest row is on screen in full — the transcript's honest answer to "are we at the bottom",
+    /// and the reason this does not ask <c>Extent</c>. The transcript virtualises, so <c>Extent</c> is an
+    /// estimate assembled from whichever rows happen to be realised; measured across four window sizes with a
+    /// folded run streaming in, <c>Extent - Viewport</c> sat some 300px above any offset the panel would accept,
+    /// which is a bottom the operator can never reach and a follow that can therefore never resume (AC-528).
+    /// The last row's own bottom edge is a measurement rather than an estimate, and it is also exactly what
+    /// criterion 5 is about: the newest row clear of the composer hairline, not half under it.
+    /// </summary>
+    private bool _NewestRowIsFullyVisible()
+    {
+        if (TranscriptItems.ItemCount == 0)
+        {
+            return true;
+        }
+
+        // Not realised means it is off-screen below, which is the whole point of virtualisation — so not at the
+        // bottom. (Above the viewport it cannot be: it is the last row.)
+        if (TranscriptItems.ContainerFromIndex(TranscriptItems.ItemCount - 1) is not { } newest)
+        {
+            return false;
+        }
+
+        var bottom = newest.TranslatePoint(new Point(0, newest.Bounds.Height), TranscriptScroll);
+        // A pixel of slack for layout rounding, in the same spirit as TranscriptScrollAnchor's tolerance.
+        return bottom is not null && bottom.Value.Y <= TranscriptScroll.Viewport.Height + 1.0;
     }
 
     /// <summary>Whole-row click expands (or, on the selected row, collapses) a background task's detail in the

@@ -518,7 +518,7 @@
                  produced and keeps it alive forever — hundreds of megabytes of UI nobody is looking at, in a long
                  session. An ItemsRepeater builds what is on screen. The rows the operator scrolled past cost what
                  they are worth: their view model, and nothing else. -->
-            <ItemsControl ItemsSource="{Binding Transcript}">
+            <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <VirtualizingStackPanel/>
