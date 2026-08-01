@@ -32,6 +32,42 @@ public class ProjectMcpOverlayTests
         Assert.Equivalent(new object[] { "depot", "youtrack" }, overlay.ApplyTo(Registry).Select(server => server.Name));
     }
 
+    /// <summary>
+    /// Why the choice is stored as a list of what is on (Raymond, 2026-08-01): a server added to the registry after
+    /// the project made its choice is in nobody's list, so a project that narrowed its servers stays narrowed. The
+    /// off-list this replaced had the opposite hole — a new server was in no project's off-list, so it arrived ticked
+    /// everywhere, including in the projects that had switched almost everything off.
+    /// </summary>
+    [Fact]
+    public void IsSelectedByDefault_AServerAddedAfterTheChoice_IsUntickedForANarrowedProject()
+    {
+        var overlay = new ProjectMcpOverlay { EnabledServerNames = ["YouTrack"] };
+
+        Assert.True(overlay.IsSelectedByDefault("youtrack"), "matched case-insensitively, like every other name here");
+        Assert.False(overlay.IsSelectedByDefault("depot"));
+        Assert.False(overlay.IsSelectedByDefault("brand-new"));
+    }
+
+    /// <summary>An empty list is a project that ticked nothing — a real answer, not a project that never answered.</summary>
+    [Fact]
+    public void IsSelectedByDefault_AnEmptyEnabledList_TicksNothing()
+    {
+        var overlay = new ProjectMcpOverlay { EnabledServerNames = [] };
+
+        Assert.False(overlay.IsSelectedByDefault("youtrack"));
+        Assert.False(overlay.IsEmpty, "a project that ticked nothing has said something, so it must survive a save");
+    }
+
+    /// <summary>A project saved by an earlier build still reads back the way it was written.</summary>
+    [Fact]
+    public void IsSelectedByDefault_TheOlderDisabledList_StillApplies()
+    {
+        var overlay = new ProjectMcpOverlay { DisabledServerNames = ["youtrack"] };
+
+        Assert.False(overlay.IsSelectedByDefault("youtrack"));
+        Assert.True(overlay.IsSelectedByDefault("depot"));
+    }
+
     [Fact]
     public void IsSelectedByDefault_ADisabledName_IsUnticked_MatchedCaseInsensitively()
     {

@@ -212,22 +212,33 @@ public partial class ProjectDialogViewModel : ViewModelBase
             string.Equals(label, project?.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase));
 
         var servers = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
-        var disabled = project?.McpOverlay.DisabledServerNames.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+        var overlay = project?.McpOverlay ?? ProjectMcpOverlay.None;
         var offered = McpServerRegistryFilter.OfferedToOperator(servers);
 
         foreach (var server in offered)
         {
             viewModel.McpServers.Add(new McpServerSelectionItemViewModel(server.Name)
             {
-                IsEnabledForSession = !disabled.Contains(server.Name),
+                IsEnabledForSession = overlay.IsSelectedByDefault(server.Name),
             });
         }
 
-        // A name this project switched off that the checklist cannot show — the server was disabled in the registry
-        // since, or removed — is kept rather than dropped on save, the way the project's own servers are. Editing
-        // which servers are on must not silently switch one back on because the row for it was not there.
-        viewModel._carriedDisabledServerNames =
-            [.. disabled.Where(name => !offered.Any(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase)))];
+        // A name this project has already decided about that the checklist cannot show — the server was disabled in
+        // the registry since, or removed — is kept rather than dropped on save, the way the project's own servers are.
+        // Editing which servers are on must not silently flip one because the row for it was not there. Both
+        // directions are carried: an "off" one so saving cannot switch it back on, an "on" one because the list that
+        // gets written names what is on, so leaving it out would be switching it off.
+        // Only names the project itself named: a catalog endpoint with no row (internal, always-mounted) is not a
+        // decision this project ever made, and writing one into the list of what is on would mount tooling — the
+        // Autopilot's pane-scoped endpoints among it — that the checklist hides precisely because it is not a choice.
+        var hasRow = offered.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var decided = (overlay.EnabledServerNames ?? [])
+            .Concat(overlay.DisabledServerNames)
+            .Where(name => !hasRow.Contains(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        viewModel._carriedEnabledServerNames = [.. decided.Where(overlay.IsSelectedByDefault)];
+        viewModel._carriedDisabledServerNames = [.. decided.Where(name => !overlay.IsSelectedByDefault(name))];
 
         return viewModel;
     }
@@ -243,7 +254,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// </summary>
     private readonly IReadOnlyList<ProjectResource> _pendingResources = [];
 
-    /// <summary>The names this project switched off that the checklist has no row for, carried through so saving cannot switch them back on.</summary>
+    /// <summary>The names this project switched on that the checklist has no row for, carried through so saving cannot switch them off.</summary>
+    private IReadOnlyList<string> _carriedEnabledServerNames = [];
+
+    /// <summary>The names this project switched off that the checklist has no row for — kept only so saving still counts the project as one that narrowed its servers.</summary>
     private IReadOnlyList<string> _carriedDisabledServerNames = [];
 
     /// <summary>The links this project holds under keys no installed plugin registered, carried through so saving cannot drop them.</summary>
@@ -387,11 +401,22 @@ public partial class ProjectDialogViewModel : ViewModelBase
             ],
             McpOverlay = new ProjectMcpOverlay
             {
-                DisabledServerNames =
-                [
-                    .. McpServers.Where(server => !server.IsEnabledForSession).Select(server => server.Name),
-                    .. _carriedDisabledServerNames,
-                ],
+                // A list only for a project that actually narrowed something. Leaving it null where every server is
+                // ticked is the difference between "this project wants these" and "this project has no opinion": the
+                // second keeps picking up a server added to the registry later, which is what a project that never
+                // switched anything off should do — and the first, deliberately, does not (Raymond, 2026-08-01).
+                // It is also the way back: ticking every row on again drops the list, and the project follows the
+                // registry once more. A carried name either way still counts as narrowing — there is a decision to
+                // keep, and no row on screen through which it could be taken back.
+                EnabledServerNames = McpServers.Any(server => !server.IsEnabledForSession)
+                    || _carriedEnabledServerNames.Count > 0
+                    || _carriedDisabledServerNames.Count > 0
+                    ?
+                    [
+                        .. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name),
+                        .. _carriedEnabledServerNames,
+                    ]
+                    : null,
                 AdditionalServers = _additionalServers,
             },
             // Tidied here rather than only in the store, so what the caller gets back is what will be saved — an

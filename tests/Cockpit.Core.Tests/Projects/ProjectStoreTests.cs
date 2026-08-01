@@ -47,6 +47,7 @@ public class ProjectStoreTests : IDisposable
             LastOpenedAt = new DateTimeOffset(2026, 7, 24, 9, 30, 0, TimeSpan.FromHours(2)),
             McpOverlay = new ProjectMcpOverlay
             {
+                EnabledServerNames = ["depot"],
                 DisabledServerNames = ["youtrack"],
                 AdditionalServers = [new McpServerConfig { Id = "id-project-tools", Name = "project-tools", Command = "uvx" }],
             },
