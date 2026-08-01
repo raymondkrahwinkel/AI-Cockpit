@@ -1,36 +1,77 @@
 namespace Cockpit.Plugin.SessionReview.Tests;
 
-/// <summary>The session-review plugin's non-UI logic (AC-50): the git argument list, diff-line classification, the review prompt and the result shape.</summary>
+/// <summary>The session-review plugin's non-UI logic (AC-50): the git argument lists, the synthesised block for an
+/// untracked file, the review prompt and the result shape.</summary>
 public class GitDiffReaderTests
 {
     [Fact]
     public void DiffArguments_AreTheWorkingTreeDiffAgainstHead()
     {
-        Assert.Equal(["diff", "HEAD"], GitDiffReader.DiffArguments);
-    }
-
-    [Theory]
-    [InlineData("+added line", "Added")]
-    [InlineData("-removed line", "Removed")]
-    [InlineData("@@ -1,4 +1,6 @@ context", "Hunk")]
-    [InlineData("diff --git a/x b/x", "FileHeader")]
-    [InlineData("index 000..111 100644", "FileHeader")]
-    [InlineData("+++ b/x", "FileHeader")]
-    [InlineData("--- a/x", "FileHeader")]
-    [InlineData("new file mode 100644", "FileHeader")]
-    [InlineData(" unchanged context", "Context")]
-    [InlineData("", "Context")]
-    public void ClassifyLine_MapsUnifiedDiffLines(string line, string expected)
-    {
-        Assert.Equal(expected, GitDiffReader.ClassifyLine(line).ToString());
+        // core.quotePath=false keeps non-ASCII paths readable; --no-ext-diff stops a repository's own diff driver
+        // from replacing the unified output the panel has to parse.
+        Assert.Equal(["-c", "core.quotePath=false", "diff", "--no-ext-diff", "HEAD"], GitDiffReader.DiffArguments);
     }
 
     [Fact]
-    public void ClassifyLine_FilePlusMinusHeadersAreNotMistakenForAddedRemoved()
+    public void StatusArguments_ListEveryUntrackedFileNotJustItsFolder()
     {
-        // The +++/--- file headers must classify as headers, not as added/removed content lines.
-        Assert.Equal("FileHeader", GitDiffReader.ClassifyLine("+++ b/file").ToString());
-        Assert.Equal("FileHeader", GitDiffReader.ClassifyLine("--- a/file").ToString());
+        Assert.Equal(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"], GitDiffReader.StatusArguments);
+    }
+
+    [Fact]
+    public void UntrackedPaths_TakesOnlyTheQuestionMarkedEntries()
+    {
+        var status = " M src/Changed.cs\n?? src/New.cs\nA  src/Staged.cs\n?? docs/notes.md\n";
+
+        Assert.Equal(["src/New.cs", "docs/notes.md"], GitDiffReader.UntrackedPaths(status));
+    }
+
+    [Fact]
+    public void UntrackedPaths_IgnoresBlankLines()
+    {
+        Assert.Empty(GitDiffReader.UntrackedPaths("\n\n"));
+    }
+
+    [Fact]
+    public void UntrackedBlock_IsAValidAllAddedDiffTheParserReadsBack()
+    {
+        // The point of synthesising git's own shape rather than a bespoke record: the panel keeps one parsing path
+        // and "Copy diff" still hands out a diff that applies.
+        var block = GitDiffReader.UntrackedBlock("src/New.cs", "one\ntwo\n");
+
+        var file = Assert.Single(DiffParser.Parse(block));
+        Assert.Equal("src/New.cs", file.Path);
+        Assert.Equal(FileChangeKind.Added, file.Kind);
+        Assert.Equal((2, 0), (file.Added, file.Removed));
+        Assert.Equal(["one", "two"], file.Rows.Where(r => r.Kind == DiffLineKind.Added).Select(r => r.Text));
+        Assert.Contains("@@ -0,0 +1,2 @@", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UntrackedBlock_DoesNotCountTheTrailingNewlineAsALine()
+    {
+        Assert.Equal(
+            DiffParser.Parse(GitDiffReader.UntrackedBlock("x", "one\n"))[0].Added,
+            DiffParser.Parse(GitDiffReader.UntrackedBlock("x", "one"))[0].Added);
+    }
+
+    [Fact]
+    public void UntrackedBlock_HandlesAnEmptyFile()
+    {
+        var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBlock("empty.txt", string.Empty)));
+
+        Assert.Equal(0, file.Added);
+        Assert.Equal(FileChangeKind.Added, file.Kind);
+    }
+
+    [Fact]
+    public void UntrackedBinaryBlock_ParsesAsABinaryFileSoThePanelListsItWithoutDrawingIt()
+    {
+        var file = Assert.Single(DiffParser.Parse(GitDiffReader.UntrackedBinaryBlock("assets/logo.png")));
+
+        Assert.Equal("assets/logo.png", file.Path);
+        Assert.Equal(FileChangeKind.Binary, file.Kind);
+        Assert.Empty(file.Rows);
     }
 
     [Fact]

@@ -18,8 +18,10 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
         DisplayName: "Session Review",
         Author: "Cockpit",
         Description: "A \"Review changes\" action in each session's header opens a panel showing what that session "
-            + "changed (the git diff of its working directory, coloured for reading), with one click to ask the session "
-            + "to review its own changes before they land. Requires git installed on the machine running Cockpit.");
+            + "changed: a tree of changed files on the left, and on the right one file at a time with old and new line "
+            + "numbers, coloured bands behind changed lines, and the changed words picked out within a replaced line. "
+            + "Untracked files are included. One click asks the session to review its own changes before they land. "
+            + "Requires git installed on the machine running Cockpit.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -36,8 +38,10 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
                 "Session review",
                 () => new SessionDiffDialogControl(host, session),
                 $"review.{session.PaneId}",
-                width: 860,
-                height: 620))
+                // Wider and taller than the old flat list needed: the tree takes a fixed 260 on the left, and what
+                // is left has to hold a line of code plus two number gutters without wrapping every other line.
+                width: 1100,
+                height: 720))
         {
             IconKind = MaterialIconKind.FileCompare,
         });
