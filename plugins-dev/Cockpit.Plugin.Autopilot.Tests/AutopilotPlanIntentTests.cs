@@ -11,9 +11,75 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 /// consulted at all, and what a refusal does — without it, deleting the gate call leaves every test green.
 /// Asserted with xunit's own Assert rather than the FluentAssertions the older files in this project use: that
 /// package is commercially licensed from v8 on.
+/// <para>
+/// Every launch here is pointed at a throwaway origin+clone rather than at whatever directory the test process
+/// happens to run in. The plugin wires the real <see cref="GitEpicSubMergeChecker"/> against
+/// <c>host.Sessions.ActiveSessionWorkingDirectory</c>, falling back to <see cref="Directory.GetCurrentDirectory"/>;
+/// leaving that fallback in play made the epic tests depend on the ambient repository. Where git cannot answer at all
+/// — a copied tree whose <c>.git</c> points somewhere unreachable, as a container that receives the working directory
+/// rather than a checkout gets — <c>IsMerged</c> answers null for every sub and the epic-runner pauses the chain by
+/// design, so the epic test failed there while passing on a developer's machine. The repository is now the test's own.
+/// </para>
 /// </summary>
-public class AutopilotPlanIntentTests
+public class AutopilotPlanIntentTests : IDisposable
 {
+    // A bare "origin" plus a clone pushed to it, the same shape GitEpicSubMergeCheckerTests uses — enough for
+    // `git log origin/main` to succeed and answer "no commit mentions this sub", which is what these tests need to be
+    // true regardless of where they run. `git fetch` inside the checker is best-effort and its failure is ignored.
+    private readonly string _origin = Path.Combine(Path.GetTempPath(), $"ac345-origin-{Guid.NewGuid():N}");
+    private readonly string _clone = Path.Combine(Path.GetTempPath(), $"ac345-clone-{Guid.NewGuid():N}");
+
+    public AutopilotPlanIntentTests()
+    {
+        Directory.CreateDirectory(_origin);
+        _Git(_origin, "init", "--bare");
+
+        Directory.CreateDirectory(_clone);
+        _Git(_clone, "init");
+        _Git(_clone, "checkout", "-b", "main");
+        _Git(_clone, "remote", "add", "origin", _origin);
+        File.WriteAllText(Path.Combine(_clone, "readme.md"), "seed");
+        _Git(_clone, "add", "-A");
+        _Git(_clone, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-m", "seed commit");
+        _Git(_clone, "push", "-u", "origin", "main");
+    }
+
+    // Asserted rather than fire-and-forget: a setup step that fails silently would leave the checker unable to answer,
+    // which is exactly the "epic-paused instead of planning" symptom this wiring exists to remove — it must surface as
+    // a broken fixture, not as a mysterious assertion failure further down.
+    private static void _Git(string directory, params string[] arguments)
+    {
+        var result = GitCommandLine.RunAsync("git", arguments, directory).GetAwaiter().GetResult();
+        Assert.True(result.Ok, $"git {string.Join(' ', arguments)} failed: {result.Error}");
+    }
+
+    public void Dispose()
+    {
+        _TryDelete(_origin);
+        _TryDelete(_clone);
+        GC.SuppressFinalize(this);
+    }
+
+    // Same shape as GitEpicSubMergeCheckerTests._TryDelete, and for the same reason: git marks its object files
+    // read-only, so a plain recursive delete throws UnauthorizedAccessException on Windows and would fail a run whose
+    // assertions all passed.
+    private static void _TryDelete(string path)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
+            Directory.Delete(path, recursive: true);
+        }
+        catch (Exception)
+        {
+            // A throwaway directory under the system temp folder.
+        }
+    }
+
     private sealed class FakeStorage : IPluginStorage
     {
         private readonly Dictionary<string, string> _data = new(StringComparer.Ordinal);
@@ -67,7 +133,7 @@ public class AutopilotPlanIntentTests
             Task.FromResult<IReadOnlyList<TrackerComment>>([]);
     }
 
-    private static (Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> Handler, RecordingTracker Tracker) Started()
+    private (Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> Handler, RecordingTracker Tracker) Started()
     {
         var storage = new FakeStorage();
         // Without a CEO profile the handler refuses before it ever reaches the gate, so the run this test is about
@@ -79,6 +145,10 @@ public class AutopilotPlanIntentTests
         host.Storage.Returns(storage);
         host.TrackerProviders.Returns([tracker]);
         host.RegisteredAutopilotTemplates.Returns([]);
+        // The directory the plugin runs its merge check in (AutopilotPlugin: active session's directory, else the
+        // process's own). Naming the test's own repository here is what keeps the epic tests from answering
+        // differently depending on where the run happens to sit.
+        host.Sessions.ActiveSessionWorkingDirectory.Returns(_clone);
         host.OpenWorkspaceAsync(Arg.Any<string>()).Returns(Task.CompletedTask);
         host.ShowSettingsAsync().Returns(Task.CompletedTask);
 
@@ -168,11 +238,10 @@ public class AutopilotPlanIntentTests
     public async Task Plan_OnAnEpicWithAReadySub_GoesThroughToPlanningOnTheSub_NotTheEpic()
     {
         var (handler, tracker) = Started();
-        // A ticket id that cannot possibly already sit on this repo's own origin/main: the wired GitEpicSubMergeChecker
-        // runs against Directory.GetCurrentDirectory() (the test process's own working directory, this repo's
-        // worktree), so a plausible-looking id like "AC-1" could actually match a real commit and read as "already
-        // merged" — flaking the test on the ambient repository's history rather than the epic-runner's own logic
-        // (which AutopilotEpicRunnerTests already covers against a fake merge checker).
+        // The merge check runs against this class's own throwaway origin/main (see the type's remarks), whose only
+        // commit subject is "seed commit" — so no sub id can read as already merged, and no ambient repository's
+        // history or reachability can decide this test. The distinctive id is kept anyway: it costs nothing and keeps
+        // the assertion honest if someone ever seeds that repository with real-looking commits.
         tracker.AddChild("AC-345", "ZZ-999901", "The first sub", "Ready");
 
         var result = await handler(Plan("Backlog")); // the epic's own stage is irrelevant — only the sub's is checked
