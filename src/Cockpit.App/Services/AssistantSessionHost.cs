@@ -363,7 +363,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is null
-                or nameof(SessionViewModel.SessionStatus)
+                or nameof(SessionViewModel.IsBusy)
                 or nameof(SessionViewModel.HasPendingPermission)
             && sender is SessionViewModel session)
         {
@@ -387,29 +387,30 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </para>
     /// </remarks>
     private void _SyncActivityWithSession(SessionViewModel session) =>
-        Activity = ActivityFor(Activity, session.SessionStatus, session.HasPendingPermission);
+        Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission);
 
     /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
     /// <remarks>
-    /// <paramref name="hasPendingPermission"/> rather than <see cref="SessionStatus.NeedsAttention"/> is the whole
-    /// correctness of the waiting state. NeedsAttention is sticky by design — it survives until the operator sends
-    /// the next message, so a pane keeps flagging itself in a sidebar nobody is looking at — and reading it as a
-    /// live state left the chip on "Needs you" long after the approval was given, the answer written and the reply
-    /// spoken. Worse than merely stale: with the chip stuck there it never showed Thinking or Speaking again
-    /// either, so the one surface that reports the assistant reported nothing for the rest of the conversation.
+    /// <b>Both inputs are read raw, and neither is <see cref="SessionPanelViewModel.SessionStatus"/>.</b> That
+    /// status is derived for a different audience and carries a deliberate stickiness this surface cannot use:
+    /// <c>_needsAttention</c> is set when a prompt appears and cleared only when the operator sends their next
+    /// message, and it outranks busy in the derivation. Reading it cost two wrong chips in a row — first stuck on
+    /// "Needs you" long after the approval was given and the reply spoken, then, once the pending flag was read
+    /// properly, stuck on "Ready" while the assistant was plainly working, because a session that still carries
+    /// NeedsAttention never reports Busy at all. Right for a sidebar you are not looking at; useless for a chip
+    /// that answers "what is it doing right now".
+    /// <para>
+    /// So: is a decision waiting, and is it working. Two facts, each read from where it actually lives.
+    /// </para>
     /// </remarks>
     internal static AssistantActivity ActivityFor(
-        AssistantActivity current, SessionStatus status, bool hasPendingPermission) => current switch
+        AssistantActivity current, bool isBusy, bool hasPendingPermission) => current switch
     {
         AssistantActivity.Unavailable or AssistantActivity.Listening => current,
-        // First, and ahead of Busy: a session can still read as busy while it stands on a prompt, and what the
+        // Ahead of busy: a session can still be working on something while it stands on a prompt, and what the
         // operator needs to know is the half they can act on.
         _ when hasPendingPermission => AssistantActivity.AwaitingOperator,
-        _ => status switch
-        {
-            SessionStatus.Busy or SessionStatus.WorkingBackground => AssistantActivity.Thinking,
-            _ => AssistantActivity.Ready,
-        },
+        _ => isBusy ? AssistantActivity.Thinking : AssistantActivity.Ready,
     };
 
     /// <summary>
