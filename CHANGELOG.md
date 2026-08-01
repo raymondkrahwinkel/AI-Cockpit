@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a long reply from a headless Claude session no longer eats the machine's memory. With a session streaming,
+  the cockpit's memory use climbed by tens of megabytes a second — one report reached 25 GB and was about a minute
+  from taking the machine down — and on Windows the window froze for seconds at a time. The reply's text was redrawn
+  from scratch on every fragment that arrived, so the longer the answer got the more work each new fragment caused,
+  and it kept accelerating instead of settling. Replies now repaint at a steady rate while they stream, the way
+  terminal sessions already did. This also silences a flood of internal warnings — thousands a second — that a
+  session pane was writing to the system log the whole time.
 - fixed: a headless Claude session now keeps following the newest message while it streams. Scrolling up left the
   view where you put it but never resumed on its own once you scrolled back down — the jump-to-newest button had to
   be clicked, and sometimes the view was pulled back down while you were still reading. The newest message also kept
