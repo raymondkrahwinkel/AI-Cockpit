@@ -19,6 +19,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
     [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(KeyHint))]
     [NotifyPropertyChangedFor(nameof(ColorClass))]
     [NotifyPropertyChangedFor(nameof(IsReady))]
     [NotifyPropertyChangedFor(nameof(IsListening))]
@@ -27,6 +28,8 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsSpeaking))]
     [NotifyPropertyChangedFor(nameof(IsDictating))]
     [NotifyPropertyChangedFor(nameof(IsUnavailable))]
+    [NotifyPropertyChangedFor(nameof(IsMicIcon))]
+    [NotifyPropertyChangedFor(nameof(ShowWaveform))]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     /// <summary>
@@ -56,15 +59,24 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     private string? _unavailableReason;
 
     /// <summary>
-    /// How much the assistant listens (criteria 17–19): off, always on, or always on with a wake word. Fed in by
-    /// the host — which derives it from <c>VoiceSettings.OpenMicEnabled</c> rather than storing a second flag with
-    /// the same meaning — so the picker below always shows the mode actually in effect, never a locally-guessed
-    /// one. This view model carries no opinion on where the mode is persisted; it only displays and proposes it.
+    /// The provider/model the assistant runs on (e.g. what <see cref="ProfileDisplay"/> formats an
+    /// Assistant Profile as), shown as the chip's secondary line while <see cref="AssistantActivity.Ready"/> — the
+    /// one state whose second line is not fixed text, because it is the answer to "which model am I about to
+    /// talk to". Null (no subtitle) until the host has actually read the profile.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    private string? _profileLabel;
+
+    /// <summary>
+    /// How much the assistant listens (criteria 17–19): off or always on. Fed in by the host — which derives it
+    /// from <c>VoiceSettings.OpenMicEnabled</c> rather than storing a second flag with the same meaning — so the
+    /// picker below always shows the mode actually in effect, never a locally-guessed one. This view model carries
+    /// no opinion on where the mode is persisted; it only displays and proposes it.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsListeningModeOff))]
     [NotifyPropertyChangedFor(nameof(IsListeningModeAlwaysOn))]
-    [NotifyPropertyChangedFor(nameof(IsListeningModeAlwaysOnWithWakeWord))]
     private AssistantListeningMode _listeningMode = AssistantListeningMode.Off;
 
     /// <summary>
@@ -118,15 +130,37 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     };
 
     /// <summary>
-    /// The secondary line, or null when the state needs none. Carries the two things a single-word label cannot:
-    /// <see cref="AssistantActivity.Dictating"/> spelling out <em>who</em> is not listening (criterion 6 — the
+    /// The secondary line, or null when there is nothing to show yet. <see cref="AssistantActivity.Ready"/> gets
+    /// <see cref="ProfileLabel"/> (which model it would talk to); every other assistant-side state names the
+    /// assistant, so the chip still reads "the assistant" once the model name has scrolled out of view.
+    /// <see cref="AssistantActivity.Dictating"/> spells out <em>who</em> is not listening (criterion 6 — the
     /// question this indicator answers is "who is listening", not "is something listening") and
-    /// <see cref="AssistantActivity.Unavailable"/> carrying <see cref="UnavailableReason"/>.
+    /// <see cref="AssistantActivity.Unavailable"/> carries <see cref="UnavailableReason"/>.
     /// </summary>
     public string? Detail => Activity switch
     {
+        AssistantActivity.Ready => ProfileLabel,
+        AssistantActivity.Listening => "Assistant",
+        AssistantActivity.ListeningContinuously => "Assistant",
+        AssistantActivity.Thinking => "Assistant",
+        AssistantActivity.Speaking => "Assistant",
         AssistantActivity.Dictating => "not the assistant",
         AssistantActivity.Unavailable => UnavailableReason,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The key hint shown at the right of the chip (mockup's <c>.key</c> badge) — only for the states that
+    /// actually have a key bound to them right now; <see langword="null"/> hides it rather than showing an empty
+    /// badge. <see cref="AssistantActivity.ListeningContinuously"/> gets none: it is a standing mode switched on
+    /// from the picker below, not a key held down, so there is no "release" to name.
+    /// </summary>
+    public string? KeyHint => Activity switch
+    {
+        AssistantActivity.Ready => "F10",
+        AssistantActivity.Listening => "release F10",
+        AssistantActivity.Speaking => "Esc to stop",
+        AssistantActivity.Dictating => "release F9",
         _ => null,
     };
 
@@ -155,9 +189,20 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     public bool IsDictating => Activity == AssistantActivity.Dictating;
     public bool IsUnavailable => Activity == AssistantActivity.Unavailable;
 
+    /// <summary>Whether the mic glyph is the badge's icon — every state except Thinking, Speaking and Unavailable, which draw their own (a thought bubble, a speaker, an alert triangle).</summary>
+    public bool IsMicIcon => Activity is AssistantActivity.Ready or AssistantActivity.Listening
+        or AssistantActivity.ListeningContinuously or AssistantActivity.Dictating;
+
+    /// <summary>
+    /// Whether the waveform shows: a live-capture cue for the three states where audio is actually moving through
+    /// the mic or the speaker right now. Not Thinking (nothing is being captured or played), and not
+    /// <see cref="AssistantActivity.ListeningContinuously"/> — a standing mode gets the steady mode dot instead of
+    /// a meter, the same "handeling vs stand" split the ring's own pulse animation already draws (criterion 19).
+    /// </summary>
+    public bool ShowWaveform => Activity is AssistantActivity.Listening or AssistantActivity.Speaking or AssistantActivity.Dictating;
+
     public bool IsListeningModeOff => ListeningMode == AssistantListeningMode.Off;
     public bool IsListeningModeAlwaysOn => ListeningMode == AssistantListeningMode.AlwaysOn;
-    public bool IsListeningModeAlwaysOnWithWakeWord => ListeningMode == AssistantListeningMode.AlwaysOnWithWakeWord;
 
     [RelayCommand]
     private void Click() => Clicked?.Invoke(this, EventArgs.Empty);
@@ -201,16 +246,4 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     /// <summary>Dismisses the inline confirmation without picking AlwaysOn — the listening mode stays whatever it already was.</summary>
     [RelayCommand]
     private void CancelAlwaysOnConfirmation() => IsAlwaysOnConfirmationPending = false;
-
-    /// <summary>
-    /// <see cref="AssistantListeningMode.AlwaysOnWithWakeWord"/> is not selectable this phase (no wake word
-    /// exists to trigger it yet — that is <c>[e]</c>). A no-op rather than an exception: the option is shown, not
-    /// hidden (comment 5), so the view still offers a click target for it, and clicking "not set up yet" should
-    /// read as inert, not as an error dialog for doing exactly what the UI invited.
-    /// </summary>
-    [RelayCommand]
-    private void SelectListeningModeAlwaysOnWithWakeWord()
-    {
-        // Intentionally does nothing — see the doc comment above.
-    }
 }

@@ -6,8 +6,9 @@ namespace Cockpit.Core.Tests.Assistant;
 /// <summary>
 /// AC-543 (strand 3): the reusable assistant indicator's own state — every <see cref="AssistantActivity"/> maps
 /// to a distinct label and colour class (criterion 6), F9 and F10 differ in both (the hard half of criterion 6),
-/// the rail keeps colour and drops the label (criterion 19), the three listening stands are each readable
-/// (criterion 17), and the AlwaysOn cost warning fires exactly once (criterion 18).
+/// the rail keeps colour and drops the label (criterion 19), the two listening stands are each readable
+/// (criterion 17 — "Wake word" left the picker in the vormgeving pass, 2026-08-01), and the AlwaysOn cost warning
+/// fires exactly once (criterion 18).
 /// </summary>
 public class AssistantIndicatorViewModelTests
 {
@@ -85,6 +86,58 @@ public class AssistantIndicatorViewModelTests
         Assert.Equal("No model on this machine", vm.Detail);
     }
 
+    /// <summary>AC-543 vormgeving pass: Ready's second line is the model it would talk to, not fixed text.</summary>
+    [Fact]
+    public void Ready_CarriesTheProfileLabel_AsItsDetail()
+    {
+        var vm = new AssistantIndicatorViewModel
+        {
+            Activity = AssistantActivity.Ready,
+            ProfileLabel = "default (Claude CLI)",
+        };
+
+        Assert.Equal("default (Claude CLI)", vm.Detail);
+    }
+
+    [Theory]
+    [InlineData(AssistantActivity.Listening)]
+    [InlineData(AssistantActivity.ListeningContinuously)]
+    [InlineData(AssistantActivity.Thinking)]
+    [InlineData(AssistantActivity.Speaking)]
+    public void EveryAssistantSideActivity_NamesTheAssistant_AsItsDetail(AssistantActivity activity)
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
+
+        Assert.Equal("Assistant", vm.Detail);
+    }
+
+    [Theory]
+    [InlineData(AssistantActivity.Ready, "F10")]
+    [InlineData(AssistantActivity.Listening, "release F10")]
+    [InlineData(AssistantActivity.Speaking, "Esc to stop")]
+    [InlineData(AssistantActivity.Dictating, "release F9")]
+    public void KeyHint_NamesTheKeyBoundToThatState(AssistantActivity activity, string expected)
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
+
+        Assert.Equal(expected, vm.KeyHint);
+    }
+
+    /// <summary>
+    /// Thinking, ListeningContinuously and Unavailable have no key bound to them right now (criterion 6's key
+    /// badge only names a key that actually does something) — the badge must hide rather than show empty.
+    /// </summary>
+    [Theory]
+    [InlineData(AssistantActivity.ListeningContinuously)]
+    [InlineData(AssistantActivity.Thinking)]
+    [InlineData(AssistantActivity.Unavailable)]
+    public void KeyHint_IsNull_WhereNoKeyIsBound(AssistantActivity activity)
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
+
+        Assert.Null(vm.KeyHint);
+    }
+
     /// <summary>
     /// Criterion 19: "listening continuously" is a stand the operator switched on, "listening" is a handeling
     /// that lasts as long as F10 is held — they must read as different, not as the same word with a suffix.
@@ -118,22 +171,15 @@ public class AssistantIndicatorViewModelTests
     }
 
     [Fact]
-    public void ListeningMode_EachOfTheThreeStands_IsReadableWithoutClicking()
+    public void ListeningMode_EachOfTheTwoStands_IsReadableWithoutClicking()
     {
         var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.Off };
         Assert.True(vm.IsListeningModeOff);
         Assert.False(vm.IsListeningModeAlwaysOn);
-        Assert.False(vm.IsListeningModeAlwaysOnWithWakeWord);
 
         vm.ListeningMode = AssistantListeningMode.AlwaysOn;
         Assert.False(vm.IsListeningModeOff);
         Assert.True(vm.IsListeningModeAlwaysOn);
-        Assert.False(vm.IsListeningModeAlwaysOnWithWakeWord);
-
-        vm.ListeningMode = AssistantListeningMode.AlwaysOnWithWakeWord;
-        Assert.False(vm.IsListeningModeOff);
-        Assert.False(vm.IsListeningModeAlwaysOn);
-        Assert.True(vm.IsListeningModeAlwaysOnWithWakeWord);
     }
 
     [Fact]
@@ -219,21 +265,34 @@ public class AssistantIndicatorViewModelTests
         Assert.False(raised);
     }
 
-    /// <summary>
-    /// AlwaysOnWithWakeWord is not selectable this phase (comment 5) — picking it must be a no-op, not an
-    /// exception, since the view still offers it as a click target ("not set up yet" rather than hidden).
-    /// </summary>
-    [Fact]
-    public void SelectingAlwaysOnWithWakeWord_IsRefused_AndNeverCommits()
+    [Theory]
+    [InlineData(AssistantActivity.Thinking, false)]
+    [InlineData(AssistantActivity.Speaking, false)]
+    [InlineData(AssistantActivity.Unavailable, false)]
+    [InlineData(AssistantActivity.Ready, true)]
+    [InlineData(AssistantActivity.Listening, true)]
+    [InlineData(AssistantActivity.ListeningContinuously, true)]
+    [InlineData(AssistantActivity.Dictating, true)]
+    public void IsMicIcon_IsFalseOnlyForTheStatesWithTheirOwnGlyph(AssistantActivity activity, bool expected)
     {
-        var vm = new AssistantIndicatorViewModel { ListeningMode = AssistantListeningMode.Off };
-        var raised = false;
-        vm.ListeningModeSelected += (_, _) => raised = true;
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
 
-        vm.SelectListeningModeAlwaysOnWithWakeWordCommand.Execute(null);
+        Assert.Equal(expected, vm.IsMicIcon);
+    }
 
-        Assert.False(raised);
-        Assert.Equal(AssistantListeningMode.Off, vm.ListeningMode);
+    [Theory]
+    [InlineData(AssistantActivity.Listening, true)]
+    [InlineData(AssistantActivity.Speaking, true)]
+    [InlineData(AssistantActivity.Dictating, true)]
+    [InlineData(AssistantActivity.Ready, false)]
+    [InlineData(AssistantActivity.ListeningContinuously, false)]
+    [InlineData(AssistantActivity.Thinking, false)]
+    [InlineData(AssistantActivity.Unavailable, false)]
+    public void ShowWaveform_IsTrueOnlyWhileAudioIsActuallyMoving(AssistantActivity activity, bool expected)
+    {
+        var vm = new AssistantIndicatorViewModel { Activity = activity };
+
+        Assert.Equal(expected, vm.ShowWaveform);
     }
 
     [Fact]

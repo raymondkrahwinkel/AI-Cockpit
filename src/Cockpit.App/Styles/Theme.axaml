@@ -140,6 +140,29 @@
             <SolidColorBrush x:Key="CockpitStatusBackgroundBrush" Color="{StaticResource CockpitStatusBackgroundColor}"/>
             <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{StaticResource CockpitStatusErrorColor}"/>
 
+            <!-- Assistant indicator state washes (AC-543 vormgeving pass): the mockup tints the whole chip
+                 surface per state (≈7-8% alpha) and the mic badge behind it a touch stronger (≈12-14%), not just
+                 the border/icon the rest of this theme already covers. Alpha-echoes of the status colours above,
+                 same rule AC-381's CockpitAccentSelectionColor already follows: same RGB as the base colour, only
+                 the alpha differs, so a re-tint of the base can never leave these drifted behind it. The
+                 thinking/accent chip wash needs no colour of its own — CockpitAccentSelectionColor already is the
+                 accent at 16% alpha, which is what the mockup's own accent-tint variable is. -->
+            <Color x:Key="CockpitStatusBusyChipTintColor">#1222D3EE</Color>
+            <Color x:Key="CockpitStatusBusyRingTintColor">#1F22D3EE</Color>
+            <Color x:Key="CockpitStatusWaitingChipTintColor">#14E0A33E</Color>
+            <Color x:Key="CockpitStatusWaitingRingTintColor">#1FE0A33E</Color>
+            <Color x:Key="CockpitStatusDoneChipTintColor">#145AA576</Color>
+            <Color x:Key="CockpitStatusDoneRingTintColor">#1F5AA576</Color>
+            <Color x:Key="CockpitAccentRingTintColor">#242563EB</Color>
+
+            <SolidColorBrush x:Key="CockpitStatusBusyChipTintBrush" Color="{StaticResource CockpitStatusBusyChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBusyRingTintBrush" Color="{StaticResource CockpitStatusBusyRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingChipTintBrush" Color="{StaticResource CockpitStatusWaitingChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingRingTintBrush" Color="{StaticResource CockpitStatusWaitingRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneChipTintBrush" Color="{StaticResource CockpitStatusDoneChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneRingTintBrush" Color="{StaticResource CockpitStatusDoneRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentRingTintBrush" Color="{StaticResource CockpitAccentRingTintColor}"/>
+
             <!-- Geometry. The mockup's control radius (9px) is what every input, select and button
                  carries. Its window radius (14px) belongs to the rounded card a web page draws to
                  stand in for a window; a desktop app gets that corner from the OS, so no token
@@ -1270,13 +1293,16 @@
         <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
 
-    <!-- Assistant indicator (AC-543, strand 3 — AssistantIndicator.axaml). The question this control answers is
-         not "is something listening" but "WHO is listening" (criterion 6): CockpitStatusWaitingBrush (amber) is
-         reserved for F9 dictating into a session — never the assistant — and CockpitStatusBusyBrush (cyan) marks
-         every state that IS the assistant (listening, listening continuously, thinking, speaking). Reusing the
-         existing status tokens rather than minting a new pair keeps the indicator inside the palette every other
-         "something is happening" signal in the app already uses, and keeps the amber/cyan split pinned to the
-         same two colours a colour-blind operator has already learned to tell apart elsewhere (waiting vs busy). -->
+    <!-- Assistant indicator (AC-543, strand 3 — AssistantIndicator.axaml; vormgeving pass 2026-08-01 brought this
+         block in line with cockpit-assistant-indicator-2026-08-01.html). The question this control answers is not
+         "is something listening" but "WHO is listening" (criterion 6): CockpitStatusWaitingBrush (amber) is
+         reserved for F9 dictating into a session — never the assistant. Among the assistant's own states,
+         CockpitStatusBusyBrush (cyan) marks it capturing audio (listening, listening continuously),
+         CockpitAccentBrush (blue) marks it thinking, and CockpitStatusDoneBrush (green) marks it speaking — four
+         colours for four different things, not one "busy" colour for all of them, because "which of these is true
+         right now" is exactly what a glance at the chip has to answer. Reusing the existing status/accent tokens
+         rather than minting a new palette keeps the indicator inside the same colours every other "something is
+         happening" signal in the app already uses. -->
     <Style Selector="Button.assistantIndicatorChip">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
@@ -1287,6 +1313,31 @@
     </Style>
     <Style Selector="Button.assistantIndicatorChip:pointerover /template/ ContentPresenter">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+    <!-- The whole chip tints per state, not only the mic badge (vormgeving pass, criterion 1) — a translucent
+         wash of the state colour across the full chip surface, mirroring the mockup's .achip.&lt;state&gt; rules,
+         which is the biggest single gap the mockup review found: the chip had stayed an even dark box regardless
+         of what it was reporting. -->
+    <Style Selector="Button.assistantIndicatorChip.listening, Button.assistantIndicatorChip.listeningContinuously">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusBusyBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusBusyChipTintBrush}"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip.thinking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip.speaking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusDoneBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusDoneChipTintBrush}"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip.dictating">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
+    </Style>
+    <!-- Unavailable dims the whole chip instead of tinting it — a broken assistant should draw the eye less, not
+         announce itself in a colour it does not have anything to report with. -->
+    <Style Selector="Button.assistantIndicatorChip.unavailable">
+        <Setter Property="Opacity" Value="0.75"/>
     </Style>
 
     <!-- Rail form (criterion 6/19 — the sidebar collapsed to its icon strip): the same badge, no chip chrome
@@ -1302,45 +1353,78 @@
         <Setter Property="Background" Value="{StaticResource CockpitGhostHoverBrush}"/>
     </Style>
 
-    <!-- The circular mic badge shared by the chip and the rail. Ready and Unavailable stay the neutral
-         hairline ring — nothing is happening, nothing to announce — every other state colours it. -->
+    <!-- The circular mic badge shared by the chip and the rail — the rail's own size, 30px/15px icon (the
+         mockup's .rail-chip .mic). The expanded chip shrinks it with the .small modifier below (the mockup's
+         .achip .mic, 26px/14px) — the rail badge stays the larger one because it is the only thing left on
+         screen once the sidebar collapses and has to carry the whole signal alone.
+         Ready and Unavailable stay the neutral hairline ring — nothing is happening, nothing to announce —
+         every other state colours it. -->
     <Style Selector="Border.assistantIndicatorRing">
-        <Setter Property="Width" Value="32"/>
-        <Setter Property="Height" Value="32"/>
-        <Setter Property="CornerRadius" Value="16"/>
+        <Setter Property="Width" Value="30"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="CornerRadius" Value="15"/>
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="BorderThickness" Value="1.5"/>
     </Style>
     <Style Selector="Border.assistantIndicatorRing materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
-        <Setter Property="Width" Value="16"/>
-        <Setter Property="Height" Value="16"/>
+        <Setter Property="Width" Value="15"/>
+        <Setter Property="Height" Value="15"/>
     </Style>
-    <!-- Listening / ListeningContinuously / Thinking / Speaking: cyan — "the assistant" (criterion 6's busy half). -->
+    <Style Selector="Border.assistantIndicatorRing.small">
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="CornerRadius" Value="13"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.small materialIcons|MaterialIcon">
+        <Setter Property="Width" Value="14"/>
+        <Setter Property="Height" Value="14"/>
+    </Style>
+    <!-- Listening / ListeningContinuously: cyan — the assistant is capturing audio (criterion 6's busy half). -->
     <Style Selector="Border.assistantIndicatorRing.listening,
-                     Border.assistantIndicatorRing.listeningContinuously,
-                     Border.assistantIndicatorRing.thinking,
-                     Border.assistantIndicatorRing.speaking">
+                     Border.assistantIndicatorRing.listeningContinuously">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusBusyBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusBusyRingTintBrush}"/>
     </Style>
     <Style Selector="Border.assistantIndicatorRing.listening materialIcons|MaterialIcon,
-                     Border.assistantIndicatorRing.listeningContinuously materialIcons|MaterialIcon,
-                     Border.assistantIndicatorRing.thinking materialIcons|MaterialIcon,
-                     Border.assistantIndicatorRing.speaking materialIcons|MaterialIcon">
+                     Border.assistantIndicatorRing.listeningContinuously materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusBusyBrush}"/>
+    </Style>
+    <!-- Thinking: the accent blue, its own colour rather than the assistant's listening cyan (vormgeving pass,
+         criterion 2). The mockup's STATES table splits Thinking off deliberately — "working on what you just
+         said" is a different fact from "capturing your voice", and sharing cyan with Listening/Continuously
+         blurred exactly that. Blue is what the rest of the app already uses for "processing" (Button.Accent). -->
+    <Style Selector="Border.assistantIndicatorRing.thinking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.thinking materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <!-- Speaking: green (done), not cyan (vormgeving pass, criterion 2 — the mockup's STATES table gives it its
+         own colour). Reading a reply out loud is the assistant finishing its turn, the same "done" colour the
+         rest of the app already uses for a completed session, not one more "busy" signal next to listening. -->
+    <Style Selector="Border.assistantIndicatorRing.speaking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusDoneBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusDoneRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.speaking materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusDoneBrush}"/>
     </Style>
     <!-- F9 dictating: amber, deliberately never the assistant's cyan — the hard half of criterion 6. -->
     <Style Selector="Border.assistantIndicatorRing.dictating">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRingTintBrush}"/>
     </Style>
     <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
     </Style>
-    <!-- Unavailable dims further than the resting ring — a broken assistant should draw the eye less than an
-         idle one, not the same amount. -->
+    <!-- Unavailable dims further than the resting ring, and its icon turns error-red (vormgeving pass, criterion
+         2) instead of staying the same faint grey every idle state uses — a broken assistant needs the attention
+         a merely-idle one does not ask for. -->
     <Style Selector="Border.assistantIndicatorRing.unavailable materialIcons|MaterialIcon">
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusErrorBrush}"/>
     </Style>
     <!-- Listening and Dictating are both a live capture held open by a key (F10/F9); Thinking is the assistant
          visibly working. All three pulse for as long as that lasts — the same opacity keyframes
@@ -1352,6 +1436,73 @@
                 <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.55"/></KeyFrame>
                 <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1.0"/></KeyFrame>
                 <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.55"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+
+    <!-- Listening's own pulse ring (vormgeving pass, criterion 5 — the mockup's .achip.listening .mic::after /
+         .rail-chip.listening .mic::after): a second, larger circle that scales up and fades out on a loop,
+         layered behind the badge in AssistantIndicator.axaml's Panel rather than inside the ring's own Border,
+         because a Border clips its child to its own bounds and this ring is meant to grow past the badge's edge.
+         Only Listening gets it, not Dictating or Thinking — those already carry the opacity pulse above, and
+         ListeningContinuously (a stand, not a handeling — criterion 19) gets neither, the mode dot instead. The
+         chip's badge (26px) and the rail's (30px) get their own sizes via the .rail modifier, echoing the
+         mockup's own inset:-5px on each. Uses the theme's existing easing curve in spirit (a soft settle rather
+         than a linear scale) — Avalonia has no literal cubic-bezier(.16,1,.3,1) easing, so CubicEaseOut stands in
+         for the mockup's own ease token here. -->
+    <Style Selector="Ellipse.assistantIndicatorPulseRing">
+        <Setter Property="Stroke" Value="{StaticResource CockpitStatusBusyBrush}"/>
+        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="IsHitTestVisible" Value="False"/>
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="Opacity" Value="0.6"/>
+        <!-- Grown via Width/Height rather than a RenderTransform scale: Avalonia has no keyframe animator
+             registered for RenderTransform (confirmed by running this scene — "No animator registered for the
+             property RenderTransform"; that string value only animates through the Transitions system the
+             Switch knob above uses, a different subsystem from Style.Animations). Centred alignment makes
+             growing the actual size read identically to a scale transform, so nothing is lost. -->
+        <Style.Animations>
+            <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
+                <KeyFrame Cue="0%">
+                    <Setter Property="Width" Value="26"/>
+                    <Setter Property="Height" Value="26"/>
+                    <Setter Property="Opacity" Value="0.6"/>
+                </KeyFrame>
+                <KeyFrame Cue="100%">
+                    <Setter Property="Width" Value="40"/>
+                    <Setter Property="Height" Value="40"/>
+                    <Setter Property="Opacity" Value="0"/>
+                </KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <!-- The rail badge is larger (30px vs the chip's 26px), so its pulse ring gets its own, larger sizes — a
+         fully separate style rather than a modifier on the one above: two Style.Animations blocks both matching
+         the same element would run two competing animations on the same properties, not blend into one. -->
+    <Style Selector="Ellipse.assistantIndicatorPulseRingRail">
+        <Setter Property="Stroke" Value="{StaticResource CockpitStatusBusyBrush}"/>
+        <Setter Property="StrokeThickness" Value="1"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="IsHitTestVisible" Value="False"/>
+        <Setter Property="Width" Value="30"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="Opacity" Value="0.6"/>
+        <Style.Animations>
+            <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
+                <KeyFrame Cue="0%">
+                    <Setter Property="Width" Value="30"/>
+                    <Setter Property="Height" Value="30"/>
+                    <Setter Property="Opacity" Value="0.6"/>
+                </KeyFrame>
+                <KeyFrame Cue="100%">
+                    <Setter Property="Width" Value="46"/>
+                    <Setter Property="Height" Value="46"/>
+                    <Setter Property="Opacity" Value="0"/>
+                </KeyFrame>
             </Animation>
         </Style.Animations>
     </Style>
@@ -1374,13 +1525,102 @@
     </Style>
 
     <Style Selector="TextBlock.assistantIndicatorLabel">
-        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontSize" Value="12"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <!-- The mockup's .lbl span: smaller, faint (not the lighter text-2 the rest of the app's secondary lines
+         use), and monospace — a model name or a state note reads like a status line, not like prose. -->
     <Style Selector="TextBlock.assistantIndicatorDetail">
-        <Setter Property="FontSize" Value="11"/>
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
         <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- The key hint badge at the right of the chip (mockup's .key): mono, thin hairline border, small radius,
+         tight padding, faint text — a keycap that reads as a hint rather than another button. -->
+    <Style Selector="Border.assistantIndicatorKey">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="5,1"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorKey TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
+    <!-- The waveform (mockup's .wave): five bars levelling up and down. currentColor in the mockup resolves to
+         the ordinary text colour there (no state-specific rule sets it), so all five stay the same colour
+         regardless of which state is showing the wave — this reuses CockpitTextPrimaryBrush rather than
+         inventing a per-state tint the mockup itself does not have. Each bar gets its own named selector with an
+         increasing Animation Delay (0/.12/.24/.36/.48s, the mockup's own stagger) rather than an
+         nth-child selector, since the five bars are five fixed, named elements in one control instance, not a
+         repeated template item. Animates Height rather than a RenderTransform scaleY, for the same reason the
+         pulse ring above does — Avalonia has no keyframe animator for RenderTransform in this version. Centred
+         VerticalAlignment makes a Height change grow/shrink the bar around its middle, the same look scaleY gives. -->
+    <Style Selector="Rectangle.assistantIndicatorWaveBar">
+        <Setter Property="Width" Value="2"/>
+        <Setter Property="Height" Value="4"/>
+        <Setter Property="RadiusX" Value="1"/>
+        <Setter Property="RadiusY" Value="1"/>
+        <Setter Property="Fill" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar1">
+        <Style.Animations>
+            <Animation Duration="0:0:1" IterationCount="INFINITE" Easing="SineEaseInOut">
+                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar2">
+        <Style.Animations>
+            <Animation Duration="0:0:1" Delay="0:0:0.12" IterationCount="INFINITE" Easing="SineEaseInOut">
+                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar3">
+        <Style.Animations>
+            <Animation Duration="0:0:1" Delay="0:0:0.24" IterationCount="INFINITE" Easing="SineEaseInOut">
+                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar4">
+        <Style.Animations>
+            <Animation Duration="0:0:1" Delay="0:0:0.36" IterationCount="INFINITE" Easing="SineEaseInOut">
+                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+    <Style Selector="Rectangle.assistantIndicatorWaveBar#WaveBar5">
+        <Style.Animations>
+            <Animation Duration="0:0:1" Delay="0:0:0.48" IterationCount="INFINITE" Easing="SineEaseInOut">
+                <KeyFrame Cue="0%"><Setter Property="Height" Value="4"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Height" Value="14"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Height" Value="4"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+
+    <!-- Listening-mode picker buttons (Off / Always on): Button.Compact already carries the mockup's control
+         radius and hairline border (the base Button style both derive from); this only pulls the resting label
+         down to the faint tier the mockup's general vormtaal uses for secondary chrome text, rather than
+         Compact's own slightly brighter secondary tier used elsewhere. The active stand still reads via
+         Classes.Accent (Button.Accent above), which overrides this on the TextBlock it targets directly. -->
+    <Style Selector="Button.assistantIndicatorModeButton">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
     <!-- The one-time AlwaysOn cost explanation (criterion 18). Amber, the same token as F9 dictating above —

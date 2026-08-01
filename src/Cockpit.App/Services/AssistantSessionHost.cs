@@ -96,6 +96,16 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private string? _unavailableReason = "The assistant is switched off. Turn it on in Options → Voice.";
 
     /// <summary>
+    /// The Assistant Profile's provider/model, formatted with <see cref="ProfileDisplay.Format"/> — the same
+    /// convention every other profile picker in the app already uses, rather than a bespoke string invented for
+    /// this one chip. Fed to the indicator as its Ready-state subtitle (AC-543 vormgeving pass, criterion 3: the
+    /// question a Ready chip answers is "which model am I about to talk to"). Null until a profile has actually
+    /// been read — an unset/unreadable profile leaves the chip with no subtitle rather than a stale one.
+    /// </summary>
+    [ObservableProperty]
+    private string? _profileLabel;
+
+    /// <summary>
     /// Brings the assistant up if it is not already, and returns it. Idempotent, and the recovery path too: an
     /// instance that died is replaced rather than handed back dead.
     /// </summary>
@@ -177,6 +187,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             {
                 Activity = AssistantActivity.Ready;
                 UnavailableReason = null;
+                // Reading the profile for display is not starting anything — no session, no model in memory —
+                // so it does not compromise the lazy start above; it only lets an idle Ready chip say which
+                // model it would talk to instead of leaving that blank until the first use.
+                await _RefreshProfileLabelAsync(cancellationToken).ConfigureAwait(true);
             }
 
             return;
@@ -219,6 +233,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         Activity = AssistantActivity.Thinking;
         UnavailableReason = null;
+        ProfileLabel = ProfileDisplay.Format(profile.Label, profile.Provider, ProfileDisplay.ModelOf(profile));
 
         await session.StartConfiguredAsync(
             profile,
@@ -264,6 +279,21 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     {
         Activity = AssistantActivity.Unavailable;
         UnavailableReason = reason;
+        // No profile is confirmed running once the chip says Unavailable — carrying the last one forward would
+        // outlive its truth the moment the assistant is switched off or the profile fails to load.
+        ProfileLabel = null;
+    }
+
+    /// <summary>
+    /// Reads the Assistant Profile purely for display — no session, no model load — so an idle Ready chip can
+    /// name what it would talk to before the operator's first hold or click brings the assistant up.
+    /// </summary>
+    private async Task _RefreshProfileLabelAsync(CancellationToken cancellationToken)
+    {
+        var slot = await _profiles.LoadAsync(cancellationToken).ConfigureAwait(true);
+        ProfileLabel = slot.Profile is { } profile
+            ? ProfileDisplay.Format(profile.Label, profile.Provider, ProfileDisplay.ModelOf(profile))
+            : null;
     }
 
     /// <summary>

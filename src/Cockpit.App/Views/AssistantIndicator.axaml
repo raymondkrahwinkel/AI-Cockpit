@@ -23,46 +23,69 @@
 
         <!-- Rail form: shown once the sidebar collapses. Same ring, same classes, no label — see
              Theme.axaml's Border.assistantIndicatorRing remarks for why the colour/ring alone still answer
-             "who is listening" without room for prose. -->
+             "who is listening" without room for prose. The pulse ring sits in a Panel beside the badge, not
+             inside its Border: a Border clips its child to its own bounds, so a ring meant to grow past the
+             badge's edge (Theme.axaml's Ellipse.assistantIndicatorPulseRing) has to be a sibling, not a child. -->
         <Button Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="{Binding IsCollapsed}"
                 ToolTip.Tip="{Binding Label}">
-            <Border Classes="assistantIndicatorRing"
-                    Classes.listening="{Binding IsListening}"
-                    Classes.listeningContinuously="{Binding IsListeningContinuously}"
-                    Classes.thinking="{Binding IsThinking}"
-                    Classes.speaking="{Binding IsSpeaking}"
-                    Classes.dictating="{Binding IsDictating}"
-                    Classes.unavailable="{Binding IsUnavailable}">
-                <Grid>
-                    <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding !IsUnavailable}"/>
-                    <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
-                    <!-- Criterion 19: the standing "listening continuously" mode carries a small fixed dot the
-                         momentary F10/F9 hold never shows — see the style's own remarks on why it is drawn on
-                         the ring rather than on chip-only chrome, so it survives into this rail too. -->
-                    <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
-                </Grid>
-            </Border>
+            <Panel>
+                <Ellipse Classes="assistantIndicatorPulseRingRail" IsVisible="{Binding IsListening}"/>
+                <Border Classes="assistantIndicatorRing"
+                        Classes.listening="{Binding IsListening}"
+                        Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                        Classes.thinking="{Binding IsThinking}"
+                        Classes.speaking="{Binding IsSpeaking}"
+                        Classes.dictating="{Binding IsDictating}"
+                        Classes.unavailable="{Binding IsUnavailable}">
+                    <Grid>
+                        <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
+                        <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                        <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
+                        <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                        <!-- Criterion 19: the standing "listening continuously" mode carries a small fixed dot the
+                             momentary F10/F9 hold never shows — see the style's own remarks on why it is drawn on
+                             the ring rather than on chip-only chrome, so it survives into this rail too. -->
+                        <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                    </Grid>
+                </Border>
+            </Panel>
         </Button>
 
         <!-- Expanded form: the chip plus the listening-mode picker (criterion 17), both hidden once the
              sidebar is a rail — there is nowhere for either to sit. -->
         <StackPanel Spacing="8" IsVisible="{Binding !IsCollapsed}">
 
-            <Button Classes="assistantIndicatorChip" Command="{Binding ClickCommand}">
-                <Grid ColumnDefinitions="Auto,*">
-                    <Border Grid.Column="0" Classes="assistantIndicatorRing"
-                            Classes.listening="{Binding IsListening}"
-                            Classes.listeningContinuously="{Binding IsListeningContinuously}"
-                            Classes.thinking="{Binding IsThinking}"
-                            Classes.speaking="{Binding IsSpeaking}"
-                            Classes.dictating="{Binding IsDictating}"
-                            Classes.unavailable="{Binding IsUnavailable}">
-                        <Grid>
-                            <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding !IsUnavailable}"/>
-                            <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
-                            <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
-                        </Grid>
-                    </Border>
+            <!-- Vormgeving pass (2026-08-01): the whole chip tints per state, not only the mic badge — the
+                 Classes bindings below are what let Theme.axaml paint the chip's own border/background per
+                 state (Button.assistantIndicatorChip.listening etc.), the same way the ring's classes already
+                 did before this pass. -->
+            <Button Classes="assistantIndicatorChip"
+                    Classes.listening="{Binding IsListening}"
+                    Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                    Classes.thinking="{Binding IsThinking}"
+                    Classes.speaking="{Binding IsSpeaking}"
+                    Classes.dictating="{Binding IsDictating}"
+                    Classes.unavailable="{Binding IsUnavailable}"
+                    Command="{Binding ClickCommand}">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Panel Grid.Column="0">
+                        <Ellipse Classes="assistantIndicatorPulseRing" IsVisible="{Binding IsListening}"/>
+                        <Border Classes="assistantIndicatorRing small"
+                                Classes.listening="{Binding IsListening}"
+                                Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                                Classes.thinking="{Binding IsThinking}"
+                                Classes.speaking="{Binding IsSpeaking}"
+                                Classes.dictating="{Binding IsDictating}"
+                                Classes.unavailable="{Binding IsUnavailable}">
+                            <Grid>
+                                <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
+                                <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                                <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
+                                <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                                <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                            </Grid>
+                        </Border>
+                    </Panel>
                     <!-- Wrapping, not trimming. The sidebar this lives in is about 170px wide, and the longest
                          label ("Listening continuously") does not fit on one line there — trimmed, it read
                          "Listening continu…", which is the one state whose whole point is that it is visibly
@@ -73,28 +96,44 @@
                         <TextBlock Classes="assistantIndicatorDetail" Text="{Binding Detail}" TextWrapping="Wrap"
                                    IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
+                    <!-- The waveform (mockup's five-bar level meter): a live-capture cue shown only while
+                         something is actually moving through the mic or the speaker — Listening, Speaking,
+                         Dictating. Thinking has no audio to meter and ListeningContinuously is a standing mode,
+                         not a handeling, so neither shows it (ViewModel's ShowWaveform remarks). -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                                Margin="8,0,0,0" IsVisible="{Binding ShowWaveform}">
+                        <Rectangle x:Name="WaveBar1" Classes="assistantIndicatorWaveBar"/>
+                        <Rectangle x:Name="WaveBar2" Classes="assistantIndicatorWaveBar"/>
+                        <Rectangle x:Name="WaveBar3" Classes="assistantIndicatorWaveBar"/>
+                        <Rectangle x:Name="WaveBar4" Classes="assistantIndicatorWaveBar"/>
+                        <Rectangle x:Name="WaveBar5" Classes="assistantIndicatorWaveBar"/>
+                    </StackPanel>
+                    <!-- The key hint (mockup's .key badge): only the states that actually have a key bound to
+                         them right now get one — ViewModel.KeyHint returns null for the rest and the badge
+                         hides rather than showing empty. -->
+                    <Border Grid.Column="3" Classes="assistantIndicatorKey" Margin="8,0,0,0"
+                            IsVisible="{Binding KeyHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding KeyHint}"/>
+                    </Border>
                 </Grid>
             </Button>
 
-            <!-- Listening mode (criteria 17/18/comment 5): three stands, readable without a click. AlwaysOn's
-                 own confirmation lives inline below rather than in a separate dialog — the picker already put
-                 the operator's attention on this exact chip, and a modal for a one-line, one-time warning would
-                 be a bigger interruption than the thing it is warning about (motivated further in the ticket
-                 response). -->
-            <!-- Wraps rather than overflows: three buttons do not fit across a 170px sidebar, and the one that
-                 fell off the edge was "Wake word" — the option comment 5 says must stay visible as "not set up
-                 yet" precisely so you can see the possibility exists. -->
+            <!-- Listening mode (criteria 17/18/comment 5): the two reachable stands, readable without a click —
+                 Off and Always on. AlwaysOn's own confirmation lives inline below rather than in a separate
+                 dialog — the picker already put the operator's attention on this exact chip, and a modal for a
+                 one-line, one-time warning would be a bigger interruption than the thing it is warning about
+                 (motivated further in the ticket response). Vormgeving pass (2026-08-01): "Wake word" — the
+                 third stand this row used to show as a disabled "not set up yet" option — is gone; Raymond's
+                 call, 2026-08-01, is that showing an unreachable option earns its place less than a clean row of
+                 two. AssistantListeningMode.AlwaysOnWithWakeWord itself still exists (AssistantIndicatorCoordinator
+                 still refuses it), it is simply no longer offered here. -->
             <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4">
-                <Button Content="Off" Classes="Compact" Classes.Accent="{Binding IsListeningModeOff}"
+                <Button Content="Off" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeOff}"
                         Command="{Binding SelectListeningModeOffCommand}"
                         ToolTip.Tip="Microphone closed. Only the held assistant hotkey opens it."/>
-                <Button Content="Always on" Classes="Compact" Classes.Accent="{Binding IsListeningModeAlwaysOn}"
+                <Button Content="Always on" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeAlwaysOn}"
                         Command="{Binding SelectListeningModeAlwaysOnCommand}"
                         ToolTip.Tip="Microphone stays open. Everything you say goes to the assistant."/>
-                <Button Content="Wake word" Classes="Compact" Classes.Accent="{Binding IsListeningModeAlwaysOnWithWakeWord}"
-                        Command="{Binding SelectListeningModeAlwaysOnWithWakeWordCommand}"
-                        IsEnabled="False"
-                        ToolTip.Tip="Not set up yet — arrives once a wake word can be configured."/>
             </WrapPanel>
 
             <!-- The one-time AlwaysOn cost explanation (criterion 18) — shown once, on the pick, never again

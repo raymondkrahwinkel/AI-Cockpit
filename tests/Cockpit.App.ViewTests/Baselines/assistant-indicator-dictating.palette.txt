@@ -3,6 +3,8 @@
 # than are listed (a scroll bar exists only when its content overflows); it may not paint one
 # that is missing. Re-record with COCKPIT_UPDATE_THEME_BASELINES=1 and read the diff.
 
+#14E0A33E  CockpitStatusWaitingChipTintColor
+#1FE0A33E  CockpitStatusWaitingRingTintColor
 #FF000000  off-palette
 #FF0C0E12  CockpitSecondaryBgColor
 #FF0F1116  CockpitTextOnStatusColor, CockpitWindowBgColor
@@ -15,5 +17,7 @@
 #FFE8EAEF  CockpitTextPrimaryColor
 #FFFFFFFF  CockpitTextOnAccentColor
 radius  0,0,0,0
+radius  13,13,13,13
 radius  16,16,16,16
+radius  4,4,4,4
 radius  9,9,9,9

@@ -96,6 +96,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         Indicator.Activity = _ResolveActivity();
         Indicator.UnavailableReason = _assistant.UnavailableReason;
+        Indicator.ProfileLabel = _assistant.ProfileLabel;
 
         // Derived, not stored: what "always on" means is that the microphone is open, and that is already one
         // persisted flag on the open-mic coordinator. A second copy here would be a second thing to keep in step.
@@ -150,10 +151,14 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     }
 
     /// <summary>
-    /// Switches the microphone between held-only and held-open. Only two of the three modes are reachable: the
-    /// wake-word mode needs a wake word, which this phase does not build, and the chip shows it as not set up
-    /// rather than hiding it.
+    /// Switches the microphone between held-only and held-open — the only two modes the chip offers.
     /// </summary>
+    /// <remarks>
+    /// The wake-word mode is refused rather than absent from this check: the enum still carries it (the wake word
+    /// is its own future ticket), and a mode that cannot be picked today is one a caller could still pass
+    /// tomorrow by reading the enum rather than the UI. Guarding here costs one line and means the microphone
+    /// never opens on a filter that does not exist.
+    /// </remarks>
     private async Task _ApplyListeningModeAsync(AssistantListeningMode mode)
     {
         if (mode == AssistantListeningMode.AlwaysOnWithWakeWord)
