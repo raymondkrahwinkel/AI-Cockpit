@@ -38,6 +38,25 @@ public class EmbeddedSessionStatuslineSeedTests
         Assert.Equal("AC-544", session.Statusline);
     });
 
+    [Theory]
+    [InlineData("Decode the UTF-8 payload before comparing, see AC-544.")]
+    [InlineData("Switch the hash to SHA-256 across the board.")]
+    [InlineData("Port the prompt from GPT-4 to the local model.")]
+    [InlineData("Follow RFC-2119 for the wording of the new options.")]
+    public void Embed_WithAVersionLikeTokenBeforeAnyTicket_SeedsNothingRatherThanTheWrongThing(string brief) =>
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            // The pattern that finds "AC-544" also finds "UTF-8" and "SHA-256". Unanchored it took the first match
+            // anywhere in the brief, so a brief that merely mentions an encoding seeded a statusline claiming the
+            // session was working on it — which the assistant then reads back to the operator as fact. Seeding
+            // nothing is the right way to be wrong: a blank line reads as "has not said", a wrong one reads as true.
+            var (cockpit, sessions) = _Cockpit();
+
+            cockpit.Embed("workspace.autopilot.plan", new EmbeddedSessionRequest { InitialUserMessage = brief });
+
+            Assert.Equal(string.Empty, Assert.Single(sessions).Statusline);
+        });
+
     [Fact]
     public void Embed_WithATicketOnlyInTheRunLabel_SeedsTheStatuslineFromThat() => Dispatcher.UIThread.Invoke(() =>
     {

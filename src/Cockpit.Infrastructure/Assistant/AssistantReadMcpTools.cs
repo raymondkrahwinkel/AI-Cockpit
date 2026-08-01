@@ -129,9 +129,16 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
     /// together, and nothing stops it being ten megabytes. Thirty rows of that is a session-ending read of a tool
     /// whose entire purpose is to answer a question about somebody else's session. The same 2000 characters an agent
     /// message body is held to (<see cref="AgentMessageContent.MaxBodyLength"/>), for the same reason and with the
-    /// same arithmetic: it caps one full read at roughly 200 000 characters at the ceiling, and 60 000 at the
-    /// default. Truncated rather than refused, unlike a message body — there is nobody to hand the refusal to who
-    /// could shorten it, and the first 2000 characters of a build log is the half that says what failed.
+    /// same arithmetic. The limit is applied to a row's text and to its coupled tool result <em>separately</em>, so
+    /// the worst case for a whole read is twice this per row: about 120 000 characters at the default of thirty rows
+    /// and 400 000 at the ceiling of a hundred. Written out because the tempting arithmetic — rows times this
+    /// constant — is the one that is wrong, and a bound nobody can compute correctly is a bound nobody will notice
+    /// growing. Characters rather than bytes, too: a row of astral-plane text is up to four bytes each, so these
+    /// numbers are a ceiling on what is repeated, not on what it weighs on the wire.
+    /// </para>
+    /// <para>
+    /// Truncated rather than refused, unlike a message body — there is nobody to hand the refusal to who could
+    /// shorten it, and the first 2000 characters of a build log is the half that says what failed.
     /// </para>
     /// </summary>
     internal const int MaxEntryTextLength = 2000;
@@ -140,7 +147,7 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
     [Description("Reads the raw transcript of one AI session, named by its pane id — any session in any workspace, not just one desk. Take the pane id from list_sessions. Returns the entries as they happened, oldest first: each has a kind (UserText, AssistantText, ToolUse, ToolResult, Thinking, Question, Error, TurnCompleted), the text of the row, and — on a tool call — the result that call returned. It is passed through raw and unedited, exactly as the operator's own screen shows it; reading it, making sense of it and saying what it means in a sentence is your job, not the cockpit's. BOUNDED: by default you get the last 30 entries, not the whole session, which is the recent end where nearly every spoken question is actually pointed. The reply always says totalEntries and omitted, so you can tell a short session from a long one you only saw the tail of — never report a session as having started with what is simply the first line you were given. Ask for more with count (up to 100) only when the question really is about earlier on, e.g. \"what did it try before that\". A single very long entry is cut to 2000 characters and marked truncated: that is a shortened tool result, not a complete one.")]
     public async Task<string> ReadTranscriptAsync(
         [Description("The pane id of the session to read, exactly as list_sessions reports it. There is no name lookup here: find the session with list_sessions first, then read the pane it names.")] string paneId,
-        [Description("How many of the most recent entries to return. Defaults to 30 and is capped at 100 — a larger number is quietly clamped, not refused. Raise it only when the question is about earlier in the session; a wider read costs context on every turn that follows it.")] int count = DefaultEntryCount)
+        [Description("How many of the most recent entries to return. Defaults to 30 and is capped at 100 — a larger number is quietly clamped, not refused. Zero or a negative number is clamped up to 1 rather than returning nothing, so a miscounted argument still answers something instead of looking like an empty session. Raise it only when the question is about earlier in the session; a wider read costs context on every turn that follows it.")] int count = DefaultEntryCount)
     {
         try
         {
