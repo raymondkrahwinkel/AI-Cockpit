@@ -59,7 +59,7 @@ public class TranscriptStickToBottomTests
 
     /// <summary>
     /// Toggles a viewport-resizing row on and off, repeatedly — like a turn with several tool calls, which flips
-    /// <c>IsAwaitingResponse</c> many times over (AC-459) — and asserts the follow never breaks: the jump-to-newest
+    /// <c>IsBusy</c> many times over (AC-459) — and asserts the follow never breaks: the jump-to-newest
     /// button stays hidden throughout, and the transcript stays measured at the bottom by the same geometry the
     /// handler itself uses (<see cref="TranscriptScrollAnchor"/>).
     /// <para>
@@ -100,7 +100,7 @@ public class TranscriptStickToBottomTests
 
     [Fact]
     public void TheThinkingIndicator_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>
-        _AssertTogglingNeverStopsFollowing("the Thinking indicator", (session, on) => session.IsAwaitingResponse = on));
+        _AssertTogglingNeverStopsFollowing("the Thinking indicator", (session, on) => session.IsBusy = on));
 
     [Fact]
     public void TheStartingBanner_AppearingWhileParkedAtTheBottom_DoesNotStopFollowing() => HeadlessAvalonia.Run(() =>

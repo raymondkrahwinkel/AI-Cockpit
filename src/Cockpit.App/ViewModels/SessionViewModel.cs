@@ -196,12 +196,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// True while the "Thinking…" band should show (AC-532): awaiting the assistant's first visible output, and
-    /// no tool activity band already covering that same wait. The two bands occupy the same composer slot and are
-    /// never both visible — the activity band replaces "Thinking…" for the span it is active, rather than stacking
-    /// on top of it (composer height must not grow).
+    /// True while the "Thinking…" band should show (AC-532): a turn is in flight and no tool-activity band is
+    /// already covering it. The two bands occupy the same composer slot and are never both visible — the activity
+    /// band replaces "Thinking…" for the span it is active, rather than stacking on top (composer height must not
+    /// grow).
     /// </summary>
-    public bool ShowThinkingIndicator => IsAwaitingResponse && !HasActiveToolActivity;
+    /// <remarks>
+    /// Round 2 moved this off a "first visible output not yet seen" flag onto <see cref="IsBusy"/>, because that
+    /// flag was the defect. It was cleared by the assistant's first text and only ever re-armed by a
+    /// <see cref="ToolResult"/> — so a model that said something and then went back to work showed nothing at all
+    /// until its next tool call. Measured in Raymond's own transcript of 2026-08-01: three such stretches in one
+    /// session, 16.6 s, 65.0 s and 82.9 s, every one of them a text block ending and the next
+    /// <see cref="ToolUseRequested"/> breaking the silence. The 82.9 s one is the incident he reported.
+    /// <para>
+    /// A turn being in flight is the honest invariant, and it is the same one that keeps this from hanging:
+    /// <see cref="IsBusy"/> is raised on send and dropped on <see cref="TurnCompleted"/>, on
+    /// <see cref="SessionError"/> and on a send that never left — the three ways a turn can end, one of which
+    /// always happens. Nothing else needs to re-arm anything, which is precisely why the old flag leaked.
+    /// </para>
+    /// <para>
+    /// The trade-off is that "Thinking…" now also stands under streaming text, where it used to vanish at the
+    /// first token. That is the deliberate side the ticket asks for — a band that says the session is working
+    /// while it visibly writes is redundant; one that says nothing for 83 seconds is wrong.
+    /// </para>
+    /// </remarks>
+    public bool ShowThinkingIndicator => IsBusy && !HasActiveToolActivity;
 
     /// <summary>Raises every notification the active-tool-activity fields need after <see cref="_activeToolCalls"/> changes.</summary>
     private void _RaiseActiveToolActivityChanged()
@@ -212,7 +231,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(ShowThinkingIndicator));
     }
 
-    partial void OnIsAwaitingResponseChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(ShowThinkingIndicator));
 
     /// <summary>
     /// When this pane first saw each currently-outstanding <see cref="BackgroundTask.TaskId"/> in a
@@ -570,15 +589,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private bool _isBusy;
 
-    /// <summary>
-    /// True from the moment a turn is sent until the assistant produces its first sign of <em>visible</em>
-    /// activity (streamed text, or a tool call). Drives the "Thinking…" indicator above the composer so a
-    /// local model — which can sit silent while it loads/processes the prompt — visibly shows it is working
-    /// rather than looking hung. A reasoning/thinking delta deliberately does NOT clear it: the model is still
-    /// working toward its first visible output, so the indicator stays lit through the think phase.
-    /// </summary>
-    [ObservableProperty]
-    private bool _isAwaitingResponse;
 
     /// <summary>Shows the "Allow all tools" toggle: a local tool session (has tools, but not Claude's own permission modes) whose every MCP call would otherwise need an Allow click.</summary>
     [ObservableProperty]
@@ -1473,7 +1483,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _currentAssistantEntry = null;
         _CloseThinkingRow();
         IsBusy = true;
-        IsAwaitingResponse = true;
         _needsAttention = false;
         // Speak a quick "let me take a look" now (AC-99) so a voice conversation is not met with silence while the
         // turn spins up — no-op unless read-aloud is on and an acknowledgement mode is chosen.
@@ -1495,7 +1504,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ClearCurrentTurnImages();
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Send failed: {ex.Message}"));
             IsBusy = false;
-            IsAwaitingResponse = false;
             _RecomputeStatus();
         }
     }
@@ -1764,20 +1772,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="_OnSessionEvent"/>.</summary>
     internal void Apply(SessionEvent evt)
     {
-        // "Thinking…" tracks the model working with no visible output yet. Only *visible* activity clears it —
-        // streamed text, a tool call surfacing, a pending permission, or the turn ending; a completed tool result
-        // re-arms it, since the model then processes that result before its next output, so activity stays visible
-        // across the whole tool round-trip (send → think → tool → run → think → answer). A reasoning/thinking delta
-        // is deliberately NOT in this set: dousing the indicator the moment the model starts thinking left a gap
-        // where it read as idle while the answer was still coming.
-        if (evt is AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or PermissionRequested or TurnCompleted or SessionError)
-        {
-            IsAwaitingResponse = false;
-        }
-        else if (evt is ToolResult)
-        {
-            IsAwaitingResponse = true;
-        }
+        // No per-event bookkeeping for the "Thinking…" band any more (AC-532 round 2). It used to track "no visible
+        // output yet" — cleared by the first text, re-armed only by a ToolResult — and that is what left the
+        // composer blank for a minute at a time when the model said something and then went back to work. It now
+        // reads IsBusy, which the turn's own start and end already maintain; see ShowThinkingIndicator.
 
         // Real tool progress (AC-215/stall): a tool call surfacing or a tool result landing is the agent actually
         // working — the signal that distinguishes a busy-but-progressing step from a genuinely stuck one (AC-192: a
@@ -2387,7 +2385,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // control returns to whoever asked for the turn; a second wake arriving in that same moment sees Busy rather
         // than the state from before this one started.
         IsBusy = true;
-        IsAwaitingResponse = true;
         _RecomputeStatus();
 
         try
@@ -2403,7 +2400,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // the composer would queue forever and no later message could ever wake it. Rethrown rather than swallowed,
             // because the callers already decide what a failed prompt means for them.
             IsBusy = false;
-            IsAwaitingResponse = false;
             _RecomputeStatus();
             throw;
         }

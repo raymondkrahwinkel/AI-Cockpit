@@ -530,16 +530,15 @@ public class SessionViewModelTests
     public void Apply_ThinkingDelta_OnDeveloper_AddsAThinkingRow_AndLeavesTheIndicatorUp()
     {
         var vm = NewVm(); // NewVm defaults to the Developer reading level
-        vm.IsAwaitingResponse = true; // a dispatched turn leaves it up until the first *visible* output
+        vm.IsBusy = true; // a turn is in flight
 
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         // AC-213 revises AC-144: reasoning deltas stream into a dimmed, collapsible Thinking row on Developer.
         Assert.Single(vm.Transcript, t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
         Assert.True(vm.Transcript.Single().IsRowVisible);
-        // The pulsing indicator is separate from the row and stays lit — thinking is still not "visible output",
-        // so dousing it here would leave a gap where the session read as idle while the answer was still coming.
-        Assert.True(vm.IsAwaitingResponse);
+        // The pulsing indicator is separate from the row and stays lit while the turn runs.
+        Assert.True(vm.ShowThinkingIndicator);
     }
 
     [Theory]
@@ -594,27 +593,38 @@ public class SessionViewModelTests
         Assert.Empty(vm.Transcript);
     }
 
+    /// <summary>
+    /// AC-532 round 2, and the exact defect measured in Raymond's transcript of 2026-08-01: the assistant says
+    /// something and then goes back to work, and nothing marks that. The old flag treated the first text as "the
+    /// wait is over" and was only ever re-armed by a <c>ToolResult</c>, so the composer stayed blank until the
+    /// next tool call — three times in that one session, the longest 82.9 s. Streamed text ends a sentence, not
+    /// a turn.
+    /// </summary>
     [Fact]
-    public void Apply_FirstAssistantOutput_ClearsTheThinkingIndicator()
+    public void Apply_AssistantTextThenSilence_KeepsTheIndicatorUpUntilTheTurnEnds()
     {
         var vm = NewVm();
-        vm.IsAwaitingResponse = true; // as a dispatched turn leaves it until the first sign of activity
+        vm.IsBusy = true;
 
-        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "hi" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Let me check the tests." });
 
-        Assert.False(vm.IsAwaitingResponse);
+        Assert.True(vm.ShowThinkingIndicator);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        Assert.False(vm.ShowThinkingIndicator);
     }
 
     [Fact]
     public void Apply_NonOutputEvent_LeavesTheThinkingIndicatorUp()
     {
         var vm = NewVm();
-        vm.IsAwaitingResponse = true;
+        vm.IsBusy = true;
 
         // A connect/status event is not the assistant answering, so the model is still "thinking".
         vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [] });
 
-        Assert.True(vm.IsAwaitingResponse);
+        Assert.True(vm.ShowThinkingIndicator);
     }
 
     [Fact]
@@ -989,22 +999,76 @@ public class SessionViewModelTests
     public void Apply_ToolUseRequested_ReplacesTheThinkingIndicator_NeverBothAtOnce()
     {
         var vm = NewVm();
-        vm.IsAwaitingResponse = true; // as a dispatched turn leaves it, per Apply_NonOutputEvent_LeavesTheThinkingIndicatorUp
+        vm.IsBusy = true;
 
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
 
-        // IsAwaitingResponse itself still clears (unchanged pre-existing behaviour) but the composer must show
-        // the activity band, not nothing — this is the property the view actually binds its "Thinking…" row to.
-        Assert.False(vm.IsAwaitingResponse);
+        // The activity band takes the slot; the two never stack, so the composer keeps its height.
         Assert.False(vm.ShowThinkingIndicator);
         Assert.True(vm.HasActiveToolActivity);
 
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
 
-        // The result re-arms IsAwaitingResponse (pre-existing behaviour: the model processes the result before
-        // its next output) and, with the activity band now empty, "Thinking…" is what shows again.
-        Assert.True(vm.IsAwaitingResponse);
+        // With the band empty again "Thinking…" is what shows — the turn is still running.
         Assert.True(vm.ShowThinkingIndicator);
+    }
+
+    /// <summary>
+    /// AC-532 criterion 10: two tool calls back to back leave no gap, whether or not the assistant narrates
+    /// between them. The narrated shape is the one that actually failed in the field — the plain back-to-back
+    /// case was already covered by the tool result re-arming the old flag, which is why the defect survived
+    /// round 1's suite.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Apply_TwoToolCallsInARow_NeverLeaveTheComposerBlankBetweenThem(bool narratesBetween)
+    {
+        var vm = NewVm();
+        vm.IsBusy = true;
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "ok", IsError = false });
+
+        Assert.True(vm.ShowThinkingIndicator || vm.HasActiveToolActivity);
+
+        if (narratesBetween)
+        {
+            vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "That worked. Now the other one." });
+            Assert.True(vm.ShowThinkingIndicator || vm.HasActiveToolActivity);
+        }
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t2", ToolName = "PowerShell", InputJson = "{}" });
+
+        Assert.True(vm.HasActiveToolActivity);
+    }
+
+    /// <summary>
+    /// AC-532 criterion 6. A hung indicator is worse than none, so the three ways a turn can end each have to
+    /// take both bands down — including the one where the driver dies without ever resulting its tool call.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Apply_ATurnThatEndsMidToolCall_LeavesNoIndicatorBehind(bool endsWithError)
+    {
+        var vm = NewVm();
+        vm.IsBusy = true;
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        Assert.True(vm.HasActiveToolActivity);
+
+        if (endsWithError)
+        {
+            vm.Apply(new SessionError { SessionId = "S1", Message = "the driver died" });
+        }
+        else
+        {
+            vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+        }
+
+        Assert.False(vm.HasActiveToolActivity);
+        Assert.False(vm.ShowThinkingIndicator);
     }
 
     [Fact]
@@ -1017,15 +1081,14 @@ public class SessionViewModelTests
         Assert.True(vm.HasActiveToolActivity);
         Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
 
-        // The earlier call resolving first must not clear the band while the later one is still running. A
-        // ToolResult also re-arms IsAwaitingResponse (the model processes the result before its next output) —
-        // with a second tool still outstanding this is the real case ShowThinkingIndicator's guard exists for:
-        // both flags true at once, and the activity band, not "Thinking…", must be what the composer shows.
+        // The earlier call resolving first must not clear the band while the later one is still running. With a
+        // turn in flight and a tool still outstanding this is the case ShowThinkingIndicator's guard exists for:
+        // the activity band, not "Thinking…", is what the composer shows.
+        vm.IsBusy = true;
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t1", Content = "a", IsError = false });
 
         Assert.True(vm.HasActiveToolActivity);
         Assert.Equal("Read  ·  b.cs", vm.ActiveToolActivityLabel);
-        Assert.True(vm.IsAwaitingResponse);
         Assert.False(vm.ShowThinkingIndicator);
 
         vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "t2", Content = "b", IsError = false });

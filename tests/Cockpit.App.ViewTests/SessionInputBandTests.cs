@@ -81,7 +81,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
         var restingComposer = _Absolute(_Composer(pane.Window), pane.Window);
         var restingTranscript = _Absolute(_Transcript(pane.Window), pane.Window);
 
-        pane.Session.IsAwaitingResponse = true;
+        pane.Session.IsBusy = true;
         _Settle(pane);
 
         var row = _Absolute(_Row(pane.Window, ThinkingLabel), pane.Window);
@@ -89,7 +89,12 @@ public class SessionInputBandTests(ITestOutputHelper output)
         var busyTranscript = _Absolute(_Transcript(pane.Window), pane.Window);
 
         // The composer is the fill child of a bottom-docked panel, so its box is fixed and the row cannot push into it.
-        Assert.Equal(restingComposer, busyComposer);
+        // Vertically, not as a whole rect: IsBusy is also what reveals the Stop button beside the composer, which
+        // narrows it by 41px by design (SessionView.axaml — "Stop sits by the composer… only while a turn is
+        // actually running"). Since round 2 drives this row off IsBusy too, one flag now moves both, and asserting
+        // the full rect would fail on the button rather than on anything this test is about.
+        Assert.Equal(restingComposer.Y, busyComposer.Y);
+        Assert.Equal(restingComposer.Height, busyComposer.Height);
         Assert.False(row.Intersects(busyComposer), $"the row at {row} reached the composer at {busyComposer}");
         Assert.False(row.Intersects(busyTranscript), $"the row at {row} reached the transcript at {busyTranscript}");
 
@@ -98,7 +103,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
             $"the transcript kept {busyTranscript.Height} of {restingTranscript.Height} while the row was up");
         Assert.True(row.Y >= busyTranscript.Bottom, $"the row at {row.Y} started above the transcript's edge at {busyTranscript.Bottom}");
 
-        pane.Session.IsAwaitingResponse = false;
+        pane.Session.IsBusy = false;
         _Settle(pane);
 
         // And it hands the band straight back.
@@ -116,14 +121,14 @@ public class SessionInputBandTests(ITestOutputHelper output)
         var seen = new List<Rect>();
         for (var toggle = 0; toggle < 12; toggle++)
         {
-            pane.Session.IsAwaitingResponse = toggle % 2 == 0;
+            pane.Session.IsBusy = toggle % 2 == 0;
             _Settle(pane);
 
             var composer = _Absolute(_Composer(pane.Window), pane.Window);
             var transcript = _Absolute(_Transcript(pane.Window), pane.Window);
             var row = _Absolute(_Row(pane.Window, ThinkingLabel), pane.Window);
 
-            if (pane.Session.IsAwaitingResponse)
+            if (pane.Session.IsBusy)
             {
                 Assert.False(row.Intersects(composer), $"toggle {toggle}: the row at {row} reached the composer at {composer}");
                 Assert.False(row.Intersects(transcript), $"toggle {toggle}: the row at {row} reached the transcript at {transcript}");
@@ -144,7 +149,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
         using var pane = _Pane(session =>
         {
             session.IsStarting = true;
-            session.IsAwaitingResponse = true;
+            session.IsBusy = true;
         });
 
         var composer = _Absolute(_Composer(pane.Window), pane.Window);
@@ -175,7 +180,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
     [Fact]
     public void TheComposerZone_IsSeparatedFromTheTranscript_ByALine() => HeadlessAvalonia.Run(() =>
     {
-        using var pane = _Pane(session => session.IsAwaitingResponse = true);
+        using var pane = _Pane(session => session.IsBusy = true);
 
         var band = _InputBand(pane.Window);
         var bandRect = _Absolute(band, pane.Window);
@@ -202,7 +207,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
         var session = new SessionViewModel();
         session.QueuedMessages.Clear();
         session.PendingAttachments.Clear();
-        session.IsAwaitingResponse = true;
+        session.IsBusy = true;
 
         var view = new ContentControl { Content = session };
         var window = new Window { Width = 620, Height = 480 };
@@ -231,7 +236,7 @@ public class SessionInputBandTests(ITestOutputHelper output)
                     window.Show();
                 }
 
-                session.IsAwaitingResponse = render % 2 == 0;
+                session.IsBusy = render % 2 == 0;
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
 
