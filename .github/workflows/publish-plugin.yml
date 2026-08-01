@@ -162,6 +162,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MIN: ${{ steps.resolve.outputs.min_host }}
           PLUGIN: ${{ inputs.plugin }}
+          DIR: ${{ steps.resolve.outputs.dir }}
         shell: bash
         run: |
           if [ -z "$MIN" ]; then
@@ -194,6 +195,42 @@ jobs:
           fi
 
           echo "Gate passed: newest published host $available satisfies minHostVersion $MIN."
+
+          # Second half of the same question. The check above compares numbers; this one asks whether the build
+          # carrying that number actually contains the code being published. A nightly's base version is read from
+          # Directory.Build.props on main, so the moment VersionPrefix reads 0.17.0 every nightly from then on
+          # satisfies minHostVersion 0.17.0 — including one built before the host change a plugin leans on landed.
+          # On 2026-08-01 that let claude-provider 0.14.1 through while the newest nightly predated its host half:
+          # the plugin would have installed, found no host that states session attendance, and silently kept the old
+          # behaviour. A green gate over a dead fix is worse than a refusal, because nobody goes looking.
+          #
+          # A stable release does not have this problem — it is the version it claims — so the containment check
+          # applies only when a nightly is what satisfies the gate.
+          if [ -n "$stable" ] && [ "$(printf '%s\n%s\n' "$stable" "$MIN" | sort -V | head -1)" = "$MIN" ]; then
+            echo "A stable release ($stable) satisfies minHostVersion — no nightly containment check needed."
+            exit 0
+          fi
+
+          if [ -z "$nsha" ]; then
+            echo "::error::Only a nightly can satisfy minHostVersion $MIN, but there is no nightly tag to check."
+            exit 1
+          fi
+
+          # The plugin's own newest commit, not the workflow's HEAD: main moves on between a nightly and a publish
+          # (an unrelated pull request landing must not block shipping this plugin), while the host change a plugin
+          # needs rides in the same commit that bumped its minHostVersion — the discipline this gate already assumes.
+          plugin_sha="$(git log -1 --format=%H -- "$DIR")"
+          if [ -z "$plugin_sha" ]; then
+            echo "::error::Could not determine the newest commit touching $DIR; cannot verify the published host contains it."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$plugin_sha" "$nsha"; then
+            echo "::error::The newest published host is nightly $nsha, which does not contain $plugin_sha — the newest commit to $DIR. Its base version satisfies minHostVersion $MIN, but that build predates the code being published, so a plugin leaning on a host change would install and quietly do nothing. Run the Nightly on this commit first, then re-run this."
+            exit 1
+          fi
+
+          echo "Containment check passed: nightly $nsha contains $plugin_sha (newest commit to $DIR)."
 
       # A version already in the index is immutable — users may have installed it and pinned its sha256. If it
       # is there, there is nothing to do, and the build/PR steps below are skipped.
