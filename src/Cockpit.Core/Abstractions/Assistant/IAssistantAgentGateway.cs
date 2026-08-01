@@ -63,6 +63,29 @@ public interface IAssistantAgentGateway
     /// is nothing on it yet to interrupt.
     /// </summary>
     Task<AssistantWorkspaceRow?> CreateWorkspaceAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Closes the workspace on <paramref name="workspaceId"/> — the counterpart of
+    /// <see cref="CreateWorkspaceAsync"/>, and the same act as the operator's own ✕ on the tab.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only an empty desk.</b> Refuses while anything is still placed there, so the sessions a close would take
+    /// with it are stopped deliberately, one at a time and each with its own approval, rather than swept up by a
+    /// call the operator approved for a desk. That refusal is a guarantee and not a nicety: the confirmation dialog
+    /// behind the ✕ exists to name what is about to be lost, and a tool that cannot show a dialog has to earn the
+    /// same safety by refusing instead. Also refuses the last desk and the projects overview, which is where
+    /// <c>WorkspacesViewModel.CanClose</c> already says no — the button greys out for both.
+    /// </remarks>
+    Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What came of removing a workspace. Same shape and same reason as <see cref="AgentStopResult"/>.</summary>
+/// <param name="Name">The tab label the desk had, so the confirmation names what the operator will see disappear.</param>
+public sealed record WorkspaceRemovalResult(bool Ok, string? Name, string? Error)
+{
+    public static WorkspaceRemovalResult Removed(string name) => new(true, name, null);
+
+    public static WorkspaceRemovalResult Refused(string error) => new(false, null, error);
 }
 
 /// <summary>One session to start: where it goes, what it runs, and what it is handed to begin with.</summary>

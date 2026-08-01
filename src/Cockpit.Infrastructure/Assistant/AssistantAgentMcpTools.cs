@@ -189,6 +189,29 @@ internal sealed class AssistantAgentMcpTools(IAssistantAgentGateway gateway)
         }
     }
 
+    [McpServerTool(Name = "remove_workspace")]
+    [Description("Closes a desk and takes its tab away — the counterpart of create_workspace, and the same act as the operator clicking the ✕ on that tab themselves. THE DESK HAS TO BE EMPTY FIRST: this is refused for as long as anything is still on it, and the reason says how many. That is the design and not a shortcoming — closing a desk would stop everything on it in one go, and each of those sessions is a stop the operator gets to approve on its own. So do it in that order: list_workspaces for the count, stop_agent per session, then this. If they asked for all of it in one breath (\"stop everything on Henk and then get rid of it\"), that is an ordinary request — carry it out as several calls, and say where you are, rather than reporting the desk gone while it is still there. YOU MUST NAME THE WORKSPACE BY ITS ID, never by its label: two desks can be called the same thing and this one does not come back. Take the id from list_workspaces and read the desk's NAME back to the operator before you ask, because an id is not something anyone can check by ear. LIKE STARTING A SESSION, IT NEEDS THEIR CLICK on the Allow/Deny row in the chat window, and nothing goes until it is answered — say out loud that it is waiting on their screen, and never treat a spoken \"yes\" as the approval. A REFUSAL IS NORMAL: sessions still on it, the only desk left (the cockpit always needs one to show), or the projects overview, which is a fixture and never closes. Read the reason out in a sentence and carry on. WHAT THIS CANNOT DO: it stops nothing. It does not close the sessions on a desk for you, does not move them anywhere, and does not empty the desk on its way out — emptying it is stop_agent's job, one session at a time, each with its own approval. It does not touch a delegated task either: that runs without a pane, so it is on no desk, and closing a desk neither ends it nor tells you it was there. And it cannot be undone: the tab, the arrangement on it and its place in the strip are gone, so the name you read back is the last chance anyone has to say no.")]
+    public async Task<string> RemoveWorkspaceAsync(
+        [Description("The id of the desk to close, exactly as list_workspaces reports it — the desk, not its tab label. Required and never guessed: closing the wrong desk is not something an apology fixes.")] string workspaceId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.RemoveWorkspaceAsync(workspaceId).ConfigureAwait(false);
+            return result.Ok
+                ? _Serialize(new { ok = true, workspaceId, name = result.Name })
+                : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     /// <summary>
     /// The gate, in one place so every tool on this server is covered by the same sentence rather than by its own
     /// copy of it. Returns the refusal to hand straight back, or null when the caller really is the assistant.

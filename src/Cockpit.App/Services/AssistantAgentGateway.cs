@@ -236,8 +236,67 @@ internal sealed class AssistantAgentGateway(
         {
             var created = await cockpit.Workspaces.CreateSessionsWorkspaceAsync(trimmed).ConfigureAwait(true);
             return (AssistantWorkspaceRow?)new AssistantWorkspaceRow(
-                created.Id, created.Name, created.Type.ToString(), CanHostSessions: true, SessionCount: 0, IsActive: true);
+                created.Id, created.Name, created.Type.Id, CanHostSessions: true, SessionCount: 0, IsActive: true);
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Closes a desk the same way the tab's ✕ does, and refuses the same three things — with the confirmation
+    /// dialog's job done by refusing rather than by asking.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why the emptiness check is here and not left to <see cref="CockpitViewModel.CloseWorkspaceAsync"/>.</b>
+    /// That method closes the desk <em>and everything on it</em>, which is right behind a dialog that first names
+    /// what is about to be stopped. There is no dialog on this route: what the operator approves is an Allow row
+    /// naming a desk, and taking three running sessions with it is work nobody asked for and nothing showed them.
+    /// So the sessions go first, through <c>stop_agent</c> and its own approval each, and this refuses until there
+    /// are none — at which point the two paths do exactly the same thing to exactly the same desk.
+    /// </remarks>
+    public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+        _OnUiThreadAsync(async () =>
+        {
+            if (_FindWorkspace(workspaceId) is not { } workspace)
+            {
+                return WorkspaceRemovalResult.Refused(
+                    $"There is no workspace with id '{workspaceId}'. List the workspaces and name one of those.");
+            }
+
+            // The button's own gate, asked rather than re-derived — CanClose is what greys out the ✕, and the two
+            // reasons it says no for are worth telling apart out loud.
+            if (!cockpit.Workspaces.CanClose(workspaceId))
+            {
+                return WorkspaceRemovalResult.Refused(workspace.Type == WorkspaceType.Projects
+                    ? $"'{workspace.Name}' is the projects overview. It is always there, and closing it is not something anyone can do."
+                    : $"'{workspace.Name}' is the only desk left, and the cockpit always needs one to show.");
+            }
+
+            var occupants = _CountEverythingOn(workspaceId);
+            if (occupants > 0)
+            {
+                return WorkspaceRemovalResult.Refused(occupants == 1
+                    ? $"There is still 1 session on '{workspace.Name}'. Stop it first — I do not close a desk with work still on it."
+                    : $"There are still {occupants} sessions on '{workspace.Name}'. Stop them first — I do not close a desk with work still on it.");
+            }
+
+            await cockpit.CloseWorkspaceAsync(workspaceId).ConfigureAwait(true);
+            return WorkspaceRemovalResult.Removed(workspace.Name);
+        });
+
+    /// <summary>
+    /// How many sessions closing this desk would take with it, by the same placement rule the roster reports —
+    /// so the number the operator just heard from <c>list_workspaces</c> is the number this refuses on.
+    /// </summary>
+    /// <remarks>
+    /// Wider than that roster in one way, deliberately: it does not filter on <c>ShowPluginHeaderItems</c>. A plain
+    /// terminal is not an agent session and so is not counted there, but the close would end it just the same, and a
+    /// pty killed by a call about a desk is the loss this refusal exists to prevent. The assistant's own pane is
+    /// excluded by <c>SessionWorkspacePlacement</c> itself, which resolves it to no desk at all.
+    /// </remarks>
+    private int _CountEverythingOn(string workspaceId)
+    {
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
+        return cockpit.AllSessions().Count(session => string.Equals(
+            SessionWorkspacePlacement.Resolve(session, firstSessionsWorkspaceId), workspaceId, StringComparison.Ordinal));
     }
 
     private IReadOnlyList<AssistantWorkspaceRow> _ListWorkspaces()
@@ -262,7 +321,10 @@ internal sealed class AssistantAgentGateway(
             .. settings.Workspaces.Select(workspace => new AssistantWorkspaceRow(
                 workspace.Id,
                 workspace.Name,
-                workspace.Type.ToString(),
+                // The id, not ToString(): WorkspaceType is a record struct, so ToString() hands the model
+                // "WorkspaceType { Id = Sessions, IsBuiltIn = True }" — a record dump where the row's own contract
+                // says "sessions". Found in a live transcript (Raymond, 2026-08-02).
+                workspace.Type.Id,
                 workspace.Type == WorkspaceType.Sessions,
                 counts.TryGetValue(workspace.Id, out var count) ? count : 0,
                 string.Equals(workspace.Id, settings.Active?.Id, StringComparison.Ordinal))),

@@ -25,7 +25,7 @@ namespace Cockpit.Infrastructure.Tests.Assistant;
 /// <see cref="IAssistantAgentGateway"/> was never even asked.
 /// <para>
 /// <b>Two things in here are derived rather than typed out, and both are a lesson from AC-544's phase 2.</b> First,
-/// the tool set: it comes from the <c>[McpServerTool]</c> methods on the class, so a fifth tool added without the
+/// the tool set: it comes from the <c>[McpServerTool]</c> methods on the class, so a tool added without the
 /// pane check fails these tests on the day it is written rather than on the day someone remembers to extend a
 /// hand-written list. Second, the server's mount flags: they are read off the endpoint the app actually registers.
 /// The phase-2 fan-out tests hand-built an <c>McpServerConfig { Internal = true }</c>, which is a true statement
@@ -105,7 +105,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
     public async Task EveryToolOnTheActingServer_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
     {
         // The test that matters. Not "start_agent refuses" — every tool on this server, taken from the class, so the
-        // fifth one cannot be added without its guard and still ship green.
+        // next one cannot be added without its guard and still ship green.
         var tools = _EveryTool();
         Assert.NotEmpty(tools); // A reflection query that found nothing would pass everything below it.
 
@@ -334,6 +334,12 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Calls.Add($"CreateWorkspaceAsync({name})");
             return Task.FromResult<AssistantWorkspaceRow?>(
                 new AssistantWorkspaceRow("ws-new", name, "sessions", true, 0, true));
+        }
+
+        public Task<WorkspaceRemovalResult> RemoveWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"RemoveWorkspaceAsync({workspaceId})");
+            return Task.FromResult(WorkspaceRemovalResult.Removed("Release"));
         }
 
         public Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
