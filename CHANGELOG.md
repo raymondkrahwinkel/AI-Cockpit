@@ -1195,6 +1195,19 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   project is actually linked to, instead of every project on the instance once that instance had no default
   project of its own. The full YouTrack and GitHub Issues dialogs already respected the link; the session picker
   quietly did not.
+- fixed: clicking the tray icon after the cockpit's window had really closed took the whole app down. A closed
+  window cannot be shown again, and the tray's Show did it anyway — from an event handler with nothing to catch
+  the failure, so the process simply died. The cockpit now forgets a window once it is closed, which is what the
+  tray click, the tray menu's Show and the screen lock each already checked for.
+- fixed: the log no longer throws away the run you want to read. It is emptied at every start so the live one
+  stays readable, which also meant starting the cockpit again to find out why it had vanished was itself what
+  destroyed the evidence. The run before this one is now kept beside it as `cockpit.log.previous` — exactly one,
+  overwritten each start, so nothing accumulates.
+- fixed: a cockpit that is simply gone the next time you look now says so in its log. Every way the app itself
+  ends — the window closing, Quit from the tray, Windows ending the session, the teardown that follows — writes a
+  line as it goes, and the run starts with one naming its version, process id and arguments. A log that ends in
+  ordinary activity with none of those lines after it means nothing inside the app asked to stop, which is the
+  difference between the cockpit closing and the cockpit being ended from outside.
 - fixed: a row in the Managed worktrees dialog no longer draws its owner and path underneath the buttons on its
   right — both lines now shrink and trim to the room the row actually has, with the full text on hover, so a long
   session name or a deep path cannot push anything out of view. The dialog is also wider, and keeps a minimum size

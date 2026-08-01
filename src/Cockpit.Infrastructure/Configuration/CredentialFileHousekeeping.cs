@@ -84,6 +84,14 @@ public static class CredentialFileHousekeeping
     /// matching <c>FileLoggerProvider</c>'s own contract, which then only ever appends to this already-restricted file.
     /// Lives here because this is the one public seam that reaches the file-permission logic (<c>CockpitConfigPath</c>).
     /// </summary>
+    /// <remarks>
+    /// The run before this one is kept alongside as <c>&lt;name&gt;.previous</c> first. Truncating per run is what
+    /// makes the live log readable, but it also means the only run anyone can ever read is the one still going —
+    /// and "why did the cockpit disappear?" is always a question about the run that ended. Exactly one generation,
+    /// overwritten each start: enough to answer that, with no rolling policy or retention window to reason about.
+    /// A start that cannot move the old file (still held by an instance on its way out during a restart handoff)
+    /// carries on and simply loses that copy — a diagnostic convenience must never be what fails a launch.
+    /// </remarks>
     public static void PrepareLogFile(string logPath)
     {
         var directory = Path.GetDirectoryName(logPath);
@@ -92,8 +100,24 @@ public static class CredentialFileHousekeeping
             CockpitConfigPath.EnsurePrivateDirectory(directory);
         }
 
+        if (File.Exists(logPath))
+        {
+            try
+            {
+                // Move rather than copy: the owner-only mode this file was created with travels with it, so the
+                // kept copy needs no second round of restriction.
+                File.Move(logPath, logPath + PreviousLogSuffix, overwrite: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
         CockpitConfigPath.WriteAllTextPrivate(logPath, string.Empty);
     }
+
+    /// <summary>Appended to the log path for the copy <see cref="PrepareLogFile"/> keeps of the previous run.</summary>
+    public const string PreviousLogSuffix = ".previous";
 
     /// <summary>
     /// When <paramref name="configFilePath"/> is an encrypted config, deletes any <c>.bak</c>/<c>.damaged-*</c>
