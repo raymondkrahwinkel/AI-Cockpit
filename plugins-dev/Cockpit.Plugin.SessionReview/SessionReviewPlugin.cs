@@ -36,8 +36,10 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
                 "Session review",
                 () => new SessionDiffDialogControl(host, session),
                 $"review.{session.PaneId}",
-                width: 860,
-                height: 620))
+                // Wider and taller than the old flat list needed: the tree takes a fixed 260 on the left, and what
+                // is left has to hold a line of code plus two number gutters without wrapping every other line.
+                width: 1100,
+                height: 720))
         {
             IconKind = MaterialIconKind.FileCompare,
         });
