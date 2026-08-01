@@ -5,17 +5,25 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.Services;
 
 /// <summary>
-/// Drives open-mic dictation and exposes a runtime on/off toggle (bound to a sidebar button): when
-/// listening, the continuous <see cref="IOpenMicListener"/> injects each finished utterance into the
-/// currently selected session (SDK sessions get the Ollama cleanup pass, TTY gets the raw text — the same
-/// split push-to-talk makes), and the mic pauses while read-aloud is playing so it never transcribes the
+/// Keeps the microphone open for the assistant and exposes the on/off behind the indicator's listening mode: while
+/// listening, the continuous <see cref="IOpenMicListener"/> hands each finished utterance to
+/// <see cref="AssistantSessionHost"/>, and the mic pauses while read-aloud is playing so it never transcribes the
 /// cockpit's own speech. The on/off state is persisted, so it resumes next launch.
 /// </summary>
+/// <remarks>
+/// <b>It used to dictate.</b> Until AC-543 this injected into whichever session happened to be selected, which
+/// made "leave the microphone open" mean something different depending on where you last clicked. It now always
+/// means the assistant; <c>F9</c> is the only path into a session and is unchanged. What follows from that, and is
+/// worth saying out loud: with this on, everything you say reaches the assistant — an aside to a colleague, a
+/// phone call, thinking out loud — and each of those costs a turn. A wake word is the filter for that, and it is
+/// not built yet, so the indicator says so at the moment it is switched on.
+/// </remarks>
 /// <remarks>
 /// Threading mirrors <see cref="VoicePushToTalkCoordinator"/>: <see cref="IOpenMicListener.UtteranceTranscribed"/>
 /// fires on the capture thread, so injection is marshaled onto the UI thread via
@@ -25,9 +33,9 @@ namespace Cockpit.App.Services;
 public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService, IOpenMicState
 {
     private readonly IOpenMicListener _listener;
-    private readonly CockpitViewModel _cockpit;
+    private readonly IAssistantSessionHost _assistant;
     private readonly IVoiceSettingsStore _voiceSettingsStore;
-    private readonly ITranscriptCleanupService _cleanup;
+    private readonly IAssistantSettingsStore _assistantSettingsStore;
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly VoiceOverlayCoordinator _overlay;
     private readonly ILogger<OpenMicCoordinator> _logger;
@@ -56,17 +64,17 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     public OpenMicCoordinator(
         IOpenMicListener listener,
-        CockpitViewModel cockpit,
+        IAssistantSessionHost assistant,
         IVoiceSettingsStore voiceSettingsStore,
-        ITranscriptCleanupService cleanup,
+        IAssistantSettingsStore assistantSettingsStore,
         IVoicePlaybackQueue playbackQueue,
         VoiceOverlayCoordinator overlay,
         ILogger<OpenMicCoordinator> logger)
     {
         _listener = listener;
-        _cockpit = cockpit;
+        _assistant = assistant;
         _voiceSettingsStore = voiceSettingsStore;
-        _cleanup = cleanup;
+        _assistantSettingsStore = assistantSettingsStore;
         _playbackQueue = playbackQueue;
         _overlay = overlay;
         _logger = logger;
@@ -90,19 +98,28 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     [ObservableProperty]
     private bool _isListening;
 
-    /// <summary>Reads settings at startup and resumes listening if open-mic was left on; runtime toggling is via <see cref="ToggleOpenMicCommand"/>. No-op when voice is off.</summary>
+    /// <summary>
+    /// Reads settings at startup and resumes listening if it was left on; runtime toggling is via
+    /// <see cref="ToggleOpenMicCommand"/>. No-op unless both voice and the assistant are switched on.
+    /// </summary>
     /// <remarks>
     /// Never throws, for the reason <see cref="VoicePushToTalkCoordinator.StartAsync"/> does not: its one caller
     /// discards the task, so anything thrown here lands on a task nobody observes. It still cannot start when the
     /// settings will not read or the microphone will not open — it says which now.
+    /// <para>
+    /// Gated on <em>both</em> switches since AC-543. Voice, because that is the microphone pipeline; and the
+    /// assistant, because it is now the only destination — leaving the microphone open for a feature that is
+    /// switched off would record the room and send it nowhere.
+    /// </para>
     /// </remarks>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
-            IsAvailable = settings.IsEnabled;
-            if (settings.IsEnabled && settings.OpenMicEnabled)
+            var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken);
+            IsAvailable = settings.IsEnabled && assistant.IsEnabled;
+            if (IsAvailable && settings.OpenMicEnabled)
             {
                 await _EnableAsync(cancellationToken);
             }
@@ -115,6 +132,28 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             _Unwire();
 
             _logger.LogError(exception, "Open-mic dictation could not start; the microphone is not listening.");
+        }
+    }
+
+    /// <summary>
+    /// Re-reads both switches and closes the microphone if the assistant was just turned off. Called when the
+    /// Options page saves.
+    /// </summary>
+    /// <remarks>
+    /// The gate in <see cref="StartAsync"/> only runs at launch, so switching the assistant off while open-mic
+    /// was listening left the microphone open with nowhere to send what it heard — every utterance was
+    /// transcribed and then silently dropped by a host that is off. An open microphone recording a room for no
+    /// reason is the one failure here worth closing without being asked to.
+    /// </remarks>
+    public async Task ApplyAssistantSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        var voice = await _voiceSettingsStore.LoadAsync(cancellationToken);
+        var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken);
+
+        IsAvailable = voice.IsEnabled && assistant.IsEnabled;
+        if (!IsAvailable && IsListening)
+        {
+            await _DisableAsync();
         }
     }
 
@@ -288,7 +327,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    /// <summary>Test seam: the UI-thread logic that cleans (for SDK sessions) and injects an utterance into the selected session.</summary>
+    /// <summary>Test seam: the UI-thread logic that hands one finished utterance to the assistant.</summary>
     /// <remarks>
     /// The pill is released here rather than on <c>SpeechEnded</c>: the cleanup pass runs between the two, and a
     /// spinner that stops before the text lands would be a spinner that lied about the last part of the wait.
@@ -299,17 +338,20 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     {
         try
         {
-            var session = _cockpit.SelectedSession;
-            // Nothing to do without a session, or when the utterance filtered down to nothing (a throat-clear or a
-            // bare "um" the STT noise filter removed) — injecting empty text, and auto-submitting it, is exactly
-            // what "have a normal conversation" must not do.
-            if (session is null || string.IsNullOrWhiteSpace(rawText))
+            // Nothing to do when the utterance filtered down to nothing (a throat-clear or a bare "um" the STT
+            // noise filter removed) — sending empty text is exactly what "have a normal conversation" must not do.
+            if (string.IsNullOrWhiteSpace(rawText))
             {
                 return;
             }
 
-            var text = session is TtyViewModel ? rawText : await _cleanup.CleanupAsync(rawText);
-            session.InjectVoiceTranscript(text);
+            // Straight to the assistant, raw (AC-543 criterion 20). Two things changed here at once and both are
+            // deliberate. The destination: open-mic used to dictate into whichever session happened to be
+            // selected, which made "leave the microphone open" mean something different depending on where you
+            // last clicked; it now always means the assistant, and F9 is left as the only way to dictate into a
+            // session. And the cleanup pass is gone: what Whisper heard is what the assistant gets (decision 10),
+            // because the tidying it did is the system prompt's job now.
+            await _assistant.SendAsync(rawText);
         }
         finally
         {

@@ -18,7 +18,6 @@
 #FF22D3EE  CockpitStatusBusyColor
 #FF2563EB  CockpitAccentColor
 #FF2A2F39  CockpitHairlineColor
-#FF2E2A26  off-palette
 #FF656C78  CockpitTextFaintColor
 #FF949AA5  CockpitTextSecondaryColor
 #FFE0A33E  CockpitStatusWaitingColor
@@ -28,7 +27,6 @@ radius  0,0,0,0
 radius  12,12,12,12
 radius  16,16,16,16
 radius  20,20,20,20
-radius  4.5,4.5,4.5,4.5
 radius  5,5,5,5
 radius  6,6,6,6
 radius  7,7,7,7

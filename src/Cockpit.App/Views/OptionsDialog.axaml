@@ -353,6 +353,7 @@
                                 <ListBoxItem>Read-aloud</ListBoxItem>
                                 <ListBoxItem>Transcribe</ListBoxItem>
                                 <ListBoxItem>Cleanup</ListBoxItem>
+                                <ListBoxItem>Assistant</ListBoxItem>
                             </ListBox>
                         </StackPanel>
                     </Border>
@@ -745,6 +746,57 @@
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding VoiceLlmBaseUrl}" Width="150"
                                              PlaceholderText="http://localhost:11434 (Ollama) / :1234 (LM Studio)"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Assistant (AC-543): the master switch, the Assistant Profile picker, the push-to-talk
+                             hotkey and the independent speak-replies switch. Off is the begin state (decision 7) —
+                             the rows below the switch stay visible and merely dim, so what is off stays legible
+                             instead of disappearing (criterion: "off is not removed"). -->
+                        <ScrollViewer>
+                            <StackPanel Spacing="8" Margin="16">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Voice assistant" FontWeight="SemiBold"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Talk to the assistant and let it answer. Off until you turn it on — nothing listens, and no model is loaded."/>
+                                </StackPanel>
+                                <CheckBox Content="Enable the assistant"
+                                          IsChecked="{Binding AssistantOptions.IsEnabled}"/>
+
+                                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                <StackPanel Spacing="8" IsEnabled="{Binding AssistantOptions.IsEnabled}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Assistant Profile" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Which provider and model the assistant runs on. This profile cannot be deleted — switching provider replaces what is behind it."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <ComboBox ItemsSource="{Binding AssistantOptions.AvailableProfiles}"
+                                                  SelectedItem="{Binding AssistantOptions.SelectedProfile}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                        <TextBlock Text="{Binding AssistantOptions.ProfileUnsetReason}"
+                                                   IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Push to talk" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Hold to speak to the assistant. Works while Cockpit is in the background."/>
+                                    </StackPanel>
+                                    <controls:ShortcutCaptureControl Gesture="{Binding AssistantOptions.PushToTalkKeyName, Mode=TwoWay}"
+                                                                     Mode="SingleKey" MinWidth="110" HorizontalAlignment="Left"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Read replies out loud" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="The assistant speaks its answers. Turn off to keep it text only — its own switch, independent of the assistant being on."/>
+                                    </StackPanel>
+                                    <CheckBox Content="Speak replies"
+                                              IsChecked="{Binding AssistantOptions.SpeakReplies}"/>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>

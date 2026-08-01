@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
@@ -368,6 +369,14 @@
                      entirely when no plugin contributes a section (no visual noise at zero plugins). -->
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
+                <!-- AC-543: the assistant chip, at the foot of the sidebar. Below the session list on purpose —
+                     the list grows downward and this does not move with it, so the one thing that says who is
+                     listening is never somewhere you have to go looking. Declared before the ScrollViewer, not
+                     after: this DockPanel fills with its last child, so a Dock="Bottom" declared last is ignored
+                     and takes the middle instead (which is exactly what it did on the first render). -->
+                <views:AssistantIndicator DockPanel.Dock="Bottom" Margin="0,8,0,0"
+                                          DataContext="{Binding AssistantIndicator}"/>
+
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
                      ▶ starts on the project's own defaults and skips the dialog; the context menu holds the slower
@@ -570,14 +579,25 @@
         <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
                 IsVisible="{Binding SidebarCollapsed}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
-            <StackPanel Margin="4,8" Spacing="6" HorizontalAlignment="Center">
-                <Button Content="»" Classes="Subtle" Padding="6,2"
-                        Command="{Binding ToggleSidebarCommand}"
-                        ToolTip.Tip="Expand the sidebar"/>
-                <Button Content="+" Classes="Accent" Padding="7,2"
-                        Command="{Binding NewSessionCommand}"
-                        ToolTip.Tip="New session"/>
-            </StackPanel>
+            <DockPanel Margin="4,8">
+                <StackPanel DockPanel.Dock="Top" Spacing="6" HorizontalAlignment="Center">
+                    <Button Content="»" Classes="Subtle" Padding="6,2"
+                            Command="{Binding ToggleSidebarCommand}"
+                            ToolTip.Tip="Expand the sidebar"/>
+                    <Button Content="+" Classes="Accent" Padding="7,2"
+                            Command="{Binding NewSessionCommand}"
+                            ToolTip.Tip="New session"/>
+                </StackPanel>
+
+                <!-- The same component, which drops to its bare badge when collapsed. It survives the rail
+                     deliberately: a narrow sidebar is exactly when you still need to see that something is
+                     listening, and to whom. -->
+                <views:AssistantIndicator DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                                          DataContext="{Binding AssistantIndicator}"/>
+
+                <!-- Fills the gap between the two so the chip stays at the bottom. -->
+                <Panel/>
+            </DockPanel>
         </Border>
 
         <!-- Sidebar-width splitter (#49): drags SidebarColumn between its min/max, then

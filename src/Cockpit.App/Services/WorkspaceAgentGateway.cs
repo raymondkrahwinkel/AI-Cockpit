@@ -19,10 +19,9 @@ namespace Cockpit.App.Services;
 /// Dashboard's widgets — but that record is the operator's saved <em>intention</em>, read back only to restore a
 /// pane after a restart. Which live panel is on which desk right now is still read off the running
 /// <see cref="SessionPanelViewModel.WorkspaceId"/> instead, the same live source <c>CockpitViewModel</c> itself
-/// decides against: an empty <c>WorkspaceId</c> (a session started before workspaces existed, or in the
-/// design-time graph) falls back to the first Sessions workspace, rather than being read as belonging to none —
-/// but when there is no Sessions workspace to fall back to either, the pane resolves to no workspace at all, and
-/// is refused rather than handed an invented empty one.
+/// decides against — through <see cref="SessionWorkspacePlacement"/>, which is where that rule lives for every
+/// consumer of it. A pane it places nowhere (the assistant, or an unassigned session at a moment when no
+/// Sessions workspace exists to fall back to) is refused rather than handed an invented empty desk.
 /// </para>
 /// <para>
 /// <see cref="CockpitViewModel.Sessions"/> is an <see cref="System.Collections.ObjectModel.ObservableCollection{T}"/>
@@ -139,21 +138,23 @@ internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<Wo
 
         // Resolved once per call, not once per candidate pane: the fallback below is a scan of every workspace,
         // and every sibling sharing the caller's workspace was re-running that same scan for itself.
-        var firstSessionsWorkspaceId = cockpit.Workspaces.Settings.Workspaces
-            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id;
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
 
-        var workspaceId = _ResolveWorkspaceId(caller, firstSessionsWorkspaceId);
-        if (workspaceId.Length == 0)
+        if (SessionWorkspacePlacement.Resolve(caller, firstSessionsWorkspaceId) is not { } workspaceId)
         {
-            // No explicit workspace, and no Sessions workspace exists to fall back to (every Sessions desk closed,
-            // or a graph that never had one) — reporting "" would describe a desk that is not on screen anywhere.
+            // The caller sits on no desk: the assistant (which never does, by construction — AC-543), or a session
+            // with no explicit workspace at a moment when no Sessions workspace exists to fall back to. Reporting
+            // a desk here would describe one that is not on screen anywhere, so it is refused instead.
             return null;
         }
 
         var panes = cockpit.AllSessions()
             // Only real agent sessions share the roster: see the caller-side refusal above for why a plain
             // terminal pane is excluded on both sides of this call.
-            .Where(candidate => candidate.ShowPluginHeaderItems && _ResolveWorkspaceId(candidate, firstSessionsWorkspaceId) == workspaceId)
+            // The assistant resolves to null here and so matches no desk — it is never reported as a neighbour,
+            // which is the half of the third-session-kind rule that a caller-side refusal alone would not cover.
+            .Where(candidate => candidate.ShowPluginHeaderItems
+                && SessionWorkspacePlacement.Resolve(candidate, firstSessionsWorkspaceId) == workspaceId)
             // Whether a pane gets passive delivery is asked of the pane, not decided here by its type: the pane that
             // implements turn-start delivery is the one that can honestly claim it, and a check on the type here
             // would be a second, separate answer to the same question — free to drift from the first the moment a
@@ -168,10 +169,4 @@ internal sealed class WorkspaceAgentGateway(CockpitViewModel cockpit, ILogger<Wo
 
         return new WorkspaceAgentSnapshot(workspaceId, panes);
     }
-
-    // Mirrors CockpitViewModel's own BelongsToActiveWorkspace fallback: an unassigned session (empty WorkspaceId)
-    // belongs to the first Sessions workspace, not to none. Takes the already-resolved first-Sessions-workspace id
-    // rather than looking it up itself, so a caller iterating many candidates pays for that scan once.
-    private static string _ResolveWorkspaceId(SessionPanelViewModel session, string? firstSessionsWorkspaceId) =>
-        session.WorkspaceId.Length == 0 ? firstSessionsWorkspaceId ?? string.Empty : session.WorkspaceId;
 }

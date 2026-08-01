@@ -1270,4 +1270,129 @@
         <Setter Property="Margin" Value="0,2,0,2"/>
     </Style>
 
+    <!-- Assistant indicator (AC-543, strand 3 — AssistantIndicator.axaml). The question this control answers is
+         not "is something listening" but "WHO is listening" (criterion 6): CockpitStatusWaitingBrush (amber) is
+         reserved for F9 dictating into a session — never the assistant — and CockpitStatusBusyBrush (cyan) marks
+         every state that IS the assistant (listening, listening continuously, thinking, speaking). Reusing the
+         existing status tokens rather than minting a new pair keeps the indicator inside the palette every other
+         "something is happening" signal in the app already uses, and keeps the amber/cyan split pinned to the
+         same two colours a colour-blind operator has already learned to tell apart elsewhere (waiting vs busy). -->
+    <Style Selector="Button.assistantIndicatorChip">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="8"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorChip:pointerover /template/ ContentPresenter">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
+    </Style>
+
+    <!-- Rail form (criterion 6/19 — the sidebar collapsed to its icon strip): the same badge, no chip chrome
+         and no label. The colour and the ring already answer the one question a glance at a collapsed sidebar
+         needs answered; there is no room in a rail for the words that answer the rest. -->
+    <Style Selector="Button.assistantIndicatorRail">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.assistantIndicatorRail:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitGhostHoverBrush}"/>
+    </Style>
+
+    <!-- The circular mic badge shared by the chip and the rail. Ready and Unavailable stay the neutral
+         hairline ring — nothing is happening, nothing to announce — every other state colours it. -->
+    <Style Selector="Border.assistantIndicatorRing">
+        <Setter Property="Width" Value="32"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="CornerRadius" Value="16"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1.5"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+    </Style>
+    <!-- Listening / ListeningContinuously / Thinking / Speaking: cyan — "the assistant" (criterion 6's busy half). -->
+    <Style Selector="Border.assistantIndicatorRing.listening,
+                     Border.assistantIndicatorRing.listeningContinuously,
+                     Border.assistantIndicatorRing.thinking,
+                     Border.assistantIndicatorRing.speaking">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusBusyBrush}"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.listening materialIcons|MaterialIcon,
+                     Border.assistantIndicatorRing.listeningContinuously materialIcons|MaterialIcon,
+                     Border.assistantIndicatorRing.thinking materialIcons|MaterialIcon,
+                     Border.assistantIndicatorRing.speaking materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusBusyBrush}"/>
+    </Style>
+    <!-- F9 dictating: amber, deliberately never the assistant's cyan — the hard half of criterion 6. -->
+    <Style Selector="Border.assistantIndicatorRing.dictating">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <!-- Unavailable dims further than the resting ring — a broken assistant should draw the eye less than an
+         idle one, not the same amount. -->
+    <Style Selector="Border.assistantIndicatorRing.unavailable materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <!-- Listening and Dictating are both a live capture held open by a key (F10/F9); Thinking is the assistant
+         visibly working. All three pulse for as long as that lasts — the same opacity keyframes
+         materialIcons|MaterialIcon.pulse above already uses for "Thinking…", reused here on the ring itself so
+         the animation also plays in the rail, which drops the label but keeps this Border. -->
+    <Style Selector="Border.assistantIndicatorRing.listening, Border.assistantIndicatorRing.dictating, Border.assistantIndicatorRing.thinking">
+        <Style.Animations>
+            <Animation Duration="0:0:1.1" IterationCount="INFINITE">
+                <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.55"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1.0"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.55"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+
+    <!-- Criterion 19's stand/handeling split: ListeningContinuously is a standing mode the operator switched on,
+         not a key they are holding, so its ring stays steady — no pulse — and instead carries a small solid dot
+         fixed in the corner: the same "always recording" cue a camera app uses for a mode left on, as opposed to
+         a shutter held down. Drawn on the ring itself rather than on chip-only chrome around it, so it is the one
+         thing this state adds that the rail — which drops everything else — still shows (the mockup's own note:
+         "in de rail blijft de mic-cirkel met zijn kleur en de ring-animatie"). -->
+    <Style Selector="Ellipse.assistantIndicatorModeDot">
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="Height" Value="8"/>
+        <Setter Property="Fill" Value="{StaticResource CockpitStatusBusyBrush}"/>
+        <Setter Property="Stroke" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="StrokeThickness" Value="1.5"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Top"/>
+        <Setter Property="Margin" Value="0,-2,-2,0"/>
+    </Style>
+
+    <Style Selector="TextBlock.assistantIndicatorLabel">
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.assistantIndicatorDetail">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- The one-time AlwaysOn cost explanation (criterion 18). Amber, the same token as F9 dictating above —
+         not because the two are related, but because amber is already this theme's "pay attention, this has a
+         cost" colour (CockpitStatusWaitingBrush), and a second ad-hoc warning colour would just be one more hue
+         to learn for the same meaning. -->
+    <Style Selector="Border.assistantIndicatorConfirm">
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="10"/>
+    </Style>
+
 </Styles>

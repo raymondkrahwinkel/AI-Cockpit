@@ -1,8 +1,7 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Sessions;
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using Microsoft.Extensions.Logging;
@@ -12,52 +11,62 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// <see cref="OpenMicCoordinator"/>'s routing logic: a finished utterance is cleaned only for SDK
-/// sessions (TTY gets the raw text, the same split push-to-talk makes), nothing happens without a
-/// selected session, and read-aloud playback pauses/resumes the mic for barge-in. The UI-thread seam
-/// <c>InjectUtteranceAsync</c> is driven directly, as with the push-to-talk coordinator.
+/// <see cref="OpenMicCoordinator"/>'s routing logic: a finished utterance goes to the assistant, raw, and
+/// read-aloud playback pauses/resumes the mic for barge-in. The UI-thread seam <c>InjectUtteranceAsync</c> is
+/// driven directly, as with the push-to-talk coordinator.
 /// </summary>
+/// <remarks>
+/// The destination changed in AC-543: this used to inject into whichever session was selected, cleaning the text
+/// first for an SDK session and passing it raw to a TTY. Both of those went — there is one destination now and no
+/// cleanup pass — so the cases asserting the old split were replaced rather than adapted.
+/// </remarks>
 public class OpenMicCoordinatorTests
 {
+    /// <summary>
+    /// AC-543 criterion 20. This used to inject into whichever session happened to be selected — the reason it is
+    /// asserted here rather than left to the assistant's own tests is that the destination is the whole change:
+    /// an open microphone that still reached the selected session would put spoken asides into someone's prompt.
+    /// </summary>
     [Fact]
-    public async Task InjectUtteranceAsync_SdkSession_CleansThenInjects()
+    public async Task InjectUtteranceAsync_GoesToTheAssistant_NotTheSelectedSession()
     {
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        cleanup.CleanupAsync("open the file", Arg.Any<CancellationToken>()).Returns("Open the file.");
-        var coordinator = _CreateCoordinator(_CreateSdkSession(), cleanup, out _, out _);
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out _, out _, assistant: assistant);
 
-        await coordinator.InjectUtteranceAsync("open the file");
+        await coordinator.InjectUtteranceAsync("what is the status of AC-223");
 
-        await cleanup.Received(1).CleanupAsync("open the file", Arg.Any<CancellationToken>());
+        await assistant.Received(1).SendAsync("what is the status of AC-223", Arg.Any<CancellationToken>());
     }
 
+    /// <summary>Decision 10: what Whisper heard is what the assistant gets. No cleanup pass sits in between any more.</summary>
     [Fact]
-    public async Task InjectUtteranceAsync_TtySession_InjectsRawWithoutCleanup()
+    public async Task InjectUtteranceAsync_SendsTheRawTranscript_WithNoCleanupPass()
     {
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        var coordinator = _CreateCoordinator(_CreateTtySession(), cleanup, out _, out _);
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out _, out _, assistant: assistant);
 
-        await coordinator.InjectUtteranceAsync("open the file");
+        await coordinator.InjectUtteranceAsync("uh, pick up AC-222, no sorry, 223");
 
-        await cleanup.DidNotReceiveWithAnyArgs().CleanupAsync(default!, default);
+        // Verbatim, filler and self-correction included — reading through that is the model's job now.
+        await assistant.Received(1).SendAsync("uh, pick up AC-222, no sorry, 223", Arg.Any<CancellationToken>());
     }
 
+    /// <summary>A throat-clear the noise filter reduced to nothing must not become a turn the operator pays for.</summary>
     [Fact]
-    public async Task InjectUtteranceAsync_NoSelectedSession_DoesNothing()
+    public async Task InjectUtteranceAsync_AnEmptyUtterance_SendsNothing()
     {
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        var coordinator = _CreateCoordinator(session: null, cleanup, out _, out _);
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out _, out _, assistant: assistant);
 
-        await coordinator.InjectUtteranceAsync("open the file");
+        await coordinator.InjectUtteranceAsync("   ");
 
-        await cleanup.DidNotReceiveWithAnyArgs().CleanupAsync(default!, default);
+        await assistant.DidNotReceiveWithAnyArgs().SendAsync(default!, default);
     }
 
     [Fact]
     public async Task StartAsync_OpenMicEnabled_PausesTheMicWhileReadAloudPlays()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out var listener, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
 
         await coordinator.StartAsync();
@@ -74,8 +83,7 @@ public class OpenMicCoordinatorTests
     {
         // The playback subscription is always on so the overlay's "speaking" pill shows for read-aloud even
         // without open-mic; but barge-in must not pause a microphone that is not listening.
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out var listener, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
         await coordinator.StartAsync();
 
@@ -87,8 +95,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task StartAsync_OpenMicDisabled_NeverStartsTheListener()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out _,
+        var coordinator = _CreateCoordinator(out var listener, out _,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
 
         await coordinator.StartAsync();
@@ -99,8 +106,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task ToggleOpenMic_StartsThenStopsTheListenerAtRuntime()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out _,
+        var coordinator = _CreateCoordinator(out var listener, out _,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
         await coordinator.StartAsync();
 
@@ -117,8 +123,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task ToggleOpenMic_IsDisabledWhenVoiceIsOff()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+        var coordinator = _CreateCoordinator(out _, out _,
             new VoiceSettings { IsEnabled = false });
         await coordinator.StartAsync();
 
@@ -135,8 +140,7 @@ public class OpenMicCoordinatorTests
     public async Task WhenTheVadHearsSpeechStart_ThePillAppears()
     {
         var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+        var coordinator = _CreateCoordinator(out _, out _,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
         await coordinator.StartAsync();
 
@@ -154,8 +158,7 @@ public class OpenMicCoordinatorTests
     public async Task OnceTheUtteranceIsInjected_ThePillGoesAway()
     {
         var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+        var coordinator = _CreateCoordinator(out _, out _,
             overlay: overlayCoordinator);
         await coordinator.StartAsync();
         coordinator.HandleSpeechStarted();
@@ -166,15 +169,15 @@ public class OpenMicCoordinatorTests
         Assert.Equal(VoiceOverlayState.Hidden, overlayCoordinator.Overlay.State);
     }
 
-    /// <summary>An utterance that cannot be cleaned up or injected still ends. The alternative is a spinner over a sentence that is never coming.</summary>
+    /// <summary>An utterance the assistant cannot take still ends. The alternative is a spinner over a sentence that is never coming.</summary>
     [Fact]
     public async Task WhenInjectingThrows_ThePillStillGoesAway()
     {
-        var cleanup = Substitute.For<ITranscriptCleanupService>();
-        cleanup.CleanupAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns<string>(_ => throw new InvalidOperationException("the cleanup model is gone"));
         var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
-        var coordinator = _CreateCoordinator(_CreateSdkSession(), cleanup, out _, out _, overlay: overlayCoordinator);
+        var assistant = Substitute.For<IAssistantSessionHost>();
+        var coordinator = _CreateCoordinator(out _, out _, overlay: overlayCoordinator, assistant: assistant);
+        assistant.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("the assistant is gone"));
         await coordinator.StartAsync();
         coordinator.HandleSpeechStarted();
 
@@ -189,8 +192,7 @@ public class OpenMicCoordinatorTests
     public async Task WhenReadAloudPlays_ThePillSaysSo()
     {
         var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+        var coordinator = _CreateCoordinator(out _, out _,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
         await coordinator.StartAsync();
 
@@ -214,8 +216,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task TalkingOverReadAloud_StopsIt_WhenTheOperatorAskedForThat()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out _, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
         await coordinator.StartAsync();
         coordinator.HandlePlaybackActiveChanged(true);
@@ -229,8 +230,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task TheRoomIsNotTalking_SoAQuietMicrophoneLeavesReadAloudAlone()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out _, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
         await coordinator.StartAsync();
         coordinator.HandlePlaybackActiveChanged(true);
@@ -245,8 +245,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task WithoutTheSetting_TalkingOverReadAloudDoesNothing()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out _, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
         await coordinator.StartAsync();
         coordinator.HandlePlaybackActiveChanged(true);
@@ -261,8 +260,7 @@ public class OpenMicCoordinatorTests
     [Fact]
     public async Task TalkingWhileNothingIsPlaying_StopsNothing()
     {
-        var coordinator = _CreateCoordinator(
-            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+        var coordinator = _CreateCoordinator(out _, out var playbackQueue,
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
         await coordinator.StartAsync();
 
@@ -324,53 +322,42 @@ public class OpenMicCoordinatorTests
         IVoiceSettingsStore voiceSettingsStore,
         ILogger<OpenMicCoordinator> logger) =>
         new(listener,
-            TestCockpit.NewViewModel(),
+            Substitute.For<IAssistantSessionHost>(),
             voiceSettingsStore,
-            Substitute.For<ITranscriptCleanupService>(),
+            _AssistantOn(),
             Substitute.For<IVoicePlaybackQueue>(),
             new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
             logger);
 
     /// <param name="overlay">Pass one to assert on the pill; omit it and the coordinator reports into a throwaway.</param>
+    /// <param name="assistant">Where an utterance lands since AC-543 — the coordinator's only destination.</param>
     private static OpenMicCoordinator _CreateCoordinator(
-        SessionPanelViewModel? session,
-        ITranscriptCleanupService cleanup,
         out IOpenMicListener listener,
         out IVoicePlaybackQueue playbackQueue,
         VoiceSettings? settings = null,
-        VoiceOverlayCoordinator? overlay = null)
+        VoiceOverlayCoordinator? overlay = null,
+        IAssistantSessionHost? assistant = null)
     {
         listener = Substitute.For<IOpenMicListener>();
         playbackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var cockpit = TestCockpit.NewViewModel();
-        cockpit.SelectedSession = session;
+        assistant ??= Substitute.For<IAssistantSessionHost>();
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? new VoiceSettings());
         return new OpenMicCoordinator(
-            listener, cockpit, voiceSettingsStore, cleanup, playbackQueue,
+            listener, assistant, voiceSettingsStore, _AssistantOn(), playbackQueue,
             overlay ?? new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
             NullLogger<OpenMicCoordinator>.Instance);
     }
 
-    private static SessionPanelViewModel _CreateSdkSession()
+    /// <summary>
+    /// The assistant switched on. Open-mic is gated on both switches now, and every case here is about the
+    /// microphone rather than about the feature flag — so the flag is held out of the way.
+    /// </summary>
+    private static IAssistantSettingsStore _AssistantOn()
     {
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voiceSettingsStore: voiceSettingsStore);
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = true });
+        return store;
     }
 
-    private static SessionPanelViewModel _CreateTtySession()
-    {
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voiceSettingsStore: voiceSettingsStore);
-    }
-
-    /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>
-    private static ITtySessionProviderResolver _Resolver()
-    {
-        var resolver = Substitute.For<ITtySessionProviderResolver>();
-        resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
-        return resolver;
-    }
 }

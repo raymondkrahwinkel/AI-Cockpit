@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="220"
+             x:Class="Cockpit.App.Views.AssistantIndicator"
+             x:DataType="vm:AssistantIndicatorViewModel">
+
+    <Design.DataContext>
+        <vm:AssistantIndicatorViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-543: reusable assistant indicator — the chip lives here (never in CockpitView.axaml, criterion 21)
+         so AC-238 can drop the same control into the companion window. Vormtaal transcribed from
+         cockpit-assistant-indicator-2026-08-01.html: a rounded chip with a circular mic badge on the left and a
+         two-line label on the right, whose badge alone (no chip chrome, no label) is what the sidebar rail
+         keeps once it collapses. -->
+    <StackPanel Spacing="8">
+
+        <!-- Rail form: shown once the sidebar collapses. Same ring, same classes, no label — see
+             Theme.axaml's Border.assistantIndicatorRing remarks for why the colour/ring alone still answer
+             "who is listening" without room for prose. -->
+        <Button Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="{Binding IsCollapsed}"
+                ToolTip.Tip="{Binding Label}">
+            <Border Classes="assistantIndicatorRing"
+                    Classes.listening="{Binding IsListening}"
+                    Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                    Classes.thinking="{Binding IsThinking}"
+                    Classes.speaking="{Binding IsSpeaking}"
+                    Classes.dictating="{Binding IsDictating}"
+                    Classes.unavailable="{Binding IsUnavailable}">
+                <Grid>
+                    <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding !IsUnavailable}"/>
+                    <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                    <!-- Criterion 19: the standing "listening continuously" mode carries a small fixed dot the
+                         momentary F10/F9 hold never shows — see the style's own remarks on why it is drawn on
+                         the ring rather than on chip-only chrome, so it survives into this rail too. -->
+                    <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                </Grid>
+            </Border>
+        </Button>
+
+        <!-- Expanded form: the chip plus the listening-mode picker (criterion 17), both hidden once the
+             sidebar is a rail — there is nowhere for either to sit. -->
+        <StackPanel Spacing="8" IsVisible="{Binding !IsCollapsed}">
+
+            <Button Classes="assistantIndicatorChip" Command="{Binding ClickCommand}">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="assistantIndicatorRing"
+                            Classes.listening="{Binding IsListening}"
+                            Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                            Classes.thinking="{Binding IsThinking}"
+                            Classes.speaking="{Binding IsSpeaking}"
+                            Classes.dictating="{Binding IsDictating}"
+                            Classes.unavailable="{Binding IsUnavailable}">
+                        <Grid>
+                            <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding !IsUnavailable}"/>
+                            <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                            <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                        </Grid>
+                    </Border>
+                    <!-- Wrapping, not trimming. The sidebar this lives in is about 170px wide, and the longest
+                         label ("Listening continuously") does not fit on one line there — trimmed, it read
+                         "Listening continu…", which is the one state whose whole point is that it is visibly
+                         different from the momentary one. Found by rendering it in the real sidebar rather than
+                         in the component's own roomier scene. -->
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Classes="assistantIndicatorLabel" Text="{Binding Label}" TextWrapping="Wrap"/>
+                        <TextBlock Classes="assistantIndicatorDetail" Text="{Binding Detail}" TextWrapping="Wrap"
+                                   IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </Grid>
+            </Button>
+
+            <!-- Listening mode (criteria 17/18/comment 5): three stands, readable without a click. AlwaysOn's
+                 own confirmation lives inline below rather than in a separate dialog — the picker already put
+                 the operator's attention on this exact chip, and a modal for a one-line, one-time warning would
+                 be a bigger interruption than the thing it is warning about (motivated further in the ticket
+                 response). -->
+            <!-- Wraps rather than overflows: three buttons do not fit across a 170px sidebar, and the one that
+                 fell off the edge was "Wake word" — the option comment 5 says must stay visible as "not set up
+                 yet" precisely so you can see the possibility exists. -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4">
+                <Button Content="Off" Classes="Compact" Classes.Accent="{Binding IsListeningModeOff}"
+                        Command="{Binding SelectListeningModeOffCommand}"
+                        ToolTip.Tip="Microphone closed. Only the held assistant hotkey opens it."/>
+                <Button Content="Always on" Classes="Compact" Classes.Accent="{Binding IsListeningModeAlwaysOn}"
+                        Command="{Binding SelectListeningModeAlwaysOnCommand}"
+                        ToolTip.Tip="Microphone stays open. Everything you say goes to the assistant."/>
+                <Button Content="Wake word" Classes="Compact" Classes.Accent="{Binding IsListeningModeAlwaysOnWithWakeWord}"
+                        Command="{Binding SelectListeningModeAlwaysOnWithWakeWordCommand}"
+                        IsEnabled="False"
+                        ToolTip.Tip="Not set up yet — arrives once a wake word can be configured."/>
+            </WrapPanel>
+
+            <!-- The one-time AlwaysOn cost explanation (criterion 18) — shown once, on the pick, never again
+                 once AlwaysOnCostAcknowledged is true (see AssistantIndicatorViewModel.SelectListeningModeAlwaysOn). -->
+            <Border Classes="assistantIndicatorConfirm" IsVisible="{Binding IsAlwaysOnConfirmationPending}">
+                <StackPanel Spacing="8">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Everything you say will be sent to the assistant, and every utterance costs. This is asked once."/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="Turn on" Classes="Accent Compact" Command="{Binding ConfirmAlwaysOnCommand}"/>
+                        <Button Content="Cancel" Classes="Ghost Compact" Command="{Binding CancelAlwaysOnConfirmationCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </StackPanel>
+</UserControl>

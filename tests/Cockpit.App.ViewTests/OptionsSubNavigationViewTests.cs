@@ -15,7 +15,7 @@ namespace Cockpit.App.ViewTests;
 public class OptionsSubNavigationViewTests
 {
     [Fact]
-    public void TheVoiceTab_SplitsIntoThreeSubPages_TheRailDrivesWhichShows() => HeadlessAvalonia.Run(() =>
+    public void TheVoiceTab_SplitsIntoFourSubPages_TheRailDrivesWhichShows() => HeadlessAvalonia.Run(() =>
     {
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
@@ -27,16 +27,20 @@ public class OptionsSubNavigationViewTests
         dialog.UpdateLayout();
 
         var rail = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "VoiceNav");
+        // "Assistant" is AC-543's, and last: the three before it are about the microphone and the speaker, and
+        // this one is about a feature that can be used with neither.
         Assert.Equal(
-            new[] { "Read-aloud", "Transcribe", "Cleanup" },
+            new[] { "Read-aloud", "Transcribe", "Cleanup", "Assistant" },
             rail.Items.OfType<ListBoxItem>().Select(item => item.Content as string));
 
         var carousel = dialog.GetVisualDescendants().OfType<Carousel>().Single();
         Assert.Equal(0, rail.SelectedIndex);
         Assert.Equal(0, carousel.SelectedIndex);
 
-        rail.SelectedIndex = 2;
-        Assert.Equal(2, carousel.SelectedIndex);
+        // The last page, so the rail and the carousel are held to agreeing all the way to the end rather than
+        // only where they happened to line up before a page was added.
+        rail.SelectedIndex = 3;
+        Assert.Equal(3, carousel.SelectedIndex);
 
         dialog.Close();
     });
