@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -284,6 +285,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
             launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
 
+        _ApplySpeech(session, settings);
         Session = session;
 
         // The wire that makes Thinking end. Everything else here sets Activity at a moment the host knows about —
@@ -295,6 +297,52 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         session.PropertyChanged += _OnSessionPropertyChanged;
         _SyncActivityWithSession(session);
         return session;
+    }
+
+    /// <summary>
+    /// Gives the assistant's session what it needs to actually be heard — decision 2's "TTS erna", which nothing
+    /// was doing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why it has to be done here at all.</b> The cockpit pushes the voice settings to its sessions by walking
+    /// <c>Sessions</c>, and the assistant is deliberately not in that collection — it has no pane. So it kept the
+    /// bare defaults: <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a
+    /// word, and <c>ReadAloudLanguage</c> "en", which would have read Dutch replies in an English voice. The
+    /// operator heard nothing at all and there was nothing on screen to say why.
+    /// <para>
+    /// <b>Verbatim, and stated rather than left to the default.</b> <see cref="ReadAloudMode.Naturalized"/> and
+    /// <see cref="ReadAloudMode.Summarized"/> both send the reply through the local-LLM cleanup service first, and
+    /// AC-542 decision 10 is explicit that the assistant's words go out one-to-one: what shortens a 300-word answer
+    /// is <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. That is also why this is set on the
+    /// session rather than followed from the operator's global read-aloud mode — their choice there is about
+    /// sessions, and picking Summarized for those must not quietly put an LLM back in the assistant's path. The
+    /// mode's own default happens to be Verbatim today; written out anyway, because a default that changes
+    /// elsewhere would reintroduce the pipeline this epic is removing, silently.
+    /// </para>
+    /// <para>
+    /// The voice and language do follow the operator's settings, read off the cockpit's already-resolved
+    /// selections — the same values the fan-out to ordinary sessions uses, rather than a second copy of them.
+    /// </para>
+    /// </remarks>
+    private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
+    {
+        session.ReadAloudMode = ReadAloudMode.Verbatim;
+        session.TtsVoiceSid = _cockpit.SelectedTtsVoice.Sid;
+        session.ReadAloudLanguage = _cockpit.SelectedReadAloudLanguage.Code;
+        session.ReadResponsesAloud = settings.SpeakReplies;
+    }
+
+    /// <summary>
+    /// Turns speaking on or off on the live session, so the header toggle takes effect on the next reply rather
+    /// than at the next restart. Does not stop what is already playing — that is the toggle's own job, and it
+    /// already does it (AC-543 criterion 9: off breaks off mid-sentence).
+    /// </summary>
+    public void SetSpeakReplies(bool speak)
+    {
+        if (Session is { } session)
+        {
+            session.ReadResponsesAloud = speak;
+        }
     }
 
     private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

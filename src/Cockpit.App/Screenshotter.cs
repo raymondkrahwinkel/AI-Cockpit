@@ -1144,6 +1144,10 @@ internal static class Screenshotter
 
         public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+        // Same reason as ApplySettingsAsync below: a scene is staged and rendered, and speaking is not something a
+        // still frame can show either way.
+        public void SetSpeakReplies(bool speak) { }
+
         // A scene is staged into the state its name describes and then rendered; re-reading settings would only
         // move it off that state.
         public Task ApplySettingsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

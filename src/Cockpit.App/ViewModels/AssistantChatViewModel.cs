@@ -22,6 +22,12 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// <summary>The assistant's own long-running session, or null while it has not been lazily started yet.</summary>
     SessionViewModel? Session { get; }
 
+    /// <summary>
+    /// Turns speaking on or off on the live session, so the header toggle reaches the next reply and not only the
+    /// one that is playing. A no-op while nothing has been started yet — the value is read again at the next start.
+    /// </summary>
+    void SetSpeakReplies(bool speak);
+
     /// <summary>What the indicator shows; pairs with <see cref="UnavailableReason"/> when it is <see cref="AssistantActivity.Unavailable"/>.</summary>
     AssistantActivity Activity { get; }
 
@@ -176,6 +182,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             // setting even finishes persisting, so there is no window where the old value lingers audibly.
             _playbackQueue.StopAll();
         }
+
+        // And the next reply follows too. Stopping the current one was all this did, which made the toggle look
+        // like a mute button for one paragraph: turned back on, nothing was ever spoken again, because the live
+        // session's own read-aloud flag was never the thing being switched.
+        _host.SetSpeakReplies(value);
 
         _ = _PersistSpeakRepliesAsync(value);
     }
