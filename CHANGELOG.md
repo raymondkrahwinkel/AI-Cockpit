@@ -30,6 +30,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed: a headless Claude session now keeps following the newest message while it streams. Scrolling up left the
+  view where you put it but never resumed on its own once you scrolled back down — the jump-to-newest button had to
+  be clicked, and sometimes the view was pulled back down while you were still reading. The newest message also kept
+  ending up partly hidden behind the composer. All three came from the same place: the transcript only keeps the
+  messages you can see in memory and estimated the length of the rest, and the bottom of that estimate is a point
+  the view can never actually reach. It now follows the last message itself rather than a computed position.
+- fixed: a ticked usage window that the provider never reports now says so in the usage detail, instead of leaving
+  the setting looking broken. The pill itself still stays empty — a window nobody reported is not "0% used".
+- fixed: Ctrl+double-clicking a link in a terminal session opened the page twice.
+
 ### Added
 
 - added: a Claude session that runs headless (rather than as a terminal pane) now shows the usage pill in its header
