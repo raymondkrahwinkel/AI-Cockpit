@@ -113,6 +113,24 @@ public class AssistantSessionHostTests
         Assert.Equal(AssistantActivity.Unavailable, host.Activity);
     }
 
+    /// <summary>
+    /// AC-138 follow-up: a reading level saved in Options has to reach a session that is already running, the same
+    /// way <see cref="AssistantSessionHost.SetSpeakReplies"/> reaches a live session for speaking — not only the
+    /// next time the assistant starts.
+    /// </summary>
+    [Fact]
+    public void ApplySettings_WithALiveSession_PushesTheNewReadingLevelToItImmediately()
+    {
+        var host = Dispatcher.UIThread.Invoke(() =>
+            _Host(enabled: true, slot: _ConfiguredSlot(), readingLevel: Cockpit.Core.Sessions.ReadingLevel.Simple));
+        var session = Dispatcher.UIThread.Invoke(() => new SessionViewModel());
+        Dispatcher.UIThread.Invoke(() => host.Session = session);
+
+        Dispatcher.UIThread.Invoke(() => host.ApplySettingsAsync().GetAwaiter().GetResult());
+
+        Assert.Equal(Cockpit.Core.Sessions.ReadingLevel.Simple, session.ReadingLevel);
+    }
+
     [Fact]
     public void ApplySettings_SwitchedOn_MakesItReachableWithoutStartingIt()
     {
@@ -305,10 +323,15 @@ public class AssistantSessionHostTests
 
     private static SessionProfile _Profile() => new("assistant-local", new ClaudeConfig("/tmp/claude"));
 
-    private static AssistantSessionHost _Host(bool enabled, AssistantProfileSlot slot, IMcpServerCatalog? catalog = null)
+    private static AssistantSessionHost _Host(
+        bool enabled,
+        AssistantProfileSlot slot,
+        IMcpServerCatalog? catalog = null,
+        Cockpit.Core.Sessions.ReadingLevel readingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
-        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = enabled });
+        settings.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel });
 
         var profiles = Substitute.For<IAssistantProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(slot);

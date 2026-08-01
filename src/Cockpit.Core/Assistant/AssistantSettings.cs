@@ -1,3 +1,5 @@
+using Cockpit.Core.Sessions;
+
 namespace Cockpit.Core.Assistant;
 
 /// <summary>
@@ -37,6 +39,14 @@ public sealed record AssistantSettings
 
     /// <summary>Avalonia <c>Key</c> enum name for the assistant push-to-talk hotkey. F10, next to dictation's F9, and rebindable.</summary>
     public string PushToTalkKeyName { get; init; } = "F10";
+
+    /// <summary>
+    /// The reading level (AC-138) the assistant chat window renders replies at — the same
+    /// <see cref="Sessions.ReadingLevel"/> an SDK session's own header "View" dropdown uses, and the same default
+    /// (<see cref="Sessions.ReadingLevel.Developer"/>) so nobody's existing view shifts. Set only here: the chat
+    /// window is a display, not a control panel, so it deliberately carries no picker of its own.
+    /// </summary>
+    public ReadingLevel ReadingLevel { get; init; } = ReadingLevel.Developer;
 
     /// <summary>
     /// Whether the operator has already been told what leaving the microphone open means (criterion 18). Set the

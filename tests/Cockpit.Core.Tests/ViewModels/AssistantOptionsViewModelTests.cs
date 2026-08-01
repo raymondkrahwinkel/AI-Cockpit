@@ -143,6 +143,22 @@ public class AssistantOptionsViewModelTests
         var row = Assert.Single(vm.ConsentBypassSources, candidate => candidate.Key == "a-plugin-since-removed");
         Assert.True(row.BypassDangerous);
         Assert.False(row.BypassLowRisk);
+
+        // #K11: a stored key this build no longer recognises (neither the catalogue nor the trail names it) —
+        // most often left behind by a source's own id changing underneath it — still gets a switchable row, but
+        // marked as a leftover so it does not read as a second, live source next to the real one.
+        Assert.True(row.IsOrphan);
+    }
+
+    [Fact]
+    public async Task ConsentBypassRows_ARecognisedSource_IsNeverMarkedAsALeftover()
+    {
+        var vm = new AssistantOptionsViewModel(new FakeSettingsStore(new AssistantSettings()));
+
+        await vm.RefreshAsync();
+
+        var terminal = vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp);
+        Assert.False(terminal.IsOrphan);
     }
 
     [Fact]

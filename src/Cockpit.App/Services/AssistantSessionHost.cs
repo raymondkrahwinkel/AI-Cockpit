@@ -216,6 +216,14 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        // Reading level reaches a live session the moment Options is saved, the same way SetSpeakReplies reaches
+        // it for speaking — not only at the assistant's next start.
+        if (Session is { } live)
+        {
+            live.ReadingLevel = settings.ReadingLevel;
+        }
+
         if (settings.IsEnabled)
         {
             // Deliberately does not start anything: switching the feature on makes the assistant available, and
@@ -282,7 +290,8 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             resume: await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true),
             // The one place in the codebase that names the broad read server (AC-544). See _McpSelectionAsync.
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
-            launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
+            launchOptions: _LaunchOptions(profile),
+            readingLevel: settings.ReadingLevel).ConfigureAwait(true);
 
         _ApplySpeech(session, settings);
         Session = session;

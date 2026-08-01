@@ -63,6 +63,12 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string _pushToTalkKeyName = "F10";
 
+    /// <summary>The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    [ObservableProperty]
+    private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
+
     /// <summary>Existing session profiles the Assistant Profile slot can be repointed at. Never includes the slot itself — it is not a session profile and does not live in this list (criterion 5).</summary>
     public ObservableCollection<SessionProfile> AvailableProfiles { get; } = [];
 
@@ -94,6 +100,7 @@ public sealed partial class AssistantOptionsViewModel(
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
+                SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(_lastLoadedSettings.ReadingLevel);
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
             }
 
@@ -158,15 +165,28 @@ public sealed partial class AssistantOptionsViewModel(
             }
         }
 
+        // Recognised: named by the catalog, or seen actually asking in the trail. Snapshotted before the loop
+        // below adds anything switched on that is neither — most often a stored key from before a source's own
+        // id changed underneath it (#K11: a plugin's key moved from "kubernetes" to "plugin:kubernetes", so an
+        // existing config still names the old one). That row keeps working — it can still be switched off — but
+        // it is marked as a leftover rather than silently migrated to the new key, which would re-enable a bypass
+        // under a name the operator never ticked.
+        var recognized = new HashSet<string>(names.Keys, StringComparer.Ordinal);
+
         foreach (var key in lowRisk.Concat(dangerous))
         {
             names.TryAdd(key, key);
         }
 
         ConsentBypassSources.Clear();
-        foreach (var (key, label) in names.OrderBy(pair => pair.Value, StringComparer.CurrentCultureIgnoreCase))
+        // Recognised sources alphabetically, then orphans at the end — a leftover never displaces the real source
+        // it is easy to mistake it for.
+        var ordered = names
+            .OrderBy(pair => recognized.Contains(pair.Key) ? 0 : 1)
+            .ThenBy(pair => pair.Value, StringComparer.CurrentCultureIgnoreCase);
+        foreach (var (key, label) in ordered)
         {
-            var row = new ConsentBypassSourceViewModel(key, label)
+            var row = new ConsentBypassSourceViewModel(key, label, isOrphan: !recognized.Contains(key))
             {
                 BypassLowRisk = lowRisk.Contains(key),
                 BypassDangerous = dangerous.Contains(key),
@@ -183,6 +203,8 @@ public sealed partial class AssistantOptionsViewModel(
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
 
     partial void OnPushToTalkKeyNameChanged(string value) => _SaveSettings();
+
+    partial void OnSelectedReadingLevelChanged(ReadingLevelOption value) => _SaveSettings();
 
     /// <summary>
     /// The in-flight repoint started by the most recent <see cref="SelectedProfile"/> change, or <see langword="null"/>
@@ -232,6 +254,7 @@ public sealed partial class AssistantOptionsViewModel(
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
+            ReadingLevel = SelectedReadingLevel.Value,
             // Written from the rows rather than merged into what was loaded: the rows already carry every stored
             // key (see _RebuildConsentBypassRowsAsync), so this is a full replacement and unticking a box actually
             // removes the permission instead of leaving it on disk under a row that no longer shows it.
@@ -264,16 +287,26 @@ public sealed partial class AssistantOptionsViewModel(
 /// </remarks>
 /// <param name="key">The host-stamped identity the switch is stored under — a plugin id, or a host source's label. Never shown as the primary name, and never editable.</param>
 /// <param name="label">What to call it on screen.</param>
-public sealed partial class ConsentBypassSourceViewModel(string key, string label) : ObservableObject
+/// <param name="isOrphan">
+/// Whether this row's key is neither in <see cref="ConsentSourceCatalog.HostSources"/> nor was ever seen asking
+/// in the consent trail — a switched-on source this build no longer recognises, most often because its key
+/// changed underneath it (a plugin id, say). The row still works — it can still be switched off — it is only
+/// marked so the operator does not mistake it for a second, live source.
+/// </param>
+public sealed partial class ConsentBypassSourceViewModel(string key, string label, bool isOrphan = false) : ObservableObject
 {
     public string Key { get; } = key;
 
     public string Label { get; } = label;
 
+    public bool IsOrphan { get; } = isOrphan;
+
     /// <summary>
     /// The stamped key, shown under the label when the two differ — which is exactly when the label came from a
     /// plugin. A plugin that names itself after a cockpit source then reads as its own id on this list rather than
     /// borrowing the other's name; the switch was already keyed on the id, this is so the operator can see that.
+    /// Never set alongside <see cref="IsOrphan"/> — an orphan's label is its own key (see the rebuild that
+    /// constructs it), so the two are never both non-null.
     /// </summary>
     public string? KeyDetail => string.Equals(Key, Label, StringComparison.Ordinal) ? null : Key;
 

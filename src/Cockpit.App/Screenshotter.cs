@@ -65,6 +65,12 @@ internal static class Screenshotter
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
+        // AC-546 follow-up: Voice dropped from three sub-pages to two once "Read-aloud" merged into "Assistant" —
+        // its own scenes rather than reusing "options", since neither sub-page renders on the tab that scene opens
+        // on (Notifications) and a layout change to a page nothing captures is a layout change nobody would see
+        // regress.
+        ["voice-transcribe"] = (_, _) => _OptionsVoicePage("Transcribe"),
+        ["voice-assistant"] = (_, _) => _OptionsVoiceAssistantPage(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with
         // the toggle pre-set to TTY, the same profile with it pre-set to SDK, and a local-provider profile (no TTY
@@ -746,6 +752,57 @@ internal static class Screenshotter
             .OfType<TabItem>()
             .FirstOrDefault(tab => string.Equals(tab.Header as string, header, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
+
+        return dialog;
+    }
+
+    /// <summary>Voice tab, on the named sub-page (AC-546 follow-up: "Transcribe" or "Assistant").</summary>
+    private static OptionsDialog _OptionsVoicePage(string subPage)
+    {
+        var dialog = _OptionsOnTab("Voice");
+
+        var rail = dialog.FindControl<ListBox>("VoiceNav")
+            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
+
+        var index = rail.Items
+            .OfType<ListBoxItem>()
+            .Select((item, i) => (item, i))
+            .Where(pair => string.Equals(pair.item.Content as string, subPage, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => (int?)pair.i)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"The Voice rail has no '{subPage}' item.");
+
+        rail.SelectedIndex = index;
+        return dialog;
+    }
+
+    /// <summary>
+    /// The Assistant sub-page (AC-546 follow-up), enabled rather than dimmed under the off master switch, with one
+    /// recognised consent-bypass row and one orphaned one (#K11: a stored key — "kubernetes" — this build no
+    /// longer recognises now that a plugin source keys as "plugin:&lt;id&gt;") — so the merged voice/barge-in block,
+    /// the reading-level dropdown and the orphan row all render in the state an operator actually sees them in.
+    /// </summary>
+    private static OptionsDialog _OptionsVoiceAssistantPage()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.AssistantOptions.IsEnabled = true;
+        cockpit.AssistantOptions.ConsentBypassSources.Add(
+            new ViewModels.ConsentBypassSourceViewModel(
+                Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp, Cockpit.Core.Consent.ConsentSourceCatalog.TerminalMcp)
+            { BypassLowRisk = true });
+        cockpit.AssistantOptions.ConsentBypassSources.Add(
+            new ViewModels.ConsentBypassSourceViewModel("kubernetes", "kubernetes", isOrphan: true)
+            { BypassLowRisk = true, BypassDangerous = true });
+
+        var dialog = new OptionsDialog { DataContext = cockpit };
+        var tabs = dialog.FindControl<TabControl>("Tabs")
+            ?? throw new InvalidOperationException("The Options dialog has no 'Tabs' TabControl to select on.");
+        tabs.SelectedItem = tabs.Items.OfType<TabItem>().First(tab => tab.Header as string == "Voice");
+
+        var rail = dialog.FindControl<ListBox>("VoiceNav")
+            ?? throw new InvalidOperationException("The Voice tab has no 'VoiceNav' rail to select on.");
+        rail.SelectedIndex = rail.Items.OfType<ListBoxItem>().ToList()
+            .FindIndex(item => string.Equals(item.Content as string, "Assistant", StringComparison.OrdinalIgnoreCase));
 
         return dialog;
     }
