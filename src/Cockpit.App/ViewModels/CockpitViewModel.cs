@@ -143,6 +143,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ICloneSettingsStore? _cloneSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IAudioCaptureService? _audioCapture;
+
+    // Only for the voice preview in Options (PreviewVoiceCommand). Sessions reach the queue through their own
+    // panel; this holds it because Options has no session to borrow one from.
+    private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
     private CancellationTokenSource? _micTestCancellation;
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly bool _safeMode;
@@ -2002,6 +2006,43 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.</summary>
     public IReadOnlyList<TtsVoiceOption> TtsVoices => TtsVoiceCatalog.Voices;
 
+    /// <summary>
+    /// Speaks one sample sentence in the selected voice and language, so the operator can hear a voice before
+    /// settling on it. A no-op when no playback queue is wired (design-time, tests).
+    /// </summary>
+    /// <remarks>
+    /// AC-546 removed the old "Test read-aloud" button along with the read-aloud modes it previewed, and that went
+    /// one step too far: what the button rendered (Verbatim / Naturalized / Summarized) is gone, but "let me hear
+    /// this voice first" is a different question and the catalogue now offers ten speakers instead of two. Picking
+    /// one of ten by name alone is picking blind.
+    /// <para>
+    /// Deliberately not routed through the session read-aloud path: there is no session here, nothing to extract
+    /// prose from, and no barge-in to lose a batch to — one fixed sentence straight onto the queue is the whole of
+    /// it. Stops current playback first, so pressing it twice replaces the sample rather than queueing a second.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private void PreviewVoice()
+    {
+        if (_voicePlaybackQueue is null)
+        {
+            return;
+        }
+
+        _voicePlaybackQueue.StopAll();
+        _voicePlaybackQueue.Enqueue(
+            [_VoiceSampleSentence(SelectedReadAloudLanguage.Code)],
+            SelectedTtsVoice.Sid,
+            SelectedReadAloudLanguage.Code);
+    }
+
+    // Spoken in whichever language is selected: hearing the voice read the language you will actually use it in is
+    // the point, and a Dutch sentence in an English preview says nothing about how Dutch will sound.
+    private static string _VoiceSampleSentence(string languageCode) =>
+        string.Equals(languageCode, "nl", StringComparison.OrdinalIgnoreCase)
+            ? "Dit is de stem waarmee de assistent je antwoord voorleest."
+            : "This is the voice the assistant reads your answer in.";
+
     /// <summary>SupertonicTTS speaker used for read-aloud (#35). One multilingual model voices both languages; the model downloads lazily on first use, the same as the Whisper model.</summary>
     [ObservableProperty]
     private TtsVoiceOption _selectedTtsVoice = TtsVoiceCatalog.Default;
@@ -2345,6 +2386,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
         IWidgetRegistry? widgetRegistry = null,
         IConsentBroker? consentBroker = null,
+        IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptionAdvisor? transcriptionAdvisor = null,
         ITranscriptionCalibrator? transcriptionCalibrator = null,
         ITranscriptionCalibrationStore? transcriptionCalibrationStore = null,
@@ -2475,6 +2517,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadCloneSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
+        _voicePlaybackQueue = voicePlaybackQueue;
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;

@@ -733,6 +733,8 @@
                                         <ComboBox ItemsSource="{Binding TtsVoices}"
                                                   SelectedItem="{Binding SelectedTtsVoice}"
                                                   DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                        <Button Content="▶ Hear it" Command="{Binding PreviewVoiceCommand}"
+                                                ToolTip.Tip="Speaks one sentence in this voice and language. The voice model downloads on first use, so the very first press can take a moment."/>
                                         <materialIcons:MaterialIcon Classes="hint"
                                             ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
                                     </StackPanel>
