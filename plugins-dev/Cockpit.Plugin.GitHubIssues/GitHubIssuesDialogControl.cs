@@ -492,8 +492,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 : await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None, label);
 
             // AC-317: what the session's own project says it lives in, resolved once so the first population can
-            // open on it. After that the filter keeps whatever the operator chose, link or no link.
-            _linkedRepository ??= await _host.GetProjectFieldValueAsync(GitHubRepositoryField.Key) ?? string.Empty;
+            // open on it. After that the filter keeps whatever the operator chose, link or no link. Routed through
+            // GitHubRepositoryField.ResolvePreferredRepositoryAsync (AC-548) — the same resolution the session
+            // picker now uses, so the two cannot answer "which repository" differently.
+            _linkedRepository ??= await GitHubRepositoryField.ResolvePreferredRepositoryAsync(_host, paneId: null, CancellationToken.None) ?? string.Empty;
 
             // A repository seen on a loaded issue but somehow missing from repoOptions (e.g. the repository list
             // call above failed open to []) still belongs in the dropdown — the issue is right there in the grid.

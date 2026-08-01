@@ -41,4 +41,28 @@ public class GitHubRepositoryFieldTests
 
         Assert.Empty(options);
     }
+
+    // AC-548: the issues dialog and the session picker both resolve "which repository" through this one method —
+    // the sibling of YouTrackProjectField.ResolvePreferredTagAsync's own test, on the field the picker used to
+    // never ask at all.
+    [Fact]
+    public async Task ResolvePreferredRepository_TheSessionsOwnLinkedRepository_IsReturned()
+    {
+        var host = new FakeCockpitHost();
+        host.ProjectFieldValues[GitHubRepositoryField.Key] = "octocat/hello-world";
+
+        var repository = await GitHubRepositoryField.ResolvePreferredRepositoryAsync(host, "pane-1", CancellationToken.None);
+
+        Assert.Equal("octocat/hello-world", repository);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredRepository_NoLink_IsNull()
+    {
+        var host = new FakeCockpitHost();
+
+        var repository = await GitHubRepositoryField.ResolvePreferredRepositoryAsync(host, "pane-1", CancellationToken.None);
+
+        Assert.Null(repository);
+    }
 }

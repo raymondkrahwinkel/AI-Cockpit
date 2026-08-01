@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Abstractions.Voice;
@@ -167,6 +169,7 @@ public class GlobalHotkeyCoordinatorTests
             new FakeGlobalHotkeyService(),
             voiceStore,
             screenshotStore,
+            _AssistantOff(),
             TestGlobalHotkeys.AlwaysAvailable(),
             Substitute.For<IToastService>(),
             logger);
@@ -195,6 +198,7 @@ public class GlobalHotkeyCoordinatorTests
             new FakeGlobalHotkeyService(),
             voiceStore,
             screenshotStore,
+            _AssistantOff(),
             TestGlobalHotkeys.AlwaysAvailable(),
             Substitute.For<IToastService>(),
             new CapturingLogger<GlobalHotkeyCoordinator>());
@@ -354,6 +358,7 @@ public class GlobalHotkeyCoordinatorTests
             new FakeGlobalHotkeyService(),
             voiceStore,
             screenshotStore,
+            _AssistantOff(),
             guard,
             Substitute.For<IToastService>(),
             NullLogger<GlobalHotkeyCoordinator>.Instance);
@@ -362,6 +367,17 @@ public class GlobalHotkeyCoordinatorTests
         await coordinator.ApplyAsync();
 
         claim.Received(1).Dispose();
+    }
+
+    /// <summary>
+    /// The assistant switched off — a fresh install's state, and what every test here wants: it contributes no
+    /// binding, so each case still asserts over exactly the keys it was written about.
+    /// </summary>
+    private static IAssistantSettingsStore _AssistantOff()
+    {
+        var store = Substitute.For<IAssistantSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings());
+        return store;
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition, int timeoutMs = 2000)

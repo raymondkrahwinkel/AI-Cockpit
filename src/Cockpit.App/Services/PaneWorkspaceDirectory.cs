@@ -1,17 +1,16 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
-using Cockpit.Core.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.Services;
 
 /// <summary>
 /// Host-side <see cref="IPaneWorkspaceDirectory"/> (AC-439) over the running session panels — the same seam
-/// <see cref="WorkspaceAgentGateway"/> is for one caller's own desk, generalised to every live pane at once. Mirrors
-/// <see cref="WorkspaceAgentGateway"/>'s own "empty WorkspaceId falls back to the first Sessions workspace" rule
-/// (see its <c>_ResolveWorkspaceId</c>), so a session started before workspaces existed resolves to the same desk
-/// here as it does when that session itself calls <c>list_agents</c>.
+/// <see cref="WorkspaceAgentGateway"/> is for one caller's own desk, generalised to every live pane at once. Goes
+/// through the same <see cref="SessionWorkspacePlacement"/> as that gateway rather than restating the rule, so a
+/// session started before workspaces existed resolves to the same desk here as it does when that session itself
+/// calls <c>list_agents</c> — and the assistant, which sits on no desk at all, is absent from both.
 /// <para>
 /// Called from <see cref="Cockpit.App.Views.CockpitView"/>'s own UI-thread timer alongside the idle sweep and the
 /// resource sampler, so — unlike <see cref="WorkspaceAgentGateway"/>, which is reached from an MCP request thread
@@ -33,14 +32,14 @@ internal sealed class PaneWorkspaceDirectory(IServiceProvider services) : IPaneW
     public IReadOnlyDictionary<string, string> WorkspaceIdsByPane()
     {
         var cockpit = services.GetRequiredService<CockpitViewModel>();
-        var firstSessionsWorkspaceId = cockpit.Workspaces.Settings.Workspaces
-            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id;
+        var firstSessionsWorkspaceId = SessionWorkspacePlacement.FirstSessionsWorkspaceId(cockpit.Workspaces.Settings);
 
         var byPane = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var session in cockpit.AllSessions().Where(session => session.ShowPluginHeaderItems))
         {
-            var workspaceId = session.WorkspaceId.Length == 0 ? firstSessionsWorkspaceId ?? string.Empty : session.WorkspaceId;
-            if (workspaceId.Length > 0)
+            // A pane placed nowhere is left out of the directory entirely, which is what collision detection
+            // wants: the assistant shares no desk with anything, so it can collide with nothing.
+            if (SessionWorkspacePlacement.Resolve(session, firstSessionsWorkspaceId) is { } workspaceId)
             {
                 byPane[session.PaneId] = workspaceId;
             }

@@ -1,0 +1,200 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:views="using:Cockpit.App.Views"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="520"
+        x:Class="Cockpit.App.Views.AssistantChatWindow"
+        x:DataType="vm:AssistantChatViewModel"
+        Title="Assistant"
+        Width="360" Height="520" MinWidth="300" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        Topmost="True"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <!-- AC-543 criterion 5/7: a pop-out onto the assistant's own standing conversation, not a pane in the
+         workspace grid — precedent is Autopilot's plan pop-out (AutopilotPlanWorkspaceBody._ShowPlanningPopoutAsync),
+         a small floating window rather than another tab. No "bigger" affordance (COMMENT 6 #1, decided): an
+         affordance that does not know where it would go is worse than none. -->
+    <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10">
+        <DockPanel>
+
+            <!-- Header: profile name, the read-aloud switch (criterion 9 — the same switch Options carries, via
+                 IAssistantSpeakToggle), and Close. Nothing else — no reading-level picker, no live-control tune
+                 button, no background-work badge: those belong to a full session pane, and this window is a
+                 peephole, not one. Draggable by the bar, like every other chromeless window in this app
+                 (Controls/CockpitWindowChrome does the same for dialogs; not reused here because it has no room
+                 for a toggle button, only a title and caption buttons). -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource CockpitChromeBgBrush}"
+                    BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
+                    Padding="12,9" PointerPressed="_OnHeaderPressed">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Border Grid.Column="0" Classes="avatarBadge" Width="28" Height="28" CornerRadius="9" Margin="0,0,8,0">
+                        <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Text="Assistant" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" IsChecked="{Binding SpeakReplies}" Classes="Subtle Compact"
+                                  VerticalAlignment="Center" Margin="0,0,4,0"
+                                  ToolTip.Tip="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
+                        <materialIcons:MaterialIcon Kind="{Binding SpeakReplies, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
+                                                    Width="14" Height="14"/>
+                    </ToggleButton>
+                    <Button Grid.Column="3" Classes="Subtle Compact" VerticalAlignment="Center"
+                            Click="_OnCloseClick" ToolTip.Tip="Close (the conversation keeps running)">
+                        <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- Footer: one text field, nothing else (COMMENT 6 / criterion 8 — no send button, no attachment,
+                 no screenshot: fully usable with a keyboard alone). Enter sends, Shift+Enter inserts a newline,
+                 same convention as the main session composer (SessionView._OnInputKeyDown). -->
+            <Border DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
+                <StackPanel Spacing="6">
+                    <!-- Criterion 9: read-aloud off is a text-assistant, said plainly rather than left to a
+                         silent speaker icon — a switched-off toggle a few pixels up in the header is easy to miss
+                         the one time it matters (a reply that never gets read out loud). -->
+                    <TextBlock Text="Read-aloud is off — replies land here only." FontSize="10.5"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding !SpeakReplies}"/>
+                    <TextBox x:Name="InputBox" Text="{Binding InputText}"
+                             PlaceholderText="Type, or hold F10 to talk…"
+                             AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="100" VerticalContentAlignment="Top"/>
+                </StackPanel>
+            </Border>
+
+            <Grid>
+                <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
+                     empty transcript that looks like nothing was ever said. -->
+                <StackPanel IsVisible="{Binding IsUnavailable}" MaxWidth="280" Spacing="8"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="AlertCircleOutline" Width="24" Height="24"
+                                                HorizontalAlignment="Center"
+                                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding UnavailableReason}" TextWrapping="Wrap" TextAlignment="Center"
+                               FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+
+                <!-- Empty state: no session started yet, or one with nothing said in it yet — same message
+                     either way, since both read as "nothing to show" to the operator. -->
+                <StackPanel IsVisible="{Binding !IsUnavailable}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            MaxWidth="260" Spacing="10">
+                    <StackPanel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="!IsUnavailable"/>
+                            <Binding Path="!HasMessages"/>
+                        </MultiBinding>
+                    </StackPanel.IsVisible>
+                    <Border Classes="avatarBadge" Width="44" Height="44" CornerRadius="13" HorizontalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="Creation" Width="22" Height="22"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </Border>
+                    <TextBlock Text="Type a message to start talking with the assistant." TextWrapping="Wrap"
+                               TextAlignment="Center" FontSize="12.5"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+
+                <!-- The transcript itself: the existing SDK chat rendering (markdown replies, collapsible tool
+                     calls, copyable results) — the same MarkdownView control, the same TranscriptEntryViewModel
+                     bindings and the same toolChip/toolBody/codeBox/transcriptRow style classes SessionView.axaml
+                     uses, just laid out in a narrower frame (HARDE EISEN: "geen tweede renderer"). This template
+                     could not be factored into a shared resource without editing SessionView.axaml, which is
+                     outside this strand's file ownership (AC-543-seams.md) — see the final report for that
+                     follow-up. Trimmed to what the assistant can produce today (AC-542: acting is [c]'s, not this
+                     ticket's): no permission Allow/Deny row, no reasoning/thinking section, no sub-agent nesting. -->
+                <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasMessages}">
+                    <ItemsControl ItemsSource="{Binding Session.Transcript}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                <Border Classes="transcriptRow" Classes.userRow="{Binding IsUserRow}"
+                                        Padding="8,5" Margin="8,2" CornerRadius="{StaticResource CockpitControlRadius}">
+                                    <StackPanel Spacing="4">
+
+                                        <!-- The user's own message: right-aligned bubble, plain text. -->
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                             Classes="transcript" IsVisible="{Binding IsUserRow}"/>
+
+                                        <!-- Assistant reply: markdown through the app's own renderer — the piece
+                                             this whole requirement turns on. -->
+                                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                                             IsVisible="{Binding IsAssistantMarkdown}"/>
+
+                                        <!-- Question/error/turn-result rows: plain wrapped text. -->
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                             Classes="transcript"
+                                                             IsVisible="{Binding IsPlainNonMarkdown}"/>
+
+                                        <!-- Tool-use row: collapsed by default (IsExpanded starts false), the
+                                             same chevron chip and expandable body/result SessionView.axaml uses. -->
+                                        <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
+                                            <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                    <TextBlock Text="{Binding ToolHeader}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
+                                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                                     Classes="toolBody"
+                                                                     Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
+                                                    <Border IsVisible="{Binding ResultIsCodeLike}" Classes="codeBox">
+                                                        <Grid>
+                                                            <ScrollViewer HorizontalScrollBarVisibility="Auto" MaxHeight="220">
+                                                                <SelectableTextBlock Text="{Binding ResultDisplayText}" Classes="toolBody"/>
+                                                            </ScrollViewer>
+                                                            <Button Content="Copy" Classes="copyBtn" Click="_OnCopyResultClick"
+                                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                    ToolTip.Tip="Copy result to clipboard"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <SelectableTextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
+                                                                         Classes="toolBody"
+                                                                         Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                         IsVisible="{Binding !ResultIsCodeLike}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Standalone tool results: same collapsed-by-default chip. -->
+                                        <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
+                                            <Button Command="{Binding ToggleExpandedCommand}" Classes="toolChip" HorizontalAlignment="Left">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                    <TextBlock Text="{Binding ToggleLabel}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                                 Classes="toolBody"
+                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                 IsVisible="{Binding IsExpanded}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

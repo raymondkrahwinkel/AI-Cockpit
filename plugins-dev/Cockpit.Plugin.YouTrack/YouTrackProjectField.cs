@@ -1,3 +1,4 @@
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -11,6 +12,16 @@ internal static class YouTrackProjectField
 {
     /// <summary>What the link is stored under on the project. Never change it: already-linked projects are keyed by it.</summary>
     public const string Key = "youtrack.project";
+
+    /// <summary>
+    /// AC-317's rule, in the one place both surfaces that need "which project" call: the session's own linked
+    /// project wins over the instance-wide default (AC-548 — the issues dialog and the session picker used to
+    /// answer this differently because the picker never asked the project field at all). Null when neither the
+    /// session's project nor the instance carries a tag.
+    /// </summary>
+    public static async Task<string?> ResolvePreferredTagAsync(
+        ICockpitHost host, string? paneId, string? defaultProjectTag, CancellationToken cancellationToken) =>
+        await host.GetProjectFieldValueAsync(Key, paneId, cancellationToken) ?? defaultProjectTag;
 
     public static ProjectFieldRegistration Registration(YouTrackSettings settings, YouTrackClient client) =>
         new(

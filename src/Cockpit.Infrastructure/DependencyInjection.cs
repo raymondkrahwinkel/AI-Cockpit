@@ -61,6 +61,17 @@ public static class DependencyInjection
         // alternative is a route whose reliability depends on a checkbox nobody remembers ticking.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
 
+        // cockpit-assistant (AC-544): the voice assistant's read path across every workspace — the reach no ordinary
+        // session has, and the reason this one is Internal rather than AlwaysMounted like its neighbour above. An
+        // internal endpoint stays out of every picker and out of the no-selection fan-out, so it reaches only a launch
+        // that names it by name, and AssistantSessionHost is the single place that does. That is the first of the two
+        // gates; the second is in the tools themselves, which refuse any caller whose transport-verified pane is not
+        // the assistant's. Deliberately both: the mount is configuration, and configuration widens by accident.
+        services.AddSingleton(new CockpitMcpEndpoint(
+            Cockpit.Core.Assistant.AssistantIdentity.McpServerName,
+            typeof(Assistant.AssistantReadMcpTools),
+            Internal: true));
+
         // The advisory cross-instance claim behind AC-71 — one implementation, so (unlike the hotkey service
         // below) there is nothing for a platform switch to choose between.
         services.AddSingleton<IHotkeyExclusivityGuard, MutexHotkeyExclusivityGuard>();

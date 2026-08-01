@@ -120,6 +120,22 @@ internal static class Screenshotter
         ["tasks"] = (_, _) => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
         ["set-status"] = (_, _) => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
         ["session"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+        // AC-543 criterion 11: the assistant chip in the sidebar it actually lives in, expanded and as the rail.
+        // The component has scenes of its own below, but those render it alone — what neither of them can show is
+        // whether it survives the collapse in place, which is the half of criterion 6 that is about the sidebar
+        // rather than about the chip.
+        // Every chip state at once, at the width the sidebar actually gives it. One scene rather than seven,
+        // because what goes wrong at this size is comparative — a label that wraps mid-word, a key hint that
+        // squeezes the text out, one state sitting taller than its neighbours — and none of that is visible in a
+        // render of a single state in a roomy window. Raymond's idea, after two rounds of exactly those defects
+        // reaching him instead of me.
+        ["assistant-indicator-all-states"] = (_, _) => _AssistantIndicatorGallery(),
+        ["sidebar-assistant"] = (_, _) => _SidebarWithAssistant(collapsed: false),
+        ["sidebar-assistant-rail"] = (_, _) => _SidebarWithAssistant(collapsed: true),
+        // Off means no chip at all, not a chip reporting that it is off (AC-542's own wording). Its own scene
+        // because the absence is the thing being attested to, and absence is exactly what a passing test suite
+        // looks like when nobody ever rendered it.
+        ["sidebar-assistant-off"] = (_, _) => _SidebarWithAssistant(collapsed: false, featureEnabled: false),
         // A sub-agent's own activity nested under its parent Task tool-use row (AC-146), collapsed (the default an
         // operator meets) and expanded — the verbosity a collapsed default guards against is exactly the thing
         // this ticket's own acceptance criteria demanded be eyeballed on screen, not just asserted in a test.
@@ -188,6 +204,48 @@ internal static class Screenshotter
         ["voice-overlay-transcribing"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Transcribing),
         ["voice-overlay-speaking"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Speaking),
         ["voice-overlay-unavailable"] = (_, _) => _VoiceOverlay(ViewModels.VoiceOverlayState.Unavailable, "Open mic is on"),
+
+        // AC-543 (strand 3): the reusable assistant indicator (AssistantIndicator.axaml), a row per acceptance
+        // criterion 11 — "a row with no scene is a row nobody looks at". All seven AssistantActivity states
+        // expanded, the same badge collapsed to its rail form (criterion 6/19), and the three listening-mode
+        // stands (criteria 17/18) including the one-time AlwaysOn cost confirmation. Wrapped in a small fixed
+        // Window rather than the default 1100x760 (the "tty"/"terminal" scenes' own approach) because this
+        // control is a sidebar chip, not a full pane — a full-size render would show mostly empty background.
+        // The profile label is reused verbatim from ProfileDisplay.Format's own convention ("label (provider)")
+        // rather than a bespoke string invented for this one scene — the second line reads the same way here as
+        // everywhere else a profile is named.
+        ["assistant-indicator-ready"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.Ready, profileLabel: "default (Claude CLI)"),
+        ["assistant-indicator-listening"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Listening),
+        ["assistant-indicator-listening-continuously"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously),
+        ["assistant-indicator-thinking"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Thinking),
+        ["assistant-indicator-speaking"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Speaking),
+        // Dictating (F9) beside Listening (F10) above is the pair criterion 6 exists for — amber vs cyan, and
+        // "Dictating" vs "Listening" in words, never only the colour.
+        ["assistant-indicator-dictating"] = (_, _) => _AssistantIndicator(Cockpit.Core.Assistant.AssistantActivity.Dictating),
+        ["assistant-indicator-unavailable"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.Unavailable, unavailableReason: "No model on this machine"),
+        // The rail form (criterion 6/19): collapsed while still listening continuously, so the mode dot that is
+        // this state's whole point (Theme.axaml's Ellipse.assistantIndicatorModeDot remarks) is on screen, not
+        // just the plain ring every other collapsed state would show identically.
+        ["assistant-indicator-rail"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously,
+            listeningMode: Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn, collapsed: true),
+        ["assistant-indicator-listening-mode-always-on"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.Ready, listeningMode: Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn),
+        // Criterion 18: the one-time AlwaysOn cost explanation, mid-flow — picked but not yet confirmed.
+        ["assistant-indicator-always-on-confirm"] = (_, _) => _AssistantIndicator(
+            Cockpit.Core.Assistant.AssistantActivity.Ready, alwaysOnConfirmationPending: true),
+
+        // AC-543 (strand 4): the pop-out chat window (AssistantChatWindow.axaml), criterion 11's other half — the
+        // indicator is a badge, this is where the conversation actually reads. Three states: a standing
+        // conversation with a collapsed tool call in it (the existing SDK transcript rendering — markdown,
+        // collapsible tool calls — reused, not rebuilt, per the ticket's hard requirement), the window before
+        // anything has been said (criterion 7's "reads a conversation, it does not start one" has to hold even
+        // here, on the very first open), and read-aloud switched off (criterion 9).
+        ["assistant-chat"] = (_, _) => _AssistantChat(withConversation: true),
+        ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
+        ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
     };
 
     /// <summary>
@@ -939,6 +997,198 @@ internal static class Screenshotter
         }
 
         return new VoiceOverlayWindow { DataContext = viewModel };
+    }
+
+    /// <summary>
+    /// Every assistant chip state stacked at the width the sidebar really gives it, so they can be judged against
+    /// each other rather than one at a time in a window with room to spare.
+    /// </summary>
+    /// <remarks>
+    /// The width is the point. Rendered at 340px every state looks fine; at the sidebar's own ~164px the label
+    /// wraps mid-word, the key hint pushes the text out, and the states stop lining up — which is how two rounds
+    /// of visual defects got past a full set of green renders and reached the operator instead.
+    /// </remarks>
+    private static Window _AssistantIndicatorGallery()
+    {
+        const double SidebarContentWidth = 164;
+
+        var states = new (Cockpit.Core.Assistant.AssistantActivity Activity, string? Reason)[]
+        {
+            (Cockpit.Core.Assistant.AssistantActivity.Ready, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Listening, null),
+            (Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Thinking, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Speaking, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Dictating, null),
+            (Cockpit.Core.Assistant.AssistantActivity.Unavailable, "No model on this machine"),
+        };
+
+        var column = new StackPanel { Spacing = 10, Margin = new Avalonia.Thickness(12) };
+        foreach (var (activity, reason) in states)
+        {
+            column.Children.Add(new Views.AssistantIndicator
+            {
+                Width = SidebarContentWidth,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                DataContext = new ViewModels.AssistantIndicatorViewModel
+                {
+                    Activity = activity,
+                    UnavailableReason = reason,
+                    ProfileLabel = "default (Claude CLI)",
+                    ListeningMode = activity == Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously
+                        ? Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn
+                        : Cockpit.Core.Assistant.AssistantListeningMode.Off,
+                },
+            });
+        }
+
+        return new Window
+        {
+            Width = 220,
+            Height = 720,
+            Background = Application.Current?.FindResource("CockpitSecondaryBgBrush") as Avalonia.Media.IBrush,
+            Content = new ScrollViewer { Content = column },
+        };
+    }
+
+    // AC-543 criterion 11: the whole window, with the assistant chip where it actually sits. The chip is fed by
+    // AssistantIndicatorCoordinator at runtime; here it is set directly, for the reason the component takes its
+    // state rather than fetching it — a scene that had to stand up a session host to draw a sidebar would be
+    // testing the host.
+    private static Window _SidebarWithAssistant(bool collapsed, bool featureEnabled = true)
+    {
+        var cockpit = new ViewModels.CockpitViewModel
+        {
+            GlobalSingleSessionLayout = true,
+            SidebarCollapsed = collapsed,
+            AssistantIndicator = new ViewModels.AssistantIndicatorViewModel
+            {
+                // Listening continuously rather than idle: it is the state that carries the most on screen (colour,
+                // words, and the mode dot), so a render of it fails visibly where "Ready" would look plausible
+                // whatever went wrong.
+                Activity = Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously,
+                ListeningMode = Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn,
+                IsCollapsed = collapsed,
+                IsFeatureEnabled = featureEnabled,
+            },
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-543 (strand 3): builds the assistant indicator on a view model set directly to the state a scene name
+    // asks for — the indicator is fed its state rather than owning it (AssistantIndicatorViewModel's own remarks
+    // on why it does not bind to AssistantSessionHost), so a scene only ever has to set properties, never wire up
+    // a fake host.
+    private static Window _AssistantIndicator(
+        Cockpit.Core.Assistant.AssistantActivity activity,
+        string? unavailableReason = null,
+        Cockpit.Core.Assistant.AssistantListeningMode listeningMode = Cockpit.Core.Assistant.AssistantListeningMode.Off,
+        bool collapsed = false,
+        bool alwaysOnConfirmationPending = false,
+        string? profileLabel = null)
+    {
+        var viewModel = new ViewModels.AssistantIndicatorViewModel
+        {
+            Activity = activity,
+            UnavailableReason = unavailableReason,
+            ListeningMode = listeningMode,
+            IsCollapsed = collapsed,
+            IsAlwaysOnConfirmationPending = alwaysOnConfirmationPending,
+            ProfileLabel = profileLabel,
+        };
+
+        return new Window
+        {
+            Width = collapsed ? 120 : 340,
+            Height = collapsed ? 120 : (alwaysOnConfirmationPending ? 320 : 220),
+            Content = new Views.AssistantIndicator { DataContext = viewModel },
+        };
+    }
+
+    // AC-543 (strand 4): the chat pop-out on a minimal fake of the host it reads from — a settled-on integration
+    // seam (AssistantChatViewModel's own remarks) rather than a Screenshotter invention: AssistantSessionHost
+    // (src/Cockpit.App/Services/AssistantSessionHost.cs) already carries this exact shape but is sealed with a
+    // live CockpitViewModel among its constructor dependencies, far too heavy to stand up for a render. Reuses
+    // SessionViewModel's own parameterless constructor sample data for "withConversation" (the same rows the
+    // "session" scene and the Avalonia previewer render) rather than inventing a second sample transcript —
+    // that data already includes one expanded and one collapsed tool call, so the collapsed one proves criterion
+    // 11's "an inklapbare tool-call" without a bespoke fixture.
+    private static AssistantChatWindow _AssistantChat(bool withConversation, bool speakReplies = true)
+    {
+        var host = new _FakeAssistantSessionHost
+        {
+            Session = withConversation ? new ViewModels.SessionViewModel() : null,
+            Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
+        };
+
+        var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies), new _NullVoicePlaybackQueue());
+        return new AssistantChatWindow { DataContext = viewModel, Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // Bare-minimum IAssistantSessionHost: nothing mutates Session/Activity/UnavailableReason after a scene
+    // constructs one, so PropertyChanged never actually has to fire — a single captured frame never sees a
+    // change. EnsureStartedAsync/SendAsync just hand back what is already set rather than simulating the real
+    // host's lazy-start/queueing behaviour, which no scene exercises either.
+    private sealed class _FakeAssistantSessionHost : ViewModels.IAssistantSessionHost
+    {
+        public ViewModels.SessionViewModel? Session { get; init; }
+
+        public Cockpit.Core.Assistant.AssistantActivity Activity { get; init; }
+
+        public string? UnavailableReason { get; init; }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+        public Task<ViewModels.SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+
+        public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        // A scene is staged into the state its name describes and then rendered; re-reading settings would only
+        // move it off that state.
+        public Task ApplySettingsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public void ReportHoldListening(bool listening)
+        {
+        }
+    }
+
+    // Bare-minimum IAssistantSettingsStore: hands back a fixed AssistantSettings with SpeakReplies pre-set to
+    // what the scene asks for, and discards anything a scene's own toggle interaction would try to save — there
+    // is no cockpit.json to round-trip through in a headless render.
+    private sealed class _FakeAssistantSettingsStore(bool speakReplies) : Cockpit.Core.Abstractions.Assistant.IAssistantSettingsStore
+    {
+        public Task<Cockpit.Core.Assistant.AssistantSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantSettings { IsEnabled = true, SpeakReplies = speakReplies });
+
+        public Task SaveAsync(Cockpit.Core.Assistant.AssistantSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    // Bare-minimum IVoicePlaybackQueue: a captured frame never plays audio, so every member is a no-op/empty
+    // answer — this exists only so AssistantChatViewModel's constructor has something to call StopAll on.
+    private sealed class _NullVoicePlaybackQueue : Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue
+    {
+        public void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language)
+        {
+        }
+
+        public void Enqueue(IReadOnlyList<Cockpit.Core.Voice.SpeechSegment> segments, int speakerId)
+        {
+        }
+
+        public void NotifyPreparing()
+        {
+        }
+
+        public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
+
+        public event EventHandler? SpeakingStarted { add { } remove { } }
+
+        public void StopAll()
+        {
+        }
+
+        public int Generation => 0;
     }
 
     private static Bitmap? _LoadAssetBitmap(string uri)

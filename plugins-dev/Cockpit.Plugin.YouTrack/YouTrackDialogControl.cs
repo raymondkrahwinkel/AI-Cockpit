@@ -517,11 +517,11 @@ internal sealed class YouTrackDialogControl : UserControl
                 project.ShortName,
                 string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
-        // AC-317: what the session's own project says it is tracked in wins over the instance-wide default. The
-        // operator linked that project on purpose and to this session; the default is what to fall back on when
-        // nothing did. Null when there is no session, no project, or no link — then nothing changes.
-        var preferredTag = await _host.GetProjectFieldValueAsync(YouTrackProjectField.Key, cancellationToken: CancellationToken.None)
-            ?? instance.DefaultProjectTag;
+        // AC-317/AC-548: routed through YouTrackProjectField.ResolvePreferredTagAsync — the one resolution this
+        // dialog and the session picker both call, so the two cannot answer "which project" differently. Null
+        // when there is no session, no project, or no link — then nothing changes.
+        var preferredTag = await YouTrackProjectField.ResolvePreferredTagAsync(
+            _host, paneId: null, instance.DefaultProjectTag, CancellationToken.None);
 
         _isSyncingProjectFilter = true;
         _projectFilter.ItemsSource = options;

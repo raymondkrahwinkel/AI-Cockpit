@@ -77,6 +77,14 @@ public class GitHubGhClientTests
     }
 
     [Fact]
+    public void RepoSearchTerm_ScopesToOneOwnerSlashRepo()
+    {
+        // AC-548: this is what the session picker hands SearchOpenIssuesAsync's extraTerms when the session's
+        // project is linked to a repository — the same qualifier shape as LabelSearchTerm above.
+        Assert.Equal("repo:octocat/hello-world", GitHubGhClient.RepoSearchTerm("octocat/hello-world"));
+    }
+
+    [Fact]
     public void LabelListArguments_AsksOneRepositoryForNamesOnly_AtTheDocumentedLimit()
     {
         var arguments = GitHubGhClient.LabelListArguments("octocat/hello-world");

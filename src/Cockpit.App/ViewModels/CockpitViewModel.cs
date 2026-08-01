@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,6 +12,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
@@ -2300,6 +2302,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private bool BelongsToActiveWorkspace(SessionPanelViewModel session)
     {
+        // Asked before the no-active-workspace shortcut below, which answers "true" — the assistant has no desk
+        // at all (AC-543) and must not be drawn as a pane on any of them, least of all on a graph that has not
+        // finished deciding which workspace is showing.
+        if (session.BelongsToNoWorkspace)
+        {
+            return false;
+        }
+
         if (Workspaces.Active is not { } active)
         {
             return true;
@@ -2310,12 +2320,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // position it would belong to whatever happens to sit at index 0, and since the projects overview is a
         // fixture that survives every close, a cockpit whose session desks were all closed would leave such a
         // session belonging to a surface that shows no sessions at all: invisible everywhere.
-        var firstSessionsWorkspace = Workspaces.Settings.Workspaces
-            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions);
-
         return active.Type == WorkspaceType.Sessions
-            && (session.WorkspaceId == active.Id
-                || (session.WorkspaceId.Length == 0 && firstSessionsWorkspace?.Id == active.Id));
+            && SessionWorkspacePlacement.Resolve(
+                session,
+                SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) == active.Id;
     }
 
     /// <summary>
@@ -2404,6 +2412,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees = new WorktreesViewModel();
         Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
+        AssistantOptions = new AssistantOptionsViewModel();
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
@@ -2416,6 +2425,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
     public SecurityOptionsViewModel Security { get; }
+
+    /// <summary>The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and read-replies-aloud.</summary>
+    public AssistantOptionsViewModel AssistantOptions { get; }
+
+    /// <summary>
+    /// The assistant chip at the bottom of the sidebar (AC-543). Set by the shell once
+    /// <c>AssistantIndicatorCoordinator</c> exists — that is what feeds it, since what the chip shows is joined
+    /// from three sources and the component itself deliberately knows about none of them. Null in the
+    /// design-time/unit-test graph, where the sidebar simply draws no chip.
+    /// </summary>
+    [ObservableProperty]
+    private AssistantIndicatorViewModel? _assistantIndicator;
 
     // A save wrote a credential in the clear (AC-41). Re-read the banner state on the UI thread — the event comes
     // off whatever thread the save ran on, and the Security VM's properties feed a binding.
@@ -2507,6 +2528,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
+        IAssistantSettingsStore? assistantSettingsStore = null,
+        IAssistantProfileStore? assistantProfileStore = null,
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
         ProjectQuickStart? projectQuickStart = null,
         IScreenshotSettingsStore? screenshotSettingsStore = null,
@@ -2535,6 +2558,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
         Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets(), screenLockSettingsStore, terminalAccessSwitch, terminalAccessSettingsStore);
         _ = Security.RefreshAsync();
+
+        // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
+        // where the page renders its defaults rather than the dialog failing to open.
+        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, sessionProfileStore);
+        _ = AssistantOptions.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
         // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
@@ -5605,6 +5633,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
+            if (string.Equals(pane.Id, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal))
+            {
+                // AC-544: the assistant's pane id is what its broad read tools check callers against, and this is the
+                // one place in the app where a pane id arrives from disk. The check above cannot catch this case —
+                // the assistant is never in Sessions, so a workspace pane claiming its id looks unused. Restoring it
+                // would mint a per-session MCP token for that id (SessionMcpKeyring.TokenFor replaces the previous
+                // one), which both hands an ordinary session the cross-workspace read path and takes the identity
+                // away from the assistant, silently and for the rest of the run.
+                //
+                // Only reachable through a hand-edited or corrupted cockpit.json — the app never writes the assistant
+                // as a workspace pane, because it belongs to no workspace. That is inside the operator's own trust
+                // boundary, the same as reading COCKPIT_MCP_KEY out of a neighbour's environment, so this is not a
+                // defence against an attacker. It is a defence against a config that has gone wrong quietly, where
+                // the failure would otherwise be a guardrail that stopped holding with nothing on screen to say so.
+                _logger?.LogWarning(
+                    "A saved pane claims the assistant's reserved id '{PaneId}' and was not restored. Remove it from cockpit.json; the assistant owns that id.",
+                    pane.Id);
+                continue;
+            }
+
             try
             {
                 var state = states.FirstOrDefault(record => record.PaneId == pane.Id);
@@ -5836,6 +5884,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         target.Statusline = statusline ?? string.Empty;
         return true;
     }
+
+    // The shape a ticket id takes everywhere this codebase already writes one by hand ("AC-13", "AC-544") — two or
+    // more uppercase letters, a dash, digits — kept as the one pattern every brief-seeded statusline is read against
+    // (AC-544) rather than reinvented per caller. Compiled: matched once per embedded session start, never in a hot
+    // loop, but the pattern is fixed for the process's life so there is no reason to re-parse it.
+    //
+    // Anchored at the start, which is the whole difference between this seeding something useful and something wrong.
+    // Unanchored, the same shape matches "UTF-8", "SHA-256", "GPT-4", "RFC-2119" and "ISO-9001", and a brief that
+    // mentions any of them before naming its ticket would seed a statusline saying the session is working on UTF-8.
+    // Anchoring costs the case where a brief buries its ticket mid-sentence; that seeds nothing, which is the right
+    // way to be wrong here. The convention this reads is real and narrow — a brief opens with its ticket
+    // (AutopilotStepBrief puts step.Title first, and a run label reads "AC-251 - persist usage") — so anchoring
+    // matches the convention rather than hunting for a ticket anywhere in free text.
+    private static readonly Regex _TicketIdPattern = new(@"^[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The ticket id a session's brief text opens with, if any (AC-544) — the small, tracker-neutral pattern every
+    /// hand-written brief in this codebase already uses ("AC-13", "AC-544"). Lets a host-side spawn path seed a fresh
+    /// session's statusline deterministically, from what it already knows, instead of leaving the line blank until
+    /// (or unless) the agent inside calls <c>set_status</c> itself.
+    /// <para>
+    /// Null for text that does not open with one — and a caller with nothing to find here must seed nothing rather
+    /// than invent a line. A blank statusline is read, correctly, as "this session has not said"; a confidently wrong
+    /// one is read as fact, and it is the assistant that would go on to repeat it.
+    /// </para>
+    /// </summary>
+    private static string? _TicketFromBrief(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text.TrimStart()) is { Success: true } match
+            ? match.Value
+            : null;
 
     /// <summary>
     /// A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
@@ -6232,6 +6310,68 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Mints the voice assistant's session panel and hands it over (AC-543). The <em>only</em> way one is made:
+    /// <see cref="Services.AssistantSessionHost"/> calls this and keeps the sole reference, which is what makes the
+    /// assistant's identity established by construction — no agent can declare that it is the assistant, because
+    /// declaring is not how one comes into being.
+    /// </summary>
+    /// <remarks>
+    /// The third session kind, and deliberately in neither of the two collections: not in <see cref="Sessions"/>,
+    /// which would give it a grid tile, a place in the sidebar and a turn in the selection cycle; and not in
+    /// <c>_embeddedSessions</c>, which is keyed by the plugin workspace that owns it and torn down when that
+    /// workspace closes. The assistant belongs to no workspace at all — <see cref="SessionPanelViewModel.BelongsToNoWorkspace"/>
+    /// is set here rather than left to the caller, because a caller that forgot would get the silent
+    /// first-Sessions-desk fallback this whole rule exists to prevent.
+    /// <para>
+    /// Returns null in a graph with no session machinery (design-time, tests without a factory) — the same
+    /// condition <see cref="Embed"/> throws on. Null rather than a throw because the assistant is optional by
+    /// design: an app that cannot make one shows an unavailable indicator, it does not fail to start.
+    /// </para>
+    /// </remarks>
+    /// <param name="paneId">
+    /// The stable id the assistant is always known by, so the state store's record for the last conversation is
+    /// found again after a restart — the same identity trick a restored pane uses (AC-410).
+    /// </param>
+    internal SessionViewModel? CreateAssistantSession(string paneId)
+    {
+        if (_sessionFactory is null)
+        {
+            return null;
+        }
+
+        var session = _sessionFactory();
+        session.AdoptPaneId(paneId);
+        session.BelongsToNoWorkspace = true;
+        session.Title = Cockpit.Core.Assistant.AssistantProfileSlot.DisplayName;
+        _SeedSessionPreferences(session);
+
+        // Status changes still feed the shared status plumbing, so the indicator can read "thinking" off the same
+        // signal every other session reports through — but no close wiring: the assistant is not closed by the
+        // operator, and its host is the only thing that ever ends it.
+        _lastStatus[session] = session.SessionStatus;
+        session.PropertyChanged += OnSessionPropertyChanged;
+
+        return session;
+    }
+
+    /// <summary>
+    /// Undoes <see cref="CreateAssistantSession"/>'s wiring for an assistant instance that is being replaced —
+    /// the assistant died and <see cref="Services.AssistantSessionHost"/> is standing a new one up.
+    /// </summary>
+    /// <remarks>
+    /// Without this the dead <see cref="SessionViewModel"/> stayed subscribed to
+    /// <see cref="OnSessionPropertyChanged"/> and sat in <see cref="_lastStatus"/> for the life of the process,
+    /// so the one path the ticket asks for by name — coming back after falling over — leaked a whole session and
+    /// everything it holds, every time it did what it was built to do. The ordinary close path has always cleaned
+    /// up this pair; the assistant needs its own because it goes through neither of the two existing ones.
+    /// </remarks>
+    internal void ReleaseAssistantSession(SessionPanelViewModel session)
+    {
+        session.PropertyChanged -= OnSessionPropertyChanged;
+        _lastStatus.Remove(session);
+    }
+
     // --- IEmbeddedSessionHost (AC-122): sessions a plugin workspace runs inside its own full-surface body. ---
     //
     // Embedded sessions are deliberately kept out of Sessions. A session there gets a hidden grid container that
@@ -6268,6 +6408,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RunLabel = request.RunLabel;
         session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
         _SeedSessionPreferences(session);
+
+        // AC-544: the host already knows the ticket a briefed run picked up — it is sitting right there in the
+        // request, the embedder (Autopilot's step brief, its run label) wrote it before this session ever started.
+        // Seed the statusline from it now rather than leave the line blank until the agent inside remembers to call
+        // set_status itself: a model that never calls it, or dies before its first turn, otherwise never shows one at
+        // all. Checked in the order a caller is likeliest to have put the ticket: the visible opening turn first
+        // (a step's own brief, e.g. "AC-13 — …"), the run's human label second. Neither carrying one seeds nothing —
+        // an invented line would be worse than a blank one.
+        if ((_TicketFromBrief(request.InitialUserMessage) ?? _TicketFromBrief(request.RunLabel)) is { } ticket)
+        {
+            session.Statusline = ticket;
+        }
 
         // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
         // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded

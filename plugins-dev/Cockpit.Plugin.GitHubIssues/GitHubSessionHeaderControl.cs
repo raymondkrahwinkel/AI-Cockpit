@@ -106,7 +106,7 @@ internal sealed class GitHubSessionHeaderControl : UserControl
         // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(
             "Track an issue in this session",
-            () => new GitHubIssuePickerControl(settings, issue => links.Link(session.PaneId, issue, session.WorkingDirectory)),
+            () => new GitHubIssuePickerControl(settings, host, session.PaneId, issue => links.Link(session.PaneId, issue, session.WorkingDirectory)),
             $"track.{session.PaneId}",
             width: 720,
             height: 520);

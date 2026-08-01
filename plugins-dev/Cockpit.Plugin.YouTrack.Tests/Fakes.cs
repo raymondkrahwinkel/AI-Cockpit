@@ -64,6 +64,9 @@ internal sealed class FakeCockpitHost : ICockpitHost
     /// </summary>
     public Exception? MarkdownFailure { get; set; }
 
+    /// <summary>What the operator linked the project to, keyed by project-field key — what the host would have stored from the project editor.</summary>
+    public Dictionary<string, string> ProjectFieldValues { get; } = new(StringComparer.Ordinal);
+
     public IServiceProvider Services => throw new NotSupportedException();
 
     public ICockpitActions Actions => FakeActions;
@@ -86,6 +89,9 @@ internal sealed class FakeCockpitHost : ICockpitHost
 
     /// <summary>Plays the operator closing the New-session dialog, which is what completes the task the caller awaited.</summary>
     public void CloseNewSessionDialog() => _openDialog?.TrySetResult();
+
+    public Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ProjectFieldValues.TryGetValue(key, out var value) ? value : null);
 
     public void AddSettings(Func<Control> createView) => throw new NotSupportedException();
 

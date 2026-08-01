@@ -1191,6 +1191,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: "Track an issue in this session" now shows only the issues from the YouTrack (or GitHub) project your
+  project is actually linked to, instead of every project on the instance once that instance had no default
+  project of its own. The full YouTrack and GitHub Issues dialogs already respected the link; the session picker
+  quietly did not.
 - fixed: a row in the Managed worktrees dialog no longer draws its owner and path underneath the buttons on its
   right — both lines now shrink and trim to the room the row actually has, with the full text on hover, so a long
   session name or a deep path cannot push anything out of view. The dialog is also wider, and keeps a minimum size
