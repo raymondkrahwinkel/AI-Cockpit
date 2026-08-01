@@ -30,6 +30,23 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     /// <summary>
+    /// Whether the assistant feature is switched on at all. <see langword="false"/> draws nothing: off means "no
+    /// chip" (AC-542's own wording for what off means), not a chip that reports being off.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="AssistantActivity.Unavailable"/>, which is for an assistant that is switched
+    /// <em>on</em> and still cannot be reached — no profile set, or a start that failed. That one has something
+    /// worth saying and a reason to say it with; a feature the operator has deliberately turned off has neither,
+    /// and a permanent "unavailable" chip for it would be a standing complaint about a choice they made.
+    /// <para>
+    /// Defaults to <see langword="true"/> so the component renders on its own — in a scene, a test, or AC-238's
+    /// companion window — without every consumer having to remember to switch it on.
+    /// </para>
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isFeatureEnabled = true;
+
+    /// <summary>
     /// Why the assistant cannot be reached, set alongside <see cref="AssistantActivity.Unavailable"/>. Shown as the
     /// chip's secondary line — an unavailable chip with no reason sends the operator into Options looking for a
     /// setting that is not the problem (criterion 6/the ticket's own point 4).

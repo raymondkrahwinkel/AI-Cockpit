@@ -126,6 +126,10 @@ internal static class Screenshotter
         // rather than about the chip.
         ["sidebar-assistant"] = (_, _) => _SidebarWithAssistant(collapsed: false),
         ["sidebar-assistant-rail"] = (_, _) => _SidebarWithAssistant(collapsed: true),
+        // Off means no chip at all, not a chip reporting that it is off (AC-542's own wording). Its own scene
+        // because the absence is the thing being attested to, and absence is exactly what a passing test suite
+        // looks like when nobody ever rendered it.
+        ["sidebar-assistant-off"] = (_, _) => _SidebarWithAssistant(collapsed: false, featureEnabled: false),
         // A sub-agent's own activity nested under its parent Task tool-use row (AC-146), collapsed (the default an
         // operator meets) and expanded — the verbosity a collapsed default guards against is exactly the thing
         // this ticket's own acceptance criteria demanded be eyeballed on screen, not just asserted in a test.
@@ -993,7 +997,7 @@ internal static class Screenshotter
     // AssistantIndicatorCoordinator at runtime; here it is set directly, for the reason the component takes its
     // state rather than fetching it — a scene that had to stand up a session host to draw a sidebar would be
     // testing the host.
-    private static Window _SidebarWithAssistant(bool collapsed)
+    private static Window _SidebarWithAssistant(bool collapsed, bool featureEnabled = true)
     {
         var cockpit = new ViewModels.CockpitViewModel
         {
@@ -1007,6 +1011,7 @@ internal static class Screenshotter
                 Activity = Cockpit.Core.Assistant.AssistantActivity.ListeningContinuously,
                 ListeningMode = Cockpit.Core.Assistant.AssistantListeningMode.AlwaysOn,
                 IsCollapsed = collapsed,
+                IsFeatureEnabled = featureEnabled,
             },
         };
 

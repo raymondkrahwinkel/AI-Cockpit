@@ -75,6 +75,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         var settings = await _settings.LoadAsync().ConfigureAwait(true);
         Indicator.AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged;
+        Indicator.IsFeatureEnabled = settings.IsEnabled;
+    }
+
+    /// <summary>Re-reads whether the feature is on, so switching it in Options adds or removes the chip without a restart.</summary>
+    public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+        Indicator.IsFeatureEnabled = settings.IsEnabled;
+        _Refresh();
     }
 
     /// <summary>Mirrors the sidebar's collapsed state onto the chip, which drops to its bare badge for the rail.</summary>

@@ -70,10 +70,13 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
     /// key, or the feature going off, has to re-arm) and the assistant itself (switched off mid-sentence, it stops
     /// there). Called by the shell once the view models exist.
     /// </summary>
-    public void FollowSettings(AssistantOptionsViewModel options)
+    public void FollowSettings(AssistantOptionsViewModel options, AssistantIndicatorCoordinator indicator)
     {
+        _indicator = indicator;
         options.Saved += (_, _) => _ = _OnSettingsSavedAsync();
     }
+
+    private AssistantIndicatorCoordinator? _indicator;
 
     private async Task _OnSettingsSavedAsync()
     {
@@ -85,6 +88,12 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         if (_openMicState is OpenMicCoordinator openMic)
         {
             await openMic.ApplyAssistantSettingsAsync().ConfigureAwait(false);
+        }
+
+        // And the chip appears or disappears with the switch, rather than at the next restart.
+        if (_indicator is not null)
+        {
+            await _indicator.ApplySettingsAsync().ConfigureAwait(false);
         }
     }
 

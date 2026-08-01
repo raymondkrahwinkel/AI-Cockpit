@@ -194,7 +194,6 @@ public partial class App : Application
         // re-arms straight away instead of at the next restart. Resolving it starts no assistant: the instance is
         // built on the first hold or the first click on the chip, never before.
         var assistantPushToTalk = Program.Services.GetRequiredService<AssistantPushToTalkCoordinator>();
-        assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions);
 
         // Read the assistant's switch off disk once at startup. Without this the host sits on its constructed
         // default — "switched off" — until something happens to save Options, so on every launch after the one
@@ -207,6 +206,7 @@ public partial class App : Application
         // exist before the sidebar binds to it.
         var assistantIndicator = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>();
         assistantIndicator.Start();
+        assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
         assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
         cockpitViewModel.AssistantIndicator = assistantIndicator.Indicator;
         cockpitViewModel.PropertyChanged += (_, e) =>
