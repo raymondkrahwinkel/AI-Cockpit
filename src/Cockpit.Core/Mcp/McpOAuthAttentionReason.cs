@@ -33,4 +33,13 @@ public enum McpOAuthAttentionReason
     /// was refused — so the retry that would have fixed it could not repeat the request.
     /// </summary>
     CallCouldNotBeRepeated,
+
+    /// <summary>
+    /// The server refused a credential that had just been renewed for it (AC-550). Deliberately not
+    /// <see cref="SignInExpired"/>: a grant revoked at the far end and a server that refused one live token look
+    /// identical from here, and the renewal that came before this is evidence against the sign-in being the problem.
+    /// Where the two cannot be told apart, what is reported is that it could not be confirmed — the same rule
+    /// <c>McpProbeOutcome.Failed</c> keeps.
+    /// </summary>
+    RenewedCredentialRefused,
 }
