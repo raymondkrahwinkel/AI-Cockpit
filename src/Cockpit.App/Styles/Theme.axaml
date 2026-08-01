@@ -295,6 +295,14 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
 
+    <!-- A chip that belongs to a folded run (AC-554): nests one level in behind a hairline guide so it
+         reads as a member of the "N steps run" line above it, which stays on the outer margin unstyled. -->
+    <Style Selector="Border.toolGroupMember.grouped">
+        <Setter Property="BorderThickness" Value="1,0,0,0"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="Padding" Value="14,0,0,0"/>
+    </Style>
+
     <!-- A slowly pulsing dot, reused by the "still starting" banner and the "Thinking…" indicator so the
          opacity keyframes live in one place rather than being copied inline at each call site. -->
     <Style Selector="materialIcons|MaterialIcon.pulse">
