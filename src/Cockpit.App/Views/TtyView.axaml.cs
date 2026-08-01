@@ -479,13 +479,14 @@ public partial class TtyView : UserControl
     /// </summary>
     private void OnTerminalPointerPressedForLinks(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        var pointer = e.GetCurrentPoint(Terminal);
+        if (!TerminalLinkGesture.Opens(
+                e.KeyModifiers.HasFlag(KeyModifiers.Control), pointer.Properties.IsLeftButtonPressed, e.ClickCount))
         {
             return;
         }
 
-        var pointer = e.GetCurrentPoint(Terminal);
-        if (!pointer.Properties.IsLeftButtonPressed || _LinkAt(pointer.Position) is not { } url)
+        if (_LinkAt(pointer.Position) is not { } url)
         {
             return;
         }

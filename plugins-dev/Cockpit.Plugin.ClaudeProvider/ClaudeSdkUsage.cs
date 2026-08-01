@@ -58,6 +58,37 @@ internal sealed class ClaudeSdkUsage
     public PluginSessionStatus? Status => _status;
 
     /// <summary>
+    /// Folds in the account-wide allowances read from the CLI's own cache (AC-549), which is where the SDK route
+    /// gets a percentage at all: <c>rate_limit_event</c> names the window but withholds its fill until the account
+    /// approaches it. Keyed on the same wire names, so a later event that <em>does</em> carry a figure replaces
+    /// this one rather than sitting beside it under a second label.
+    /// <para>
+    /// Called from the stdout pump, which is this class's only writer — see the threading note above.
+    /// </para>
+    /// </summary>
+    public void ObserveAccountWindows(IReadOnlyDictionary<string, PluginRateLimitWindow> windows)
+    {
+        var changed = false;
+        foreach (var (key, window) in windows)
+        {
+            // An event-borne figure is the account's own reading for this very session and stays authoritative; the
+            // cache only fills the gap where no figure has arrived.
+            if (_windows.TryGetValue(key, out var existing) && existing == window)
+            {
+                continue;
+            }
+
+            _windows[key] = window;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _Publish();
+        }
+    }
+
+    /// <summary>
     /// Folds one already-parsed stdout line in. Lines this class has no use for are ignored, so it can be handed
     /// every line without the caller classifying first.
     /// </summary>
@@ -195,8 +226,17 @@ internal sealed class ClaudeSdkUsage
     {
         if (!root.TryGetProperty("rate_limit_info", out var info) || info.ValueKind != JsonValueKind.Object
             || !info.TryGetProperty("rateLimitType", out var wireType) || wireType.ValueKind != JsonValueKind.String
-            || wireType.GetString() is not { Length: > 0 } key
-            || !info.TryGetProperty("utilization", out var utilization) || utilization.ValueKind != JsonValueKind.Number
+            || wireType.GetString() is not { Length: > 0 } key)
+        {
+            return;
+        }
+
+        // utilization is absent on this line whenever the account is not near the window it names — captured from a
+        // real stream at 2% of the five-hour allowance, the event carries status, resetsAt and rateLimitType and no
+        // figure at all (AC-549). That used to drop the whole event, and with it the reset time, which is knowledge
+        // this line does have. The percentage then comes from ClaudeUsageCache instead; leaving whatever it already
+        // published in place is the point of returning rather than overwriting.
+        if (!info.TryGetProperty("utilization", out var utilization) || utilization.ValueKind != JsonValueKind.Number
             || !utilization.TryGetDouble(out var fraction))
         {
             return;

@@ -30,6 +30,24 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- fixed: a headless Claude session now keeps following the newest message while it streams. Scrolling up left the
+  view where you put it but never resumed on its own once you scrolled back down — the jump-to-newest button had to
+  be clicked, and sometimes the view was pulled back down while you were still reading. The newest message also kept
+  ending up partly hidden behind the composer. All three came from the same place: the transcript only keeps the
+  messages you can see in memory and estimated the length of the rest, and the bottom of that estimate is a point
+  the view can never actually reach. It now follows the last message itself rather than a computed position.
+- fixed: a headless Claude session now shows the five-hour and weekly allowances in its usage pill, the same as a
+  terminal session. It could only ever show the context window: the figures a terminal session reads out of Claude's
+  status line have no equivalent for a headless one, and the usage events it does receive name the window but leave
+  out how full it is until you are nearly at the limit. Cockpit now asks Claude for its own usage summary — which it
+  answers locally, costing nothing and no tokens — and reads the figures from that. A reading older than fifteen
+  minutes is dropped rather than shown, so the bar is never a stale number wearing a current face.
+- fixed: a ticked usage window that no figure has arrived for now says so in the usage detail, instead of leaving the
+  setting looking broken. The pill itself still stays empty — a window nobody reported is not "0% used".
+- fixed: Ctrl+double-clicking a link in a terminal session opened the page twice.
+
 ### Added
 
 - added: a Claude session that runs headless (rather than as a terminal pane) now shows the usage pill in its header

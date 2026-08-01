@@ -129,6 +129,13 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <!-- AC-549: a window ticked in Options that this provider does not report says
+                                         so here. The pill stays empty (AC-530 criterion 5 — an unknown window must
+                                         not be drawn as 0%), but silence in both places reads as a broken setting. -->
+                                    <TextBlock Text="{Binding UnreportedWindowsNotice}" FontSize="10" TextWrapping="Wrap"
+                                               Margin="0,4,0,0"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               IsVisible="{Binding UnreportedWindowsNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>

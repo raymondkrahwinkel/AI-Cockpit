@@ -1,0 +1,14 @@
+# Shell scripts must reach the disk with LF endings, whatever the platform checking them out.
+#
+# They are executed by bash — in the Linux containers CI runs in, in the AppImage and macOS packaging
+# steps, and as a git hook on every commit. A Windows clone with core.autocrlf writes them as CRLF, and
+# bash then reads the \r as part of the last token on the line: `set -euo pipefail` becomes
+# `set -euo pipefail\r` and fails with "pipefail: invalid option name". The blobs in this repository are
+# already LF, so this only pins how they are materialised — nothing is rewritten by adding it.
+#
+# Measured in the runner image (catthehacker/ubuntu:act-latest): the checked-out file fails `bash -n`
+# with `syntax error near unexpected token $'{\r'`, and the same file with the CR stripped parses
+# cleanly. Without this, `act -j build` cannot pass on a Windows checkout — the local CI is unusable
+# there for a reason that has nothing to do with the change under test.
+*.sh text eol=lf
+hooks/commit-msg text eol=lf

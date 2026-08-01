@@ -51,6 +51,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // turn boundary; it publishes its own immutable snapshot, so no lock is needed on this side either.
     private readonly ClaudeSdkUsage _usage = new();
 
+    // Where this session's account keeps its cached allowances, and the config dir the refresher must spawn against
+    // so it reads the same profile (AC-549). Both are set at launch, since that is where the profile is resolved.
+    private string? _claudeJsonPath;
+    private string? _configDirOverride;
+
     private IClaudeSdkSubprocess? _subprocess;
     private Task? _stdoutPump;
     private Task? _stderrDrain;
@@ -129,6 +134,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             ? Environment.CurrentDirectory
             : workingDirectory);
         var configJsonDirectory = ClaudeConfigPaths.ResolveConfigJsonDirectory(_config.ConfigDir, userHome);
+        // The CLI keeps its cached allowances here — the SDK route's only source for a window's fill (AC-549).
+        _claudeJsonPath = Path.Combine(configJsonDirectory, ".claude.json");
+        _configDirOverride = ClaudeConfigPaths.ResolveSpawnOverride(_config.ConfigDir, userHome);
 
         // Trust must land before the process starts, or the headless CLI blocks on its interactive trust dialog with
         // nothing able to answer it — in the .claude.json the CLI reads for this spawn.
@@ -337,6 +345,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 ? typeProp.GetString()
                 : null;
 
+            // At the turn boundary, and only there: the host reads Status off the back of the TurnCompleted this
+            // line produces, so a window folded in now is one the operator sees this turn. Doing it per line would
+            // read the file hundreds of times a turn for a figure that moves in minutes.
+            if (string.Equals(type, "result", StringComparison.Ordinal))
+            {
+                _FoldInAccountWindows();
+            }
+
             // Control-protocol lines are the CLI's permission requests and the replies to our own control_requests —
             // routed here, never to the transcript parser.
             if (ClaudeControlProtocol.IsControlLine(type))
@@ -391,6 +407,37 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     /// That is the whole of the graceful degradation this needs; no version sniffing required.
     /// </summary>
     private const string ForwardSubagentTextEnvironmentVariable = "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT";
+
+    /// <summary>
+    /// Reads the account's cached allowances into the usage feed, and asks the CLI to refresh them for next time
+    /// (AC-549). Reading first and refreshing after is deliberate: the refresh is a subprocess, so awaiting it here
+    /// would put a process start on the stdout pump. This turn shows the previous refresh's figures — at most
+    /// <see cref="ClaudeUsageRefresh.Interval"/> old, and <see cref="ClaudeUsageCache"/> drops anything staler than
+    /// its own limit rather than showing it.
+    /// </summary>
+    private void _FoldInAccountWindows()
+    {
+        if (_claudeJsonPath is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                _usage.ObserveAccountWindows(ClaudeUsageCache.Read(File.ReadAllText(path), DateTimeOffset.UtcNow));
+            }
+        }
+        catch (Exception)
+        {
+            // A file caught mid-write by the CLI itself, or one this profile cannot read. The next turn tries again.
+        }
+
+        // Fire-and-forget, and self-throttling per account: ten sessions on one profile share one subprocess every
+        // five minutes between them, not ten each.
+        _ = ClaudeUsageRefresh.RefreshAsync(_executablePath, _configDirOverride, DateTimeOffset.UtcNow, _lifetime.Token);
+    }
 
     private Dictionary<string, string?> _BuildEnvironment(string userHome)
     {
