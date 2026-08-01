@@ -6371,6 +6371,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
+    /// The live assistant instance, or null before it has been woken. Held only so a consent naming its pane can be
+    /// routed to it — <see cref="FindSession"/> cannot, and teaching it to would hand every other caller of it a
+    /// session the cockpit keeps out of both collections on purpose.
+    /// </summary>
+    private SessionViewModel? _assistantSession;
+
+    private SessionViewModel? _AssistantSessionWithPaneId(string paneId) =>
+        string.Equals(paneId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal)
+            ? _assistantSession
+            : null;
+
+    /// <summary>
     /// Mints the voice assistant's session panel and hands it over (AC-543). The <em>only</em> way one is made:
     /// <see cref="Services.AssistantSessionHost"/> calls this and keeps the sole reference, which is what makes the
     /// assistant's identity established by construction — no agent can declare that it is the assistant, because
@@ -6393,18 +6405,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// The stable id the assistant is always known by, so the state store's record for the last conversation is
     /// found again after a restart — the same identity trick a restored pane uses (AC-410).
     /// </param>
-    /// <summary>
-    /// The live assistant instance, or null before it has been woken. Held only so a consent naming its pane can be
-    /// routed to it — <see cref="FindSession"/> cannot, and teaching it to would hand every other caller of it a
-    /// session the cockpit keeps out of both collections on purpose.
-    /// </summary>
-    private SessionViewModel? _assistantSession;
-
-    private SessionViewModel? _AssistantSessionWithPaneId(string paneId) =>
-        string.Equals(paneId, Cockpit.Core.Assistant.AssistantIdentity.PaneId, StringComparison.Ordinal)
-            ? _assistantSession
-            : null;
-
     internal SessionViewModel? CreateAssistantSession(string paneId)
     {
         if (_sessionFactory is null)
