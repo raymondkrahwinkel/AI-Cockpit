@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Controls;
+using Cockpit.App.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Layout;
@@ -70,11 +71,16 @@ public partial class MainWindow : Window
         if (App is { IsQuitting: false }
             && DataContext is CockpitViewModel { MinimizeToTrayOnClose: true })
         {
+            LifecycleLog.Write("Main window close intercepted; hiding to the tray, the app keeps running.");
             e.Cancel = true;
             Hide();
             return;
         }
 
+        // The one that answers "why was the cockpit gone when I came back?": with no shutdown asked for, a close
+        // arriving here is the last window going, which ends the app — and knowing whether one ever arrived is the
+        // difference between something closing the window and the process being ended from outside.
+        LifecycleLog.Write($"Main window closing for real (quit requested: {App?.IsQuitting}); the app will end with it.");
         _SaveBounds();
         base.OnClosing(e);
     }

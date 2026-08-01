@@ -122,6 +122,12 @@ sealed class Program
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
 
+        // First line of every run, so the kept previous log says which process it was and how it was started —
+        // a restart handoff and a hand launch leave the same trail otherwise.
+        Cockpit.App.Logging.LifecycleLog.Use(loggerFactory);
+        Cockpit.App.Logging.LifecycleLog.Write(
+            $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting: pid {Environment.ProcessId}, args [{string.Join(' ', args)}].");
+
         // A GUI or AppImage launch hands this process a PATH without the user's bin directories, and every child
         // inherits it (AC-19). Repair it once, up front, before anything resolves a tool or spawns a session.
         StartupPathRepair.Run(loggerFactory.CreateLogger(typeof(StartupPathRepair)));
@@ -278,6 +284,10 @@ sealed class Program
         }
         finally
         {
+            // The last line the app itself can write. A log whose tail is ordinary activity and then simply stops
+            // never reached here: nothing in the process asked to shut down, so it was ended from outside.
+            Cockpit.App.Logging.LifecycleLog.Write("Desktop lifetime ended; tearing down sessions and exiting.");
+
             // A background watchdog guarantees the process dies promptly even if a teardown step
             // wedges — the exit must never hang again (bug #32). It fires a hard exit after a short
             // deadline; the child claude processes are killed in DisposeCockpit first, so nothing is

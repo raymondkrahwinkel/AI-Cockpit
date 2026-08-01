@@ -6,6 +6,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -50,6 +51,12 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
+
+            // The desktop's own route into a shutdown — an OS log-off or restart ending the session — as something
+            // distinct from the tray's Quit. Both used to end the process through the same silent teardown, so an
+            // operator finding the cockpit gone had no way to tell "Windows ended my session" from anything else.
+            desktop.ShutdownRequested += (_, _) =>
+                LifecycleLog.Write($"The desktop lifetime requested shutdown (quit already requested: {IsQuitting}).");
 
             // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
             // model, the plugins and the MCP servers all read settings, and reading them without the key would
@@ -171,6 +178,12 @@ public partial class App : Application
             DataContext = cockpitViewModel,
         };
         desktop.MainWindow = _mainWindow;
+
+        // A closed window can never be shown again — Avalonia throws "Cannot re-show a closed window", and coming
+        // from a tray-icon handler that exception took the whole cockpit down with it. Forgetting the window here
+        // is what makes every route that shows it (the tray click, the tray menu's Show, the UI lock) fall through
+        // the null check each already has, instead of each having to learn what a closed window looks like.
+        _mainWindow.Closed += (_, _) => _mainWindow = null;
 
         // Shown here rather than left to the lifetime: when this replaces the unlock window, the framework has
         // already shown its MainWindow and will not show a second one on its own.
@@ -449,6 +462,7 @@ public partial class App : Application
     /// <summary>Really quits the app (tray "Quit") — lets MainWindow's close through, then the normal teardown runs.</summary>
     public void RequestQuit()
     {
+        LifecycleLog.Write("Quit requested from inside the app (tray Quit or a restart handoff).");
         IsQuitting = true;
         _desktop?.Shutdown();
     }
