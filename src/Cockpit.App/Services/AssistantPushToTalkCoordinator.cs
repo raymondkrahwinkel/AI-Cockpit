@@ -176,10 +176,25 @@ public sealed class AssistantPushToTalkCoordinator : ISingletonService
         {
             // applyCleanup: false — see this class's remarks. One-to-one is the decision, not an oversight.
             var text = await _pushToTalk.EndHoldAsync(applyCleanup: false);
-            if (!string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrWhiteSpace(text))
             {
-                await _assistant.SendAsync(text);
+                // The most common way this fails, and until now the only one that said nothing at all. A hold
+                // shorter than a second or two gives the voice-activity detector too little to find speech in, so
+                // it discards the capture and returns nothing — correctly. What was missing is anyone telling the
+                // operator: the chip flicked back to Ready, no words appeared, and there is no composer here to
+                // show an empty result the way the dictation path does. Held against a live microphone that is
+                // indistinguishable from an assistant that ignored you, and it costs an attempt every time.
+                //
+                // Only on this path, deliberately. F9 hands its transcript straight to a session's composer, where
+                // "nothing appeared in the box" is at least visible; there is no shared point below this one where
+                // both could be told, because that path never sees the text at all.
+                _overlay.SetPushToTalk(
+                    VoiceOverlayState.Unavailable,
+                    "No speech heard — keep holding the key while you talk, then let go.");
+                return;
             }
+
+            await _assistant.SendAsync(text);
         }
         catch (Exception exception)
         {

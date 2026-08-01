@@ -126,6 +126,57 @@ public class AssistantSessionHostTests
         Assert.Null(host.Session);
     }
 
+    // ── The chip's Thinking state has to end, and only the session knows when ──────────────────────────────────
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ActivityFor_WhileAPermissionIsPending_SaysItNeedsYou_BusyOrNot(bool isBusy)
+    {
+        Assert.Equal(
+            AssistantActivity.AwaitingOperator,
+            AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, isBusy, hasPendingPermission: true));
+    }
+
+    [Theory]
+    [InlineData(true, AssistantActivity.Thinking)]
+    [InlineData(false, AssistantActivity.Ready)]
+    public void ActivityFor_OnceThePermissionIsAnswered_FollowsWhetherItIsStillWorking(bool isBusy, AssistantActivity expected)
+    {
+        // Two defects in a row lived here, and both came from reading SessionStatus instead of the two facts
+        // underneath it. First the chip stuck on "Needs you", because NeedsAttention is cleared only when the
+        // operator sends their *next* message — not when they answer the prompt. Then, with the pending flag read
+        // properly, it stuck on "Ready" while the assistant was visibly working, because a session still carrying
+        // NeedsAttention never reports Busy at all: that flag outranks busy in the derivation. The chat window's
+        // own "Thinking…" row was right the whole time, which is what made the chip's silence so obviously wrong.
+        Assert.Equal(
+            expected,
+            AssistantSessionHost.ActivityFor(AssistantActivity.AwaitingOperator, isBusy, hasPendingPermission: false));
+    }
+
+    [Theory]
+    [InlineData(true, AssistantActivity.Thinking)]
+    [InlineData(false, AssistantActivity.Ready)]
+    public void ActivityFor_FollowsWhetherTheSessionIsWorking(bool isBusy, AssistantActivity expected)
+    {
+        // The original defect: Activity was written on the way in (a hold, a send, a start) and never on the way
+        // out, because nothing watched the session. So the first send showed Ready while the assistant was plainly
+        // thinking, and every send after that left the chip on "Thinking…" for good — EnsureStartedAsync hands
+        // back a live instance without touching Activity.
+        Assert.Equal(expected, AssistantSessionHost.ActivityFor(AssistantActivity.Thinking, isBusy, hasPendingPermission: false));
+    }
+
+    [Theory]
+    [InlineData(AssistantActivity.Unavailable)]
+    [InlineData(AssistantActivity.Listening)]
+    public void ActivityFor_NeverSpeaksOverTheTwoStatesTheSessionKnowsNothingAbout(AssistantActivity current)
+    {
+        // Unavailable is a fact about the feature, not about a turn; Listening is a key being held right now, and a
+        // turn finishing mid-hold must not tell the operator the microphone closed.
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, isBusy: false, hasPendingPermission: false));
+        Assert.Equal(current, AssistantSessionHost.ActivityFor(current, isBusy: true, hasPendingPermission: false));
+    }
+
     // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──
 
     [Fact]

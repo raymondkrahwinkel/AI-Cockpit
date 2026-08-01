@@ -25,6 +25,41 @@ public class ReadAloudPipelineTests
     }
 
     [Fact]
+    public async Task AsOneUtterance_JoinsTheSentences_SoTheQueueSynthesisesOnce()
+    {
+        // The gaps the operator hears are the boundaries between clips: the queue synthesises one sentence ahead
+        // while the previous plays, and on this machine synthesis is slower than playback, so every full stop opens
+        // a hole that look-ahead cannot close. One sentence in means one synthesis and one continuous clip.
+        var queue = Substitute.For<IVoicePlaybackQueue>();
+
+        await ReadAloudPipeline.SpeakAsync(
+            queue, cleanupService: null, "Grijs en zacht vandaag. Morgen blijft het droog. Zwakke zuidwestenwind.",
+            ReadAloudMode.Verbatim, speakerId: 1, language: "nl", asOneUtterance: true);
+
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Count == 1),
+            1,
+            "nl");
+    }
+
+    [Fact]
+    public async Task WithoutAsOneUtterance_TheSentencesStaySeparate()
+    {
+        // The other side of the flag: an ordinary session's reply can run for paragraphs, and one synthesis there
+        // would be a long silence before the first word. Joining must stay something the caller asks for.
+        var queue = Substitute.For<IVoicePlaybackQueue>();
+
+        await ReadAloudPipeline.SpeakAsync(
+            queue, cleanupService: null, "Grijs en zacht vandaag. Morgen blijft het droog. Zwakke zuidwestenwind.",
+            ReadAloudMode.Verbatim, speakerId: 1, language: "nl");
+
+        queue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.Count == 3),
+            1,
+            "nl");
+    }
+
+    [Fact]
     public async Task NothingToSay_NeverTouchesTheQueue()
     {
         var queue = Substitute.For<IVoicePlaybackQueue>();

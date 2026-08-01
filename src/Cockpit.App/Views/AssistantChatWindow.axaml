@@ -64,6 +64,54 @@
                  same convention as the main session composer (SessionView._OnInputKeyDown). -->
             <Border DockPanel.Dock="Bottom" Padding="10,6,10,10" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0">
                 <StackPanel Spacing="6">
+                    <!-- Progress, read straight off the session the same way SessionView.axaml reads it. The window
+                         is a narrower frame on the same SDK view, so it owes the operator the same answer to "is it
+                         doing anything" — and without these it did not have one: a turn that called two tools showed
+                         an unchanged window until the rows landed afterwards, which reads exactly like an assistant
+                         that did not hear you. No new state; all three of these are properties SessionViewModel
+                         already maintains for the main view. -->
+
+                    <!-- "Thinking…" from send until the first output, and only while no tool is running — the same
+                         ShowThinkingIndicator that already encodes that rule, rather than a second opinion here. -->
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center"
+                                IsVisible="{Binding Session.ShowThinkingIndicator, FallbackValue=False}">
+                        <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Text="Thinking…" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Replaces "Thinking…" for the stretch it used to leave blank (AC-532): a tool call is the
+                         longest wait in a turn, and naming the running step is the difference between a window that
+                         looks stuck and one that is visibly working. Same slot, one row. -->
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center"
+                                IsVisible="{Binding Session.HasActiveToolActivity, FallbackValue=False}">
+                        <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                        <TextBlock Text="{Binding Session.ActiveToolActivityLabel}" FontSize="11.5"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Background work (AC-531): a detached sub-agent or shell outlives both indicators above, and
+                         this count is what still says so. No badge at zero rather than a "0" one, the same rule the
+                         main view applies. The flyout with the detail stays in the main view — this window is a
+                         peephole, and its job here is that the work is not invisible, not to manage it. -->
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
+                                IsVisible="{Binding Session.HasBackgroundTasks, FallbackValue=False}">
+                        <TextBlock Text="Background" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <Border Background="{StaticResource CockpitStatusBackgroundBrush}"
+                                CornerRadius="{StaticResource CockpitPillRadius}"
+                                Padding="6,1" MinWidth="18">
+                            <TextBlock Text="{Binding Session.BackgroundTaskCount}" FontSize="10.5" FontWeight="Bold"
+                                       Foreground="{StaticResource CockpitTextOnStatusBrush}"
+                                       HorizontalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+
                     <!-- Criterion 9: read-aloud off is a text-assistant, said plainly rather than left to a
                          silent speaker icon — a switched-off toggle a few pixels up in the header is easy to miss
                          the one time it matters (a reply that never gets read out loud). -->
@@ -152,6 +200,36 @@
                                                     <TextBlock Text="{Binding ToolHeader}"/>
                                                 </StackPanel>
                                             </Button>
+
+                                            <!-- The consent decision, once it has been made, so a resolved call reads
+                                                 "WebSearch  ·  …   Allowed" rather than looking identical to one still
+                                                 waiting. Same field the main view shows. -->
+                                            <TextBlock Text="{Binding PermissionDecision}" FontStyle="Italic" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                                            <!-- Allow/Deny. This window used to leave these out — "trimmed to what the
+                                                 assistant can produce today" — on the reading that acting is [c]'s. That
+                                                 was wrong the moment the assistant got tools at all: it launches in
+                                                 "Ask permissions" (SessionOptionCatalog.DefaultPermissionMode), so an
+                                                 ordinary WebSearch raises a consent, and this window is the assistant's
+                                                 ONLY surface — it has no pane, so it is not in the grid and not in the
+                                                 sidebar's session rows where the pending-consent hand is drawn. The
+                                                 request was therefore invisible and unanswerable, and the turn simply
+                                                 stopped: the operator saw a tool row and then nothing, for good.
+                                                 AC-542 decision 1 settles which way to fix it — "consent is always
+                                                 visual; the assistant may ask, never receive" — so the row belongs here
+                                                 rather than the assistant being launched in bypass to make the prompt
+                                                 go away. Bypass would invert that promise in exactly the window that is
+                                                 meant to be the audit surface. -->
+                                            <WrapPanel Orientation="Horizontal" IsVisible="{Binding IsPendingPermission}">
+                                                <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
+                                                        Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.AllowToolCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
+                                                        Command="{Binding $parent[Window].((vm:AssistantChatViewModel)DataContext).Session.DenyToolCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </WrapPanel>
                                             <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                                                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                                      Classes="toolBody"

@@ -35,6 +35,48 @@ public class AssistantChatViewModelTests
     }
 
     [Fact]
+    public void ARowArrivingInTheTranscript_RaisesHasMessages_SoTheWindowStopsShowingItsPlaceholder()
+    {
+        // The defect this pins, found by opening the app rather than by any test: the window binds its transcript
+        // scroller to HasMessages and its "type a message to start talking" placeholder to the inverse, but
+        // HasMessages was only ever re-raised when the *session* changed. At that instant the transcript is empty —
+        // the session is set the moment it starts, and the first row does not exist until the turn makes one — so it
+        // read false, nothing raised it again, and the window sat on its placeholder for the life of the session
+        // while the assistant answered into a scroller nobody could see.
+        var session = new SessionViewModel();
+        // The parameterless constructor is the previewer's: it seeds sample rows so the Avalonia previewer and the
+        // Screenshotter have something to draw. A real assistant session comes from the session factory and starts
+        // empty, which is the state this defect lives in — so the sample is cleared to model the real thing.
+        session.Transcript.Clear();
+        var vm = new AssistantChatViewModel(FakeHost(session), FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+        var raised = 0;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AssistantChatViewModel.HasMessages)) { raised++; } };
+
+        Assert.False(vm.HasMessages);
+
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "wat is de status van AC-223"));
+
+        Assert.True(vm.HasMessages);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void Disposing_StopsWatchingTheTranscript_SoAClosedWindowIsNotKeptAliveByIt()
+    {
+        // The other half of the subscription: this window is a peephole that opens and closes repeatedly onto a
+        // session that outlives all of them, so a watch that is never detached is one leaked view model per open.
+        var session = new SessionViewModel();
+        var vm = new AssistantChatViewModel(FakeHost(session), FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+        var raised = 0;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AssistantChatViewModel.HasMessages)) { raised++; } };
+
+        vm.Dispose();
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "AC-223 draait op de review-desk"));
+
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
     public void Closing_NeverEndsTheSession_AndReopening_ShowsTheEarlierMessages()
     {
         // One host, standing across both "windows" — exactly what AssistantSessionHost is in the real app: a

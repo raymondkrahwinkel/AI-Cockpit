@@ -151,6 +151,12 @@
             <Color x:Key="CockpitStatusBusyRingTintColor">#1F22D3EE</Color>
             <Color x:Key="CockpitStatusWaitingChipTintColor">#14E0A33E</Color>
             <Color x:Key="CockpitStatusWaitingRingTintColor">#1FE0A33E</Color>
+            <!-- The error colour as a chip/ring tint, at the same two alphas every other status tint uses. Added
+                 for the assistant chip's "needs you" (AC-543): amber already means "dictating, not the assistant"
+                 and may not be reused, and the remaining free hues all read as calm. A decision waiting on the
+                 operator is the one chip state that has to break the resting palette. -->
+            <Color x:Key="CockpitStatusErrorChipTintColor">#14D64545</Color>
+            <Color x:Key="CockpitStatusErrorRingTintColor">#1FD64545</Color>
             <Color x:Key="CockpitStatusDoneChipTintColor">#145AA576</Color>
             <Color x:Key="CockpitStatusDoneRingTintColor">#1F5AA576</Color>
             <Color x:Key="CockpitAccentRingTintColor">#242563EB</Color>
@@ -161,6 +167,8 @@
             <SolidColorBrush x:Key="CockpitStatusWaitingRingTintBrush" Color="{StaticResource CockpitStatusWaitingRingTintColor}"/>
             <SolidColorBrush x:Key="CockpitStatusDoneChipTintBrush" Color="{StaticResource CockpitStatusDoneChipTintColor}"/>
             <SolidColorBrush x:Key="CockpitStatusDoneRingTintBrush" Color="{StaticResource CockpitStatusDoneRingTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorChipTintBrush" Color="{StaticResource CockpitStatusErrorChipTintColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorRingTintBrush" Color="{StaticResource CockpitStatusErrorRingTintColor}"/>
             <SolidColorBrush x:Key="CockpitAccentRingTintBrush" Color="{StaticResource CockpitAccentRingTintColor}"/>
 
             <!-- Geometry. The mockup's control radius (9px) is what every input, select and button
@@ -1354,6 +1362,13 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
     </Style>
+    <!-- Needs you: the attention colour every other surface already uses for "a decision is waiting" — the same
+         one the sidebar's pending-consent hand is drawn in. This is the one chip state that is asking rather than
+         reporting, so it is the one that may not blend into the resting palette. -->
+    <Style Selector="Button.assistantIndicatorChip.awaitingOperator">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusErrorBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusErrorChipTintBrush}"/>
+    </Style>
     <!-- Unavailable dims the whole chip instead of tinting it — a broken assistant should draw the eye less, not
          announce itself in a colour it does not have anything to report with. -->
     <Style Selector="Button.assistantIndicatorChip.unavailable">
@@ -1431,6 +1446,15 @@
     </Style>
     <Style Selector="Border.assistantIndicatorRing.speaking materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusDoneBrush}"/>
+    </Style>
+    <!-- Needs you: the ring half of the chip style above, so the rail says it too — the collapsed sidebar is
+         exactly where an unanswered approval would otherwise sit unseen the longest. -->
+    <Style Selector="Border.assistantIndicatorRing.awaitingOperator">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusErrorBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitStatusErrorRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.assistantIndicatorRing.awaitingOperator materialIcons|MaterialIcon">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusErrorBrush}"/>
     </Style>
     <!-- F9 dictating: amber, deliberately never the assistant's cyan — the hard half of criterion 6. -->
     <Style Selector="Border.assistantIndicatorRing.dictating">

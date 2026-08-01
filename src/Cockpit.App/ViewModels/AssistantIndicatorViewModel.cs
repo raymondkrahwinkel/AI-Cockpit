@@ -15,7 +15,7 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 public partial class AssistantIndicatorViewModel : ViewModelBase
 {
-    /// <summary>What the indicator reports — see <see cref="AssistantActivity"/> for the seven states.</summary>
+    /// <summary>What the indicator reports — see <see cref="AssistantActivity"/> for the eight states.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]
     [NotifyPropertyChangedFor(nameof(Detail))]
@@ -26,6 +26,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsListeningContinuously))]
     [NotifyPropertyChangedFor(nameof(IsThinking))]
     [NotifyPropertyChangedFor(nameof(IsSpeaking))]
+    [NotifyPropertyChangedFor(nameof(IsAwaitingOperator))]
     [NotifyPropertyChangedFor(nameof(IsDictating))]
     [NotifyPropertyChangedFor(nameof(IsUnavailable))]
     [NotifyPropertyChangedFor(nameof(IsMicIcon))]
@@ -123,6 +124,9 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.ListeningContinuously => "Listening continuously",
         AssistantActivity.Thinking => "Thinking…",
         AssistantActivity.Speaking => "Speaking",
+        // Phrased as the thing the operator has to do, not as the assistant's condition. "Awaiting operator" is
+        // what the code calls it; on a chip in the corner of the screen, "needs you" is what makes someone look.
+        AssistantActivity.AwaitingOperator => "Needs you",
         AssistantActivity.Dictating => "Dictating",
         AssistantActivity.Unavailable => "Assistant unavailable",
         _ => "Assistant",
@@ -143,6 +147,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.ListeningContinuously => "Assistant",
         AssistantActivity.Thinking => "Assistant",
         AssistantActivity.Speaking => "Assistant",
+        AssistantActivity.AwaitingOperator => "Open the chat to answer",
         AssistantActivity.Dictating => "not the assistant",
         AssistantActivity.Unavailable => UnavailableReason,
         _ => null,
@@ -181,6 +186,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
         AssistantActivity.ListeningContinuously => "listeningContinuously",
         AssistantActivity.Thinking => "thinking",
         AssistantActivity.Speaking => "speaking",
+        AssistantActivity.AwaitingOperator => "awaitingOperator",
         AssistantActivity.Dictating => "dictating",
         AssistantActivity.Unavailable => "unavailable",
         _ => "unavailable",
@@ -191,6 +197,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     public bool IsListeningContinuously => Activity == AssistantActivity.ListeningContinuously;
     public bool IsThinking => Activity == AssistantActivity.Thinking;
     public bool IsSpeaking => Activity == AssistantActivity.Speaking;
+    public bool IsAwaitingOperator => Activity == AssistantActivity.AwaitingOperator;
     public bool IsDictating => Activity == AssistantActivity.Dictating;
     public bool IsUnavailable => Activity == AssistantActivity.Unavailable;
 

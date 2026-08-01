@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -284,10 +285,133 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
             enabledMcpServerNames: await _McpSelectionAsync(profile, cancellationToken).ConfigureAwait(true),
             launchOptions: _LaunchOptions(profile)).ConfigureAwait(true);
 
+        _ApplySpeech(session, settings);
         Session = session;
-        Activity = AssistantActivity.Ready;
+
+        // The wire that makes Thinking end. Everything else here sets Activity at a moment the host knows about —
+        // a hold, a send, a start, a failure — and none of those is the moment a turn finishes, because only the
+        // session knows that. Without this the chip is written to on the way in and never on the way out: the
+        // first send lands on Ready (set two lines up, after the send) while the assistant is plainly thinking,
+        // and every send after that leaves it on Thinking for good, because EnsureStartedAsync returns a live
+        // instance without touching Activity. Both are the same missing subscription rather than two bugs.
+        session.PropertyChanged += _OnSessionPropertyChanged;
+        _SyncActivityWithSession(session);
         return session;
     }
+
+    /// <summary>
+    /// Gives the assistant's session what it needs to actually be heard — decision 2's "TTS erna", which nothing
+    /// was doing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why it has to be done here at all.</b> The cockpit pushes the voice settings to its sessions by walking
+    /// <c>Sessions</c>, and the assistant is deliberately not in that collection — it has no pane. So it kept the
+    /// bare defaults: <c>ReadResponsesAloud</c> false, which makes the read-aloud flush return before it speaks a
+    /// word, and <c>ReadAloudLanguage</c> "en", which would have read Dutch replies in an English voice. The
+    /// operator heard nothing at all and there was nothing on screen to say why.
+    /// <para>
+    /// <b>Verbatim, and stated rather than left to the default.</b> <see cref="ReadAloudMode.Naturalized"/> and
+    /// <see cref="ReadAloudMode.Summarized"/> both send the reply through the local-LLM cleanup service first, and
+    /// AC-542 decision 10 is explicit that the assistant's words go out one-to-one: what shortens a 300-word answer
+    /// is <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. That is also why this is set on the
+    /// session rather than followed from the operator's global read-aloud mode — their choice there is about
+    /// sessions, and picking Summarized for those must not quietly put an LLM back in the assistant's path. The
+    /// mode's own default happens to be Verbatim today; written out anyway, because a default that changes
+    /// elsewhere would reintroduce the pipeline this epic is removing, silently.
+    /// </para>
+    /// <para>
+    /// The voice and language do follow the operator's settings, read off the cockpit's already-resolved
+    /// selections — the same values the fan-out to ordinary sessions uses, rather than a second copy of them.
+    /// </para>
+    /// </remarks>
+    private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
+    {
+        session.ReadAloudMode = ReadAloudMode.Verbatim;
+
+        // The second door to the same local model, and the one that is easy to miss: the turn acknowledgement
+        // (AC-99) has a LocalLlm mode that writes its short "let me look" line with the cleanup service. Pinned to
+        // the preset phrases — instant, no model call — so no local model is ever reached from here either.
+        // Today the assistant keeps this value only because the operator's choice is fanned out by walking
+        // `Sessions`, which it is not in; that is an accident of where it sits, not a rule, and it would stop
+        // protecting anything the day someone adds the assistant to that loop. Raymond, 2026-08-01: a local model
+        // is the operator's to choose as the Assistant Profile and nowhere else — never machinery underneath it.
+        session.TurnAckMode = TurnAckMode.InstantPhrases;
+
+        // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
+        // sentence spent about as long synthesising as speaking, so every full stop came with an audible hole in
+        // it — for a surface whose entire output is speech, that is not a rough edge but the product.
+        session.ReadAloudAsOneUtterance = true;
+
+        session.TtsVoiceSid = _cockpit.SelectedTtsVoice.Sid;
+        session.ReadAloudLanguage = _cockpit.SelectedReadAloudLanguage.Code;
+        session.ReadResponsesAloud = settings.SpeakReplies;
+    }
+
+    /// <summary>
+    /// Turns speaking on or off on the live session, so the header toggle takes effect on the next reply rather
+    /// than at the next restart. Does not stop what is already playing — that is the toggle's own job, and it
+    /// already does it (AC-543 criterion 9: off breaks off mid-sentence).
+    /// </summary>
+    public void SetSpeakReplies(bool speak)
+    {
+        if (Session is { } session)
+        {
+            session.ReadResponsesAloud = speak;
+        }
+    }
+
+    private void _OnSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null
+                or nameof(SessionViewModel.IsBusy)
+                or nameof(SessionViewModel.HasPendingPermission)
+            && sender is SessionViewModel session)
+        {
+            _SyncActivityWithSession(session);
+        }
+    }
+
+    /// <summary>
+    /// Maps the session's own status onto what the chip reports.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrow. It only ever moves between <see cref="AssistantActivity.Thinking"/> and
+    /// <see cref="AssistantActivity.Ready"/>, and it refuses to speak over the two states the host owns and the
+    /// session knows nothing about: <see cref="AssistantActivity.Unavailable"/> is a fact about the feature rather
+    /// than about a turn, and <see cref="AssistantActivity.Listening"/> is a key being held right now — a turn
+    /// completing mid-hold must not tell the operator the microphone closed.
+    /// <para>
+    /// Written as the set that means "working" rather than the set that means "done", so a status added later
+    /// arrives as Ready and has to be argued into Thinking deliberately — the same direction
+    /// <c>WorkspaceAgentGateway</c>'s wake check is written in, and for the same reason.
+    /// </para>
+    /// </remarks>
+    private void _SyncActivityWithSession(SessionViewModel session) =>
+        Activity = ActivityFor(Activity, session.IsBusy, session.HasPendingPermission);
+
+    /// <summary>The rule itself, as a pure function so it can be asserted directly. Internal for that and no other caller.</summary>
+    /// <remarks>
+    /// <b>Both inputs are read raw, and neither is <see cref="SessionPanelViewModel.SessionStatus"/>.</b> That
+    /// status is derived for a different audience and carries a deliberate stickiness this surface cannot use:
+    /// <c>_needsAttention</c> is set when a prompt appears and cleared only when the operator sends their next
+    /// message, and it outranks busy in the derivation. Reading it cost two wrong chips in a row — first stuck on
+    /// "Needs you" long after the approval was given and the reply spoken, then, once the pending flag was read
+    /// properly, stuck on "Ready" while the assistant was plainly working, because a session that still carries
+    /// NeedsAttention never reports Busy at all. Right for a sidebar you are not looking at; useless for a chip
+    /// that answers "what is it doing right now".
+    /// <para>
+    /// So: is a decision waiting, and is it working. Two facts, each read from where it actually lives.
+    /// </para>
+    /// </remarks>
+    internal static AssistantActivity ActivityFor(
+        AssistantActivity current, bool isBusy, bool hasPendingPermission) => current switch
+    {
+        AssistantActivity.Unavailable or AssistantActivity.Listening => current,
+        // Ahead of busy: a session can still be working on something while it stands on a prompt, and what the
+        // operator needs to know is the half they can act on.
+        _ when hasPendingPermission => AssistantActivity.AwaitingOperator,
+        _ => isBusy ? AssistantActivity.Thinking : AssistantActivity.Ready,
+    };
 
     /// <summary>
     /// The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
@@ -411,6 +535,7 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // Before the dispose, and outside the try: the host wired this session up when it minted it, and that
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
+        session.PropertyChanged -= _OnSessionPropertyChanged;
         _cockpit.ReleaseAssistantSession(session);
 
         try
