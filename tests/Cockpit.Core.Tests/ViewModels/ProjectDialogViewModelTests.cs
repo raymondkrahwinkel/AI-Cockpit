@@ -75,7 +75,50 @@ public class ProjectDialogViewModelTests
         };
         var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog(Server("depot")));
 
-        Assert.Contains("gone", viewModel.ToProject().McpOverlay.DisabledServerNames);
+        Assert.DoesNotContain("gone", viewModel.ToProject().McpOverlay.EnabledServerNames!);
+    }
+
+    /// <summary>The mirror of the above: a server this project had on, whose row the checklist cannot show, must not be switched off by a save.</summary>
+    [Fact]
+    public async Task ToProject_KeepsAnEnabledNameTheChecklistCannotShow()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["gone", "depot"] },
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog(Server("depot")));
+
+        Assert.Contains("gone", viewModel.ToProject().McpOverlay.EnabledServerNames!);
+    }
+
+    /// <summary>
+    /// The point of the whole list (Raymond, 2026-08-01): a project that narrowed its servers is saved as "these are
+    /// on", so a server added to the registry afterwards is in nobody's list and starts unticked there — where the
+    /// old off-list had it arrive ticked in every project.
+    /// </summary>
+    [Fact]
+    public async Task ToProject_ANarrowedProject_DoesNotTickAServerAddedLater()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(Server("youtrack"), Server("depot")));
+        viewModel.Name = "Cockpit";
+        viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession = false;
+
+        Assert.False(viewModel.ToProject().McpOverlay.IsSelectedByDefault("brand-new"));
+    }
+
+    /// <summary>And the other half: a project that switched nothing off has no opinion, so it still picks new servers up.</summary>
+    [Fact]
+    public async Task ToProject_AProjectThatNarrowedNothing_StillTicksAServerAddedLater()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null, ProfileStore(), Catalog(Server("youtrack"), Server("depot")));
+        viewModel.Name = "Cockpit";
+
+        var overlay = viewModel.ToProject().McpOverlay;
+
+        Assert.Null(overlay.EnabledServerNames);
+        Assert.True(overlay.IsSelectedByDefault("brand-new"));
     }
 
     [Fact]
@@ -127,14 +170,14 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
-    public async Task ToProject_UntickedServers_BecomeTheOverlaysDisabledList()
+    public async Task ToProject_TickedServers_BecomeTheOverlaysEnabledList()
     {
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project: null, ProfileStore(), Catalog(Server("youtrack"), Server("depot")));
         viewModel.Name = "Cockpit";
         viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession = false;
 
-        Assert.Equal(new[] { "depot" }, viewModel.ToProject().McpOverlay.DisabledServerNames);
+        Assert.Equal(new[] { "youtrack" }, viewModel.ToProject().McpOverlay.EnabledServerNames);
     }
 
     [Fact]

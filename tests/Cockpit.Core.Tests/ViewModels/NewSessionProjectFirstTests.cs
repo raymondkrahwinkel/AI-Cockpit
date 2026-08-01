@@ -79,6 +79,61 @@ public class NewSessionProjectFirstTests
         Assert.Equal("/home/raymond/RiderProjects/AI-Cockpit", viewModel.WorkingDirectory);
     }
 
+    [Fact]
+    public async Task SelectingAProject_NamesTheSessionAfterIt()
+    {
+        var viewModel = Build([Project.Create("Cockpit"), Project.Create("Depot")]);
+        await viewModel.LoadAsync();
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+        Assert.Equal("Cockpit", viewModel.SessionName);
+
+        // Sticky: still ours, so switching projects re-fills it rather than leaving the old project's name behind.
+        viewModel.SelectedProject = viewModel.Projects[1];
+        Assert.Equal("Depot", viewModel.SessionName);
+
+        viewModel.SelectedProject = null;
+        Assert.Equal(string.Empty, viewModel.SessionName);
+    }
+
+    /// <summary>A name the operator typed is theirs — a project pick may not overwrite it, and it is not "composed".</summary>
+    [Fact]
+    public async Task ATypedSessionName_SurvivesPickingAProject()
+    {
+        var viewModel = Build([Project.Create("Cockpit")]);
+        await viewModel.LoadAsync();
+
+        viewModel.SessionName = "release triage";
+        viewModel.SelectedProject = viewModel.Projects[0];
+
+        Assert.Equal("release triage", viewModel.SessionName);
+
+        NewSessionResult? result = null;
+        viewModel.CloseRequested += value => result = value;
+        viewModel.ConfirmCommand.Execute(null);
+
+        Assert.Equal("release triage", result?.SessionName);
+        Assert.True(result?.NameIsChosen, "a typed name is one somebody meant");
+    }
+
+    /// <summary>Our own fill is a placeholder, so a ticket linked to the session later may still relabel it (#AC-310).</summary>
+    [Fact]
+    public async Task AProjectFilledSessionName_StartsAsComposed()
+    {
+        var viewModel = Build([Project.Create("Cockpit")]);
+        await viewModel.LoadAsync();
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+
+        NewSessionResult? result = null;
+        viewModel.CloseRequested += value => result = value;
+        viewModel.ConfirmCommand.Execute(null);
+
+        Assert.Equal("Cockpit", result?.SessionName);
+        Assert.True(result?.NameIsComposed);
+        Assert.False(result?.NameIsChosen);
+    }
+
     /// <summary>The project's folder overrides the profile's default — that ordering is the whole precedence rule.</summary>
     [Fact]
     public async Task SelectingAProject_ItsFolderWinsOverTheProfilesDefault()

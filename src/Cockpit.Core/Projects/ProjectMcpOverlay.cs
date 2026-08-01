@@ -24,10 +24,28 @@ public sealed record ProjectMcpOverlay
     public static ProjectMcpOverlay None { get; } = new();
 
     /// <summary>
-    /// Names of servers this project's sessions start <em>unticked</em>, matched case-insensitively against
-    /// <see cref="McpServerConfig.Name"/>. A pre-selection, not a removal (Raymond, 2026-07-24): the checklist
-    /// still lists every server, exactly as it does for a profile — the project only decides what is ticked when
-    /// it opens, and the operator can tick one back on for this session.
+    /// Names of servers this project's sessions start ticked, matched case-insensitively against
+    /// <see cref="McpServerConfig.Name"/> — or <see langword="null"/> for a project that made no MCP choice at all,
+    /// which starts every offered server ticked the way the registry intends.
+    /// <para>
+    /// Named the right way round on purpose (Raymond, 2026-08-01). It used to be <see cref="DisabledServerNames"/>
+    /// alone, and a server added to the registry afterwards was in nobody's off-list — so it arrived ticked in every
+    /// project, including the ones that had deliberately switched most servers off. A list of what is <em>on</em> has
+    /// no such hole: a server nobody has decided about is simply not in it, and a project that narrowed its servers
+    /// stays narrowed until the operator says otherwise.
+    /// </para>
+    /// <para>
+    /// A pre-selection, not a removal (Raymond, 2026-07-24): the checklist still lists every server, exactly as it
+    /// does for a profile — the project only decides what is ticked when it opens, and the operator can tick one back
+    /// on for this session.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string>? EnabledServerNames { get; init; }
+
+    /// <summary>
+    /// The older shape of the same choice: names this project's sessions start <em>unticked</em>. Read for projects
+    /// saved by an earlier build, which have no <see cref="EnabledServerNames"/> yet, and never written any more —
+    /// the project editor replaces it with the list above the first time such a project is saved.
     /// </summary>
     public IReadOnlyList<string> DisabledServerNames { get; init; } = [];
 
@@ -38,24 +56,28 @@ public sealed record ProjectMcpOverlay
     public IReadOnlyList<McpServerConfig> AdditionalServers { get; init; } = [];
 
     /// <summary>Whether this overlay would change anything, so a caller can skip the work for the common case of a project with no MCP choices.</summary>
-    public bool IsEmpty => DisabledServerNames.Count == 0 && AdditionalServers.Count == 0;
+    public bool IsEmpty => EnabledServerNames is null && DisabledServerNames.Count == 0 && AdditionalServers.Count == 0;
 
     /// <summary>
-    /// Whether <paramref name="serverName"/> starts ticked under this project — everything the checklist offers,
-    /// except what this project switched off. The rule a project brings: its answer stands where it has one, and
-    /// the profile's saved selection applies only to a session started without a project.
+    /// Whether <paramref name="serverName"/> starts ticked under this project. The rule a project brings: its answer
+    /// stands where it has one, and the profile's saved selection applies only to a session started without a project.
+    /// A project that has chosen ticks exactly what it chose — a server it has never seen is not one of them — and a
+    /// project that has chosen nothing ticks everything the checklist offers.
     /// </summary>
-    public bool IsSelectedByDefault(string serverName) =>
-        !DisabledServerNames.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase));
+    public bool IsSelectedByDefault(string serverName) => EnabledServerNames is { } enabled
+        ? enabled.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase))
+        : !DisabledServerNames.Any(name => string.Equals(name, serverName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// <paramref name="servers"/> as this project's sessions see them: its own servers replacing same-named ones
-    /// and appended otherwise. Nothing is removed — <see cref="DisabledServerNames"/> is a pre-selection, applied
-    /// where the checklist is built rather than here, so a project's servers are the registry's plus its own.
+    /// and appended otherwise. Nothing is removed — which servers start ticked is a pre-selection, applied where the
+    /// checklist is built rather than here, so a project's servers are the registry's plus its own.
     /// </summary>
     public IReadOnlyList<McpServerConfig> ApplyTo(IReadOnlyList<McpServerConfig> servers)
     {
-        if (IsEmpty)
+        // Only the project's own servers change this list; the pre-selection above does not, so a project that merely
+        // narrowed what starts ticked takes the same shortcut a project with no overlay at all does.
+        if (AdditionalServers.Count == 0)
         {
             return servers;
         }

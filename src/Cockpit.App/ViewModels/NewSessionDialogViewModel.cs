@@ -76,6 +76,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Set while a profile's default folder is being applied, so that programmatic set is not mistaken for the operator touching the field.</summary>
     private bool _applyingProfileWorkingDirectory;
 
+    /// <summary>Whether the operator has typed a session name themselves — after which picking a project no longer fills it with the project's name.</summary>
+    private bool _sessionNameTouched;
+
+    /// <summary>Set while a project's name is being applied, so that programmatic set is not mistaken for the operator typing one.</summary>
+    private bool _applyingProjectSessionName;
+
     /// <summary>Whether the operator has changed the MCP checklist themselves — after which a profile switch no longer re-applies the profile's pre-selection over their ticks (AC-130).</summary>
     private bool _mcpSelectionTouched;
 
@@ -739,6 +745,23 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(SelectedProjectDescription));
 
+        // A session started on a project opens under that project's name (Raymond, 2026-08-01) rather than
+        // "<profile> - N" — typing the name the row you right-clicked already carries is the same answer twice.
+        // Sticky like the folder below: switching projects keeps refilling it until the operator types their own,
+        // after which it is theirs; clearing the project clears our fill back out with it.
+        if (!_sessionNameTouched)
+        {
+            _applyingProjectSessionName = true;
+            try
+            {
+                SessionName = value?.Name ?? string.Empty;
+            }
+            finally
+            {
+                _applyingProjectSessionName = false;
+            }
+        }
+
         if (value?.DefaultProfileLabel is { Length: > 0 } label
             && Profiles.FirstOrDefault(profile => string.Equals(profile.Label, label, StringComparison.OrdinalIgnoreCase)) is { } matched)
         {
@@ -905,6 +928,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasRememberedPaths));
         OnPropertyChanged(nameof(IsWorkingDirectoryFavorite));
         OnPropertyChanged(nameof(FavoriteToggleGlyph));
+    }
+
+    // Anything but our own fill from the project is the operator naming the session; from there it is theirs, and a
+    // project switch no longer overwrites it — nor does the launch treat it as composed.
+    partial void OnSessionNameChanged(string value)
+    {
+        if (!_applyingProjectSessionName)
+        {
+            _sessionNameTouched = true;
+        }
     }
 
     partial void OnWorkingDirectoryChanged(string value)
@@ -1330,7 +1363,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             // A reading level is an SDK-only concept (AC-138); a TTY session carries none, so the override is left null there.
             IsSdk ? SelectedReadingLevel.Value : null,
             SelectedProject?.Id,
-            startDefaults.SystemPrompt));
+            startDefaults.SystemPrompt)
+        {
+            // A name we filled in from the project is the cockpit's, not the operator's — so it stays open to a ticket
+            // link relabelling it later, exactly as the quick-start's own composed name does (#AC-310/#AC-324).
+            NameIsComposed = !_sessionNameTouched,
+        });
     }
 
     [RelayCommand]

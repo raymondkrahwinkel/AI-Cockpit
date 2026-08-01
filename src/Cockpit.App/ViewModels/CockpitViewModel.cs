@@ -4768,11 +4768,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         if (_projectQuickStart is not null && await _projectQuickStart.ComposeAsync(project) is { } result)
         {
-            // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
-            // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
-            // numbering exists to prevent.
-            // Only the name changes; that it is composed came with the result, and stays with it (#AC-324).
-            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            // Only the name changes; that it is composed came with the result, and stays with it (#AC-324) — and being
+            // composed is also what gets it numbered against the sessions already open, in _LaunchSessionFromResultAsync.
+            await _LaunchSessionFromResultAsync(result with { SessionName = project.Name });
 
             return;
         }
@@ -4851,6 +4849,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (_sessionFactory is null || _ttySessionFactory is null)
         {
             return null;
+        }
+
+        // A second session on the same project is named "Cockpit 2", not a second "Cockpit": two identical rows in the
+        // sidebar is exactly the confusion numbering exists to prevent. Only a composed name is numbered — a name the
+        // operator typed is theirs and is started exactly as typed (#AC-324).
+        if (!result.NameIsChosen && result.SessionName is { Length: > 0 } composed)
+        {
+            result = result with { SessionName = _UniqueSessionTitle(composed) };
         }
 
         SessionPanelViewModel session = result.Kind == SessionKind.Sdk ? _sessionFactory() : _ttySessionFactory();
