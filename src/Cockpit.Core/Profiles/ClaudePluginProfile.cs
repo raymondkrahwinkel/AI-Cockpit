@@ -22,7 +22,7 @@ public static class ClaudePluginProfile
     /// <summary>
     /// Reads the <c>{configDir,executablePath}</c> blob a Claude plugin profile carries back into a
     /// <see cref="ClaudeConfig"/> — the inverse of <see cref="Create"/>. Host-side Claude features that predate the
-    /// plugin (the config directory the read-aloud/status transcript tailers locate the JSONL under, the login check)
+    /// plugin (the config directory the status transcript tailer locates the JSONL under, the login check)
     /// ask a profile for its <see cref="SessionProfile.Claude"/>; without this they would see <see langword="null"/>
     /// for a migrated profile and fall back to <c>~/.claude</c>, tailing the wrong directory for a non-default profile.
     /// A blank/unreadable blob yields a <see cref="ClaudeConfig"/> with an empty directory, which resolves to the CLI

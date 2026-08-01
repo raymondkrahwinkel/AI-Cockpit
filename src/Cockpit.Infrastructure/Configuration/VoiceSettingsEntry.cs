@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -18,36 +17,6 @@ internal sealed class VoiceSettingsEntry
     public bool? ModelAutoSelected { get; set; }
 
     public VoiceBackendPreference BackendPreference { get; set; } = VoiceBackendPreference.Auto;
-
-    public bool CleanupEnabled { get; set; } = true;
-
-    public bool AutoDetectLocalLlm { get; set; } = true;
-
-    public LocalLlmPreference LocalLlmPreference { get; set; } = LocalLlmPreference.Auto;
-
-    /// <summary>Model id for the shared voice-LLM step. Null when neither this nor a legacy key was written; migrated/defaulted in <see cref="ToDomain"/>.</summary>
-    public string? VoiceLlmModel { get; set; }
-
-    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio) for the shared voice-LLM step. Null when neither this nor a legacy key was written.</summary>
-    public string? VoiceLlmBaseUrl { get; set; }
-
-    /// <summary>
-    /// Legacy on-disk keys from before the cleanup config was renamed to the shared, provider-neutral voice-LLM
-    /// config: <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/> were the previous names, and
-    /// <see cref="OllamaBaseUrl"/> the Ollama-specific one before that. All are read to migrate an existing config
-    /// but never written back (see <see cref="FromDomain"/>), so once the file is next saved only the
-    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> keys persist.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? CleanupModel { get; set; }
-
-    /// <inheritdoc cref="CleanupModel"/>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? CleanupBaseUrl { get; set; }
-
-    /// <inheritdoc cref="CleanupModel"/>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? OllamaBaseUrl { get; set; }
 
     public string PushToTalkKeyName { get; set; } = "F9";
 
@@ -71,20 +40,6 @@ internal sealed class VoiceSettingsEntry
 
     public string OutputDeviceName { get; set; } = "";
 
-    /// <summary>How read-aloud renders a reply (#35). Null when neither this nor the legacy naturalize flag was written.</summary>
-    public ReadAloudMode? ReadAloudMode { get; set; }
-
-    /// <summary>How a turn-start acknowledgement is produced (AC-99). Null when written before this key existed — read at the default (instant presets) in <see cref="ToDomain"/>.</summary>
-    public TurnAckMode? TurnAckMode { get; set; }
-
-    /// <summary>
-    /// Legacy on-disk on/off naturalize flag from before read-aloud gained the three-way mode. Read to migrate an
-    /// existing config (<c>true</c> → Naturalized, otherwise Verbatim); never written back (see <see cref="FromDomain"/>),
-    /// so once the file is next saved the <see cref="ReadAloudMode"/> key is what persists.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? NaturalizeReadAloud { get; set; }
-
     public bool OpenMicEnabled { get; set; }
 
     public int OpenMicSilenceTimeoutMs { get; set; } = 800;
@@ -99,15 +54,6 @@ internal sealed class VoiceSettingsEntry
         ModelName = settings.ModelName,
         ModelAutoSelected = settings.ModelAutoSelected,
         BackendPreference = settings.BackendPreference,
-        CleanupEnabled = settings.CleanupEnabled,
-        AutoDetectLocalLlm = settings.AutoDetectLocalLlm,
-        LocalLlmPreference = settings.LocalLlmPreference,
-        VoiceLlmModel = settings.VoiceLlmModel,
-        VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl,
-        // Legacy keys are migration-only: never written back, so they stay null and drop out of the file.
-        CleanupModel = null,
-        CleanupBaseUrl = null,
-        OllamaBaseUrl = null,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
@@ -120,10 +66,6 @@ internal sealed class VoiceSettingsEntry
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
-        ReadAloudMode = settings.ReadAloudMode,
-        TurnAckMode = settings.TurnAckMode,
-        // Legacy naturalize flag is migration-only: never written back, so it stays null and drops out of the file.
-        NaturalizeReadAloud = null,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -134,13 +76,6 @@ internal sealed class VoiceSettingsEntry
         // it to the recommendation behind the operator's back.
         ModelAutoSelected = ModelAutoSelected ?? false,
         BackendPreference = BackendPreference,
-        CleanupEnabled = CleanupEnabled,
-        AutoDetectLocalLlm = AutoDetectLocalLlm,
-        LocalLlmPreference = LocalLlmPreference,
-        // Prefer the neutral key; fall back through the renamed-cleanup key. Neither present = "Auto" (empty).
-        VoiceLlmModel = VoiceLlmModel ?? CleanupModel ?? "",
-        // Prefer the neutral key; fall back through the renamed-cleanup and older Ollama keys so an existing config migrates cleanly.
-        VoiceLlmBaseUrl = VoiceLlmBaseUrl ?? CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
@@ -149,12 +84,6 @@ internal sealed class VoiceSettingsEntry
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,
-        // Prefer the three-way key; fall back to the legacy on/off naturalize flag so an existing config keeps its
-        // behaviour (naturalize on → Naturalized, otherwise Verbatim) rather than silently resetting to Verbatim.
-        ReadAloudMode = ReadAloudMode
-            ?? (NaturalizeReadAloud == true ? Cockpit.Core.Voice.ReadAloudMode.Naturalized : Cockpit.Core.Voice.ReadAloudMode.Verbatim),
-        // A config saved before this key existed defaults to instant presets — the same fresh-install default.
-        TurnAckMode = TurnAckMode ?? Cockpit.Core.Voice.TurnAckMode.InstantPhrases,
         OpenMicEnabled = OpenMicEnabled,
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,

@@ -26,20 +26,6 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
         EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    public async IAsyncEnumerable<string> ReadAssistantTextAsync(
-        string configJson,
-        IReadOnlySet<string> knownTranscriptsAtLaunch,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var reading in ReadActivityAsync(configJson, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false))
-        {
-            if (reading.RawLine is { } line && TryExtractAssistantText(line, out var assistantText))
-            {
-                yield return assistantText;
-            }
-        }
-    }
-
     public async IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(
         string configJson,
         IReadOnlySet<string> knownTranscriptsAtLaunch,
@@ -145,59 +131,6 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
         catch (JsonException)
         {
             return PluginSessionActivity.None;
-        }
-    }
-
-    /// <summary>
-    /// Extracts the assistant's spoken-worthy text from an <c>event_msg</c>/<c>agent_message</c> line, for the
-    /// read-aloud feature (#35b). Codex tags every <c>agent_message</c> with a <c>phase</c> — <c>commentary</c>
-    /// for the running narration it writes while a turn is still in flight, <c>final_answer</c> for the one it
-    /// settles on — and only <c>final_answer</c> is read aloud; without this filter every intermediate
-    /// commentary line would be spoken too, which is not the "one assistant reply per turn" shape read-aloud
-    /// was built for. A line with no <c>phase</c> at all is treated as speakable (fail-open, since that is the
-    /// shape the rest of this reader already assumes for every other field).
-    /// </summary>
-    internal static bool TryExtractAssistantText(string jsonLine, out string assistantText)
-    {
-        assistantText = string.Empty;
-        try
-        {
-            using var document = JsonDocument.Parse(jsonLine);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("type", out var typeElement)
-                || typeElement.ValueKind != JsonValueKind.String
-                || typeElement.GetString() != "event_msg"
-                || !root.TryGetProperty("payload", out var payload)
-                || payload.ValueKind != JsonValueKind.Object
-                || !payload.TryGetProperty("type", out var payloadType)
-                || payloadType.ValueKind != JsonValueKind.String
-                || payloadType.GetString() != "agent_message"
-                || !payload.TryGetProperty("message", out var message)
-                || message.ValueKind != JsonValueKind.String)
-            {
-                return false;
-            }
-
-            if (payload.TryGetProperty("phase", out var phase)
-                && phase.ValueKind == JsonValueKind.String
-                && phase.GetString() == "commentary")
-            {
-                return false;
-            }
-
-            var text = message.GetString();
-            if (string.IsNullOrEmpty(text))
-            {
-                return false;
-            }
-
-            assistantText = text;
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
         }
     }
 

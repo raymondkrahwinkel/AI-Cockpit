@@ -297,7 +297,7 @@
          const; a driver that never reads it is unaffected. Additions only — a minor; major and abstractionsVersion
          stay 1. A plugin that reads the key raises its manifest's minHostVersion, since an older host states nothing
          and the key would simply be absent. -->
-    <Version>1.44.0</Version>
+    <Version>1.45.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

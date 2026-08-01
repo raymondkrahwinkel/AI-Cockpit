@@ -24,37 +24,6 @@ public sealed record VoiceSettings
 
     public VoiceBackendPreference BackendPreference { get; init; } = VoiceBackendPreference.Auto;
 
-    /// <summary>Whether the raw transcript is passed through the local Ollama cleanup step (punctuation/filler removal) before injection.</summary>
-    public bool CleanupEnabled { get; init; } = true;
-
-    /// <summary>
-    /// When true, the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) auto-detects the
-    /// running local server (Ollama or LM Studio, via the same process detection as the memory breakdown) and
-    /// reads its model list, rather than using <see cref="VoiceLlmBaseUrl"/>/<see cref="VoiceLlmModel"/>
-    /// directly — those become the fallback when nothing is detected. On by default so a laptop on Ollama and a
-    /// desktop on LM Studio both work without per-machine setup.
-    /// </summary>
-    public bool AutoDetectLocalLlm { get; init; } = true;
-
-    /// <summary>Which detected server auto-detect prefers when both Ollama and LM Studio are running. Ignored when auto-detect is off.</summary>
-    public LocalLlmPreference LocalLlmPreference { get; init; } = LocalLlmPreference.Auto;
-
-    /// <summary>
-    /// Model id the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) asks the local server
-    /// for. Preferred over an auto-picked model when auto-detect finds it on the server. Empty means "Auto" — no
-    /// explicit choice, let the server's model list decide (the default). <c>gemma3:4b</c> reads Dutch best and
-    /// <c>qwen2.5:3b</c> is a safe fallback if you pick one by hand.
-    /// </summary>
-    public string VoiceLlmModel { get; init; } = "";
-
-    /// <summary>
-    /// Base URL of the local OpenAI-compatible LLM server the shared voice-LLM step calls — Ollama
-    /// (<c>http://localhost:11434</c>) or LM Studio (<c>http://localhost:1234</c>), and any other server that
-    /// speaks the same API. Stored without the <c>/v1</c> suffix; the OpenAI SDK appends <c>/v1</c>. One
-    /// endpoint serves both STT cleanup and read-aloud naturalize/summarize.
-    /// </summary>
-    public string VoiceLlmBaseUrl { get; init; } = "http://localhost:11434";
-
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     public string PushToTalkKeyName { get; init; } = "F9";
 
@@ -105,23 +74,6 @@ public sealed record VoiceSettings
 
     /// <summary>Name of the playback device read-aloud (#35) plays to. Empty = the system default device; same name-matching and fallback as <see cref="InputDeviceName"/>.</summary>
     public string OutputDeviceName { get; init; } = "";
-
-    /// <summary>
-    /// How read-aloud (#35) renders a reply before speaking it: <see cref="Cockpit.Core.Voice.ReadAloudMode.Verbatim"/>
-    /// (no LLM pass), <see cref="Cockpit.Core.Voice.ReadAloudMode.Naturalized"/> (rewrite into natural speech) or
-    /// <see cref="Cockpit.Core.Voice.ReadAloudMode.Summarized"/> (summarize to the essence). The last two reuse
-    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> and add a local LLM call per turn. A fresh install
-    /// starts on Verbatim; a config saved before this key existed migrates from the old on/off naturalize flag.
-    /// </summary>
-    public ReadAloudMode ReadAloudMode { get; init; } = ReadAloudMode.Verbatim;
-
-    /// <summary>
-    /// How a turn-start acknowledgement is produced (AC-99) — the short "let me take a look" spoken the moment the
-    /// agent starts working, so a voice conversation is not met with silence. <see cref="Cockpit.Core.Voice.TurnAckMode.InstantPhrases"/>
-    /// (a rotating preset, instant) by default; <see cref="Cockpit.Core.Voice.TurnAckMode.LocalLlm"/> asks the local
-    /// model for a contextual line (falling back to a preset). Only spoken when read-aloud is on.
-    /// </summary>
-    public TurnAckMode TurnAckMode { get; init; } = TurnAckMode.InstantPhrases;
 
     /// <summary>
     /// When true, open-mic dictation listens continuously and detects speech start/stop itself (VAD

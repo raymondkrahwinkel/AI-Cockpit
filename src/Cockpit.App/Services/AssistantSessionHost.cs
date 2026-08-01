@@ -8,7 +8,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
-using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -310,14 +309,10 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// word, and <c>ReadAloudLanguage</c> "en", which would have read Dutch replies in an English voice. The
     /// operator heard nothing at all and there was nothing on screen to say why.
     /// <para>
-    /// <b>Verbatim, and stated rather than left to the default.</b> <see cref="ReadAloudMode.Naturalized"/> and
-    /// <see cref="ReadAloudMode.Summarized"/> both send the reply through the local-LLM cleanup service first, and
-    /// AC-542 decision 10 is explicit that the assistant's words go out one-to-one: what shortens a 300-word answer
-    /// is <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. That is also why this is set on the
-    /// session rather than followed from the operator's global read-aloud mode — their choice there is about
-    /// sessions, and picking Summarized for those must not quietly put an LLM back in the assistant's path. The
-    /// mode's own default happens to be Verbatim today; written out anyway, because a default that changes
-    /// elsewhere would reintroduce the pipeline this epic is removing, silently.
+    /// <b>Read-aloud speaks the reply verbatim, never a rewrite.</b> AC-542 decision 10 is explicit that the
+    /// assistant's words go out one-to-one: what shortens a 300-word answer is
+    /// <see cref="AssistantSystemPrompt.Default"/>, not a rewrite afterwards. Read-aloud has no rewrite step left
+    /// to pick a mode for (AC-546) — it only ever extracts and speaks the prose as-is.
     /// </para>
     /// <para>
     /// The voice and language do follow the operator's settings, read off the cockpit's already-resolved
@@ -326,17 +321,6 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// </remarks>
     private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
     {
-        session.ReadAloudMode = ReadAloudMode.Verbatim;
-
-        // The second door to the same local model, and the one that is easy to miss: the turn acknowledgement
-        // (AC-99) has a LocalLlm mode that writes its short "let me look" line with the cleanup service. Pinned to
-        // the preset phrases — instant, no model call — so no local model is ever reached from here either.
-        // Today the assistant keeps this value only because the operator's choice is fanned out by walking
-        // `Sessions`, which it is not in; that is an accident of where it sits, not a rule, and it would stop
-        // protecting anything the day someone adds the assistant to that loop. Raymond, 2026-08-01: a local model
-        // is the operator's to choose as the Assistant Profile and nowhere else — never machinery underneath it.
-        session.TurnAckMode = TurnAckMode.InstantPhrases;
-
         // One synthesis for the whole reply instead of one per sentence. Measured on this machine, sentence-by-
         // sentence spent about as long synthesising as speaking, so every full stop came with an audible hole in
         // it — for a surface whose entire output is speech, that is not a rough edge but the product.

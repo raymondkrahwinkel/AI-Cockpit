@@ -37,108 +37,6 @@ public class CodexTranscriptReaderTests : IDisposable
         Assert.Equal(expected, CodexTranscriptReader.ClassifyLine(line));
 
     [Fact]
-    public void TryExtractAssistantText_ReadsAnAgentMessage()
-    {
-        var extracted = CodexTranscriptReader.TryExtractAssistantText(
-            """{"type":"event_msg","payload":{"type":"agent_message","message":"Afgesloten.","phase":"final_answer"}}""",
-            out var text);
-
-        Assert.True(extracted);
-        Assert.Equal("Afgesloten.", text);
-    }
-
-    [Theory]
-    [InlineData("""{"type":"event_msg","payload":{"type":"task_started"}}""")]
-    [InlineData("""{"type":"event_msg","payload":{"type":"agent_message","message":""}}""")]
-    [InlineData("""{"type":"response_item","payload":{"type":"message"}}""")]
-    public void TryExtractAssistantText_IgnoresNonAgentMessageOrEmptyText(string line) =>
-        Assert.False(CodexTranscriptReader.TryExtractAssistantText(line, out _));
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_ReadsContentAlreadyInTheFileWhenTailingStarts()
-    {
-        // Unlike Claude (whose transcript is created empty at launch, so anything already in it predates the
-        // session and is safe to skip), a codex rollout can already hold this session's own opening content by
-        // the time the reader notices it — see ReadActivityAsync_WhenTheFileAppearsAlreadyContainingTaskStarted
-        // for why skipping to the end drops that. This is the ReadAssistantTextAsync-facing side of the same fix.
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        await File.WriteAllTextAsync(transcriptPath, _AgentMessageLine("Already there when the tail started.") + "\n");
-
-        var reader = new CodexTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
-        {
-            received.Add(text);
-            break;
-        }
-
-        Assert.Equal("Already there when the tail started.", Assert.Single(received));
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_SkipsNonAgentMessageLines()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-
-        var firstLine = await _ConsumeOneLineAsync(transcriptPath, appendAfterStarting:
-        [
-            """{"type":"event_msg","payload":{"type":"task_started"}}""" + "\n" +
-            """{"type":"event_msg","payload":{"type":"user_message","message":"ignored"}}""" + "\n" +
-            """{"type":"response_item","payload":{"type":"reasoning"}}""" + "\n" +
-            _AgentMessageLine("The only line worth reading.") + "\n",
-        ]);
-
-        Assert.Equal("The only line worth reading.", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_BuffersAPartialLine_UntilItsNewlineArrivesInALaterWrite()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-        var fullLine = _AgentMessageLine("Split across two separate writes.");
-        var splitPoint = fullLine.Length / 2;
-
-        var firstLine = await _ConsumeOneLineAsync(
-            transcriptPath,
-            appendAfterStarting: [fullLine[..splitPoint]],
-            thenDelay: TimeSpan.FromMilliseconds(400),
-            appendAfterDelay: [fullLine[splitPoint..] + "\n"]);
-
-        Assert.Equal("Split across two separate writes.", firstLine);
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_WhenTheTranscriptDoesNotExistYet_WaitsForItThenTailsIt()
-    {
-        var sessionDayDir = Path.Combine(_configDir, "sessions", "2026", "07", "30");
-        var reader = new CodexTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                received.Add(text);
-                break;
-            }
-        });
-
-        // Nothing under sessions/ yet — the reader must keep polling instead of giving up.
-        await Task.Delay(400);
-        Directory.CreateDirectory(sessionDayDir);
-        var transcriptPath = Path.Combine(sessionDayDir, $"rollout-2026-07-30T12-00-00-{Guid.NewGuid()}.jsonl");
-        await File.WriteAllTextAsync(transcriptPath, string.Empty);
-
-        // Let the reader notice the (empty) file and seek to its end before anything is written to it.
-        await Task.Delay(500);
-        await File.AppendAllTextAsync(transcriptPath, _AgentMessageLine("Appeared after the launch.") + "\n");
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal("Appeared after the launch.", Assert.Single(received));
-    }
-
-    [Fact]
     public async Task ReadActivityAsync_YieldsBusyOnTaskStarted_ThenTurnCompleteOnTaskComplete()
     {
         // The bug this guards (AC-171): with no reader wired at all, the host never learns of either event, so
@@ -247,9 +145,9 @@ public class CodexTranscriptReaderTests : IDisposable
         var consumeTask = Task.Run(async () =>
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, baseline, cts.Token))
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, baseline, cts.Token))
             {
-                return text;
+                return reading.RawLine;
             }
 
             return null;
@@ -259,7 +157,7 @@ public class CodexTranscriptReaderTests : IDisposable
         await File.AppendAllTextAsync(transcriptPath, _AgentMessageLine("new session's own text") + "\n");
 
         var result = await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal("new session's own text", result);
+        Assert.Contains("new session's own text", result);
     }
 
     [Fact]
@@ -279,10 +177,13 @@ public class CodexTranscriptReaderTests : IDisposable
             var received = new List<string>();
             var consumeTask = Task.Run(async () =>
             {
-                await foreach (var text in reader.ReadAssistantTextAsync(blankConfigJson, NoBaseline, cts.Token))
+                await foreach (var reading in reader.ReadActivityAsync(blankConfigJson, NoBaseline, cts.Token))
                 {
-                    received.Add(text);
-                    break;
+                    if (reading.RawLine is { } line)
+                    {
+                        received.Add(line);
+                        break;
+                    }
                 }
             });
 
@@ -290,26 +191,12 @@ public class CodexTranscriptReaderTests : IDisposable
             await File.AppendAllTextAsync(transcriptPath, _AgentMessageLine("via CODEX_HOME") + "\n");
 
             await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal("via CODEX_HOME", Assert.Single(received));
+            Assert.Contains("via CODEX_HOME", Assert.Single(received));
         }
         finally
         {
             Environment.SetEnvironmentVariable("CODEX_HOME", previous);
         }
-    }
-
-    [Fact]
-    public async Task ReadAssistantTextAsync_SkipsCommentaryPhase_ButReadsFinalAnswer()
-    {
-        var transcriptPath = _CreateEmptyTranscriptFile();
-
-        var firstLine = await _ConsumeOneLineAsync(transcriptPath, appendAfterStarting:
-        [
-            """{"type":"event_msg","payload":{"type":"agent_message","phase":"commentary","message":"still working on it"}}""" + "\n" +
-            """{"type":"event_msg","payload":{"type":"agent_message","phase":"final_answer","message":"Here is the answer."}}""" + "\n",
-        ]);
-
-        Assert.Equal("Here is the answer.", firstLine);
     }
 
     [Fact]
@@ -339,43 +226,6 @@ public class CodexTranscriptReaderTests : IDisposable
         Assert.Equal(2, received.Count);
         Assert.Contains("\"token_count\"", received[0]);
         Assert.Contains("\"agent_message\"", received[1]);
-    }
-
-    private async Task<string> _ConsumeOneLineAsync(
-        string transcriptPath,
-        IReadOnlyList<string> appendAfterStarting,
-        TimeSpan? thenDelay = null,
-        IReadOnlyList<string>? appendAfterDelay = null)
-    {
-        var reader = new CodexTranscriptReader();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var received = new List<string>();
-        var consumeTask = Task.Run(async () =>
-        {
-            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
-            {
-                received.Add(text);
-                break;
-            }
-        });
-
-        await Task.Delay(500);
-        foreach (var line in appendAfterStarting)
-        {
-            await File.AppendAllTextAsync(transcriptPath, line);
-        }
-
-        if (thenDelay is { } delay)
-        {
-            await Task.Delay(delay);
-            foreach (var line in appendAfterDelay ?? [])
-            {
-                await File.AppendAllTextAsync(transcriptPath, line);
-            }
-        }
-
-        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        return Assert.Single(received);
     }
 
     private string _CreateEmptyTranscriptFile()

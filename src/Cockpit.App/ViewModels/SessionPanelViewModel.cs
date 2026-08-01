@@ -1221,7 +1221,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
-    private ITranscriptCleanupService? _cleanupService;
     private IOpenMicState? _openMicState;
 
     /// <summary>
@@ -1230,17 +1229,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <c>PushToTalkKeyGate</c>), so a held key does not transcribe the same speech the open mic already is.
     /// </summary>
     public bool OpenMicActive => _openMicState?.IsListening ?? false;
-
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how a reply is rendered before read-aloud synthesis (verbatim / naturalized / summarized) (#35).</summary>
-    [ObservableProperty]
-    private ReadAloudMode _readAloudMode = ReadAloudMode.Verbatim;
-
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TurnAckMode"/>: how a turn-start acknowledgement is produced (off / preset phrase / local LLM) (AC-99).</summary>
-    [ObservableProperty]
-    private TurnAckMode _turnAckMode = TurnAckMode.InstantPhrases;
-
-    // Rotates the preset acknowledgement phrases so back-to-back turns do not repeat the same one.
-    private int _turnAckPhraseIndex;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -1308,11 +1296,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _readAloudLanguage = "en";
 
     /// <summary>
-    /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
-    /// and enqueued for TTS playback. Shared on the base since both session kinds offer the toggle, even
-    /// though the source differs — the SDK session reads its already-open event stream at turn
-    /// completion, the TTY session tails the live JSONL transcript (see
-    /// <see cref="OnReadAloudToggleChanged"/>). Ephemeral runtime state, off by default.
+    /// Per-session read-aloud toggle (#35): when true, completed assistant replies are extracted and
+    /// enqueued for TTS playback as the SDK session's event stream completes a turn. Shared on the base
+    /// (the assistant's own session sets it directly, with no header button of its own). Ephemeral
+    /// runtime state, off by default.
     /// </summary>
     [ObservableProperty]
     private bool _readResponsesAloud;
@@ -1325,17 +1312,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             _voicePlaybackQueue?.StopAll();
         }
-
-        OnReadAloudToggleChanged(value);
-    }
-
-    /// <summary>
-    /// Hook for a session kind whose read-aloud source needs starting/stopping when the toggle flips.
-    /// No-op by default (the SDK session needs no separate start/stop — it just checks the flag at each
-    /// turn completion); the TTY session overrides this to begin/end tailing the transcript.
-    /// </summary>
-    protected virtual void OnReadAloudToggleChanged(bool isEnabled)
-    {
     }
 
     /// <summary>
@@ -1347,13 +1323,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoicePushToTalkService? voicePushToTalk,
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
-        _cleanupService = cleanupService;
         _openMicState = openMicState;
 
         if (voiceSettingsStore is not null)
@@ -1371,51 +1345,62 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceSid = settings.TtsVoiceSid;
         ReadAloudLanguage = settings.ReadAloudLanguage;
-        ReadAloudMode = settings.ReadAloudMode;
-        TurnAckMode = settings.TurnAckMode;
     }
 
     /// <summary>
-    /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
-    /// natural spoken sentences via the local LLM when <see cref="ReadAloudMode"/> is Naturalized or Summarized
-    /// (falling back to the plain extracted prose if the LLM is unavailable). The extractor already strips
-    /// code/tables and swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
-    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies speak each segment in its own language. A no-op
-    /// when the playback queue was never wired (design-time/tests) or there is nothing to say. Shares the one
-    /// rendering path with the Options "Test" button via <see cref="ReadAloudPipeline"/>.
+    /// Extracts the prose from assistant text and enqueues it for read-aloud (#35). The extractor strips
+    /// code/tables and swaps paths/URLs for spoken words before anything is queued. A no-op when the playback
+    /// queue was never wired (design-time/tests) or there is nothing to say.
     /// </summary>
-    protected Task EnqueueReadAloudAsync(string text) =>
-        _voicePlaybackQueue is null
-            ? Task.CompletedTask
-            : ReadAloudPipeline.SpeakAsync(
-                _voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage,
-                ReadAloudAsOneUtterance);
-
-    /// <summary>
-    /// Whether this session's replies are spoken as one synthesis rather than sentence by sentence — see
-    /// <see cref="ReadAloudPipeline.SpeakAsync"/>'s <c>asOneUtterance</c> for the measurement behind it. False
-    /// here, because a session's reply can run for paragraphs; the assistant sets it, because its answers are
-    /// short by instruction and the gaps between sentences are the whole of how it sounds.
-    /// </summary>
-    public bool ReadAloudAsOneUtterance { get; set; }
-
-    /// <summary>
-    /// Speaks a short acknowledgement as a turn starts (AC-99) so a voice conversation is not met with silence while
-    /// the agent works. Only when read-aloud is on (the operator is already listening to the cockpit) and a queue is
-    /// wired; the mode picks a rotating preset phrase or a local-LLM line (which falls back to a preset). Shares the
-    /// barge-in-aware playback queue, so a push-to-talk hold cuts it off like any other read-aloud. Fire-and-forget,
-    /// the same as <see cref="EnqueueReadAloudAsync"/> — the acknowledgement is a nicety, never load-bearing.
-    /// </summary>
-    protected async Task SpeakTurnAcknowledgmentAsync(string userMessage)
+    protected Task EnqueueReadAloudAsync(string text)
     {
-        if (_voicePlaybackQueue is null || !ReadResponsesAloud || TurnAckMode == TurnAckMode.Off)
+        if (_voicePlaybackQueue is null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        _turnAckPhraseIndex = await TurnAcknowledgmentPipeline.SpeakAsync(
-            _voicePlaybackQueue, _cleanupService, TurnAckMode, _turnAckPhraseIndex, userMessage, TtsVoiceSid, ReadAloudLanguage);
+        var sentences = TtsProseExtractor.Extract(text);
+        if (ReadAloudAsOneUtterance && sentences.Count > 1)
+        {
+            // Joined after extraction, not instead of it: the extractor is what strips code blocks and tables
+            // out of something that would otherwise be read character by character, and that job is unrelated
+            // to how many clips the result is spoken in.
+            sentences = [string.Join(" ", sentences)];
+        }
+
+        if (sentences.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Show the overlay now: the first synthesis (and any first-use model download) runs before a word is
+        // heard, and that gap otherwise reads as nothing happening.
+        _voicePlaybackQueue.NotifyPreparing();
+        var generation = _voicePlaybackQueue.Generation;
+
+        // A barge-in that lands synchronously while NotifyPreparing's event is still firing bumps the
+        // generation before this line runs — drop this batch instead of speaking over the interrupt the
+        // operator just made.
+        if (_voicePlaybackQueue.Generation != generation)
+        {
+            return Task.CompletedTask;
+        }
+
+        _voicePlaybackQueue.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage);
+        return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Whether this session's replies are spoken as one synthesis rather than sentence by sentence. The queue
+    /// normally synthesises one sentence ahead while the previous plays, which is right when the reply is long:
+    /// you hear the first sentence within a second instead of waiting for the whole thing. It only works while
+    /// synthesis keeps up with playback, and measured on this machine it does not — four short sentences took
+    /// 14.7 seconds to get through about 8 seconds of speech, so roughly half of it was silence at the sentence
+    /// boundaries. False here, because a session's reply can run for paragraphs and one synthesis would be a
+    /// long silence before the first word; the assistant sets it, because its answers are short by instruction
+    /// and the gaps between sentences are the whole of how it sounds.
+    /// </summary>
+    public bool ReadAloudAsOneUtterance { get; set; }
 
     /// <summary>
     /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
@@ -1447,7 +1432,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// Ends the push-to-talk hold (KeyUp), transcribes it, and hands any resulting text to
     /// <see cref="OnVoiceTextReady"/> for this session kind to inject. No-op when voice was never wired.
     /// </summary>
-    public async Task EndVoiceHoldAsync(bool applyCleanup)
+    public async Task EndVoiceHoldAsync()
     {
         if (_voicePushToTalk is null)
         {
@@ -1468,7 +1453,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _voicePushToTalk.Prepared += OnPrepared;
         try
         {
-            var text = await _voicePushToTalk.EndHoldAsync(applyCleanup);
+            var text = await _voicePushToTalk.EndHoldAsync();
             VoiceStatus = string.Empty;
             if (!string.IsNullOrEmpty(text))
             {

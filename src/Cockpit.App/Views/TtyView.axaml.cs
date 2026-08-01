@@ -295,14 +295,14 @@ public partial class TtyView : UserControl
         }
     }
 
-    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes without cleanup — see <see cref="TtyViewModel.OnVoiceTextReady"/>.</summary>
+    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes — see <see cref="TtyViewModel.OnVoiceTextReady"/>.</summary>
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (_viewModel is { } vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive))
         {
             e.Handled = true;
-            _ = vm.EndVoiceHoldAsync(applyCleanup: false);
+            _ = vm.EndVoiceHoldAsync();
         }
     }
 

@@ -46,8 +46,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private const string PreparingStatus = "Preparing…";
 
     // Finished utterances wait here to be injected one at a time, in the order they were spoken. Without this,
-    // each injection was fire-and-forget and its STT-cleanup call ran concurrently, so a shorter utterance's
-    // faster cleanup could overtake a longer one spoken before it and land out of order.
+    // each injection was fire-and-forget, so a shorter utterance's faster send could overtake a longer one
+    // spoken before it and land out of order.
     private readonly Channel<string> _injections =
         Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
 
@@ -296,8 +296,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _overlay.PushLevel(level);
     }
 
-    // Queue rather than inject inline: the injection (STT cleanup + inject) is awaited one at a time by the
-    // consumer, so utterances land in spoken order.
+    // Queue rather than inject inline: the injection is awaited one at a time by the consumer, so utterances
+    // land in spoken order.
     private void _OnUtteranceTranscribed(object? sender, string rawText) => _injections.Writer.TryWrite(rawText);
 
     private async Task _ConsumeInjectionsAsync()
@@ -305,7 +305,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         await foreach (var rawText in _injections.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             // Inject on the UI thread and wait for it to finish before taking the next, so a shorter utterance's
-            // faster cleanup can never overtake a longer one spoken before it.
+            // faster send can never overtake a longer one spoken before it.
             var done = new TaskCompletionSource();
             Dispatcher.UIThread.Post(async () =>
             {
@@ -329,10 +329,10 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     /// <summary>Test seam: the UI-thread logic that hands one finished utterance to the assistant.</summary>
     /// <remarks>
-    /// The pill is released here rather than on <c>SpeechEnded</c>: the cleanup pass runs between the two, and a
-    /// spinner that stops before the text lands would be a spinner that lied about the last part of the wait.
-    /// Released in a finally — an utterance that fails to clean up or inject still ends, and the alternative is a
-    /// pill spinning over a sentence that is never coming.
+    /// The pill is released here rather than on <c>SpeechEnded</c>: sending runs between the two, and a spinner
+    /// that stops before the text lands would be a spinner that lied about the last part of the wait. Released
+    /// in a finally — an utterance that fails to send still ends, and the alternative is a pill spinning over a
+    /// sentence that is never coming.
     /// </remarks>
     internal async Task InjectUtteranceAsync(string rawText)
     {

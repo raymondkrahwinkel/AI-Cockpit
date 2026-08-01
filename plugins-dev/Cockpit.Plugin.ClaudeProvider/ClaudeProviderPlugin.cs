@@ -52,7 +52,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             ])
         {
             // The provider-specific behaviours the host used to hold in-tree, now owned here (weg A) and reached
-            // through the generic registration seams: read-aloud/status tail this plugin's own JSONL transcript,
+            // through the generic registration seams: the status tail reads this plugin's own JSONL transcript,
             // the login gate checks its own .credentials.json, and self-detection finds its own config dirs — so
             // the core carries no Claude-format knowledge and Codex can fill the same seams for its own routes.
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),

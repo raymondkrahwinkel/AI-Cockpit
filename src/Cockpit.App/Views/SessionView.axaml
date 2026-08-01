@@ -132,14 +132,6 @@
                             </Flyout>
                         </Button.Flyout>
                     </Button>
-                    <!-- A speaker, struck through when off (#73): the header is a strip, and the word cost more
-                         room than the thing it names. The tooltip carries what the icon cannot say. -->
-                    <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
-                                  VerticalAlignment="Center"
-                                  ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
-                        <materialIcons:MaterialIcon Kind="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
-                                                     Width="14" Height="14"/>
-                    </ToggleButton>
                     <ToggleButton Content="Allow all tools" IsChecked="{Binding AutoApproveTools}" Classes="Compact"
                                   VerticalAlignment="Center"
                                   IsVisible="{Binding ShowToolAutoApprove}"
@@ -588,21 +580,13 @@
                                         <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
                                                    Text="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).Title}"/>
                                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"/>
-                                        <!-- On-demand read-aloud (#35) works even when the session Read-aloud toggle
-                                             is off; Copy hands over the reply's markdown source verbatim. -->
+                                        <!-- Copy hands over the reply's markdown source verbatim. -->
                                         <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                                     HorizontalAlignment="Left">
                                             <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
                                                     Foreground="{StaticResource CockpitTextFaintBrush}"
                                                     ToolTip.Tip="Copy this reply">
                                                 <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
-                                            </Button>
-                                            <Button Classes="Subtle Compact"
-                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                    Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip.Tip="Read this reply aloud">
-                                                <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13"/>
                                             </Button>
                                         </StackPanel>
                                     </StackPanel>

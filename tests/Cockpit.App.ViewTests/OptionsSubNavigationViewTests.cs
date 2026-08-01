@@ -7,7 +7,7 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-69: the Options redesign keeps the top tab-bar but splits a tab into left-rail sub-pages. Voice is the
-/// fully-worked example — Read-aloud · Transcribe · Cleanup, one page at a time — and the rail drives which page
+/// fully-worked example — Read-aloud · Transcribe · Assistant, one page at a time — and the rail drives which page
 /// shows. This pins that wiring: a XAML rename of the sub-nav or its element-name binding to the Carousel would
 /// otherwise only surface by opening the dialog and clicking, which no unit test does.
 /// </summary>
@@ -15,7 +15,7 @@ namespace Cockpit.App.ViewTests;
 public class OptionsSubNavigationViewTests
 {
     [Fact]
-    public void TheVoiceTab_SplitsIntoFourSubPages_TheRailDrivesWhichShows() => HeadlessAvalonia.Run(() =>
+    public void TheVoiceTab_SplitsIntoThreeSubPages_TheRailDrivesWhichShows() => HeadlessAvalonia.Run(() =>
     {
         var dialog = new OptionsDialog { DataContext = new CockpitViewModel() };
         dialog.Show();
@@ -27,10 +27,10 @@ public class OptionsSubNavigationViewTests
         dialog.UpdateLayout();
 
         var rail = dialog.GetVisualDescendants().OfType<ListBox>().Single(list => list.Name == "VoiceNav");
-        // "Assistant" is AC-543's, and last: the three before it are about the microphone and the speaker, and
+        // "Assistant" is AC-543's, and last: the two before it are about the microphone and the speaker, and
         // this one is about a feature that can be used with neither.
         Assert.Equal(
-            new[] { "Read-aloud", "Transcribe", "Cleanup", "Assistant" },
+            new[] { "Read-aloud", "Transcribe", "Assistant" },
             rail.Items.OfType<ListBoxItem>().Select(item => item.Content as string));
 
         var carousel = dialog.GetVisualDescendants().OfType<Carousel>().Single();
@@ -39,8 +39,8 @@ public class OptionsSubNavigationViewTests
 
         // The last page, so the rail and the carousel are held to agreeing all the way to the end rather than
         // only where they happened to line up before a page was added.
-        rail.SelectedIndex = 3;
-        Assert.Equal(3, carousel.SelectedIndex);
+        rail.SelectedIndex = 2;
+        Assert.Equal(2, carousel.SelectedIndex);
 
         dialog.Close();
     });

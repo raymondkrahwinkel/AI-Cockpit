@@ -13,17 +13,17 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// transcript to its input box for the operator to proofread before sending, while the TTY panel has
 /// no input box and instead raises an event the view writes as raw bytes into the pty — this is the
 /// "TTY-bytes vs SDK-text" split from the voice-input design. Also covers the shared
-/// <see cref="SessionPanelViewModel"/> hold-guard/gating plumbing (voice-off gate, cleanup toggle) both
-/// session kinds inherit.
+/// <see cref="SessionPanelViewModel"/> hold-guard/gating plumbing (voice-off gate) both session kinds
+/// inherit.
 /// </summary>
 public class VoiceInjectionTests
 {
     [Fact]
-    public async Task SdkSession_VoiceTranscript_IsAppendedToTheInputBox_WithCleanupApplied()
+    public async Task SdkSession_VoiceTranscript_IsAppendedToTheInputBox()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>()).Returns("Open the settings dialog.");
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("Open the settings dialog.");
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9" });
 
@@ -34,18 +34,18 @@ public class VoiceInjectionTests
         await _WaitForVoiceSettingsToLoadAsync(() => vm.VoiceEnabled);
 
         Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: true);
+        await vm.EndVoiceHoldAsync();
 
         Assert.Equal("before  Open the settings dialog.", vm.InputText);
-        await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>());
+        await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task TtySession_VoiceTranscript_RaisesRawEvent_WithoutCleanup_InsteadOfTouchingAnInputBox()
+    public async Task TtySession_VoiceTranscript_RaisesRawEvent_InsteadOfTouchingAnInputBox()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the settings dialog");
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9" });
 
@@ -56,10 +56,10 @@ public class VoiceInjectionTests
         vm.VoiceTranscriptReady += text => rawTranscript = text;
 
         Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: false);
+        await vm.EndVoiceHoldAsync();
 
         Assert.Equal("open the settings dialog", rawTranscript);
-        await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>());
+        await voicePushToTalk.Received(1).EndHoldAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class VoiceInjectionTests
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
         voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        voicePushToTalk.EndHoldAsync(Arg.Any<CancellationToken>()).Returns("open the settings dialog");
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
             new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
@@ -84,85 +84,10 @@ public class VoiceInjectionTests
         vm.SetAutoSubmitScheduler(submit => submit());
 
         Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: false);
+        await vm.EndVoiceHoldAsync();
 
         // The transcript first, then a lone carriage return — the byte a physical Enter sends into the pty.
         Assert.Equal(new[] { "open the settings dialog", "\r" }, writes);
-    }
-
-    [Fact]
-    public async Task TtySession_WhenAutoSubmitOn_AndReadAloudOn_SpeaksTheTurnAcknowledgement()
-    {
-        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
-            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
-        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-
-        var vm = new TtyViewModel(
-            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
-        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
-        vm.SetAutoSubmitScheduler(submit => submit());
-        vm.ReadResponsesAloud = true;
-        vm.TurnAckMode = TurnAckMode.InstantPhrases;
-
-        Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: false);
-
-        voicePlaybackQueue.Received(1).Enqueue(Arg.Any<IReadOnlyList<string>>(), vm.TtsVoiceSid, Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task TtySession_WhenTurnAckModeOff_AutoSubmitStillSendsTheCarriageReturn_ButSpeaksNoAcknowledgement()
-    {
-        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
-            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
-        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-
-        var vm = new TtyViewModel(
-            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
-        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
-        vm.SetAutoSubmitScheduler(submit => submit());
-        vm.ReadResponsesAloud = true;
-        vm.TurnAckMode = TurnAckMode.Off;
-
-        var writes = new List<string>();
-        vm.VoiceTranscriptReady += text => writes.Add(text);
-
-        Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: false);
-
-        Assert.Equal(new[] { "open the settings dialog", "\r" }, writes);
-        voicePlaybackQueue.DidNotReceive().Enqueue(Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task TtySession_WhenReadAloudOff_AutoSubmitSpeaksNoAcknowledgement()
-    {
-        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
-        voicePushToTalk.BeginHold().Returns(true);
-        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
-        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
-        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
-            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
-        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-
-        var vm = new TtyViewModel(
-            Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
-        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
-        vm.SetAutoSubmitScheduler(submit => submit());
-        // ReadResponsesAloud left at its off default (§35b is a per-session toggle, not settings-store-loaded).
-
-        Assert.True(vm.BeginVoiceHold());
-        await vm.EndVoiceHoldAsync(applyCleanup: false);
-
-        voicePlaybackQueue.DidNotReceive().Enqueue(Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<string>());
     }
 
     [Fact]

@@ -23,7 +23,7 @@ internal sealed class FakeVoicePushToTalkService : IVoicePushToTalkService
 
     public bool BeginHold() => HoldStarts;
 
-    public Task<string> EndHoldAsync(bool applyCleanup, CancellationToken cancellationToken = default) =>
+    public Task<string> EndHoldAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(string.Empty);
 
     public void RaisePreparing(VoicePreparationProgress step) => Preparing?.Invoke(this, step);

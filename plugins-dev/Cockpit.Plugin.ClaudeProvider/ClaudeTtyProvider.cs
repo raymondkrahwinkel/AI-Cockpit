@@ -27,7 +27,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, workingDirectory);
 
         // AC-408: the session id is not forced on the launch (see BuildArguments' remark), so it is derived the
-        // same way ClaudeTranscriptReader already does for read-aloud/status — as the new *.jsonl transcript that
+        // same way ClaudeTranscriptReader already does for status — as the new *.jsonl transcript that
         // appears under this config dir after launch. Snapshotting before returning captures "known before this
         // session" so the background watch below only ever reports transcripts this session itself created.
         if (context.ReportConversationId is { } reportConversationId)
@@ -102,7 +102,7 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     /// <summary>
     /// Reports this session's conversation id exactly once, as soon as its own transcript can be told apart from
     /// every other file under <paramref name="stateDirectory"/> (AC-408) — the same "new file since launch"
-    /// identification <see cref="ClaudeTranscriptReader"/> uses for read-aloud/status, but a bounded one-shot scan
+    /// identification <see cref="ClaudeTranscriptReader"/> uses for status, but a bounded one-shot scan
     /// rather than a standing watch.
     /// <para>
     /// A standing watch would keep scanning the <em>whole</em> config dir — every session's transcripts, not just

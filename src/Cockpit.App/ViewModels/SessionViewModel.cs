@@ -892,7 +892,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
         IAgentTurnInboxDelivery? turnInboxDelivery = null,
@@ -906,7 +905,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _sessionStateRecorder = sessionStateRecorder;
         _pluginProviderRegistry = pluginProviderRegistry;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState);
     }
 
     /// <summary>
@@ -1502,9 +1501,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _CloseThinkingRow();
         IsBusy = true;
         _needsAttention = false;
-        // Speak a quick "let me take a look" now (AC-99) so a voice conversation is not met with silence while the
-        // turn spins up — no-op unless read-aloud is on and an acknowledgement mode is chosen.
-        _ = SpeakTurnAcknowledgmentAsync(text);
         _RecomputeStatus();
 
         // Remember this message's images as the turn's images (AC-116) before the send, so a tool result that
@@ -1754,18 +1750,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var pending = prose[_readAloudFlushedLength..];
         _readAloudFlushedLength = prose.Length;
         _ = EnqueueReadAloudAsync(pending);
-    }
-
-    /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
-    [RelayCommand]
-    private void ReadAloud(TranscriptEntryViewModel entry)
-    {
-        if (entry.Kind != TranscriptEntryKind.AssistantText)
-        {
-            return;
-        }
-
-        _ = EnqueueReadAloudAsync(entry.Text);
     }
 
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI

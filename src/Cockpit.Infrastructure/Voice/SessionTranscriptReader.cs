@@ -9,12 +9,12 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Infrastructure.Voice;
 
 /// <summary>
-/// The generic host-side transcript reader (Fase 4): a session's read-aloud and status tailers ask this by
+/// The generic host-side transcript reader (Fase 4): a session's status tailer asks this by
 /// <see cref="SessionProfile"/>, and it dispatches to the profile's provider plugin — whichever registered a
 /// <see cref="TtyProviderRegistration.CreateTranscriptReader"/> — so the core carries no provider's transcript
 /// format or location. A profile-less session runs the bundled default provider's TUI, mirroring
 /// <see cref="TtySessionProviderResolver"/>; a profile whose provider records no transcript (or a local model
-/// that has no TUI) yields nothing, and the caller simply gets no read-aloud/status from a transcript.
+/// that has no TUI) yields nothing, and the caller simply gets no status from a transcript.
 /// </summary>
 internal sealed class SessionTranscriptReader(
     IServiceProvider services,
@@ -24,12 +24,6 @@ internal sealed class SessionTranscriptReader(
         _ResolveReader(profile) is var (reader, configJson) && reader is not null
             ? reader.SnapshotTranscripts(configJson)
             : new HashSet<string>();
-
-    public IAsyncEnumerable<string> ReadAssistantTextAsync(
-        SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken) =>
-        _ResolveReader(profile) is var (reader, configJson) && reader is not null
-            ? reader.ReadAssistantTextAsync(configJson, knownTranscriptsAtLaunch, cancellationToken)
-            : _Empty();
 
     public IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(
         SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken) =>
@@ -83,11 +77,6 @@ internal sealed class SessionTranscriptReader(
     }
 
 #pragma warning disable CS1998 // async iterator with no awaits — an immediately-completing empty stream
-    private static async IAsyncEnumerable<string> _Empty([EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        yield break;
-    }
-
     private static async IAsyncEnumerable<SessionTranscriptActivity> _EmptyActivity([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         yield break;
