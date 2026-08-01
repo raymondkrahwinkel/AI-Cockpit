@@ -49,14 +49,22 @@ public sealed class MarkdownView : ContentControl
     // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
     // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
     // thread saturates and RSS runs away. Same runaway TtyView caps at 30 fps for the terminal, capped the same way
-    // here: the first change after a quiet moment renders at once, a burst is coalesced into one rebuild per
+    // here: the first change after a quiet moment renders at once, a burst is coalesced into one repaint per
     // interval, and the tick after the last delta always flushes, so the finished reply is never left stale.
-    // ponytail: rate limit, not incremental rendering — a long reply still rebuilds whole. Make _Build diff its
-    // blocks against the previous parse if 30 fps of a large transcript still costs too much.
     private const int RebuildIntervalMs = 33;
 
     private DispatcherTimer? _rebuildTimer;
     private bool _pendingRebuild;
+
+    // The rendered tree is kept and reconciled rather than thrown away, so the rate limit caps how OFTEN a repaint
+    // happens and this caps how MUCH each one costs. A delta only ever changes the last block or adds one after
+    // it; every block before that compares equal and keeps the controls it already has. Without this a repaint is
+    // O(reply length) and a long answer is still quadratic overall, only at 30 fps instead of per delta.
+    private readonly StackPanel _blocks = new() { Spacing = 2 };
+    private IReadOnlyList<MarkdownBlock> _rendered = [];
+    private object? _renderedPalette;
+
+    public MarkdownView() => Content = _blocks;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -72,11 +80,56 @@ public sealed class MarkdownView : ContentControl
             return;
         }
 
-        Content = _Build(Markdown ?? string.Empty);
+        _Render(Markdown ?? string.Empty);
 
         _rebuildTimer ??= _CreateRebuildTimer();
         _rebuildTimer.Start();
     }
+
+    private void _Render(string markdown)
+    {
+        var parsed = MarkdownParser.Parse(markdown);
+
+        // Kept blocks keep the brushes they were built with, so a theme swap has to discard all of them —
+        // otherwise the untouched part of a message stays in the previous palette while the rest moves.
+        // Avalonia hands out the same brush instance for a key until the theme changes, so identity is the signal.
+        var palette = _CurrentPalette();
+        if (!ReferenceEquals(palette, _renderedPalette))
+        {
+            _renderedPalette = palette;
+            _rendered = [];
+            _blocks.Children.Clear();
+        }
+
+        for (var i = 0; i < parsed.Count; i++)
+        {
+            if (i >= _rendered.Count)
+            {
+                _blocks.Children.Add(_RenderBlock(parsed[i]));
+            }
+            else if (!_rendered[i].Equals(parsed[i]))
+            {
+                _blocks.Children[i] = _RenderBlock(parsed[i]);
+            }
+        }
+
+        // Markdown that shrank — a row reused for a different message, or an edit rather than an append.
+        while (_blocks.Children.Count > parsed.Count)
+        {
+            _blocks.Children.RemoveAt(_blocks.Children.Count - 1);
+        }
+
+        _rendered = parsed;
+    }
+
+    /// <summary>
+    /// A brush instance standing in for the whole palette, for reference comparison only. Null where there are no
+    /// application resources at all (design-time preview): nothing to compare, so nothing is ever discarded.
+    /// </summary>
+    private static object? _CurrentPalette() =>
+        Application.Current is { } app && app.TryGetResource("CockpitTextPrimaryBrush", null, out var brush)
+            ? brush
+            : null;
 
     private DispatcherTimer _CreateRebuildTimer()
     {
@@ -86,7 +139,7 @@ public sealed class MarkdownView : ContentControl
             if (_pendingRebuild)
             {
                 _pendingRebuild = false;
-                Content = _Build(Markdown ?? string.Empty);
+                _Render(Markdown ?? string.Empty);
                 return;
             }
 
@@ -113,19 +166,8 @@ public sealed class MarkdownView : ContentControl
         if (_pendingRebuild)
         {
             _pendingRebuild = false;
-            Content = _Build(Markdown ?? string.Empty);
+            _Render(Markdown ?? string.Empty);
         }
-    }
-
-    private static Control _Build(string markdown)
-    {
-        var root = new StackPanel { Spacing = 2 };
-        foreach (var block in MarkdownParser.Parse(markdown))
-        {
-            root.Children.Add(_RenderBlock(block));
-        }
-
-        return root;
     }
 
     private static Control _RenderBlock(MarkdownBlock block) => block.Kind switch
