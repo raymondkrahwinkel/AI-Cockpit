@@ -38,6 +38,12 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
     /// <summary>Idempotent lazy start: returns the running session if there is one, restarts it if it fell over, and no-ops (leaving <see cref="Activity"/> at Unavailable) if the feature is off or the slot is empty.</summary>
     Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stands the running assistant down and brings it back up on the same conversation, so a setting that can
+    /// only be chosen at a start actually gets one. Starts it if nothing is running yet.
+    /// </summary>
+    Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Sends typed or spoken text to the assistant, starting it lazily first if it has not run yet.</summary>
     Task SendAsync(string text, CancellationToken cancellationToken = default);
 
@@ -67,10 +73,17 @@ public interface IAssistantSessionHost : INotifyPropertyChanged
 /// <remarks>
 /// <b>Criterion 7 — reads a conversation, never starts one.</b> <see cref="Session"/> is read straight off
 /// <see cref="IAssistantSessionHost.Session"/>; this view model never creates a <see cref="SessionViewModel"/>
-/// itself. <see cref="EnsureOpenedAsync"/> is the one call this view model makes that can cause a start, and it
-/// only runs the host's own idempotent lazy-start (opening the chip is "an operator handling" per criterion 1) —
-/// it never resets or replaces whatever conversation the host already holds. <see cref="Dispose"/> only detaches
-/// this peephole's own event subscription; it never touches the session, so closing the window can never end it.
+/// itself. <see cref="EnsureOpenedAsync"/> is the one call this view model makes <em>on its own</em> that can
+/// cause a start, and it only runs the host's own idempotent lazy-start (opening the chip is "an operator
+/// handling" per criterion 1) — it never resets or replaces whatever conversation the host already holds.
+/// <see cref="Dispose"/> only detaches this peephole's own event subscription; it never touches the session, so
+/// closing the window can never end it.
+/// <para>
+/// The one exception is the header's restart button, and it is an exception in the same direction: it is the
+/// operator pressing it, and even then this view model does nothing itself — it asks the host, which tears its
+/// own instance down and resumes the same conversation. See <see cref="RestartCommand"/> for why it belongs on
+/// this header while a reading-level picker does not.
+/// </para>
 /// <para>
 /// <b>Criterion 8 — no microphone required.</b> This view model carries no STT/voice code path at all: sending is
 /// <see cref="SendAsync"/> on typed <see cref="InputText"/>, full stop. The assistant hotkey (<c>F10</c>) is a
@@ -269,6 +282,25 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+
+    /// <summary>
+    /// Restarts the assistant on the same conversation (the header's restart button).
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this button belongs in this window and the reading-level picker does not.</b> The rule this header
+    /// is held to is not "assistant-related" but "is it a handling": the speak toggle is here because switching
+    /// speech off is something you <em>do</em> to the running assistant, while a reading level is a choice about
+    /// how a display renders and so lives in Options. A restart is a handling by that same test — the most literal
+    /// one there is — and it is needed exactly where its effect is read: a permission mode chosen in Options says
+    /// "at the next start", and this is the only place that start can be asked for.
+    /// <para>
+    /// Deliberately no confirmation. The conversation survives (the host resumes it), so there is nothing to lose
+    /// to a misclick — and a dialog in front of the one control that unsticks a stuck assistant is a gate on a
+    /// recovery.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private Task RestartAsync() => _host.RestartAsync();
 
     /// <summary>
     /// Reads the spawn trail back for the flyout (AC-545 criterion 5), called only when the flyout actually opens

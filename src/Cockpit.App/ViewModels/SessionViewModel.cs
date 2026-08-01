@@ -458,8 +458,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public bool HasTranscript => Transcript.Count > 0;
 
     /// <summary>True once the runtime is up and can accept a turn. Gates the empty-state's "type to start" prompt
-    /// so it only invites input once the session is actually ready.</summary>
-    public bool IsSessionReady => _runtime is { IsRunning: true };
+    /// so it only invites input once the session is actually ready.
+    /// <para>
+    /// Virtual only so a test can stand in a session that is <em>alive</em>. A running runtime cannot be faked —
+    /// it is a real child process — and "alive" is the input to decisions that only exist for a live session:
+    /// <c>AssistantSessionHost</c> replaces a dead instance but not a healthy one, and its restart is defined as
+    /// the opposite. Without an override, both branches read the same in a test and neither could be told apart.
+    /// </para>
+    /// </summary>
+    public virtual bool IsSessionReady => _runtime is { IsRunning: true };
 
     /// <summary>True from launch until the runtime settles — up <em>or</em> failed. Drives the "still starting"
     /// banner so it shows only while the session is actively coming up, and never sits stuck reading "starting"

@@ -32,7 +32,8 @@ namespace Cockpit.App.Services;
 /// <b>And it comes back.</b> A delegated task reaps itself when it is done; this does the opposite. A session that
 /// falls over quietly is only discovered the next time you ask it something — the silence this product refuses
 /// everywhere else — so <see cref="EnsureStartedAsync"/> notices a dead instance and stands a new one up in its
-/// place, resuming the same conversation.
+/// place, resuming the same conversation. <see cref="RestartAsync"/> is the operator asking for the same thing on
+/// a healthy one, which is what makes a setting that can only be chosen at a launch reachable at all.
 /// </para>
 /// <para>
 /// <b>The conversation outlives everything.</b> The pop-out window is a view onto this session, never its owner:
@@ -152,23 +153,62 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// <see cref="Activity"/> on <see cref="AssistantActivity.Unavailable"/> with the reason set, which is the
     /// chip saying out loud what the log used to say alone.
     /// </remarks>
-    public async Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default)
+    public Task<SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(replaceALiveInstance: false, cancellationToken);
+
+    /// <summary>
+    /// Stands the assistant down and brings it straight back up on the same conversation — the operator's way to
+    /// make a start-time setting take effect without closing the cockpit.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why a restart has to exist at all.</b> A permission mode is chosen at a start and, for
+    /// <c>bypassPermissions</c>, only at a start: the CLI cannot be switched into or out of bypass live, which is
+    /// why <see cref="SessionOptionCatalog"/> keeps <c>LivePermissionModes</c> apart from <c>AllPermissionModes</c>
+    /// (bug #15, and the no-dead-controls convention). Every other session gets its next start for free — it is
+    /// closed and opened again. The assistant cannot be closed: it is not in the grid, its window is a peephole
+    /// that deliberately never ends it, and <see cref="EnsureStartedAsync"/> only replaces an instance that is
+    /// already <em>dead</em>. So "this applies at the next start" was a sentence with no next start behind it.
+    /// <para>
+    /// <b>The conversation is kept.</b> This is a restart, not a reset: it runs the same
+    /// <see cref="_StartAsync"/> as every other start, which resumes through <see cref="_ResolveResumeAsync"/> —
+    /// the state store's last record for <see cref="AssistantPaneId"/>. Losing the thread here would defeat the
+    /// whole reason that record exists, and this surface is the audit trail.
+    /// </para>
+    /// <para>
+    /// <b>And it is the same teardown.</b> Not a second one: <see cref="_DisposeQuietlyAsync"/> is what the
+    /// replace-a-dead-instance path already runs, so a turn in flight, the host's own subscription, the cockpit's
+    /// consent routing and an unanswered consent card are all handled once, in one place, however the instance
+    /// came to be replaced.
+    /// </para>
+    /// </remarks>
+    public Task<SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) =>
+        _StartOrReplaceAsync(replaceALiveInstance: true, cancellationToken);
+
+    /// <param name="replaceALiveInstance">
+    /// Whether a healthy instance is torn down too. False is <see cref="EnsureStartedAsync"/>'s idempotent lazy
+    /// start; true is <see cref="RestartAsync"/>. One body rather than two so both take the same start gate — a
+    /// restart racing a hotkey hold must not build two instances any more than two holds may.
+    /// </param>
+    private async Task<SessionViewModel?> _StartOrReplaceAsync(bool replaceALiveInstance, CancellationToken cancellationToken)
     {
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
-            if (Session is { } live && _IsAlive(live))
+            if (!replaceALiveInstance && Session is { } live && _IsAlive(live))
             {
                 return live;
             }
 
             // A dead instance is dropped before a new one is built, so a start that fails does not leave the
             // corpse in place looking reachable.
-            if (Session is { } dead)
+            if (Session is { } previous)
             {
-                _logger.LogInformation("The assistant session had stopped; starting a new one on the same conversation.");
+                _logger.LogInformation(
+                    replaceALiveInstance
+                        ? "Restarting the assistant session on the same conversation."
+                        : "The assistant session had stopped; starting a new one on the same conversation.");
                 Session = null;
-                await _DisposeQuietlyAsync(dead).ConfigureAwait(true);
+                await _DisposeQuietlyAsync(previous).ConfigureAwait(true);
             }
 
             return await _StartAsync(cancellationToken).ConfigureAwait(true);
@@ -282,6 +322,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
 
         await session.StartConfiguredAsync(
             profile,
+            // The app defaults, and only as the floor. The Assistant Profile's own permission mode, model and
+            // effort ride the launch options below — the single route a plugin profile's start defaults take on
+            // every other launch in this app — and the driver takes those over these. A profile that says nothing
+            // therefore still starts exactly where it did before. See _LaunchOptions for the whole rule, including
+            // what an operator is choosing when they put bypassPermissions on this profile.
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
@@ -416,7 +461,11 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     /// The conversation to pick up: the one the state store last recorded for this pane, or a fresh one when there
     /// is none (a first run, or a store that could not be read).
     /// </summary>
-    private async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
+    /// <remarks>
+    /// Internal so the rule can be asserted directly — a restart's whole promise is that it picks this
+    /// conversation up rather than starting a fresh one, and that promise lives here.
+    /// </remarks>
+    internal async Task<SessionResume> _ResolveResumeAsync(CancellationToken cancellationToken)
     {
         var states = await _sessionState.LoadAsync(cancellationToken).ConfigureAwait(true);
         return states.FirstOrDefault(state => string.Equals(state.PaneId, AssistantPaneId, StringComparison.Ordinal))
@@ -532,16 +581,55 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     };
 
     /// <summary>
-    /// The assistant's standing instruction, on the launch option every provider honours. The profile's own system
-    /// prompt wins when it has one — that is what "overridable per profile" means — and
-    /// <see cref="AssistantSystemPrompt.Default"/> is what a profile that says nothing gets.
+    /// What the assistant's session launches with: the Assistant Profile's own start defaults, plus the assistant's
+    /// standing instruction on the launch option every provider honours.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile) =>
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [WellKnownPluginSessionOptions.AppendSystemPrompt] =
-                string.IsNullOrWhiteSpace(profile.SystemPrompt) ? AssistantSystemPrompt.Default : profile.SystemPrompt.Trim(),
-        };
+    /// <remarks>
+    /// <b>The profile's defaults are the whole of how a profile is obeyed.</b> A plugin profile does not carry its
+    /// permission mode, model and effort in <c>Defaults.PermissionMode/Model/Effort</c> — those three are legacy,
+    /// kept only for the one-time migration (see <see cref="Cockpit.Core.Profiles.ProfileDefaults"/>'s own
+    /// <c>[Obsolete]</c> notes) — it carries them in the generic <c>OptionDefaults</c> map, which travels as launch
+    /// options and is read by the driver (<c>ClaudeSdkSessionDriver._ResolveOption</c>). Starting that map here is
+    /// exactly what every other launch does: the New-session dialog seeds its option rows from
+    /// <c>OptionDefaults</c> and hands them back as the launch options, and every programmatic start passes
+    /// <c>profile.Defaults?.OptionDefaults</c> straight through (<c>CockpitViewModel._EmbeddedLaunchOptions</c> and
+    /// the plugin/quick-start paths). Without it the assistant was the one session in the app that read a profile
+    /// and then ignored what it said: an operator's <c>bypassPermissions</c> reached the driver as "default" and
+    /// every tool call was still asked about.
+    /// <para>
+    /// <b>The typed mode/model/effort at the call site stay on the app defaults, deliberately.</b> They are the
+    /// fallback, not the answer: <c>PluginSessionDriverAdapter._MergePermissionMode</c> only folds the typed value
+    /// in when the options carry none, so a profile that says nothing lands on the app default and a profile that
+    /// says something wins. Seeding them from the profile instead would be a second answer to "what is this
+    /// profile's default", and two answers is the divergence that put this bug here.
+    /// </para>
+    /// <para>
+    /// 🔴 <b>What that means, and Raymond confirmed it (2026-08-02) with the edge spelled out.</b> The Assistant
+    /// Profile set to <c>bypassPermissions</c> gives a session that can act across <em>every</em> workspace and is
+    /// asked about nothing: the SDK's own Allow/Deny is gone by the mode, and the cockpit's consent card can be
+    /// gone too through AC-575's bypass list. Together there is no gate left that asks anybody anything. That is
+    /// the operator's choice to make on their own machine, and it is written here rather than left to be read back
+    /// as an oversight — see the restart affordance (<see cref="RestartAsync"/>), which exists because
+    /// <c>bypassPermissions</c> can only be chosen at a start, so the choice would otherwise be unreachable
+    /// without closing the cockpit.
+    /// </para>
+    /// <para>
+    /// The assistant's own standing instruction is written last, so it wins over anything the map happens to carry
+    /// on the same key. The profile's own system prompt wins over <see cref="AssistantSystemPrompt.Default"/> —
+    /// that is what "overridable per profile" means.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyDictionary<string, string> _LaunchOptions(Cockpit.Core.Profiles.SessionProfile profile)
+    {
+        var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
+            ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        options[WellKnownPluginSessionOptions.AppendSystemPrompt] =
+            string.IsNullOrWhiteSpace(profile.SystemPrompt) ? AssistantSystemPrompt.Default : profile.SystemPrompt.Trim();
+
+        return options;
+    }
 
     private void _SetUnavailable(string reason)
     {
@@ -580,6 +668,19 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
         // otherwise leave the dead session subscribed for the life of the process.
         session.PropertyChanged -= _OnSessionPropertyChanged;
         _cockpit.ReleaseAssistantSession(session);
+
+        // An unanswered consent card is answered here, and answered No. The broker has no timeout of its own
+        // (CockpitViewModel's routing says so where it denies a second prompt for the same reason), so a card left
+        // open on a session that is going away hangs its caller for the life of the process — and the caller is a
+        // tool call that would otherwise still be waiting to act on the operator's behalf. Denied rather than
+        // dropped: the operator restarted instead of clicking Allow, and an action nobody approved must not become
+        // an action nobody refused either. Here rather than in the restart, so the replace-a-dead-instance path
+        // gets it too — a session that fell over mid-prompt leaves exactly the same card behind.
+        if (session.PendingConsent is { } consent)
+        {
+            consent.DenyCommand.Execute(null);
+            session.PendingConsent = null;
+        }
 
         try
         {

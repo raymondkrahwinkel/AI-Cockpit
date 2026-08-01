@@ -8,6 +8,10 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Consent;
+using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -321,28 +325,232 @@ public class AssistantSessionHostTests
         Assert.All(ownServers, server => Assert.Contains(server, selection));
     }
 
+    // ── The assistant runs on its own profile's start defaults, not on the app's ──────────────────────────────
+    //
+    // The measured failure: the operator put bypassPermissions on the Assistant Profile and was still asked to
+    // confirm every tool call. A plugin profile carries its permission mode, model and effort in the generic
+    // OptionDefaults map — not in the legacy typed Defaults.PermissionMode/Model/Effort, which exist only for the
+    // one-time migration — and that map reaches a driver as launch options. The assistant's launch built a map
+    // holding nothing but its system prompt, so the profile was passed along and then, on the three settings that
+    // decide what it may do, ignored.
+
+    [Fact]
+    public void LaunchOptions_CarryTheProfilesOwnPermissionMode()
+    {
+        var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
+            (WellKnownPluginSessionOptions.PermissionMode, SessionOptionCatalog.BypassPermissionModeValue)));
+
+        Assert.Equal(
+            SessionOptionCatalog.BypassPermissionModeValue,
+            options[WellKnownPluginSessionOptions.PermissionMode]);
+    }
+
+    [Fact]
+    public void LaunchOptions_CarryTheProfilesOwnModelAndEffort()
+    {
+        // The same map, the same route, the same driver read (ClaudeSdkSessionDriver._ResolveOption) — so a fix
+        // that only reached the permission mode would be a fix for one of three settings that were all lost the
+        // same way. The keys are the plugin's own, which is why they are literals here rather than host constants:
+        // the host does not (and must not) know what a provider's options mean.
+        var options = AssistantSessionHost._LaunchOptions(_ProfileWithDefaults(
+            ("model", "opus"),
+            ("effort", "high")));
+
+        Assert.Equal("opus", options["model"]);
+        Assert.Equal("high", options["effort"]);
+    }
+
+    [Fact]
+    public void LaunchOptions_ForAProfileThatSaysNothing_NameNoneOfThem_SoTheAppDefaultStillStands()
+    {
+        // The half that protects everyone who has set nothing. The typed permission mode/model/effort at the call
+        // site stay on the app defaults and PluginSessionDriverAdapter._MergePermissionMode folds the typed value
+        // in only when the options carry none — so an absent key is what makes today's behaviour survive this
+        // change. A "helpful" default written here (say, always naming the mode) would silently move every
+        // existing assistant.
+        var options = AssistantSessionHost._LaunchOptions(_Profile());
+
+        Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.False(options.ContainsKey("model"));
+        Assert.False(options.ContainsKey("effort"));
+
+        // And the one thing the launch does owe it is still there.
+        Assert.Equal(AssistantSystemPrompt.Default, options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
+    [Fact]
+    public void LaunchOptions_TheAssistantsOwnInstruction_WinsOverAnythingTheProfileStoredOnThatKey()
+    {
+        // The profile's start defaults are copied first and the standing instruction is written last, on purpose:
+        // this is the assistant, and a stored value on the host's own append-system-prompt key must not be able to
+        // replace what makes it one.
+        var profile = _ProfileWithDefaults((WellKnownPluginSessionOptions.AppendSystemPrompt, "you are a teapot"))
+            with
+        { SystemPrompt = "You are Olaf." };
+
+        var options = AssistantSessionHost._LaunchOptions(profile);
+
+        Assert.Equal("You are Olaf.", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+    }
+
+    // ── The restart (the operator's only way to reach a start-time setting) ───────────────────────────────────
+
+    /// <summary>
+    /// The whole difference between the two entry points. <see cref="AssistantSessionHost.EnsureStartedAsync"/>
+    /// replaces an instance only once it is dead — which is right for a lazy start and useless for an operator
+    /// who has just changed a setting that is read at a launch. bypassPermissions is choosable at a start and
+    /// never live (<c>SessionOptionCatalog</c> splits <c>LivePermissionModes</c> off <c>AllPermissionModes</c> for
+    /// exactly that reason), so "applies at the next start" needed a next start to exist.
+    /// </summary>
+    [Fact]
+    public void EnsureStarted_WithAHealthyInstance_HandsItBack_WhileRestart_ReplacesIt()
+    {
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
+        var running = Dispatcher.UIThread.Invoke(() => new _RunningSession());
+        Dispatcher.UIThread.Invoke(() => host.Session = running);
+
+        var kept = Dispatcher.UIThread.Invoke(() => host.EnsureStartedAsync().GetAwaiter().GetResult());
+        Assert.Same(running, kept);
+        Assert.Same(running, host.Session);
+
+        Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
+
+        // Gone, and not quietly left in place looking reachable. (Nothing takes its place here: this cockpit has no
+        // session factory, so the fresh start says so — which is the failure path, reported, rather than silence.)
+        Assert.NotSame(running, host.Session);
+        Assert.Equal(AssistantActivity.Unavailable, host.Activity);
+        Assert.NotNull(host.UnavailableReason);
+    }
+
+    /// <summary>
+    /// The restart re-reads the Assistant Profile, so a permission mode edited since the last launch is the one
+    /// the new instance starts on. A restart that reused the profile it started with would tear the session down
+    /// and bring it back on exactly the setting the operator restarted to get away from.
+    /// </summary>
+    [Fact]
+    public void Restart_ReadsTheAssistantProfileAgain_SoASettingChangedSinceTheLastStartIsTheOneItStartsOn()
+    {
+        var profiles = Substitute.For<IAssistantProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ConfiguredSlot());
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), profiles: profiles));
+        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession());
+
+        Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
+
+        profiles.Received().LoadAsync(Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A restart is not a reset: it picks the recorded conversation back up. The state store's last record for the
+    /// assistant's pane is what names it — the same mechanism every restored session uses (AC-409/AC-410) — and
+    /// the restart runs the one start path that reads it.
+    /// </summary>
+    [Fact]
+    public void TheAssistantsResume_IsTheConversationItsPaneLastRecorded_NotAFreshOne()
+    {
+        var state = Substitute.For<ISessionStateStore>();
+        state.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<SessionStateRecord>>(_ =>
+        [
+            _StateFor("some-other-pane", "conv-elsewhere"),
+            _StateFor(AssistantSessionHost.AssistantPaneId, "conv-assistant"),
+        ]);
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot(), sessionState: state));
+
+        var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
+
+        Assert.Equal(SessionResumeMode.BySessionId, resume.Mode);
+        Assert.Equal("conv-assistant", resume.SessionId);
+    }
+
+    [Fact]
+    public void TheAssistantsResume_WithNothingRecordedYet_IsAFreshConversation()
+    {
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
+
+        var resume = Dispatcher.UIThread.Invoke(() => host._ResolveResumeAsync(default).GetAwaiter().GetResult());
+
+        Assert.Equal(SessionResumeMode.New, resume.Mode);
+    }
+
+    /// <summary>
+    /// A session that goes away with a consent card still open is what hangs its caller forever — the broker has
+    /// no timeout of its own. Answered No, because the operator restarted rather than clicking Allow.
+    /// </summary>
+    [Fact]
+    public void Restarting_OverAnUnansweredConsentCard_AnswersIt_RatherThanLeavingItsCallerWaiting()
+    {
+        var broker = Substitute.For<IConsentBroker>();
+        var prompt = new ConsentPrompt(
+            Guid.NewGuid(),
+            new ConsentRequest(
+                "Run a command",
+                "rm -rf /",
+                new ConsentSource(AssistantSessionHost.AssistantPaneId, null, "Terminal MCP"),
+                "scope",
+                ConsentRisk.Dangerous),
+            CanRemember: false);
+
+        var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: _ConfiguredSlot()));
+        Dispatcher.UIThread.Invoke(() => host.Session = new _RunningSession
+        {
+            PendingConsent = new ConsentPromptViewModel(prompt, broker),
+        });
+
+        Dispatcher.UIThread.Invoke(() => host.RestartAsync().GetAwaiter().GetResult());
+
+        broker.Received(1).Respond(prompt.Id, ConsentOutcome.Denied, false);
+    }
+
+    /// <summary>A session whose runtime is up, which is the state that cannot be produced without a real child process.</summary>
+    private sealed class _RunningSession : SessionViewModel
+    {
+        public override bool IsSessionReady => true;
+    }
+
     private static SessionProfile _Profile() => new("assistant-local", new ClaudeConfig("/tmp/claude"));
+
+    private static SessionProfile _ProfileWithDefaults(params (string Key, string Value)[] optionDefaults) =>
+        _Profile() with
+        {
+            // The legacy typed trio is left blank deliberately: a plugin profile stores nothing there, and a test
+            // that filled them in would be asserting against the migration path rather than the live one.
+            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty)
+            {
+                OptionDefaults = optionDefaults.ToDictionary(option => option.Key, option => option.Value, StringComparer.OrdinalIgnoreCase),
+            },
+        };
 
     private static AssistantSessionHost _Host(
         bool enabled,
         AssistantProfileSlot slot,
         IMcpServerCatalog? catalog = null,
-        Cockpit.Core.Sessions.ReadingLevel readingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer)
+        Cockpit.Core.Sessions.ReadingLevel readingLevel = Cockpit.Core.Sessions.ReadingLevel.Developer,
+        IAssistantProfileStore? profiles = null,
+        ISessionStateStore? sessionState = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
             .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel });
 
-        var profiles = Substitute.For<IAssistantProfileStore>();
-        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(slot);
+        if (profiles is null)
+        {
+            profiles = Substitute.For<IAssistantProfileStore>();
+            profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(slot);
+        }
 
-        var state = Substitute.For<ISessionStateStore>();
-        state.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        if (sessionState is null)
+        {
+            sessionState = Substitute.For<ISessionStateStore>();
+            sessionState.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        }
 
         return new AssistantSessionHost(
-            new CockpitViewModel(), settings, profiles, state,
+            new CockpitViewModel(), settings, profiles, sessionState,
             catalog ?? _Catalog(), NullLogger<AssistantSessionHost>.Instance);
     }
+
+    private static SessionStateRecord _StateFor(string paneId, string conversationId) =>
+        new(paneId, "profile", null, conversationId, SessionConversationIdState.Known, null, null, null, null, DateTimeOffset.UtcNow);
 
     private static IMcpServerCatalog _Catalog(params McpServerConfig[] servers)
     {

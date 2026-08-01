@@ -27,8 +27,31 @@ public class AssistantChatViewModelTests
         host.Session.Returns(session);
         host.Activity.Returns(activity);
         host.EnsureStartedAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
+        host.RestartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(session));
         host.SendAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         return host;
+    }
+
+    /// <summary>
+    /// The restart button goes to the host and does nothing else. It is in this header because a restart is a
+    /// <em>handling</em> — the same test the speak toggle passes and a reading-level picker fails — and because
+    /// this is where its effect is read: a permission mode is chosen at a start, never live, so "applies at the
+    /// next start" needed somewhere to ask for one.
+    /// </summary>
+    [Fact]
+    public async Task TheRestartButton_AsksTheHostToRestart_AndDoesNotResetTheWindowsOwnView()
+    {
+        var session = new SessionViewModel();
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "what did AC-223 do overnight"));
+        var host = FakeHost(session);
+        var vm = new AssistantChatViewModel(host, FakeSettingsStore(), Substitute.For<IVoicePlaybackQueue>());
+
+        await vm.RestartCommand.ExecuteAsync(null);
+
+        await host.Received(1).RestartAsync(Arg.Any<CancellationToken>());
+        // The window is a peephole: it neither ends nor replaces anything itself, and the conversation it is
+        // looking at is the host's to resume.
+        Assert.Same(session, vm.Session);
     }
 
     private static IAssistantSettingsStore FakeSettingsStore(bool speakReplies = true)
@@ -120,10 +143,12 @@ public class AssistantChatViewModelTests
         var firstWindow = new AssistantChatViewModel(host, FakeSettingsStore(), playback);
         Assert.Contains(firstWindow.Session!.Transcript, entry => entry.Text.Contains("AC-223"));
 
-        // "Closing" a window is exactly Dispose() (AssistantChatWindow.OnClosed calls nothing else on it). There
-        // is no member on IAssistantSessionHost this could even call to end a session with — Dispose only
-        // detaches the peephole's own PropertyChanged subscription.
+        // "Closing" a window is exactly Dispose() (AssistantChatWindow.OnClosed calls nothing else on it), and
+        // Dispose only detaches the peephole's own PropertyChanged subscription. The one member on the host that
+        // does end a session — RestartAsync, the header's restart button — is reached from a command and from
+        // nowhere else, which is what the assertion below is really holding: closing is not restarting.
         firstWindow.Dispose();
+        host.DidNotReceive().RestartAsync(Arg.Any<CancellationToken>());
         Assert.Same(session, host.Session);
         Assert.NotEmpty(session.Transcript);
 

@@ -1321,6 +1321,10 @@ internal static class Screenshotter
 
         public Task<ViewModels.SessionViewModel?> EnsureStartedAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
 
+        // Same again: a still frame cannot show a restart, and a scene that tore its own session down would render
+        // the empty state instead of the one its name promises.
+        public Task<ViewModels.SessionViewModel?> RestartAsync(CancellationToken cancellationToken = default) => Task.FromResult(Session);
+
         public Task SendAsync(string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         // Same reason as ApplySettingsAsync below: a scene is staged and rendered, and speaking is not something a

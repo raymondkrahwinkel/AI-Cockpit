@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Abstractions.Profiles;
@@ -80,6 +81,94 @@ public sealed partial class AssistantOptionsViewModel(
     private string? _profileUnsetReason;
 
     /// <summary>
+    /// The profile in <see cref="AvailableProfiles"/> that <see cref="RefreshProfileSnapshotCommand"/> would take a
+    /// fresh copy from, or <see langword="null"/> when the list holds none by that name any more. Matched by label,
+    /// and used for nothing else — see the command for why that is safe here and would not be anywhere else.
+    /// </summary>
+    private SessionProfile? _profileToRefreshFrom;
+
+    /// <summary>
+    /// The line under the picker saying, in words, that the assistant runs on a <em>copy</em> of the chosen profile
+    /// and what that costs. <see langword="null"/> while the slot has no record — there is then nothing to have
+    /// copied, and <see cref="ProfileUnsetReason"/> is what the page shows instead.
+    /// </summary>
+    /// <remarks>
+    /// <b>The price of the slot design, written down where the choice is made.</b> The slot carries a whole
+    /// <see cref="SessionProfile"/> taken at the moment it was picked, deliberately: it is found by nothing —
+    /// not by label, not by position in the profile list — so renaming or deleting a profile cannot quietly cut the
+    /// assistant loose (AC-410, and <see cref="AssistantProfileSlot"/>'s own remarks). What that buys in
+    /// robustness it costs in freshness: an edit to the profile the copy came from does not reach the assistant.
+    /// Measured on a real config, the profile said <c>bypassPermissions</c> and the assistant's copy still said
+    /// <c>default</c>, and no surface anywhere said the two were different things. Silence was the actual defect;
+    /// this line and the button beside it are the fix.
+    /// </remarks>
+    [ObservableProperty]
+    private string? _profileSnapshotNote;
+
+    /// <summary>Whether there is a live profile of that name to take a fresh copy from. False leaves the button disabled rather than absent, so the note above it still reads.</summary>
+    public bool CanRefreshProfileSnapshot => _profileToRefreshFrom is not null;
+
+    /// <summary>
+    /// Takes a fresh copy of the profile the slot's record was named after — the one click that makes an edit to
+    /// that profile reach the assistant.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why matching by label is not AC-410 creeping back in.</b> AC-410's bug was a lookup that could
+    /// <em>lose</em>: the slot was resolved by name on every read, so a rename made it read as gone and the
+    /// assistant lost its profile without anyone touching the assistant. Nothing here reads that way. The slot is
+    /// still resolved by nothing at all — <see cref="IAssistantProfileStore.LoadAsync"/> hands back the stored
+    /// record whatever any list says — and the label is consulted in exactly one place: to offer this button a
+    /// candidate. A rename therefore costs the button, never the profile; a deleted profile costs the button,
+    /// never the profile. The write it performs is the same
+    /// <see cref="IAssistantProfileStore.RepointAsync"/> that picking from the dropdown performs, and it happens
+    /// only when the operator clicks.
+    /// <para>
+    /// <b>And why it is a button rather than an automatic refresh.</b> Doing this silently on open would mean a
+    /// profile renamed away and a <em>new</em> one created under the old name would repoint the assistant at a
+    /// record it was never pointed at — the impostor case that is precisely why the slot does not resolve by name.
+    /// A click is the operator saying that this is the profile they meant.
+    /// </para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanRefreshProfileSnapshot))]
+    private async Task RefreshProfileSnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (_profileStore is null || _profileToRefreshFrom is not { } record)
+        {
+            return;
+        }
+
+        var slot = await _profileStore.RepointAsync(record, cancellationToken).ConfigureAwait(true);
+        ProfileUnsetReason = slot.UnsetReason;
+        _ApplyProfileSnapshotNote(slot);
+    }
+
+    /// <summary>
+    /// Works out what the note says and what the button would copy from, for the slot as it now stands. Called
+    /// from the load and again after a refresh, so a slot that was repointed does not leave a note describing the
+    /// record it no longer holds.
+    /// </summary>
+    private void _ApplyProfileSnapshotNote(AssistantProfileSlot slot)
+    {
+        _profileToRefreshFrom = slot.Profile is { } record
+            ? AvailableProfiles.FirstOrDefault(profile => profile.Label == record.Label)
+            : null;
+
+        ProfileSnapshotNote = slot.Profile switch
+        {
+            null => null,
+            // Says what it is and what it costs, in the two states that differ. Both name the record, because the
+            // first question anyone asks of a copy is what it is a copy of.
+            { Label: var label } when _profileToRefreshFrom is not null =>
+                $"The assistant runs on its own copy of \"{label}\", taken when you picked it. Later edits to that profile — a permission mode, a model — reach the assistant only when you refresh here, and then at its next start.",
+            { Label: var label } =>
+                $"The assistant runs on its own copy of \"{label}\". No profile by that name is in the list any more, so there is nothing to refresh from — the copy keeps working, and picking a profile above replaces it.",
+        };
+
+        OnPropertyChanged(nameof(CanRefreshProfileSnapshot));
+        RefreshProfileSnapshotCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
     /// The consent-bypass switches, one row per source (#AC-575). Filled by <see cref="RefreshAsync"/> from names
     /// the host stamps — never from anything the operator types — see <see cref="_RebuildConsentBypassRowsAsync"/>.
     /// </summary>
@@ -120,6 +209,7 @@ public sealed partial class AssistantOptionsViewModel(
                     ? null
                     : AvailableProfiles.FirstOrDefault(p => p.Label == slot.Profile.Label) ?? slot.Profile;
                 ProfileUnsetReason = slot.UnsetReason;
+                _ApplyProfileSnapshotNote(slot);
             }
         }
         finally
@@ -232,6 +322,9 @@ public sealed partial class AssistantOptionsViewModel(
     {
         var slot = await _profileStore!.RepointAsync(record).ConfigureAwait(true);
         ProfileUnsetReason = slot.UnsetReason;
+        // The note names the record the slot now holds, so picking a different profile moves it rather than
+        // leaving a sentence about the previous one under the new selection.
+        _ApplyProfileSnapshotNote(slot);
     }
 
     /// <summary>
