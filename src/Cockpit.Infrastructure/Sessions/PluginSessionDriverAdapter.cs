@@ -156,7 +156,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // silently became "default"). The operator's explicit choice in the launch options wins; the typed value only
         // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
         // choice is what let a profile's stale default run a write tool ungated.
-        var options = _MergePermissionMode(launchOptions, permissionMode);
+        var options = _StateAttendance(_MergePermissionMode(launchOptions, permissionMode));
 
         // Resolve, from the same effective options the driver starts with, whether this session's permission mode keeps a
         // permission-based provider's confinement engaged (AC-190). Read by Capabilities so the host's post-start
@@ -278,6 +278,33 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// Says out loud, on every launch, whether an operator is watching this session (AC-378). Only the caller that
+    /// created the session knows — <c>DelegationService</c> and a self-driving embedded run write <c>"true"</c>; every
+    /// other launch is a pane someone opened, and gets an explicit <c>"false"</c> here rather than silence.
+    /// <para>
+    /// Explicit, because a driver reading nothing has to assume the safe answer — unattended, so its tool narrowing
+    /// binds — and a driver that assumed the other way would hand a delegated agent the operator's own account
+    /// connectors the moment it ran on a host too old to state this (<c>PluginLoadPolicy</c> only enforces
+    /// <c>minHostVersion</c> from host major 1, so the manifest gate cannot be relied on to keep that pairing apart).
+    /// Stating it here makes the newer host's answer the one that travels, and leaves the older host's silence
+    /// meaning exactly what it meant before this split existed.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? _StateAttendance(IReadOnlyDictionary<string, string>? options)
+    {
+        if (options is not null && options.ContainsKey(WellKnownPluginSessionOptions.Unattended))
+        {
+            return options;
+        }
+
+        var stated = options is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(options, StringComparer.OrdinalIgnoreCase);
+        stated[WellKnownPluginSessionOptions.Unattended] = "false";
+        return stated;
     }
 
     /// <summary>

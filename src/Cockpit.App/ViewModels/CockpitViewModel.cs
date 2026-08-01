@@ -6712,6 +6712,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
         // it reaches every provider without a signature change.
         var addConfine = request.IsolateInWorktree || request.ConfineFileToolsToWorkingDirectory;
+        // An embedded run that starts with its composer off drives itself (an Autopilot step): no operator is watching,
+        // so its tool narrowing must bind rather than merely add (AC-378). An embedded session that keeps its input —
+        // one the operator converses with — is attended and stays additive, like any pane they opened themselves.
+        var addUnattended = request.StartWithInputDisabled;
         // The embedded run's explicit permission mode (an Autopilot step's autonomy mode, AC-152) is a deliberate
         // per-run choice and must win over the profile's own stored permission-mode default. The host carries that
         // explicit mode as the typed StartAsync permissionMode, but the driver's launch-option merge
@@ -6724,7 +6728,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // request names its own mode, leaving the explicit request mode the one that reaches the driver. Provider-neutral:
         // keyed on the well-known permission-mode option, not on any one provider or brand.
         var dropProfilePermissionMode = !string.IsNullOrWhiteSpace(request.PermissionMode) && defaults is { Count: > 0 };
-        if (!addPrompt && !addConfine && !dropProfilePermissionMode)
+        if (!addPrompt && !addConfine && !dropProfilePermissionMode && !addUnattended)
         {
             return defaults;
         }
@@ -6745,6 +6749,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (addConfine)
         {
             options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true";
+        }
+
+        if (addUnattended)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.Unattended] = "true";
         }
 
         return options;

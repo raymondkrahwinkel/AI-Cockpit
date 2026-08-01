@@ -8,7 +8,8 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// <c>--permission-prompt-tool stdio</c> makes the CLI route approvals back over the control protocol as
 /// <c>can_use_tool</c> requests (<see cref="ClaudeControlProtocol"/>), exactly the way Codex's app-server route
 /// surfaces its own in-band approvals. The user's own cockpit-configured MCP servers (#26/#44) <em>are</em> fanned in
-/// via <c>--mcp-config</c> (without <c>--strict-mcp-config</c>) — that is orthogonal to the permission wiring, and
+/// via <c>--mcp-config</c> (paired with <c>--strict-mcp-config</c> only when the session is unattended) — that is
+/// orthogonal to the permission wiring, and
 /// dropping it is what previously left an SDK session with no registry servers. Extracted and <c>internal</c> so the
 /// flag construction is unit-testable without spawning a real process.
 /// </summary>
@@ -36,7 +37,8 @@ internal static class ClaudeSdkArguments
         string? resumeSessionId,
         bool continueMostRecent,
         string? appendSystemPrompt = null,
-        string? mcpConfigPath = null)
+        string? mcpConfigPath = null,
+        bool strictMcpConfig = false)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? "default" : permissionMode;
 
@@ -70,20 +72,28 @@ internal static class ClaudeSdkArguments
         }
 
         // Fan the shared MCP registry into the SDK spawn — the user's own cockpit-configured servers (#26/#44).
-        // Unlike the TTY route (ClaudeTtyProvider.BuildArguments), this one adds --strict-mcp-config (AC-378): a
-        // headless/delegated session is unattended, so it must get EXACTLY the servers the resolution produced,
+        // --strict-mcp-config rides along only for an UNATTENDED session (AC-378, re-cut on the right axis): a
+        // delegated task or a self-driving Autopilot step must get EXACTLY the servers the resolution produced,
         // never the CLI's own user/project claude.ai-connectors (AI-OS-Brain, depot, Microsoft 365, …) unioned in
         // on top. Without the strict flag, narrowing a delegated task DOWN to fewer servers could leave it with
         // MORE (and different) ones than an unnarrowed task: a narrowing that resolves to nothing used to drop
-        // --mcp-config entirely (see ClaudeSdkSessionDriver, which now always writes an explicit — possibly
-        // empty — config file for this reason) and the session would inherit the full CLI config instead of
-        // getting none. The interactive TTY route deliberately keeps the union behaviour — that is the session
-        // the operator drives themselves, and Raymond does not want it to change.
+        // --mcp-config entirely (see ClaudeSdkSessionDriver, which writes an explicit — possibly empty — config
+        // file for exactly that case) and the session would inherit the full CLI config instead of getting none.
+        //
+        // What AC-378 first hung on "is this the SDK route" belongs on "is anyone watching": the operator can open
+        // an interactive SDK pane from the New-session dialog (SessionKind.Sdk) or through a profile whose
+        // DefaultKind is Sdk, and that pane is a session Raymond drives himself. Strict there stripped his own
+        // account connectors out from under him — precisely the regression ClaudeTtyProviderTests:52 describes for
+        // the TTY route. So an attended SDK session now unions like the TTY one, and the strict guarantee stays
+        // where the escalation it prevents can actually happen: where an agent, not a person, asks for the rights.
         if (!string.IsNullOrWhiteSpace(mcpConfigPath))
         {
             arguments.Add("--mcp-config");
             arguments.Add(mcpConfigPath);
-            arguments.Add("--strict-mcp-config");
+            if (strictMcpConfig)
+            {
+                arguments.Add("--strict-mcp-config");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(model))

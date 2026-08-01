@@ -297,10 +297,57 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir), fake.EnvironmentVariables);
     }
 
-    // AC-378: with registry servers resolved, the spawn carries --strict-mcp-config alongside --mcp-config, so the
-    // CLI never unions in its own user/project claude.ai-connectors on top of what the resolution produced.
+    // The host's marker for "nobody is watching this one" — what a delegated task and a self-driving Autopilot step
+    // carry.
+    private static Dictionary<string, string> _Unattended() =>
+        new(StringComparer.OrdinalIgnoreCase) { [WellKnownPluginSessionOptions.Unattended] = "true" };
+
+    // What the host states for a pane the operator opened. Explicit, not absent: absence means a host too old to
+    // answer, which the driver must read as unattended.
+    private static Dictionary<string, string> _Attended() =>
+        new(StringComparer.OrdinalIgnoreCase) { [WellKnownPluginSessionOptions.Unattended] = "false" };
+
+    // AC-378: an unattended session with registry servers resolved carries --strict-mcp-config alongside
+    // --mcp-config, so the CLI never unions in its own user/project claude.ai-connectors on top of what the
+    // resolution produced.
     [Fact]
-    public async Task Start_WithMcpServers_SpawnsWithStrictMcpConfig()
+    public async Task Start_Unattended_WithMcpServers_SpawnsWithStrictMcpConfig()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
+            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
+            CancellationToken.None);
+
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.Contains("--strict-mcp-config", fake.Arguments!);
+    }
+
+    // The re-cut of AC-378 onto the attended/unattended axis: a pane the operator opened in SDK mode gets the same
+    // union an interactive TTY session gets, so the account's own claude.ai connectors survive. Strict here was the
+    // regression ClaudeTtyProviderTests guards the TTY route against, reached through the other route.
+    [Fact]
+    public async Task Start_Attended_WithMcpServers_SpawnsWithoutStrictMcpConfig()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Attended(),
+            mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
+            CancellationToken.None);
+
+        Assert.Contains("--mcp-config", fake.Arguments!);
+        Assert.DoesNotContain("--strict-mcp-config", fake.Arguments!);
+    }
+
+    // Fail-closed on a host that predates the attended/unattended split and states neither: absence must read as
+    // unattended, so a delegated session on such a host keeps the AC-378 guarantee instead of quietly regaining the
+    // operator's own account connectors.
+    [Fact]
+    public async Task Start_WithNoAttendanceStated_FallsBackToStrict()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
@@ -310,22 +357,21 @@ public class ClaudeSdkSessionDriverTests : IDisposable
             mcpServers: [new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp" }],
             CancellationToken.None);
 
-        Assert.Contains("--mcp-config", fake.Arguments!);
         Assert.Contains("--strict-mcp-config", fake.Arguments!);
     }
 
-    // AC-378, criterion 4 — the empty-resolution trap: a narrowing that resolves to zero eligible servers must
-    // still spawn with an explicit (empty) --mcp-config and --strict-mcp-config, never with the flag dropped
-    // entirely (which would let the CLI fall back to its own full user/project config — MORE servers than an
-    // empty, narrowed resolution asked for).
+    // AC-378, criterion 4 — the empty-resolution trap: an unattended narrowing that resolves to zero eligible
+    // servers must still spawn with an explicit (empty) --mcp-config and --strict-mcp-config, never with the flag
+    // dropped entirely (which would let the CLI fall back to its own full user/project config — MORE servers than
+    // an empty, narrowed resolution asked for).
     [Fact]
-    public async Task Start_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
+    public async Task Start_Unattended_WithNoMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
 
         await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null,
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(),
             mcpServers: [],
             CancellationToken.None);
 
@@ -341,15 +387,30 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     // Same as above for the mcpServers: null case (a route that never even attempted resolution) — must behave
     // exactly like an empty list, not fall back to dropping --mcp-config.
     [Fact]
-    public async Task Start_WithNullMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
+    public async Task Start_Unattended_WithNullMcpServers_StillSpawnsWithAnExplicitEmptyMcpConfig_AndStrict()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
 
-        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Unattended(), mcpServers: null, CancellationToken.None);
 
         Assert.Contains("--mcp-config", fake.Arguments!);
         Assert.Contains("--strict-mcp-config", fake.Arguments!);
+    }
+
+    // The attended mirror of the empty-resolution case: with no strict flag to pair with, an empty config file would
+    // only strip the operator's own user/project servers for nothing, so --mcp-config stays off — the TTY route's
+    // behaviour, which is the point of the re-cut.
+    [Fact]
+    public async Task Start_Attended_WithNoMcpServers_OmitsMcpConfigEntirely()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: _Attended(), mcpServers: [], CancellationToken.None);
+
+        Assert.DoesNotContain("--mcp-config", fake.Arguments!);
+        Assert.DoesNotContain("--strict-mcp-config", fake.Arguments!);
     }
 
     [Fact]
