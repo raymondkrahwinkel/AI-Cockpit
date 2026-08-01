@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -770,7 +771,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             $"Profile '{entry.Profile.Label}' asked to run a task at permission '{requested}' — above its configured " +
             $"ceiling '{profileCeiling}'{(entry.WorkingDirectory is { Length: > 0 } dir ? $", in '{dir}'" : string.Empty)}. " +
             $"Approving lets this one task run at '{requested}'; denying clamps it to '{profileCeiling}'.",
-            new ConsentSource(entry.OwnerPaneId, null, "Orchestrator"),
+            new ConsentSource(entry.OwnerPaneId, null, ConsentSourceCatalog.Orchestrator),
             $"delegation.permission:{entry.Profile.Label}",
             ConsentRisk.Dangerous,
             AllowRemember: false);

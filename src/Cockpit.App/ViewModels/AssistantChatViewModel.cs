@@ -117,6 +117,15 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private bool _speakReplies = true;
 
+    /// <summary>
+    /// Whether the operator has switched the consent bypass on for at least one source (#AC-575) — shown in this
+    /// window's header, and on the chip for when the window is closed. Read on open, alongside
+    /// <see cref="SpeakReplies"/>; it changes only in Options, which cannot be reached without this window losing
+    /// focus and its next open re-reading it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _consentBypassActive;
+
     public AssistantChatViewModel(
         IAssistantSessionHost host,
         IAssistantSettingsStore settingsStore,
@@ -175,6 +184,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     private async Task _LoadSpeakRepliesAsync(CancellationToken cancellationToken)
     {
         var settings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
+
+        // AC-575, criterion 5. The window where the assistant's actions are read is also where "some of these were
+        // never shown to you" has to be legible; the chip carries the same mark for when this window is closed.
+        ConsentBypassActive = settings.HasConsentBypass;
+
         _loadingSpeakReplies = true;
         try
         {

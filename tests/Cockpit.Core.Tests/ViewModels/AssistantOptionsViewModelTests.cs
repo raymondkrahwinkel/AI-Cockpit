@@ -1,6 +1,8 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -82,6 +84,117 @@ public class AssistantOptionsViewModelTests
 
         Assert.Equal(chosen, profileStore.RepointedTo);
         Assert.Null(vm.ProfileUnsetReason);
+    }
+
+    // ── AC-575: the consent-bypass rows ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ConsentBypassRows_ComeFromTheHostsOwnSources_AndFromWhatHasActuallyAsked()
+    {
+        // Never free text. The cockpit's own callers come from the catalogue the gates themselves build their
+        // ConsentSource from; a plugin has no compile-time entry anywhere, so it appears because it asked — keyed
+        // on the id the host stamped, not on the label the plugin chose for itself.
+        var vm = new AssistantOptionsViewModel(
+            new FakeSettingsStore(new AssistantSettings()),
+            consentAuditLog: new FakeConsentAuditLog(
+                Audit(pluginId: "cockpit-kubernetes", label: "Kubernetes"),
+                Audit(pluginId: null, label: ConsentSourceCatalog.TerminalMcp)));
+
+        await vm.RefreshAsync();
+
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.Orchestrator);
+
+        var plugin = Assert.Single(vm.ConsentBypassSources, row => row.Key == "cockpit-kubernetes");
+        Assert.Equal("Kubernetes", plugin.Label);
+        Assert.Equal("cockpit-kubernetes", plugin.KeyDetail);
+    }
+
+    [Fact]
+    public async Task ConsentBypassRows_KeyOnTheStampedId_SoAPluginCannotBorrowACockpitSourcesRow()
+    {
+        // The label is the plugin's own text; the key is the host's. A plugin calling itself "Terminal MCP" gets a
+        // row under its own id — the switch it would have ridden stays where it was.
+        var vm = new AssistantOptionsViewModel(
+            new FakeSettingsStore(new AssistantSettings()),
+            consentAuditLog: new FakeConsentAuditLog(
+                Audit(pluginId: "com.example.impostor", label: ConsentSourceCatalog.TerminalMcp)));
+
+        await vm.RefreshAsync();
+
+        Assert.Equal(2, vm.ConsentBypassSources.Count(row => row.Label == ConsentSourceCatalog.TerminalMcp));
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == "com.example.impostor");
+        Assert.Contains(vm.ConsentBypassSources, row => row.Key == ConsentSourceCatalog.TerminalMcp);
+    }
+
+    [Fact]
+    public async Task ConsentBypassRows_IncludeASwitchedOnSourceThisBuildKnowsNothingAbout()
+    {
+        // The plugin has been uninstalled, or the name predates this build. Without a row the permission would be
+        // set, in force, and invisible — the one state a security setting may never be in.
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassDangerousSources = ["a-plugin-since-removed"] });
+        var vm = new AssistantOptionsViewModel(store);
+
+        await vm.RefreshAsync();
+
+        var row = Assert.Single(vm.ConsentBypassSources, candidate => candidate.Key == "a-plugin-since-removed");
+        Assert.True(row.BypassDangerous);
+        Assert.False(row.BypassLowRisk);
+    }
+
+    [Fact]
+    public async Task TickingDangerous_PersistsOnlyDangerous_AndLeavesTheEverydaySwitchAlone()
+    {
+        var store = new FakeSettingsStore(new AssistantSettings { IsEnabled = true });
+        var vm = new AssistantOptionsViewModel(store);
+        await vm.RefreshAsync();
+
+        Assert.False(vm.HasConsentBypass);
+
+        var terminal = vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp);
+        terminal.BypassDangerous = true;
+
+        Assert.Equal([ConsentSourceCatalog.TerminalMcp], store.Saved!.ConsentBypassDangerousSources);
+        Assert.Empty(store.Saved!.ConsentBypassSources);
+        Assert.False(terminal.BypassLowRisk);
+        Assert.True(vm.HasConsentBypass);
+        Assert.True(store.Saved!.IsEnabled, "a bypass tick must not disturb the sibling fields");
+    }
+
+    [Fact]
+    public async Task UntickingASource_RemovesItRatherThanLeavingItOnDisk()
+    {
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
+        var vm = new AssistantOptionsViewModel(store);
+        await vm.RefreshAsync();
+
+        vm.ConsentBypassSources.Single(row => row.Key == ConsentSourceCatalog.TerminalMcp).BypassLowRisk = false;
+
+        Assert.Empty(store.Saved!.ConsentBypassSources);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_DoesNotSaveTheRowsBackOut()
+    {
+        // Seeding the checkboxes from disk must not read as the operator ticking them — the same guard the other
+        // switches on this page already have, and the one that would otherwise rewrite the file on every open.
+        var store = new FakeSettingsStore(new AssistantSettings { ConsentBypassSources = [ConsentSourceCatalog.TerminalMcp] });
+
+        await new AssistantOptionsViewModel(store).RefreshAsync();
+
+        Assert.Null(store.Saved);
+    }
+
+    private static ConsentAuditEntry Audit(string? pluginId, string label) =>
+        new(DateTimeOffset.UtcNow, ConsentAuditAction.Approved, label, "pane-1", pluginId, "scope", "action", Remembered: false);
+
+    private sealed class FakeConsentAuditLog(params ConsentAuditEntry[] entries) : IConsentAuditLog
+    {
+        public Task RecordAsync(ConsentAuditEntry entry, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The Options page never writes the consent trail.");
+
+        public Task<IReadOnlyList<ConsentAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ConsentAuditEntry>>(entries);
     }
 
     private sealed class FakeSettingsStore(AssistantSettings initial) : IAssistantSettingsStore

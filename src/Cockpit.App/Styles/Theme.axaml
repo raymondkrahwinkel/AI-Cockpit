@@ -291,9 +291,9 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
     </Style>
 
-    <!-- Per-reply action row (copy · read aloud): hidden until the row is hovered or focused, so a
-         resting transcript stays calm and the controls surface where the eye already is (Claude web).
-         Kept in the visual tree (opacity, not collapse) so the layout never jumps as it fades in. -->
+    <!-- Per-reply action row (copy): hidden until the row is hovered or focused, so a resting transcript
+         stays calm and the controls surface where the eye already is (Claude web). Kept in the visual
+         tree (opacity, not collapse) so the layout never jumps as it fades in. -->
     <Style Selector="StackPanel.rowActions">
         <Setter Property="Opacity" Value="0"/>
         <Setter Property="Transitions">
@@ -583,7 +583,7 @@
     </Style>
 
     <!-- Compact toggle: same dense footprint as Button.Compact, so a toggle sitting in a compact control
-         row (e.g. the TTY header's Read aloud beside Redraw) lines up at the same height. -->
+         row (e.g. the session header's "Allow all tools" toggle) lines up at the same height. -->
     <Style Selector="ToggleButton.Compact">
         <Setter Property="Padding" Value="10,0"/>
         <Setter Property="MinHeight" Value="28"/>
@@ -1568,6 +1568,18 @@
         <Setter Property="HorizontalAlignment" Value="Right"/>
         <Setter Property="VerticalAlignment" Value="Top"/>
         <Setter Property="Margin" Value="0,-2,-2,0"/>
+    </Style>
+
+    <!-- AC-575: the consent bypass, marked on the chip and the rail badge. Bottom-left so it never sits under the
+         mode dot (top-right), and in the waiting/attention colour rather than the badge's own state colour — it is
+         not a state the assistant is in, it is a standing exemption the operator granted. -->
+    <Style Selector="materialIcons|MaterialIcon.assistantIndicatorBypassMark">
+        <Setter Property="Width" Value="11"/>
+        <Setter Property="Height" Value="11"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+        <Setter Property="VerticalAlignment" Value="Bottom"/>
+        <Setter Property="Margin" Value="-3,0,0,-2"/>
     </Style>
 
     <Style Selector="TextBlock.assistantIndicatorLabel">

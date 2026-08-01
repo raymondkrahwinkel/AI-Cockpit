@@ -51,6 +51,14 @@
                         <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
                     </Grid>
                 </Border>
+                <!-- AC-575, criterion 5: the consent bypass is visible without opening Options. A sibling of the
+                     ring rather than a child of it, for the same reason the pulse ring is one — a Border clips its
+                     child, and this sits on the badge's corner. It survives into the rail because the rail is the
+                     only chip there is once the sidebar is collapsed, and a permission that hides itself when the
+                     sidebar narrows is a permission you stop noticing. -->
+                <materialIcons:MaterialIcon Classes="assistantIndicatorBypassMark" Kind="ShieldOffOutline"
+                                            IsVisible="{Binding IsConsentBypassActive}"
+                                            ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Voice."/>
             </Panel>
         </Button>
 
@@ -100,6 +108,10 @@
                                 <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
                             </Grid>
                         </Border>
+                        <!-- The same mark as the rail above — see there for why it is a sibling of the ring. -->
+                        <materialIcons:MaterialIcon Classes="assistantIndicatorBypassMark" Kind="ShieldOffOutline"
+                                                    IsVisible="{Binding IsConsentBypassActive}"
+                                                    ToolTip.Tip="Some consent cards are skipped for the assistant. Change this in Options → Voice."/>
                     </Panel>
                     <!-- Wrapping, not trimming. The sidebar this lives in is about 170px wide, and the longest
                          label ("Listening continuously") does not fit on one line there — trimmed, it read

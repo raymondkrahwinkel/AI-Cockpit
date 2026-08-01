@@ -86,6 +86,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         var settings = await _settings.LoadAsync().ConfigureAwait(true);
         Indicator.AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged;
+        Indicator.IsConsentBypassActive = settings.HasConsentBypass;
         Indicator.IsFeatureEnabled = settings.IsEnabled;
     }
 
@@ -94,6 +95,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         Indicator.IsFeatureEnabled = settings.IsEnabled;
+        Indicator.IsConsentBypassActive = settings.HasConsentBypass;
         _Refresh();
     }
 

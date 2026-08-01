@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Verify;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Verify;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
@@ -85,7 +86,7 @@ internal sealed class VerifyMcpTools
         var decision = await _consent.RequestConsentAsync(new ConsentRequest(
             "An agent wants to run a verify command",
             _ConsentAction(runner),
-            new ConsentSource(callerSession, null, "Verify MCP"),
+            new ConsentSource(callerSession, null, ConsentSourceCatalog.VerifyMcp),
             "verify.run",
             ConsentRisk.Dangerous)).ConfigureAwait(false);
         if (!decision.IsApproved)

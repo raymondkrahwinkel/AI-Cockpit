@@ -47,6 +47,17 @@
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding Session.ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <!-- AC-575, criterion 5. This window is where the assistant's work is read, so it is also
+                             where "some of these were never shown to you" has to be legible. Says that it is on,
+                             not which sources — that list is Options', and a header is not a settings page. -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ConsentBypassActive}">
+                            <materialIcons:MaterialIcon Kind="ShieldOffOutline" Width="11" Height="11"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                            <TextBlock Text="Consent card skipped for some sources" FontSize="10.5"
+                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                       ToolTip.Tip="Set in Options → Voice. Every skipped card is still written to the consent trail."/>
+                        </StackPanel>
                     </StackPanel>
                     <ToggleButton Grid.Column="2" IsChecked="{Binding SpeakReplies}" Classes="Subtle Compact"
                                   VerticalAlignment="Center" Margin="0,0,4,0"

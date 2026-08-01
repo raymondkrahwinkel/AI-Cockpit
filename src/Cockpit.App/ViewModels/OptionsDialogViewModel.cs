@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Consent;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
@@ -30,11 +32,13 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class AssistantOptionsViewModel(
     IAssistantSettingsStore? settingsStore = null,
     IAssistantProfileStore? profileStore = null,
-    ISessionProfileStore? sessionProfileStore = null) : ObservableObject
+    ISessionProfileStore? sessionProfileStore = null,
+    IConsentAuditLog? consentAuditLog = null) : ObservableObject
 {
     private readonly IAssistantSettingsStore? _settingsStore = settingsStore;
     private readonly IAssistantProfileStore? _profileStore = profileStore;
     private readonly ISessionProfileStore? _sessionProfileStore = sessionProfileStore;
+    private readonly IConsentAuditLog? _consentAuditLog = consentAuditLog;
 
     /// <summary>True only while <see cref="RefreshAsync"/> is seeding properties from disk, so the change handlers below do not write the same value straight back out.</summary>
     private bool _loading;
@@ -69,6 +73,15 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private string? _profileUnsetReason;
 
+    /// <summary>
+    /// The consent-bypass switches, one row per source (#AC-575). Filled by <see cref="RefreshAsync"/> from names
+    /// the host stamps — never from anything the operator types — see <see cref="_RebuildConsentBypassRowsAsync"/>.
+    /// </summary>
+    public ObservableCollection<ConsentBypassSourceViewModel> ConsentBypassSources { get; } = [];
+
+    /// <summary>Whether any source is switched on — the one-line summary above the list, so the page says so before the rows are read.</summary>
+    public bool HasConsentBypass => ConsentBypassSources.Any(row => row.BypassLowRisk || row.BypassDangerous);
+
     /// <summary>Loads settings, the profile slot, and the profiles it can be repointed at. Safe to call with no stores wired (design-time/tests) — it then simply leaves the defaults in place.</summary>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
@@ -81,6 +94,7 @@ public sealed partial class AssistantOptionsViewModel(
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
+                await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
             }
 
             if (_sessionProfileStore is not null)
@@ -105,6 +119,61 @@ public sealed partial class AssistantOptionsViewModel(
         {
             _loading = false;
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the bypass rows (#AC-575). Three sources, all host-stamped, none of them free text:
+    /// <list type="number">
+    /// <item>the cockpit's own consent callers, from <see cref="ConsentSourceCatalog"/> — the same constants those
+    /// gates build their <c>ConsentSource</c> from, so a renamed label moves the switch with it;</item>
+    /// <item>every source that has actually asked, read off the consent trail. This is what puts plugins on the
+    /// list: a plugin asks through <c>ICockpitHost</c>, which stamps its plugin id host-side, and there is no
+    /// compile-time list of installed plugins to enumerate instead. The trail's label is only ever <em>shown</em> —
+    /// the switch is keyed on the stamped id, so a plugin that labels itself "Terminal MCP" gets a row of its own
+    /// under its own id rather than a share of the terminal's;</item>
+    /// <item>anything already switched on, so a source whose plugin is currently uninstalled still has a row to be
+    /// switched off from, instead of a permission that is set and invisible.</item>
+    /// </list>
+    /// </summary>
+    private async Task _RebuildConsentBypassRowsAsync(CancellationToken cancellationToken)
+    {
+        var lowRisk = _lastLoadedSettings.ConsentBypassSources.ToHashSet(StringComparer.Ordinal);
+        var dangerous = _lastLoadedSettings.ConsentBypassDangerousSources.ToHashSet(StringComparer.Ordinal);
+
+        // Key -> the name to show for it. First writer wins, so the catalog's own wording is never overwritten by
+        // whatever a later trail entry called the same source.
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var source in ConsentSourceCatalog.HostSources)
+        {
+            names[source] = source;
+        }
+
+        if (_consentAuditLog is not null)
+        {
+            foreach (var entry in await _consentAuditLog.ReadRecentAsync(500, cancellationToken).ConfigureAwait(true))
+            {
+                names.TryAdd(entry.PluginId ?? entry.SourceLabel, entry.SourceLabel);
+            }
+        }
+
+        foreach (var key in lowRisk.Concat(dangerous))
+        {
+            names.TryAdd(key, key);
+        }
+
+        ConsentBypassSources.Clear();
+        foreach (var (key, label) in names.OrderBy(pair => pair.Value, StringComparer.CurrentCultureIgnoreCase))
+        {
+            var row = new ConsentBypassSourceViewModel(key, label)
+            {
+                BypassLowRisk = lowRisk.Contains(key),
+                BypassDangerous = dangerous.Contains(key),
+            };
+            row.Changed = _SaveSettings;
+            ConsentBypassSources.Add(row);
+        }
+
+        OnPropertyChanged(nameof(HasConsentBypass));
     }
 
     partial void OnIsEnabledChanged(bool value) => _SaveSettings();
@@ -161,8 +230,14 @@ public sealed partial class AssistantOptionsViewModel(
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
+            // Written from the rows rather than merged into what was loaded: the rows already carry every stored
+            // key (see _RebuildConsentBypassRowsAsync), so this is a full replacement and unticking a box actually
+            // removes the permission instead of leaving it on disk under a row that no longer shows it.
+            ConsentBypassSources = [.. ConsentBypassSources.Where(row => row.BypassLowRisk).Select(row => row.Key)],
+            ConsentBypassDangerousSources = [.. ConsentBypassSources.Where(row => row.BypassDangerous).Select(row => row.Key)],
         };
 
+        OnPropertyChanged(nameof(HasConsentBypass));
         _ = _SaveAndAnnounceAsync(_lastLoadedSettings);
     }
 
@@ -173,4 +248,45 @@ public sealed partial class AssistantOptionsViewModel(
         await _settingsStore!.SaveAsync(settings).ConfigureAwait(true);
         Saved?.Invoke(this, EventArgs.Empty);
     }
+}
+
+/// <summary>
+/// One source on the assistant's consent-bypass list (#AC-575): who asks, and the two switches for it.
+/// </summary>
+/// <remarks>
+/// <b>Two checkboxes, not a three-state picker.</b> <see cref="BypassDangerous"/> covers shell commands, session
+/// hand-offs with the operator's rights and arbitrary egress; <see cref="BypassLowRisk"/> covers the idempotent
+/// rest. A dropdown with "nothing / harmless / everything" would put the second one mouse movement away from the
+/// first, and they are not the same decision — so they are not the same control. Neither implies the other: the
+/// broker asks for exactly the one that matches the request's risk.
+/// </remarks>
+/// <param name="key">The host-stamped identity the switch is stored under — a plugin id, or a host source's label. Never shown as the primary name, and never editable.</param>
+/// <param name="label">What to call it on screen.</param>
+public sealed partial class ConsentBypassSourceViewModel(string key, string label) : ObservableObject
+{
+    public string Key { get; } = key;
+
+    public string Label { get; } = label;
+
+    /// <summary>
+    /// The stamped key, shown under the label when the two differ — which is exactly when the label came from a
+    /// plugin. A plugin that names itself after a cockpit source then reads as its own id on this list rather than
+    /// borrowing the other's name; the switch was already keyed on the id, this is so the operator can see that.
+    /// </summary>
+    public string? KeyDetail => string.Equals(Key, Label, StringComparison.Ordinal) ? null : Key;
+
+    /// <summary>Skip the card for this source's low-risk, idempotent actions.</summary>
+    [ObservableProperty]
+    private bool _bypassLowRisk;
+
+    /// <summary>Skip it for this source's dangerous actions too. Off by default, and never turned on by the switch above.</summary>
+    [ObservableProperty]
+    private bool _bypassDangerous;
+
+    /// <summary>Set by the page that owns the row, so a tick persists straight away like every other switch on this dialog.</summary>
+    internal Action? Changed { get; set; }
+
+    partial void OnBypassLowRiskChanged(bool value) => Changed?.Invoke();
+
+    partial void OnBypassDangerousChanged(bool value) => Changed?.Invoke();
 }

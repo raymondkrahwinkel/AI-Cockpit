@@ -220,6 +220,14 @@ public partial class App : Application
         var assistantIndicator = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>();
         assistantIndicator.Start();
         assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
+
+        // AC-575: the consent bypass holds its switches as a snapshot, because the broker asks it synchronously in
+        // the middle of deciding and the store reads a file. Re-read here on the same Saved event the hotkey and
+        // the chip already follow, so a source the operator just switched off stops being bypassed on the next
+        // request rather than at the next restart. The singleton is the one the broker was handed.
+        var consentBypass = Program.Services.GetRequiredService<AssistantConsentBypassPolicy>();
+        cockpitViewModel.AssistantOptions.Saved += (_, _) => _ = consentBypass.ApplySettingsAsync();
+
         assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
         cockpitViewModel.AssistantIndicator = assistantIndicator.Indicator;
         cockpitViewModel.PropertyChanged += (_, e) =>
