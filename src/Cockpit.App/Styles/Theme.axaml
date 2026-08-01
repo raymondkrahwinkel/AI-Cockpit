@@ -1310,6 +1310,18 @@
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
         <Setter Property="Padding" Value="8"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <!-- The mockup's own width:100%, and not cosmetic. Without it the chip sizes to its content, so every
+             state is a different width — measured across the states: Ready 164, Speaking 146, Listening
+             continuously 136, Thinking 121, in a sidebar that offers 164. That is what the operator sees as the
+             chip jumping and as it never being wide enough, and it is one cause, not two: a control that hugs its
+             text changes size whenever the text does. -->
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <!-- And a floor under the height, for the same reason. Some states wrap to two lines at this width and
+             some do not — measured, 47 to 62 — and the chip is docked to the bottom of the sidebar, so every
+             state change shoved the session list above it up or down. A minimum rather than a fixed height: a
+             machine with larger text may genuinely need more, and clipping the reason off an unavailable chip to
+             keep a number would trade away the wrong thing. -->
+        <Setter Property="MinHeight" Value="62"/>
     </Style>
     <Style Selector="Button.assistantIndicatorChip:pointerover /template/ ContentPresenter">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineHoverBrush}"/>
