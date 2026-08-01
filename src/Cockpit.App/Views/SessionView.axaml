@@ -651,8 +651,13 @@
                                                          TextWrapping="Wrap" Classes="transcript"/>
 
                                     <!-- The full tool chip + expandable body: shown at Developer always, at Focus only
-                                         when the fold group is expanded (or the call stands alone), and never at Simple. -->
-                                    <StackPanel IsVisible="{Binding ShowToolBlock}" Spacing="4">
+                                         when the fold group is expanded (or the call stands alone), and never at Simple.
+                                         A member of a folded run (AC-554) nests one level in behind a hairline guide,
+                                         so the chips read as belonging to the "N steps run" line above them; the
+                                         button itself is not part of this Border and stays on the outer margin. -->
+                                    <Border Classes="toolGroupMember" Classes.grouped="{Binding IsInGroup}"
+                                            IsVisible="{Binding ShowToolBlock}">
+                                    <StackPanel Spacing="4">
                                     <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
                                          line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
                                          the verdict dropping onto its own line beneath the command. The arrival
@@ -699,6 +704,7 @@
                                         </StackPanel>
                                     </StackPanel>
                                     </StackPanel>
+                                    </Border>
 
                                     <!-- AC-146: a Task/Agent tool call's own sub-agent activity — nested here rather
                                          than flattened into the top-level transcript, and collapsed by default
