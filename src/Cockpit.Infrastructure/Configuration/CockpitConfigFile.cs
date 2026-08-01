@@ -43,6 +43,13 @@ internal sealed class CockpitConfigFile
 
     public List<SessionProfileEntry> Profiles { get; set; } = [];
 
+    /// <summary>
+    /// The Assistant Profile slot (AC-543); owned by the assistant-profile store. Its own section rather than an
+    /// entry in <see cref="Profiles"/> on purpose: that is what keeps it out of <em>+ New session</em> and out of
+    /// <c>list_profiles</c>, and what makes it undeletable — it is not in the list those read.
+    /// </summary>
+    public AssistantProfileEntry? AssistantProfile { get; set; }
+
     public NotificationSettingsEntry? Notifications { get; set; }
 
     /// <summary>Always-allow rules keyed by profile label, so each profile keeps its own allowances.</summary>
@@ -78,6 +85,9 @@ internal sealed class CockpitConfigFile
     public DelegationSettingsEntry? Delegation { get; set; }
 
     public VoiceSettingsEntry? Voice { get; set; }
+
+    /// <summary>The assistant's own on/off/speak/hotkey settings (AC-543); owned by the assistant-settings store. Its own section, apart from the slot in <see cref="AssistantProfile"/>, so switching the feature off never risks the profile it will resume with.</summary>
+    public AssistantSettingsEntry? Assistant { get; set; }
 
     /// <summary>Screenshot capture settings (AC-220) — the desktop-wide key and whether it is armed; owned by the screenshot-settings store.</summary>
     public ScreenshotSettingsEntry? Screenshots { get; set; }

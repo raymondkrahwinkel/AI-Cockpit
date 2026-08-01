@@ -1,0 +1,163 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="220"
+             x:Class="Cockpit.App.Views.AssistantIndicator"
+             x:DataType="vm:AssistantIndicatorViewModel">
+
+    <Design.DataContext>
+        <vm:AssistantIndicatorViewModel/>
+    </Design.DataContext>
+
+    <!-- AC-543: reusable assistant indicator — the chip lives here (never in CockpitView.axaml, criterion 21)
+         so AC-238 can drop the same control into the companion window. Vormtaal transcribed from
+         cockpit-assistant-indicator-2026-08-01.html: a rounded chip with a circular mic badge on the left and a
+         two-line label on the right, whose badge alone (no chip chrome, no label) is what the sidebar rail
+         keeps once it collapses. -->
+    <!-- Nothing at all while the feature is off: "off" means no chip, not a chip saying it is off. See
+         IsFeatureEnabled's own remarks for why that is a different thing from Unavailable. -->
+    <StackPanel Spacing="8" IsVisible="{Binding IsFeatureEnabled}">
+
+        <!-- Rail form: shown once the sidebar collapses. Same ring, same classes, no label — see
+             Theme.axaml's Border.assistantIndicatorRing remarks for why the colour/ring alone still answer
+             "who is listening" without room for prose. The pulse ring sits in a Panel beside the badge, not
+             inside its Border: a Border clips its child to its own bounds, so a ring meant to grow past the
+             badge's edge (Theme.axaml's Ellipse.assistantIndicatorPulseRing) has to be a sibling, not a child. -->
+        <Button Classes="assistantIndicatorRail" Command="{Binding ClickCommand}" IsVisible="{Binding IsCollapsed}"
+                ToolTip.Tip="{Binding Label}">
+            <!-- Pinned to the rail badge's 30px, clipping off — same reason as the chip's badge Panel. -->
+            <Panel Width="30" Height="30" ClipToBounds="False">
+                <Ellipse Classes="assistantIndicatorPulseRingRail" IsVisible="{Binding IsListening}"/>
+                <Border Classes="assistantIndicatorRing"
+                        Classes.listening="{Binding IsListening}"
+                        Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                        Classes.thinking="{Binding IsThinking}"
+                        Classes.speaking="{Binding IsSpeaking}"
+                        Classes.dictating="{Binding IsDictating}"
+                        Classes.unavailable="{Binding IsUnavailable}">
+                    <Grid>
+                        <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
+                        <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                        <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
+                        <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                        <!-- Criterion 19: the standing "listening continuously" mode carries a small fixed dot the
+                             momentary F10/F9 hold never shows — see the style's own remarks on why it is drawn on
+                             the ring rather than on chip-only chrome, so it survives into this rail too. -->
+                        <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                    </Grid>
+                </Border>
+            </Panel>
+        </Button>
+
+        <!-- Expanded form: the chip plus the listening-mode picker (criterion 17), both hidden once the
+             sidebar is a rail — there is nowhere for either to sit. -->
+        <StackPanel Spacing="8" IsVisible="{Binding !IsCollapsed}">
+
+            <!-- Vormgeving pass (2026-08-01): the whole chip tints per state, not only the mic badge — the
+                 Classes bindings below are what let Theme.axaml paint the chip's own border/background per
+                 state (Button.assistantIndicatorChip.listening etc.), the same way the ring's classes already
+                 did before this pass. -->
+            <Button Classes="assistantIndicatorChip"
+                    Classes.listening="{Binding IsListening}"
+                    Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                    Classes.thinking="{Binding IsThinking}"
+                    Classes.speaking="{Binding IsSpeaking}"
+                    Classes.dictating="{Binding IsDictating}"
+                    Classes.unavailable="{Binding IsUnavailable}"
+                    Command="{Binding ClickCommand}">
+                <!-- Three columns, not four. The mockup lays badge / label / meter / key across 340px; this chip
+                     gets about 164 in the sidebar, and with the meter and the key both taking their width first
+                     the star column collapsed — "Listening" and "Speaking" rendered with no label at all, and
+                     "Dictating" broke one letter per line. The label is the one thing criterion 6 is about, so it
+                     wins the width and the meter moves down beside the detail line, which has room to spare. -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- Pinned to the badge's own size, with clipping off: the pulse ring grows past it and must
+                         be free to do so visually while contributing nothing to measure. Without this the ring's
+                         animation resizes this Panel every frame, which resizes the chip — the jumping that
+                         reached Raymond twice. -->
+                    <Panel Grid.Column="0" Width="26" Height="26" ClipToBounds="False">
+                        <Ellipse Classes="assistantIndicatorPulseRing" IsVisible="{Binding IsListening}"/>
+                        <Border Classes="assistantIndicatorRing small"
+                                Classes.listening="{Binding IsListening}"
+                                Classes.listeningContinuously="{Binding IsListeningContinuously}"
+                                Classes.thinking="{Binding IsThinking}"
+                                Classes.speaking="{Binding IsSpeaking}"
+                                Classes.dictating="{Binding IsDictating}"
+                                Classes.unavailable="{Binding IsUnavailable}">
+                            <Grid>
+                                <materialIcons:MaterialIcon Kind="Microphone" IsVisible="{Binding IsMicIcon}"/>
+                                <materialIcons:MaterialIcon Kind="ThoughtBubble" IsVisible="{Binding IsThinking}"/>
+                                <materialIcons:MaterialIcon Kind="VolumeHigh" IsVisible="{Binding IsSpeaking}"/>
+                                <materialIcons:MaterialIcon Kind="AlertCircleOutline" IsVisible="{Binding IsUnavailable}"/>
+                                <Ellipse Classes="assistantIndicatorModeDot" IsVisible="{Binding IsListeningContinuously}"/>
+                            </Grid>
+                        </Border>
+                    </Panel>
+                    <!-- Wrapping, not trimming. The sidebar this lives in is about 170px wide, and the longest
+                         label ("Listening continuously") does not fit on one line there — trimmed, it read
+                         "Listening continu…", which is the one state whose whole point is that it is visibly
+                         different from the momentary one. Found by rendering it in the real sidebar rather than
+                         in the component's own roomier scene. -->
+                    <StackPanel Grid.Column="1" Margin="10,0,6,0" Spacing="1" VerticalAlignment="Center">
+                        <TextBlock Classes="assistantIndicatorLabel" Text="{Binding Label}" TextWrapping="Wrap"/>
+                        <!-- The detail line carries the meter beside it. The meter is a live-capture cue, shown
+                             only while something is actually moving through the mic or the speaker — Listening,
+                             Speaking, Dictating. Thinking has no audio to meter, and ListeningContinuously is a
+                             standing mode rather than a handeling, so neither shows it. -->
+                        <!-- No level meter here, unlike the mockup. Its chip is 340px wide; this one gets ~164 in
+                             the sidebar, and the five bars took exactly the width the word "Assistant" needed —
+                             it rendered as "Assistan/t". Criterion 6 is about the chip saying who is listening in
+                             colour AND in words, so the words win. Nothing is lost that is not said twice over:
+                             the pulse ring on the badge already means live, and the push-to-talk overlay — which
+                             has a full screen's width and is what you are actually looking at during a hold —
+                             still carries the real waveform. -->
+                        <TextBlock Classes="assistantIndicatorDetail" Text="{Binding Detail}" TextWrapping="Wrap"
+                                   IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                    <!-- The key hint (mockup's .key badge): only the states that actually have a key bound to
+                         them right now get one — ViewModel.KeyHint returns null for the rest and the badge
+                         hides rather than showing empty. -->
+                    <Border Grid.Column="2" Classes="assistantIndicatorKey" VerticalAlignment="Center"
+                            IsVisible="{Binding KeyHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding KeyHint}"/>
+                    </Border>
+                </Grid>
+            </Button>
+
+            <!-- Listening mode (criteria 17/18/comment 5): the two reachable stands, readable without a click —
+                 Off and Always on. AlwaysOn's own confirmation lives inline below rather than in a separate
+                 dialog — the picker already put the operator's attention on this exact chip, and a modal for a
+                 one-line, one-time warning would be a bigger interruption than the thing it is warning about
+                 (motivated further in the ticket response). Vormgeving pass (2026-08-01): "Wake word" — the
+                 third stand this row used to show as a disabled "not set up yet" option — is gone; Raymond's
+                 call, 2026-08-01, is that showing an unreachable option earns its place less than a clean row of
+                 two. AssistantListeningMode.AlwaysOnWithWakeWord itself still exists (AssistantIndicatorCoordinator
+                 still refuses it), it is simply no longer offered here. -->
+            <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4">
+                <Button Content="Off" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeOff}"
+                        Command="{Binding SelectListeningModeOffCommand}"
+                        ToolTip.Tip="Microphone closed. Only the held assistant hotkey opens it."/>
+                <Button Content="Always on" Classes="Compact assistantIndicatorModeButton" Classes.Accent="{Binding IsListeningModeAlwaysOn}"
+                        Command="{Binding SelectListeningModeAlwaysOnCommand}"
+                        ToolTip.Tip="Microphone stays open. Everything you say goes to the assistant."/>
+            </WrapPanel>
+
+            <!-- The one-time AlwaysOn cost explanation (criterion 18) — shown once, on the pick, never again
+                 once AlwaysOnCostAcknowledged is true (see AssistantIndicatorViewModel.SelectListeningModeAlwaysOn). -->
+            <Border Classes="assistantIndicatorConfirm" IsVisible="{Binding IsAlwaysOnConfirmationPending}">
+                <StackPanel Spacing="8">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Everything you say will be sent to the assistant, and every utterance costs. This is asked once."/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="Turn on" Classes="Accent Compact" Command="{Binding ConfirmAlwaysOnCommand}"/>
+                        <Button Content="Cancel" Classes="Ghost Compact" Command="{Binding CancelAlwaysOnConfirmationCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </StackPanel>
+</UserControl>

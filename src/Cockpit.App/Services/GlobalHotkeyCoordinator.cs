@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Hotkeys;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Toasts;
@@ -41,6 +42,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
     private readonly IGlobalHotkeyService _hotkeys;
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly IScreenshotSettingsStore _screenshotSettingsStore;
+    private readonly IAssistantSettingsStore _assistantSettingsStore;
     private readonly IHotkeyExclusivityGuard _guard;
     private readonly IToastService _toasts;
     private readonly ILogger<GlobalHotkeyCoordinator> _logger;
@@ -66,6 +68,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         IGlobalHotkeyService hotkeys,
         IVoiceSettingsStore voiceSettingsStore,
         IScreenshotSettingsStore screenshotSettingsStore,
+        IAssistantSettingsStore assistantSettingsStore,
         IHotkeyExclusivityGuard guard,
         IToastService toasts,
         ILogger<GlobalHotkeyCoordinator> logger,
@@ -74,6 +77,7 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         _hotkeys = hotkeys;
         _voiceSettingsStore = voiceSettingsStore;
         _screenshotSettingsStore = screenshotSettingsStore;
+        _assistantSettingsStore = assistantSettingsStore;
         _guard = guard;
         _toasts = toasts;
         _logger = logger;
@@ -227,6 +231,15 @@ public sealed class GlobalHotkeyCoordinator : ISingletonService, IDisposable
         if (screenshots.GlobalHotkeyEnabled)
         {
             bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.Screenshot, "Take a screenshot", screenshots.HotkeyKeyName));
+        }
+
+        // The assistant key, and unlike dictation's it is not gated on voice being on: the assistant answers typed
+        // input too, and the hold is what wakes it. Gated only on the feature itself, which is off by default —
+        // so nothing is registered with the desktop for an operator who never switched the assistant on.
+        var assistant = await _assistantSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (assistant.IsEnabled)
+        {
+            bindings.Add(new GlobalHotkeyBinding(GlobalHotkeys.AssistantPushToTalk, "Talk to the assistant (hold)", assistant.PushToTalkKeyName));
         }
 
         return bindings;

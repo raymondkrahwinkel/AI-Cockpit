@@ -189,6 +189,34 @@ public partial class App : Application
         // simply not be listening when its key fires.
         Program.Services.GetRequiredService<VoicePushToTalkCoordinator>();
 
+        // The assistant's own key (AC-543). Resolved for the same reason — the constructor is where it starts
+        // listening — and then pointed at the Options page, so a rebound key or the feature being switched off
+        // re-arms straight away instead of at the next restart. Resolving it starts no assistant: the instance is
+        // built on the first hold or the first click on the chip, never before.
+        var assistantPushToTalk = Program.Services.GetRequiredService<AssistantPushToTalkCoordinator>();
+
+        // Read the assistant's switch off disk once at startup. Without this the host sits on its constructed
+        // default — "switched off" — until something happens to save Options, so on every launch after the one
+        // where it was turned on, the first F10 refused with a reason that was simply out of date. Starts
+        // nothing: it resolves availability, and the first hold or click is still what builds the instance.
+        _ = Program.Services.GetRequiredService<AssistantSessionHost>().ApplySettingsAsync();
+
+        // The chip, and what feeds it. Started here rather than in its constructor because it subscribes to the
+        // open-mic coordinator, which is resolved further down — and because the view model it hands over has to
+        // exist before the sidebar binds to it.
+        var assistantIndicator = Program.Services.GetRequiredService<AssistantIndicatorCoordinator>();
+        assistantIndicator.Start();
+        assistantPushToTalk.FollowSettings(cockpitViewModel.AssistantOptions, assistantIndicator);
+        assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
+        cockpitViewModel.AssistantIndicator = assistantIndicator.Indicator;
+        cockpitViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CockpitViewModel.SidebarCollapsed))
+            {
+                assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
+            }
+        };
+
         // Held on the view model as well as resolved: every session panel is handed the capture its composer
         // button runs from here, the same way the open-mic coordinator is exposed for the sidebar toggle.
         cockpitViewModel.Screenshots = Program.Services.GetRequiredService<ScreenshotCoordinator>();

@@ -1163,6 +1163,28 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _workspaceId = string.Empty;
 
+    /// <summary>
+    /// This session sits on no workspace at all, and no fallback may give it one (AC-543). True only for the
+    /// voice assistant — the third session kind, which is neither a pane on a desk nor a headless task with an
+    /// owner pane.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from an empty <see cref="WorkspaceId"/>, which means "not assigned" and reads as the first
+    /// Sessions workspace. That fallback is right for a session created before workspaces existed and wrong for
+    /// this one: it would put the assistant on a roster its neighbours can see, and the mistake would only
+    /// surface later, as an agent finding a session nothing accounts for.
+    /// <para>
+    /// Set once, by <see cref="Services.AssistantSessionHost"/>, at construction. That the host is the only
+    /// writer is what makes the assistant's identity established by construction rather than claimed: no agent
+    /// can declare that it is the assistant, because nothing it can say sets this.
+    /// </para>
+    /// <para>
+    /// <see cref="Services.SessionWorkspacePlacement"/> is what reads it. Nothing else should ask directly —
+    /// the point of that helper is that the rule has one home.
+    /// </para>
+    /// </remarks>
+    public bool BelongsToNoWorkspace { get; internal set; }
+
     /// <summary>Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.</summary>
     [ObservableProperty]
     private string _voiceStatus = string.Empty;
