@@ -62,8 +62,11 @@ public sealed class ProjectQuickStart(
             instructionContents: instructionContents);
 
         // The same rule the dialog opens on, from the same place: the promise here is "the dialog, skipped", so what
-        // starts has to be what pressing Start would have started.
-        var kind = SessionKindDefaults.HasTtyRoute(profile, ttyProviders) ? SessionKind.Tty : SessionKind.Sdk;
+        // starts has to be what pressing Start would have started. That has to be ResolveDefaultKind and not
+        // HasTtyRoute (AC-584): the latter only answers whether a TUI exists at all, which is true for every Claude
+        // profile, so asking it started a TTY however the profile had saved its kind — the one setting this line is
+        // supposed to be reading.
+        var kind = SessionKindDefaults.ResolveDefaultKind(profile, ttyProviders);
         var isSdk = kind == SessionKind.Sdk;
 
         return new NewSessionResult(

@@ -176,6 +176,23 @@ public class ProjectQuickStartTests
         Assert.Null(result.ReadingLevel);
     }
 
+    /// <summary>
+    /// AC-584. The two tests around this one differ only where <see cref="SessionProfile.DefaultKind"/> plays no
+    /// part, so both passed while the quick start asked <c>HasTtyRoute</c> — "is there a TUI at all" — instead of
+    /// <c>ResolveDefaultKind</c>, and every Claude profile started as a TTY however it was saved. This is that gap:
+    /// a profile that <em>has</em> a TUI and has asked not to use it.
+    /// </summary>
+    [Fact]
+    public async Task AProfileWithATuiThatPrefersTheSdkStartsAnSdkSession()
+    {
+        var quickStart = Build([ClaudeProfile with { DefaultKind = ProfileSessionKind.Sdk }]);
+        var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
+
+        var result = await quickStart.ComposeAsync(project);
+
+        Assert.Equal(SessionKind.Sdk, result!.Kind);
+    }
+
     [Fact]
     public async Task AProfileWithoutATuiStartsAnSdkSessionOnItsReadingLevel()
     {
