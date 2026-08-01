@@ -224,8 +224,83 @@ public class AssistantSessionHostTests
         var selection = AssistantSessionHost.McpSelection(profile, []);
 
         Assert.Equal(
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "depot", AssistantIdentity.McpServerName },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "depot",
+                AssistantIdentity.McpServerName,
+                AssistantIdentity.ActMcpServerName,
+            },
             selection);
+    }
+
+    // ── AC-545, the mounting half of the acting server ──
+
+    /// <summary>
+    /// Every one of the assistant's own endpoints is named by this launch — read (AC-544) and acting (AC-545) alike.
+    /// </summary>
+    /// <remarks>
+    /// <b>The set is read off <see cref="AssistantIdentity"/>, not typed out here.</b> That is the phase-2 lesson:
+    /// a test listing the servers it expects passes happily on the day a third one is added and not mounted. Both
+    /// halves of the first gate have to hold and they fail in opposite directions — an endpoint that is not Internal
+    /// fans out to every session (covered in <c>AssistantActMountRuleTests</c>), and one that is Internal but named
+    /// by nobody is hosted, registered, tested, and reaches the assistant never. The second is the silent one: the
+    /// assistant simply has no acting tools, and nothing anywhere says so.
+    /// </remarks>
+    /// <summary>
+    /// The acting servers the assistant is not handed by default stay out of the fan-out — and the list is read off
+    /// the production set rather than typed here, so a server added to it is covered on the day it is added.
+    /// </summary>
+    /// <remarks>
+    /// <c>cockpit-orchestrator</c> is the one this is really about: <c>delegate_task</c> starts AI work with no pane,
+    /// no Allow row and no line in the spawn trail, which is every guarantee AC-545 built, absent.
+    /// </remarks>
+    [Fact]
+    public void McpSelection_WithNoSavedSelection_LeavesOutTheServersTheAssistantIsNotGivenByDefault()
+    {
+        var catalog = AssistantSessionHost.NotFannedOutToTheAssistant
+            .Select(name => new McpServerConfig { Name = name, Enabled = true })
+            .Append(new McpServerConfig { Name = "depot", Enabled = true })
+            .ToList();
+
+        var selection = AssistantSessionHost.McpSelection(_Profile(), catalog);
+
+        Assert.All(AssistantSessionHost.NotFannedOutToTheAssistant, name => Assert.DoesNotContain(name, selection));
+
+        // The other half: an ordinary information server still arrives, or this would be a test about a fan-out
+        // that gives the assistant nothing at all.
+        Assert.Contains("depot", selection);
+    }
+
+    /// <summary>
+    /// A selection the operator saved on the profile is taken whole, including a server the default leaves out:
+    /// this is a default, not a boundary, and an explicit tick is an answer.
+    /// </summary>
+    [Fact]
+    public void McpSelection_WithASavedSelection_KeepsEvenAServerTheDefaultWouldLeaveOut()
+    {
+        var excluded = AssistantSessionHost.NotFannedOutToTheAssistant.First();
+        var profile = _Profile() with { EnabledMcpServerNames = [excluded] };
+
+        var selection = AssistantSessionHost.McpSelection(profile, []);
+
+        Assert.Contains(excluded, selection);
+    }
+
+    [Fact]
+    public void McpSelection_NamesEveryOneOfTheAssistantsOwnServers()
+    {
+        var ownServers = typeof(AssistantIdentity)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string) && field.Name.EndsWith("McpServerName", StringComparison.Ordinal))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToList();
+
+        // A reflection query that found nothing would make the assertion below vacuously true.
+        Assert.NotEmpty(ownServers);
+
+        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
+
+        Assert.All(ownServers, server => Assert.Contains(server, selection));
     }
 
     private static SessionProfile _Profile() => new("assistant-local", new ClaudeConfig("/tmp/claude"));

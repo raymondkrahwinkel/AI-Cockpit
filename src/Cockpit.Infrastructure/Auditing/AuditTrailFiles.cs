@@ -27,8 +27,11 @@ internal static class AuditTrailFiles
     /// <summary>The agent-notify trail (AC-392): the messages agents sent each other.</summary>
     public const string AgentNotify = "agent-notify-audit.jsonl";
 
+    /// <summary>The assistant spawn trail (AC-545): every session the assistant asked the host to start or stop.</summary>
+    public const string AssistantSpawn = "assistant-spawn-audit.jsonl";
+
     /// <summary>Every trail's file name. The order carries no meaning.</summary>
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn];
 
     /// <summary>
     /// Where <paramref name="fileName"/> lives for this install: next to <c>cockpit.json</c>, under the state root

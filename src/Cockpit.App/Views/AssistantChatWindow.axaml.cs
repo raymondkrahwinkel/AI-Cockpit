@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 
@@ -23,6 +24,7 @@ public partial class AssistantChatWindow : Window
     // Upgrade to the same anchor-tracking SessionView uses if this window grows a "scrolled up to read
     // history" use case.
     private NotifyCollectionChangedEventHandler? _transcriptHandler;
+    private PropertyChangedEventHandler? _sessionHandler;
     private SessionViewModel? _attachedSession;
 
     public AssistantChatWindow()
@@ -96,14 +98,45 @@ public partial class AssistantChatWindow : Window
 
         _transcriptHandler ??= (_, _) => Dispatcher.UIThread.Post(TranscriptScroll.ScrollToEnd);
         session.Transcript.CollectionChanged += _transcriptHandler;
+
+        _sessionHandler ??= _OnSessionPropertyChanged;
+        session.PropertyChanged += _sessionHandler;
         _attachedSession = session;
+    }
+
+    /// <summary>
+    /// Scrolls the Allow/Deny row into view the moment a permission starts waiting (AC-545).
+    /// </summary>
+    /// <remarks>
+    /// The transcript handler above cannot do this. A permission does not arrive as a new row — it turns a tool row
+    /// that is already in the list into a pending one — so nothing is added, <c>CollectionChanged</c> stays quiet,
+    /// and the view stays exactly where it was. With the progress line and the composer below it, the buttons then
+    /// sit just under the fold: found only by someone who thinks to scroll, on the one control the whole consent
+    /// design says must be in front of the operator. Same failure as AC-543's missing Allow row, a scroll offset
+    /// further along.
+    /// </remarks>
+    private void _OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SessionViewModel.HasPendingPermission)
+            && sender is SessionViewModel { HasPendingPermission: true })
+        {
+            Dispatcher.UIThread.Post(TranscriptScroll.ScrollToEnd);
+        }
     }
 
     private void _DetachTranscript()
     {
-        if (_attachedSession is { } session && _transcriptHandler is { } handler)
+        if (_attachedSession is { } session)
         {
-            session.Transcript.CollectionChanged -= handler;
+            if (_transcriptHandler is { } handler)
+            {
+                session.Transcript.CollectionChanged -= handler;
+            }
+
+            if (_sessionHandler is { } sessionHandler)
+            {
+                session.PropertyChanged -= sessionHandler;
+            }
         }
 
         _attachedSession = null;
@@ -121,6 +154,50 @@ public partial class AssistantChatWindow : Window
     }
 
     private void _OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// Saves the conversation as a text file, so it can be handed to somebody who was not in the room.
+    /// </summary>
+    /// <remarks>
+    /// A save dialog rather than a fixed folder: this exists to be shared, and where a file lands decides whether
+    /// it is findable. Silent on cancel — closing a file picker is an answer, not a failure worth reporting.
+    /// </remarks>
+    private async void _OnExportClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save the conversation",
+            SuggestedFileName = $"assistant-{DateTime.Now:yyyyMMdd-HHmm}.txt",
+            DefaultExtension = "txt",
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        await using var stream = await file.OpenWriteAsync();
+        await using var writer = new StreamWriter(stream);
+        await writer.WriteAsync(vm.TranscriptAsText());
+    }
+
+    /// <summary>
+    /// Loads the spawn trail the moment the flyout opens, not when the window opens — most window opens never
+    /// touch this affordance, and the trail is a file read (<see cref="AssistantChatViewModel.LoadSpawnLogCommand"/>)
+    /// that owes nothing to a window that only wants to chat.
+    /// </summary>
+    private void _OnSpawnLogFlyoutOpened(object? sender, EventArgs e)
+    {
+        if (DataContext is AssistantChatViewModel vm && vm.LoadSpawnLogCommand.CanExecute(null))
+        {
+            vm.LoadSpawnLogCommand.Execute(null);
+        }
+    }
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {

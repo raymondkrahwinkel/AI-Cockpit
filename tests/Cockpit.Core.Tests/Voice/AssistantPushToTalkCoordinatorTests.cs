@@ -23,7 +23,7 @@ public class AssistantPushToTalkCoordinatorTests
         // the operator. The chip flicked back to Ready, no words appeared, and unlike the dictation path there is
         // no composer here to show an empty result. Held against a live microphone, that is indistinguishable from
         // an assistant that ignored you, and it costs an attempt every single time.
-        var (coordinator, overlay, assistant, pushToTalk) = _Coordinator();
+        var (coordinator, overlay, assistant, pushToTalk, _) = _Coordinator();
         pushToTalk.EndHoldAsync(applyCleanup: false).Returns(string.Empty);
 
         coordinator.HandleHoldStarted();
@@ -40,7 +40,7 @@ public class AssistantPushToTalkCoordinatorTests
     {
         // The other side of the same branch: a rule that reported "no speech heard" for everything would pass the
         // test above and ship an assistant that never hears anything.
-        var (coordinator, overlay, assistant, pushToTalk) = _Coordinator();
+        var (coordinator, overlay, assistant, pushToTalk, _) = _Coordinator();
         pushToTalk.EndHoldAsync(applyCleanup: false).Returns("wat is de status van AC-223");
 
         coordinator.HandleHoldStarted();
@@ -50,8 +50,24 @@ public class AssistantPushToTalkCoordinatorTests
         Assert.Equal(VoiceOverlayState.Hidden, overlay.State);
     }
 
+    /// <summary>
+    /// Holding the key to talk stops whatever the assistant is still reading out (AC-545 live test): the coordinator
+    /// promised this in a comment and never did it, so an interrupted answer went on narrating over the question.
+    /// </summary>
+    [Fact]
+    public void HoldStarted_StopsTheReadAloud_SoTheAssistantDoesNotTalkOverTheOperator()
+    {
+        var (coordinator, _, _, _, playback) = _Coordinator();
+
+        coordinator.HandleHoldStarted();
+
+        // Unconditional on purpose: unlike open-mic's barge-in there is no threshold to weigh, because a held
+        // hotkey cannot be a cough.
+        playback.Received(1).StopAll();
+    }
+
     private static (AssistantPushToTalkCoordinator Coordinator, VoiceOverlayViewModel Overlay,
-        IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk) _Coordinator()
+        IAssistantSessionHost Assistant, IVoicePushToTalkService PushToTalk, IVoicePlaybackQueue Playback) _Coordinator()
     {
         var assistant = Substitute.For<IAssistantSessionHost>();
         assistant.Activity.Returns(AssistantActivity.Ready);
@@ -62,13 +78,15 @@ public class AssistantPushToTalkCoordinatorTests
         pushToTalk.BeginHold().Returns(true);
 
         var overlay = new VoiceOverlayViewModel();
+        var playback = Substitute.For<IVoicePlaybackQueue>();
         var coordinator = new AssistantPushToTalkCoordinator(
             TestGlobalHotkeys.Coordinator(new FakeGlobalHotkeyService()),
             assistant,
             new VoiceOverlayCoordinator(overlay, new FakeVoiceOverlayPresenter()),
             pushToTalk,
-            NullLogger<AssistantPushToTalkCoordinator>.Instance);
+            NullLogger<AssistantPushToTalkCoordinator>.Instance,
+            playback);
 
-        return (coordinator, overlay, assistant, pushToTalk);
+        return (coordinator, overlay, assistant, pushToTalk, playback);
     }
 }
