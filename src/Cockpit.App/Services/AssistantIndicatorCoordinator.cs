@@ -60,6 +60,13 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _openMic.PropertyChanged += _OnSourceChanged;
         _overlay.Overlay.PropertyChanged += _OnSourceChanged;
 
+        // The one source the chip was declared to have and never actually listened to. AssistantActivity.Speaking
+        // exists, the indicator renders it, and there is even a baseline for that frame — but nothing ever set it,
+        // because the assistant host only ever writes Activity for things it does itself (a hold, a send, a start)
+        // and speaking is something the playback queue does afterwards. So the one state the operator most wants
+        // at a glance — "it is talking to me right now" — was dead from the day it was drawn.
+        _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
+
         Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
@@ -92,6 +99,21 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _OnSourceChanged(object? sender, PropertyChangedEventArgs e) =>
         Dispatcher.UIThread.Post(_Refresh);
 
+    /// <summary>Whether the playback queue is speaking right now — the chip's <see cref="AssistantActivity.Speaking"/>.</summary>
+    /// <remarks>
+    /// Kept as a field rather than asked of the queue in <see cref="_ResolveActivity"/>, because the queue reports
+    /// this by event and has no property to read back — and the event arrives on the playback thread, so the value
+    /// is captured here and the refresh marshalled like every other source.
+    /// </remarks>
+    private bool _isSpeaking;
+
+    private void _OnPlaybackActiveChanged(object? sender, bool active) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            _isSpeaking = active;
+            _Refresh();
+        });
+
     private void _Refresh()
     {
         Indicator.Activity = _ResolveActivity();
@@ -114,6 +136,17 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             && _assistant.Activity is not (AssistantActivity.Listening or AssistantActivity.Thinking))
         {
             return AssistantActivity.Dictating;
+        }
+
+        // Speaking, before the open-mic stand below and after dictation above. It outranks "listening
+        // continuously" because it is a handling and that is a stand: with the microphone open the assistant is
+        // always, in some sense, listening, and saying so while it is audibly talking answers the wrong question.
+        // It does not outrank a held key or a hold being transcribed — those are the operator interrupting, and
+        // barge-in stops the playback anyway, so reporting Speaking there would be a frame of the state that is
+        // just ending.
+        if (_isSpeaking && _assistant.Activity is AssistantActivity.Ready or AssistantActivity.Thinking)
+        {
+            return AssistantActivity.Speaking;
         }
 
         // The standing state beats the host's momentary one: with the microphone held open, "listening

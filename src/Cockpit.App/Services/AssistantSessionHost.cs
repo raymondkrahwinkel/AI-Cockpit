@@ -327,6 +327,16 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     private void _ApplySpeech(SessionViewModel session, AssistantSettings settings)
     {
         session.ReadAloudMode = ReadAloudMode.Verbatim;
+
+        // The second door to the same local model, and the one that is easy to miss: the turn acknowledgement
+        // (AC-99) has a LocalLlm mode that writes its short "let me look" line with the cleanup service. Pinned to
+        // the preset phrases — instant, no model call — so no local model is ever reached from here either.
+        // Today the assistant keeps this value only because the operator's choice is fanned out by walking
+        // `Sessions`, which it is not in; that is an accident of where it sits, not a rule, and it would stop
+        // protecting anything the day someone adds the assistant to that loop. Raymond, 2026-08-01: a local model
+        // is the operator's to choose as the Assistant Profile and nowhere else — never machinery underneath it.
+        session.TurnAckMode = TurnAckMode.InstantPhrases;
+
         session.TtsVoiceSid = _cockpit.SelectedTtsVoice.Sid;
         session.ReadAloudLanguage = _cockpit.SelectedReadAloudLanguage.Code;
         session.ReadResponsesAloud = settings.SpeakReplies;
@@ -375,9 +385,17 @@ public sealed partial class AssistantSessionHost : ObservableObject, ISingletonS
     internal static AssistantActivity ActivityFor(AssistantActivity current, SessionStatus status) => current switch
     {
         AssistantActivity.Unavailable or AssistantActivity.Listening => current,
-        _ => status is SessionStatus.Busy or SessionStatus.WorkingBackground
-            ? AssistantActivity.Thinking
-            : AssistantActivity.Ready,
+        _ => status switch
+        {
+            SessionStatus.Busy or SessionStatus.WorkingBackground => AssistantActivity.Thinking,
+            // The case this mapping originally got wrong. A permission prompt or a question sets NeedsAttention and
+            // deliberately leaves the session looking not-busy — which it is, because it has stopped. Reading that
+            // as Ready told the operator nothing was happening while the assistant stood waiting on an approval it
+            // had no other way to ask for: the chip is not in the grid and not in the sidebar's session rows, so
+            // this is the only place that can say so.
+            SessionStatus.NeedsAttention => AssistantActivity.AwaitingOperator,
+            _ => AssistantActivity.Ready,
+        },
     };
 
     /// <summary>

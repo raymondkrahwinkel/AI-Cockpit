@@ -39,6 +39,16 @@ public enum AssistantActivity
     Speaking,
 
     /// <summary>
+    /// The assistant has stopped and is waiting for the operator — a tool it wants to run needs an Allow, or it has
+    /// asked a question. Its own state, and not folded into <see cref="Ready"/> or <see cref="Thinking"/>, because
+    /// both of those are wrong in the way that costs the most: Ready says nothing is happening, so the operator
+    /// does not look, and the assistant waits indefinitely on an approval nobody knows it asked for; Thinking says
+    /// it is working, which is the same silence with a different label. This is the one state where the chip is not
+    /// reporting but asking.
+    /// </summary>
+    AwaitingOperator,
+
+    /// <summary>
     /// <c>F9</c> is dictating into the selected session — <em>not</em> the assistant. See the remarks on this enum
     /// for why a dictation state lives on the assistant indicator at all.
     /// </summary>

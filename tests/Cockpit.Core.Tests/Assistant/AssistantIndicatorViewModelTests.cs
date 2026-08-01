@@ -12,16 +12,17 @@ namespace Cockpit.Core.Tests.Assistant;
 /// </summary>
 public class AssistantIndicatorViewModelTests
 {
-    private static readonly AssistantActivity[] _AllActivities =
-    [
-        AssistantActivity.Ready,
-        AssistantActivity.Listening,
-        AssistantActivity.ListeningContinuously,
-        AssistantActivity.Thinking,
-        AssistantActivity.Speaking,
-        AssistantActivity.Dictating,
-        AssistantActivity.Unavailable,
-    ];
+    /// <summary>
+    /// Every state the enum declares, read from the enum rather than listed here.
+    /// </summary>
+    /// <remarks>
+    /// It was a hand-written list, and that is a test which cannot fail for the reason it exists. Adding
+    /// <see cref="AssistantActivity.AwaitingOperator"/> to the enum left <c>EveryActivity_HasItsOwnColorClass</c>
+    /// green while the new state had no colour of its own at all — the assertion was about seven strings someone
+    /// had typed out, not about the states the chip can actually be put into. A list that has to be maintained
+    /// alongside the thing it claims to cover only ever falls behind it silently.
+    /// </remarks>
+    private static readonly AssistantActivity[] _AllActivities = Enum.GetValues<AssistantActivity>();
 
     [Fact]
     public void EveryActivity_HasItsOwnLabel()
