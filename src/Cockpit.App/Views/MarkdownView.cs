@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.Theming;
 using Cockpit.Core.Markdown;
@@ -44,11 +45,74 @@ public sealed class MarkdownView : ContentControl
         set => SetValue(MarkdownProperty, value);
     }
 
+    // A streaming reply re-sets Markdown on every delta, and each set rebuilt the whole block tree: at the end of
+    // a long answer that is hundreds of controls reparsed and reconstructed, tens of times a second, for text that
+    // grew by a few characters. The cost climbs with the reply, so it accelerates rather than settles — the UI
+    // thread saturates and RSS runs away. Same runaway TtyView caps at 30 fps for the terminal, capped the same way
+    // here: the first change after a quiet moment renders at once, a burst is coalesced into one rebuild per
+    // interval, and the tick after the last delta always flushes, so the finished reply is never left stale.
+    // ponytail: rate limit, not incremental rendering — a long reply still rebuilds whole. Make _Build diff its
+    // blocks against the previous parse if 30 fps of a large transcript still costs too much.
+    private const int RebuildIntervalMs = 33;
+
+    private DispatcherTimer? _rebuildTimer;
+    private bool _pendingRebuild;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == MarkdownProperty)
+        if (change.Property != MarkdownProperty)
         {
+            return;
+        }
+
+        if (_rebuildTimer is { IsEnabled: true })
+        {
+            _pendingRebuild = true;
+            return;
+        }
+
+        Content = _Build(Markdown ?? string.Empty);
+
+        _rebuildTimer ??= _CreateRebuildTimer();
+        _rebuildTimer.Start();
+    }
+
+    private DispatcherTimer _CreateRebuildTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(RebuildIntervalMs) };
+        timer.Tick += (_, _) =>
+        {
+            if (_pendingRebuild)
+            {
+                _pendingRebuild = false;
+                Content = _Build(Markdown ?? string.Empty);
+                return;
+            }
+
+            // Nothing arrived this interval: the stream is idle, so stop ticking and let the next change render
+            // straight away. A timer left running would also keep this view — and its row — alive after the
+            // virtualising panel recycled it.
+            timer.Stop();
+        };
+        return timer;
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _rebuildTimer?.Stop();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        // Recycled back onto a row whose text moved on while it was scrolled away: render the current text once,
+        // rather than showing the stale tree until the next delta happens to arrive.
+        if (_pendingRebuild)
+        {
+            _pendingRebuild = false;
             Content = _Build(Markdown ?? string.Empty);
         }
     }
