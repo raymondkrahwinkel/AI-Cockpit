@@ -121,6 +121,9 @@ internal sealed class GitHubGhClient
     /// </summary>
     internal static string LabelSearchTerm(string label) => $"label:\"{label}\"";
 
+    /// <summary>GitHub's own search syntax for narrowing to one repository — no quoting needed, <c>owner/repo</c> has no spaces.</summary>
+    internal static string RepoSearchTerm(string repository) => $"repo:{repository}";
+
     /// <summary>
     /// The union of labels across every one of the owner's repositories (AC-519) — deliberately not the labels seen
     /// in the loaded issues, which is the same gap the YouTrack status filter had: a label that exists on a repo but

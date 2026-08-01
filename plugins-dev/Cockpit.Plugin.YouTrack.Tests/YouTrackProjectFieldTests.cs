@@ -107,4 +107,38 @@ public class YouTrackProjectFieldTests
         // Changing it silently unlinks every project that used it, and nothing else in the suite would notice.
         Assert.Equal("youtrack.project", YouTrackProjectField.Key);
     }
+
+    // AC-548: the issues dialog and the session picker both resolve "which project" through this one method —
+    // proving it here is what stops the two from ever answering the question differently again, rather than
+    // asserting the same behaviour twice against two independent copies of the logic.
+    [Fact]
+    public async Task ResolvePreferredTag_TheSessionsOwnLinkedProject_WinsOverTheInstanceDefault()
+    {
+        var host = new FakeCockpitHost();
+        host.ProjectFieldValues[YouTrackProjectField.Key] = "AC";
+
+        var tag = await YouTrackProjectField.ResolvePreferredTagAsync(host, "pane-1", defaultProjectTag: "KON", CancellationToken.None);
+
+        Assert.Equal("AC", tag);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredTag_NoLinkedProject_FallsBackToTheInstanceDefault()
+    {
+        var host = new FakeCockpitHost();
+
+        var tag = await YouTrackProjectField.ResolvePreferredTagAsync(host, "pane-1", defaultProjectTag: "KON", CancellationToken.None);
+
+        Assert.Equal("KON", tag);
+    }
+
+    [Fact]
+    public async Task ResolvePreferredTag_NeitherLinkedNorDefault_IsNullRatherThanEmpty()
+    {
+        var host = new FakeCockpitHost();
+
+        var tag = await YouTrackProjectField.ResolvePreferredTagAsync(host, "pane-1", defaultProjectTag: null, CancellationToken.None);
+
+        Assert.Null(tag);
+    }
 }

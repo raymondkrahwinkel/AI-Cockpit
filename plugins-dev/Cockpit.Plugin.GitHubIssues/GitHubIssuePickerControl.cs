@@ -2,17 +2,21 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
 /// Picks a GitHub issue for one session (#77). Opened from that session's own header, so the issue lands on the pane
 /// you opened it from. A list of the open issues for the owner you configured, and a box to narrow it — the question
-/// is "which of these am I working on here", and nothing else belongs on screen.
+/// is "which of these am I working on here", and nothing else belongs on screen. Scoped to the repository the
+/// session's project is linked to when one is (AC-548), the same as the full issues dialog.
 /// </summary>
 internal sealed class GitHubIssuePickerControl : UserControl
 {
     private readonly GitHubIssuesSettings _settings;
+    private readonly ICockpitHost _host;
+    private readonly string? _paneId;
     private readonly Action<GitHubIssue> _picked;
     private readonly GitHubGhClient _client = new();
 
@@ -23,9 +27,11 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
     private IReadOnlyList<GitHubIssue> _all = [];
 
-    public GitHubIssuePickerControl(GitHubIssuesSettings settings, Action<GitHubIssue> picked)
+    public GitHubIssuePickerControl(GitHubIssuesSettings settings, ICockpitHost host, string? paneId, Action<GitHubIssue> picked)
     {
         _settings = settings;
+        _host = host;
+        _paneId = paneId;
         _picked = picked;
 
         _status = new TextBlock { FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -74,6 +80,16 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         try
         {
+            // AC-548: the same resolution the issues dialog uses (GitHubRepositoryField.ResolvePreferredRepositoryAsync)
+            // — the session's own linked repository wins, instead of this picker only ever searching every
+            // repository the owner has. Sent as a search qualifier alongside PickerTerms, the same way the dialog's
+            // label filter is (GitHubGhClient.LabelSearchTerm).
+            var linkedRepository = await GitHubRepositoryField.ResolvePreferredRepositoryAsync(_host, _paneId, CancellationToken.None);
+            var extraTerms = string.Join(
+                ' ',
+                new[] { linkedRepository is { Length: > 0 } repo ? GitHubGhClient.RepoSearchTerm(repo) : null, _settings.PickerTerms }
+                    .Where(term => !string.IsNullOrWhiteSpace(term)));
+
             // The truncation signal (AC-519) is a dialog-only concern so far — this picker has never warned about a
             // capped page and stays out of that scope here; only the loaded issues are kept.
             (_all, _) = await _client.SearchOpenIssuesAsync(
@@ -81,7 +97,7 @@ internal sealed class GitHubIssuePickerControl : UserControl
                 _mine.IsChecked == true,
                 forceRefresh: false,
                 CancellationToken.None,
-                _settings.PickerTerms);
+                extraTerms.Length > 0 ? extraTerms : null);
 
             _status.Text = _all.Count == 0 ? "No open issues here." : string.Empty;
             _Render();

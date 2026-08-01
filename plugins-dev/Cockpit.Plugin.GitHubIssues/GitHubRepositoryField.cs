@@ -1,3 +1,4 @@
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Plugin.GitHubIssues;
@@ -11,6 +12,14 @@ internal static class GitHubRepositoryField
 {
     /// <summary>What the link is stored under on the project. Never change it: already-linked projects are keyed by it.</summary>
     public const string Key = "github.repository";
+
+    /// <summary>
+    /// AC-317, in the one place that reads it: the repository the operator linked this project to (AC-548 —
+    /// the issues dialog already asked; the session picker never did, so it showed every repository instead of
+    /// only this one). Null when there is no session, no project, or no link.
+    /// </summary>
+    public static Task<string?> ResolvePreferredRepositoryAsync(ICockpitHost host, string? paneId, CancellationToken cancellationToken) =>
+        host.GetProjectFieldValueAsync(Key, paneId, cancellationToken);
 
     public static ProjectFieldRegistration Registration(GitHubIssuesSettings settings, GitHubGhClient client) =>
         new(Key, "GitHub repository", cancellationToken => _LoadOptionsAsync(settings, client, cancellationToken))

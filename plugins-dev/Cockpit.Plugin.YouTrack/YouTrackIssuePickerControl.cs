@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
 
@@ -19,6 +20,8 @@ internal sealed class YouTrackIssuePickerControl : UserControl
     private const int MaxResults = 100;
 
     private readonly YouTrackSettings _settings;
+    private readonly ICockpitHost _host;
+    private readonly string? _paneId;
     private readonly Action<LinkedIssue> _picked;
     private readonly YouTrackClient _client = new();
 
@@ -30,9 +33,11 @@ internal sealed class YouTrackIssuePickerControl : UserControl
 
     private List<(YouTrackInstance Instance, YouTrackIssue Issue)> _all = [];
 
-    public YouTrackIssuePickerControl(YouTrackSettings settings, Action<LinkedIssue> picked)
+    public YouTrackIssuePickerControl(YouTrackSettings settings, ICockpitHost host, string? paneId, Action<LinkedIssue> picked)
     {
         _settings = settings;
+        _host = host;
+        _paneId = paneId;
         _picked = picked;
 
         _status = new TextBlock { FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -105,12 +110,18 @@ internal sealed class YouTrackIssuePickerControl : UserControl
 
         try
         {
+            // AC-548: the same resolution the issues dialog uses (YouTrackProjectField.ResolvePreferredTagAsync) —
+            // the session's own linked project wins over the instance-wide default, instead of this picker only
+            // ever knowing the latter and showing every project once that default is left empty.
+            var preferredTag = await YouTrackProjectField.ResolvePreferredTagAsync(
+                _host, _paneId, instance.DefaultProjectTag, CancellationToken.None);
+
             // What the operator said they want to see. The client's own query is "#Unresolved"; anything written here
             // replaces the states half of it, so "done" issues stay out unless someone asks for them.
             var issues = await _client.GetOpenIssuesAsync(
                 instance.InstanceUrl,
                 instance.Token,
-                instance.DefaultProjectTag is { Length: > 0 } tag ? tag : null,
+                preferredTag is { Length: > 0 } tag ? tag : null,
                 _settings.PickerQuery,
                 _mine.IsChecked == true,
                 MaxResults,

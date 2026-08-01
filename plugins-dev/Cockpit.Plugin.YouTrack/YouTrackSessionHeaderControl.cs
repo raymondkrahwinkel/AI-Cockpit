@@ -135,7 +135,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         // One picker per session pane: a second pick for the same pane should refocus it, not open another.
         _ = host.ShowDialogAsync(
             "Track an issue in this session",
-            () => new YouTrackIssuePickerControl(settings, link => links.Link(session.PaneId, link, session.WorkingDirectory)),
+            () => new YouTrackIssuePickerControl(settings, host, session.PaneId, link => links.Link(session.PaneId, link, session.WorkingDirectory)),
             $"track.{session.PaneId}",
             width: 720,
             height: 520);
