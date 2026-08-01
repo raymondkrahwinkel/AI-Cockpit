@@ -3,8 +3,10 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using NSubstitute;
 
@@ -124,7 +126,60 @@ public class AssistantSessionHostTests
         Assert.Null(host.Session);
     }
 
-    private static AssistantSessionHost _Host(bool enabled, AssistantProfileSlot slot)
+    // ── AC-544 criterion 2, the mounting half: the assistant's launch is the one that names the broad read server ──
+
+    [Fact]
+    public void McpSelection_AlwaysNamesTheBroadReadServer()
+    {
+        // The whole reason an internal endpoint reaches the assistant at all. If this line ever stops being written,
+        // criterion 1 fails silently — the tools are hosted and simply never handed to anybody.
+        var selection = AssistantSessionHost.McpSelection(_Profile(), []);
+
+        Assert.Contains(AssistantIdentity.McpServerName, selection);
+    }
+
+    [Fact]
+    public void McpSelection_WithNoSavedSelection_StillCarriesTheOperatorsOrdinaryServers()
+    {
+        // Naming a selection overrides the profile's own, so the servers the assistant would otherwise have had —
+        // Depot, YouTrack — must be spelled back in, or the mount rule quietly costs the assistant everything else.
+        var selection = AssistantSessionHost.McpSelection(_Profile(), [
+            new McpServerConfig { Name = "depot", Enabled = true },
+            new McpServerConfig { Name = "off-server", Enabled = false },
+        ]);
+
+        Assert.Contains("depot", selection);
+        Assert.Contains(AssistantIdentity.McpServerName, selection);
+        Assert.DoesNotContain("off-server", selection);
+    }
+
+    [Fact]
+    public void McpSelection_NeverWidensToOtherInternalEndpoints()
+    {
+        // "Give the assistant everything" is the accident this guards against: another spawn's internal tools
+        // (Autopilot's CEO/step endpoints) are not the assistant's to inherit just because it is privileged.
+        var selection = AssistantSessionHost.McpSelection(_Profile(), [
+            new McpServerConfig { Name = "autopilot-plan", Enabled = true, Internal = true },
+        ]);
+
+        Assert.DoesNotContain("autopilot-plan", selection);
+    }
+
+    [Fact]
+    public void McpSelection_WithAProfileSelection_KeepsItAndAddsTheBroadReadServer()
+    {
+        var profile = _Profile() with { EnabledMcpServerNames = ["depot"] };
+
+        var selection = AssistantSessionHost.McpSelection(profile, []);
+
+        Assert.Equal(
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "depot", AssistantIdentity.McpServerName },
+            selection);
+    }
+
+    private static SessionProfile _Profile() => new("assistant-local", new ClaudeConfig("/tmp/claude"));
+
+    private static AssistantSessionHost _Host(bool enabled, AssistantProfileSlot slot, IMcpServerCatalog? catalog = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings { IsEnabled = enabled });
@@ -136,9 +191,16 @@ public class AssistantSessionHostTests
         state.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
 
         return new AssistantSessionHost(
-            new CockpitViewModel(), settings, profiles, state, NullLogger<AssistantSessionHost>.Instance);
+            new CockpitViewModel(), settings, profiles, state,
+            catalog ?? _Catalog(), NullLogger<AssistantSessionHost>.Instance);
     }
 
-    private static AssistantProfileSlot _ConfiguredSlot() =>
-        new(new SessionProfile("assistant-local", new ClaudeConfig("/tmp/claude")));
+    private static IMcpServerCatalog _Catalog(params McpServerConfig[] servers)
+    {
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<McpServerConfig>>(_ => servers);
+        return catalog;
+    }
+
+    private static AssistantProfileSlot _ConfiguredSlot() => new(_Profile());
 }
