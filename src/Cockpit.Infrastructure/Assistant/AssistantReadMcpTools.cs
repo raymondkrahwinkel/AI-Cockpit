@@ -3,6 +3,8 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Assistant;
@@ -55,7 +57,7 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "list_sessions")]
-    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), and its statusline: whatever that session last set for itself with cockpit-session__set_status. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. Report the difference rather than turning an absence of evidence into an answer.")]
+    [Description("Lists every AI session the cockpit is running right now, across all workspaces — not just one desk. Each entry has the pane id, the session's name, the profile it runs under, the workspace it sits on (id and the tab label the operator sees), and its statusline: whatever that session last set for itself with cockpit-session__set_status. Use it to answer questions like \"what is the status of AC-223\" or \"what is everyone working on\". IMPORTANT about what a statusline is and is not: it is a convention, not a record. A session says what it is working on because it was asked to, so a statusline mentioning a ticket is good evidence that session is on it — but a ticket appearing nowhere means only that no running session has written that ticket into its own status line. It does NOT mean nobody is working on it: a session may never have set a status, may have set a stale one, or may be doing the work under a different description. There is also one whole class of worker this list cannot see at all — a delegated task (delegate_task) runs without a pane and therefore without a statusline, so it never appears here however busy it is. Report the difference rather than turning an absence of evidence into an answer.")]
     public async Task<string> ListSessionsAsync()
     {
         try
@@ -91,6 +93,136 @@ internal sealed class AssistantReadMcpTools(IAssistantReadGateway gateway)
             // failure here does not look to the assistant's runtime like the transport itself broke.
             return _Serialize(new { ok = false, error = exception.Message });
         }
+    }
+
+    /// <summary>
+    /// How much of a transcript one <c>read_transcript</c> hands over when the caller does not say.
+    /// <para>
+    /// Thirty rows, because a row is not a turn: one turn of an agent is typically a user line, a thinking block, a
+    /// handful of tool calls and a closing paragraph, so thirty rows is the last few turns — which is the span that
+    /// answers what this ticket asks a transcript for ("what is it doing", "where did it get stuck", "did it ever
+    /// hear me"). It is a default for a spoken question, and a spoken question is nearly always about the recent
+    /// end. The bound exists because the alternative is not "a longer answer" but a whole session pulled into every
+    /// turn of the assistant's own context, priced per token, for a question that wanted the last thing that
+    /// happened.
+    /// </para>
+    /// </summary>
+    internal const int DefaultEntryCount = 30;
+
+    /// <summary>
+    /// The ceiling <c>count</c> cannot be raised past, however large a number is passed.
+    /// <para>
+    /// The parameter exists for the case the default really is too narrow — "read further back, it started before
+    /// that" — and the ceiling exists because that request arrives as a number chosen by a model, which has no way to
+    /// know what it costs. Clamped rather than refused: a caller asking for a thousand wants as much as it can have,
+    /// and <c>omitted</c> in the reply already tells it what it did not get, so a refusal would only cost a
+    /// round-trip to arrive at the same hundred rows.
+    /// </para>
+    /// </summary>
+    internal const int MaxEntryCount = 100;
+
+    /// <summary>
+    /// The most of any single transcript row that is repeated into the assistant's context.
+    /// <para>
+    /// Bounding the row <em>count</em> does not bound the byte count, and on a transcript the gap is not theoretical:
+    /// one tool result — a file read, a build log, a <c>git diff</c> — is routinely larger than every other row put
+    /// together, and nothing stops it being ten megabytes. Thirty rows of that is a session-ending read of a tool
+    /// whose entire purpose is to answer a question about somebody else's session. The same 2000 characters an agent
+    /// message body is held to (<see cref="AgentMessageContent.MaxBodyLength"/>), for the same reason and with the
+    /// same arithmetic: it caps one full read at roughly 200 000 characters at the ceiling, and 60 000 at the
+    /// default. Truncated rather than refused, unlike a message body — there is nobody to hand the refusal to who
+    /// could shorten it, and the first 2000 characters of a build log is the half that says what failed.
+    /// </para>
+    /// </summary>
+    internal const int MaxEntryTextLength = 2000;
+
+    [McpServerTool(Name = "read_transcript")]
+    [Description("Reads the raw transcript of one AI session, named by its pane id — any session in any workspace, not just one desk. Take the pane id from list_sessions. Returns the entries as they happened, oldest first: each has a kind (UserText, AssistantText, ToolUse, ToolResult, Thinking, Question, Error, TurnCompleted), the text of the row, and — on a tool call — the result that call returned. It is passed through raw and unedited, exactly as the operator's own screen shows it; reading it, making sense of it and saying what it means in a sentence is your job, not the cockpit's. BOUNDED: by default you get the last 30 entries, not the whole session, which is the recent end where nearly every spoken question is actually pointed. The reply always says totalEntries and omitted, so you can tell a short session from a long one you only saw the tail of — never report a session as having started with what is simply the first line you were given. Ask for more with count (up to 100) only when the question really is about earlier on, e.g. \"what did it try before that\". A single very long entry is cut to 2000 characters and marked truncated: that is a shortened tool result, not a complete one.")]
+    public async Task<string> ReadTranscriptAsync(
+        [Description("The pane id of the session to read, exactly as list_sessions reports it. There is no name lookup here: find the session with list_sessions first, then read the pane it names.")] string paneId,
+        [Description("How many of the most recent entries to return. Defaults to 30 and is capped at 100 — a larger number is quietly clamped, not refused. Raise it only when the question is about earlier in the session; a wider read costs context on every turn that follows it.")] int count = DefaultEntryCount)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var transcript = await gateway.ReadTranscriptAsync(paneId, Math.Clamp(count, 1, MaxEntryCount))
+                .ConfigureAwait(false);
+            if (transcript is null)
+            {
+                // Said plainly, and without guessing at what was meant: this tool takes a pane id, and a pane id that
+                // matches nothing is either a session that has since closed or one of the cockpit's plain terminals,
+                // which has no agent behind it to have a transcript. Neither is worth a search over session names —
+                // list_sessions is right there, and it is the half that knows what the operator calls things.
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"No AI session is running on pane '{paneId}'. It may have closed, or the pane may be a "
+                        + "plain terminal rather than an agent. Call list_sessions for the panes that exist now.",
+                });
+            }
+
+            var entries = transcript.Entries.Select(entry =>
+            {
+                var (text, textTruncated) = _Bounded(entry.Text);
+                var (result, resultTruncated) = _Bounded(entry.ToolResult);
+                return new
+                {
+                    kind = entry.Kind,
+                    text,
+                    toolResult = entry.ToolResult is null ? null : result,
+                    // Per entry rather than once for the whole read: "something in here was shortened" would leave the
+                    // reader unable to tell which tool result it may quote as complete.
+                    truncated = textTruncated || resultTruncated,
+                };
+            }).ToArray();
+
+            return _Serialize(new
+            {
+                ok = true,
+                paneId = transcript.PaneId,
+                name = transcript.Name,
+                count = entries.Length,
+                totalEntries = transcript.TotalEntries,
+                // What was left out in front of this slice. A capped read has to say so, or a tail is indistinguishable
+                // from a whole session and the assistant reports a beginning that is not one — the same field, and the
+                // same reasoning, as read_inbox's `remaining`.
+                omitted = transcript.TotalEntries - entries.Length,
+                more = transcript.TotalEntries > entries.Length
+                    ? $"This is the last {entries.Length} of {transcript.TotalEntries} entries — {transcript.TotalEntries - entries.Length} earlier ones were not read. Ask again with a larger count (up to {MaxEntryCount}) if the question is about earlier on."
+                    : null,
+                entries,
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    /// <summary>
+    /// One transcript row as the assistant may be shown it: terminal control sequences stripped and cut to
+    /// <see cref="MaxEntryTextLength"/>, with whether the cut actually happened.
+    /// </summary>
+    /// <remarks>
+    /// The stripping is not cosmetic and it is not this tool's invention — it is the same
+    /// <see cref="AgentMessageContent.Normalize"/> every agent-authored line already passes through before it is
+    /// repeated into another session's context. A transcript is the most agent-authored text there is, and it ends up
+    /// in a reply the assistant's own runtime prints, so a tool result full of ANSI would otherwise be able to
+    /// reposition a cursor or overwrite what the cockpit wrote above it. Reused rather than rewritten: a second
+    /// implementation of "which control characters are dangerous" is a second one to get wrong.
+    /// <para>
+    /// Truncation is reported off the normalised length, not the raw one, so a row that merely had trailing
+    /// whitespace stripped is not announced as shortened.
+    /// </para>
+    /// </remarks>
+    private static (string Text, bool Truncated) _Bounded(string? text)
+    {
+        var normalized = AgentMessageContent.Normalize(text, out _);
+        return (BoundedText.Trim(normalized, MaxEntryTextLength), normalized.Length > MaxEntryTextLength);
     }
 
     /// <summary>

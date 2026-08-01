@@ -35,6 +35,47 @@ internal sealed class AssistantReadGateway(CockpitViewModel cockpit) : IAssistan
             ? Task.FromResult(_ListSessions())
             : Dispatcher.UIThread.InvokeAsync(_ListSessions).GetTask();
 
+    public Task<AssistantTranscript?> ReadTranscriptAsync(string paneId, int count) =>
+        Dispatcher.UIThread.CheckAccess()
+            ? Task.FromResult(_ReadTranscript(paneId, count))
+            : Dispatcher.UIThread.InvokeAsync(() => _ReadTranscript(paneId, count)).GetTask();
+
+    /// <summary>
+    /// The last <paramref name="count"/> rows of a session's transcript, or null when that pane is not an AI session.
+    /// </summary>
+    /// <remarks>
+    /// <b>The type test is the lookup.</b> <see cref="CockpitViewModel.FindSession"/> answers in
+    /// <see cref="SessionPanelViewModel"/>, which is the shared base of an SDK session and a plain terminal — and only
+    /// the former, <see cref="SessionViewModel"/>, has a transcript at all. So a pane id naming a terminal falls out
+    /// here as "no AI session", which is true of it rather than a convenient approximation. Embedded panes are
+    /// reachable for the same reason <c>FindSession</c> exists: an Autopilot step is a full session with a real
+    /// transcript, and a reader that only walked the grid would answer confidently and wrongly about it.
+    /// <para>
+    /// The slice is taken here, on the UI thread, so a session with ten thousand rows costs a <c>Skip</c> rather than
+    /// a copy. Nothing is filtered on the way out — a thinking row and a folded tool call are in the transcript and
+    /// are therefore in the answer, whether or not the operator's current reading level draws them. What the
+    /// assistant is being asked is what the session <em>did</em>, not what a particular panel is showing.
+    /// </para>
+    /// </remarks>
+    private AssistantTranscript? _ReadTranscript(string paneId, int count)
+    {
+        if (cockpit.FindSession(paneId) is not SessionViewModel session)
+        {
+            return null;
+        }
+
+        var transcript = session.Transcript;
+        var skip = Math.Max(0, transcript.Count - count);
+        return new AssistantTranscript(
+            session.PaneId,
+            session.Title,
+            transcript.Count,
+            [
+                .. transcript.Skip(skip).Select(entry =>
+                    new AssistantTranscriptEntry(entry.Kind.ToString(), entry.Text, entry.ResultText)),
+            ]);
+    }
+
     private IReadOnlyList<AssistantSessionRow> _ListSessions()
     {
         // Resolved once for the whole sweep rather than per row: the workspace label is a lookup into the same

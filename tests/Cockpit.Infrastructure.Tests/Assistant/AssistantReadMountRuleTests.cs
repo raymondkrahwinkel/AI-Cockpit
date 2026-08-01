@@ -125,6 +125,150 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         await _gateway.DidNotReceive().ListSessionsAsync();
     }
 
+    [Fact]
+    public async Task ReadTranscript_FromAnOrdinaryAgentSession_IsRefused_AndNeverReachesTheGateway()
+    {
+        // The same rule as list_sessions, asserted separately because it is a separate tool: a guard added once and
+        // then forgotten on the next tool is exactly how this server would quietly stop being the assistant's own.
+        // A transcript is the sharper case of the two — one agent reading another's whole conversation.
+        McpRequestContext.Set(OrdinarySessionPane);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
+
+        Assert.False((bool)result["ok"]!);
+        Assert.Contains("not available to an agent session", (string)result["error"]!);
+        await _gateway.DidNotReceive().ReadTranscriptAsync(Arg.Any<string>(), Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task ReadTranscript_NamingTheCallersOwnPane_IsStillRefused()
+    {
+        // The argument is not a way in. An ordinary session naming any pane at all — including its own, which it is
+        // entirely entitled to read by other means — gets nothing from this server, because what is checked is the
+        // pane the transport stamped and never the pane that was typed.
+        McpRequestContext.Set(OrdinarySessionPane);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync(OrdinarySessionPane));
+
+        Assert.False((bool)result["ok"]!);
+        await _gateway.DidNotReceive().ReadTranscriptAsync(Arg.Any<string>(), Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task ReadTranscript_FromTheAssistantsOwnPane_GetsTheEntries()
+    {
+        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
+            new AssistantTranscript("pane-1", "AC-223", 2,
+            [
+                new AssistantTranscriptEntry("UserText", "run the tests", null),
+                new AssistantTranscriptEntry("ToolUse", "Tool: Bash({\"command\":\"dotnet test\"})", "3 failed"),
+            ])));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
+
+        Assert.True((bool)result["ok"]!);
+        Assert.Equal("AC-223", (string)result["name"]!);
+        var entries = result["entries"]!.AsArray();
+        Assert.Equal("UserText", (string)entries[0]!["kind"]!);
+        Assert.Equal("run the tests", (string)entries[0]!["text"]!);
+        // The coupled result, which is where a tool call's substance actually lives — a reader that dropped it would
+        // report every command this session ran and nothing any of them said.
+        Assert.Equal("3 failed", (string)entries[1]!["toolResult"]!);
+        Assert.Equal(0, (int)result["omitted"]!);
+        Assert.Null(result["more"]);
+    }
+
+    [Fact]
+    public async Task ReadTranscript_DefaultsToTheLastEntries_AndSaysHowManyItLeftOut()
+    {
+        // Two halves of one criterion. The first: the gateway is asked for the bound, not for everything — a tool
+        // that passed the caller's silence straight through would pull a whole session per turn and still pass any
+        // assertion made only about what came back.
+        _gateway.ReadTranscriptAsync("pane-1", AssistantReadMcpTools.DefaultEntryCount).Returns(
+            Task.FromResult<AssistantTranscript?>(new AssistantTranscript("pane-1", "AC-223", 500,
+                [.. Enumerable.Range(0, AssistantReadMcpTools.DefaultEntryCount)
+                    .Select(index => new AssistantTranscriptEntry("AssistantText", $"line {index}", null))])));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
+
+        await _gateway.Received(1).ReadTranscriptAsync("pane-1", AssistantReadMcpTools.DefaultEntryCount);
+
+        // The second: the remainder is reported. Without it a tail and a whole short session are the same reply, and
+        // the assistant confidently describes a beginning it was never shown.
+        Assert.Equal(AssistantReadMcpTools.DefaultEntryCount, (int)result["count"]!);
+        Assert.Equal(500, (int)result["totalEntries"]!);
+        Assert.Equal(500 - AssistantReadMcpTools.DefaultEntryCount, (int)result["omitted"]!);
+        Assert.Contains("were not read", (string)result["more"]!);
+    }
+
+    [Fact]
+    public async Task ReadTranscript_ClampsAWideRequestToTheCeiling()
+    {
+        // "A bound, not a pagination framework": the count exists for a genuinely wider question, and the ceiling
+        // exists because the number is chosen by a model that cannot see what it costs. Clamped, not refused.
+        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
+            new AssistantTranscript("pane-1", "AC-223", 0, [])));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        await _Tools().ReadTranscriptAsync("pane-1", count: 100_000);
+
+        await _gateway.Received(1).ReadTranscriptAsync("pane-1", AssistantReadMcpTools.MaxEntryCount);
+    }
+
+    [Fact]
+    public async Task ReadTranscript_CutsOneEnormousEntry_AndMarksItTruncated()
+    {
+        // Bounding the entry count does not bound the byte count: a single tool result — a build log, a diff, a file
+        // read — is routinely larger than the whole rest of the transcript, and nothing upstream stops it being
+        // megabytes. Cut, and said to be cut, so the tail is never quoted as a complete result.
+        var huge = new string('x', AssistantReadMcpTools.MaxEntryTextLength * 4);
+        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
+            new AssistantTranscript("pane-1", "AC-223", 2,
+            [
+                new AssistantTranscriptEntry("AssistantText", "short", null),
+                new AssistantTranscriptEntry("ToolUse", "Tool: Bash", huge),
+            ])));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
+
+        var entries = result["entries"]!.AsArray();
+        Assert.False((bool)entries[0]!["truncated"]!);
+        Assert.True((bool)entries[1]!["truncated"]!);
+        Assert.True(((string)entries[1]!["toolResult"]!).Length <= AssistantReadMcpTools.MaxEntryTextLength + 1);
+    }
+
+    [Fact]
+    public async Task ReadTranscript_StripsTerminalControlSequences()
+    {
+        // A transcript is the most agent-authored text in the cockpit and it lands in a reply the assistant's own
+        // runtime prints. Reused from the agent-message path rather than rewritten here.
+        _gateway.ReadTranscriptAsync("pane-1", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(
+            new AssistantTranscript("pane-1", "AC-223", 1,
+                [new AssistantTranscriptEntry("AssistantText", "done\u001b[2Jwiped", null)])));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-1"));
+
+        Assert.DoesNotContain('\u001b', (string)result["entries"]!.AsArray()[0]!["text"]!);
+    }
+
+    [Fact]
+    public async Task ReadTranscript_ForAPaneWithNoAiSession_SaysSo()
+    {
+        // A closed session, or a plain terminal pane with no agent behind it. Answered, not thrown, and pointed back
+        // at list_sessions rather than left as a bare "null".
+        _gateway.ReadTranscriptAsync("pane-gone", Arg.Any<int>()).Returns(Task.FromResult<AssistantTranscript?>(null));
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var result = _Json(await _Tools().ReadTranscriptAsync("pane-gone"));
+
+        Assert.False((bool)result["ok"]!);
+        Assert.Contains("list_sessions", (string)result["error"]!);
+    }
+
     // ── Criterion 3: list_agents is unchanged, and still workspace-scoped ──────────────────────────────────────
 
     [Fact]

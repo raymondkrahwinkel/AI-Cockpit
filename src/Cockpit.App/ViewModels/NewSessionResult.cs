@@ -52,8 +52,10 @@ namespace Cockpit.App.ViewModels;
 /// </param>
 /// <param name="SystemPrompt">
 /// The standing instructions to append to the provider's own system prompt: the profile's identity (AC-142) with
-/// the project's behaviour under it, already resolved by <c>SessionStartDefaults</c>. <see langword="null"/>
-/// appends nothing.
+/// the project's behaviour under it, already resolved by <c>SessionStartDefaults</c>. <see langword="null"/> (or
+/// blank) does not mean "appends nothing" any more (AC-544): <see cref="SdkLaunchOptionsWithInstructions"/> and
+/// <see cref="TtyLaunchOptionsWithInstructions"/> fall back to <see cref="Cockpit.Core.Sessions.AgentStatusSystemPrompt.Default"/>
+/// in that case, so a session with no profile identity still starts knowing to keep its own statusline current.
 /// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
@@ -91,30 +93,45 @@ public sealed record NewSessionResult(
     /// </summary>
     public bool NameIsChosen => !NameIsComposed && !string.IsNullOrWhiteSpace(SessionName);
 
-    /// <summary>The SDK provider's launch options with <see cref="SystemPrompt"/> folded in (AC-142).</summary>
+    /// <summary>The SDK provider's launch options with <see cref="SystemPrompt"/> (or its fallback, AC-544) folded in.</summary>
     public IReadOnlyDictionary<string, string>? SdkLaunchOptionsWithInstructions => _WithSystemPrompt(SdkLaunchOptions);
 
-    /// <summary>The TTY provider's launch options with <see cref="SystemPrompt"/> folded in (AC-142).</summary>
+    /// <summary>The TTY provider's launch options with <see cref="SystemPrompt"/> (or its fallback, AC-544) folded in.</summary>
     public IReadOnlyDictionary<string, string>? TtyLaunchOptionsWithInstructions => _WithSystemPrompt(PluginTtyOptions);
 
     /// <summary>
     /// <paramref name="options"/> carrying the resolved instructions under the well-known append-system-prompt key,
     /// which every provider already honours (Claude TTY and SDK, the OpenAI-compatible drivers, Codex) — the same
     /// channel the delegation and Autopilot briefs use, so a profile's identity needs no per-provider plumbing of
-    /// its own. Returns the options untouched when there is nothing to say.
+    /// its own.
+    /// <para>
+    /// AC-544 criterion 5: <see cref="AgentStatusSystemPrompt.Default"/> rides <em>alongside</em> a profile's own
+    /// prompt rather than being replaced by it, because that is what the criterion's own precedent does. The
+    /// delegation instruction travels as its own value and
+    /// <c>ClaudeTtyProvider._AppendedInstructions</c> joins it to whatever the profile resolved — a profile with an
+    /// identity prompt still gets the orchestrator nudge. Dropping the status instruction the moment a profile has
+    /// anything to say would invert that, and invert it in the worst direction: the profiles that carry a written
+    /// identity are the considered ones doing ticket work, so exactly the sessions whose status matters most would
+    /// be the ones that silently stopped being told to keep it.
+    /// </para>
+    /// <para>
+    /// <b>Still replaceable per profile</b>, in the way a system prompt is replaceable at all: the profile's own
+    /// text comes first and a later instruction that contradicts it is the operator's to write. What a profile
+    /// cannot do is lose the instruction by accident, which is the failure mode worth engineering against — an
+    /// operator who does not want it can say so, and one who never thought about it keeps it.
+    /// </para>
     /// </summary>
     private IReadOnlyDictionary<string, string>? _WithSystemPrompt(IReadOnlyDictionary<string, string>? options)
     {
-        if (string.IsNullOrWhiteSpace(SystemPrompt))
-        {
-            return options;
-        }
-
         var merged = options is null
-            ? []
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(options, StringComparer.Ordinal);
 
-        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = SystemPrompt.Trim();
+        // The profile's own words first, the standing instruction after — the same order, and the same blank-line
+        // join, that _AppendedInstructions already uses for the delegation nudge.
+        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(SystemPrompt)
+            ? AgentStatusSystemPrompt.Default
+            : SystemPrompt.Trim() + "\n\n" + AgentStatusSystemPrompt.Default;
         return merged;
     }
 }

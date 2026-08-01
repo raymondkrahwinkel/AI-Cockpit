@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -5864,6 +5865,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return true;
     }
 
+    // The shape a ticket id takes everywhere this codebase already writes one by hand ("AC-13", "AC-544") — two or
+    // more uppercase letters, a dash, digits — kept as the one pattern every brief-seeded statusline is read against
+    // (AC-544) rather than reinvented per caller. Compiled: matched once per embedded session start, never in a hot
+    // loop, but the pattern is fixed for the process's life so there is no reason to re-parse it.
+    private static readonly Regex _TicketIdPattern = new(@"\b[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The ticket id sitting in a session's brief text, if any (AC-544) — the small, tracker-neutral pattern every
+    /// hand-written brief in this codebase already uses ("AC-13", "AC-544"), wherever in the text it appears. Lets a
+    /// host-side spawn path seed a fresh session's statusline deterministically, from what it already knows, instead
+    /// of leaving the line blank until (or unless) the agent inside calls <c>set_status</c> itself. Null for text with
+    /// no such pattern — a caller with nothing to find here must seed nothing rather than invent a line.
+    /// </summary>
+    private static string? _TicketFromBrief(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text) is { Success: true } match ? match.Value : null;
+
     /// <summary>
     /// A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
     /// own <c>set_status</c>, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),
@@ -6357,6 +6374,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RunLabel = request.RunLabel;
         session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
         _SeedSessionPreferences(session);
+
+        // AC-544: the host already knows the ticket a briefed run picked up — it is sitting right there in the
+        // request, the embedder (Autopilot's step brief, its run label) wrote it before this session ever started.
+        // Seed the statusline from it now rather than leave the line blank until the agent inside remembers to call
+        // set_status itself: a model that never calls it, or dies before its first turn, otherwise never shows one at
+        // all. Checked in the order a caller is likeliest to have put the ticket: the visible opening turn first
+        // (a step's own brief, e.g. "AC-13 — …"), the run's human label second. Neither carrying one seeds nothing —
+        // an invented line would be worse than a blank one.
+        if ((_TicketFromBrief(request.InitialUserMessage) ?? _TicketFromBrief(request.RunLabel)) is { } ticket)
+        {
+            session.Statusline = ticket;
+        }
 
         // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
         // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded
