@@ -976,11 +976,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     partial void OnKindLabelChanged(string? value) => OnPropertyChanged(nameof(ShowKindChip));
 
     /// <summary>
-    /// AC-549: a window the operator ticked in Options that this provider has not reported. Ticking "5-hour
-    /// window" on a session whose provider never sends one used to do nothing at all — no segment, no bar, no
-    /// word — which reads as a broken setting rather than as a provider that has nothing to say. The pill itself
-    /// stays empty (AC-530 criterion 5 — an unknown window must not render as 0%); this is the flyout's line,
-    /// where the operator looks when they wonder where it went. Empty when every ticked window has arrived.
+    /// AC-549: a window the operator ticked in Options that no figure has arrived for. Ticking "5-hour window" on
+    /// such a session used to do nothing at all — no segment, no bar, no word — which reads as a broken setting.
+    /// The pill itself stays empty (AC-530 criterion 5 — a window whose fill is unknown must not render as 0%);
+    /// this is the flyout's line, where the operator looks when they wonder where it went.
+    /// <para>
+    /// It says "no figure reported", not "not reported by this provider", and the distinction is measured rather
+    /// than cautious: captured from a real SDK stream (CLI 2.1.220), <c>rate_limit_event</c> <em>does</em> carry
+    /// the five-hour window — <c>{"status":"allowed","resetsAt":…,"rateLimitType":"five_hour"}</c> — but with no
+    /// <c>utilization</c> field while the account is not near that limit. The window is reported; its fill is
+    /// not. Blaming the provider would have been false, and a terminal session proves it: that route reads
+    /// <c>used_percentage</c> straight out of the statusline payload and shows a bar.
+    /// </para>
+    /// Empty when every ticked window has a figure.
     /// </summary>
     [ObservableProperty]
     private string _unreportedWindowsNotice = string.Empty;
@@ -1011,8 +1019,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         return missing.Count switch
         {
             0 => string.Empty,
-            1 => $"{missing[0]}: not reported by this provider.",
-            _ => $"{string.Join(", ", missing)}: not reported by this provider.",
+            1 => $"{missing[0]}: no figure reported for this session.",
+            _ => $"{string.Join(", ", missing)}: no figure reported for this session.",
         };
     }
 

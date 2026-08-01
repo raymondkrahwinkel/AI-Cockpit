@@ -35,7 +35,7 @@ public class UsagePillUnreportedWindowTests
         var pane = _PaneShowing(UsagePillField.Context, UsagePillField.FiveHourWindow);
         pane.ContextUsedPercent = 10;
 
-        Assert.Equal("5h: not reported by this provider.", pane.UnreportedWindowsNotice);
+        Assert.Equal("5h: no figure reported for this session.", pane.UnreportedWindowsNotice);
         Assert.DoesNotContain(pane.UsagePillItems, item => item.DisplayText.StartsWith("5h", StringComparison.Ordinal));
     }
 
@@ -55,7 +55,7 @@ public class UsagePillUnreportedWindowTests
         var pane = _PaneShowing(UsagePillField.FiveHourWindow, UsagePillField.WeeklyWindow);
         pane.ContextUsedPercent = 10;
 
-        Assert.Equal("5h, wk: not reported by this provider.", pane.UnreportedWindowsNotice);
+        Assert.Equal("5h, wk: no figure reported for this session.", pane.UnreportedWindowsNotice);
     }
 
     [Fact]
