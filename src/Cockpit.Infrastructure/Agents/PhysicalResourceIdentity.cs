@@ -46,11 +46,20 @@ internal static class PhysicalResourceIdentity
             // GetFullPath resolves ".." and "." but, on Linux/macOS, leaves a trailing separator exactly as given —
             // "/repo/worktree-a" and "/repo/worktree-a/" name one directory and must canonicalize to one string.
             var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(resource));
-            if (File.Exists(fullPath) || Directory.Exists(fullPath))
+            if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
             {
-                fullPath = File.ResolveLinkTarget(fullPath, returnFinalTarget: true)?.FullName ?? fullPath;
+                // Nothing on disk to resolve against, so there is nothing this knows about the path — not even
+                // whether the filesystem holding it compares case-insensitively. Returning it exactly as claimed is
+                // the rule this type documents for every resource it cannot canonicalize; case-folding it anyway
+                // made Windows answer a normalised, upper-cased string where Linux answered the claim untouched, so
+                // one resource had two identities depending on the machine the cockpit ran on.
+                return resource;
             }
 
+            fullPath = File.ResolveLinkTarget(fullPath, returnFinalTarget: true)?.FullName ?? fullPath;
+
+            // Case folding belongs to a path that was actually resolved: it is a statement about the filesystem
+            // this path was just found on, where two spellings differing only in case are one entry.
             return OperatingSystem.IsWindows() ? fullPath.ToUpperInvariant() : fullPath;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException or SecurityException)

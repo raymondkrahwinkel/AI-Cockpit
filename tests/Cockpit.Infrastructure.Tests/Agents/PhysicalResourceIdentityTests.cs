@@ -29,6 +29,19 @@ public sealed class PhysicalResourceIdentityTests
     }
 
     [Fact]
+    public void Canonicalize_ARootedPathThatDoesNotExist_KeepsItsCaseAndItsRedundantSegments()
+    {
+        // The same rule as above, pinned so it cannot quietly become OS-dependent again: the previous version case
+        // folded every rooted path on Windows, resolved or not, so this returned an upper-cased, normalised string
+        // there and the claim untouched on Linux — one resource with two identities depending on the machine. The
+        // mixed case and the "." segment both survive only if the path is treated as the opaque text it is.
+        var directory = Path.Combine(Path.GetTempPath(), $"AC439-Mixed-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, ".", "Sub");
+
+        Assert.Equal(path, PhysicalResourceIdentity.Canonicalize(path));
+    }
+
+    [Fact]
     public void Canonicalize_AnExistingDirectory_ResolvesATrailingSeparator()
     {
         var real = Directory.CreateTempSubdirectory("ac439-canon-");

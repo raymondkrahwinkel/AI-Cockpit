@@ -413,8 +413,11 @@ public sealed class WorktreeManagerTests : IDisposable
         File.WriteAllText(Path.Combine(record.Path, "uncommitted.txt"), "work nobody pushed anywhere\n");
 
         // The repository root folder itself survives, but stops being a repository — the worktree's own gitdir
-        // link resolves nowhere just the same as if the whole folder had gone.
-        Directory.Delete(Path.Combine(second, ".git"), recursive: true);
+        // link resolves nowhere just the same as if the whole folder had gone. Moved aside rather than deleted:
+        // git marks loose objects read-only, so Directory.Delete(recursive: true) throws UnauthorizedAccessException
+        // on Windows and failed this test in its own setup, before a single assertion ran. A rename needs no access
+        // to the files it carries, and leaves git exactly as unable to answer.
+        Directory.Move(Path.Combine(second, ".git"), Path.Combine(second, ".git-moved-aside"));
 
         var notice = await _manager.RemoveAsync(record);
 
