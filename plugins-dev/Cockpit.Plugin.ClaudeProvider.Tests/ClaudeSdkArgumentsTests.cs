@@ -39,13 +39,13 @@ public class ClaudeSdkArgumentsTests
     }
 
     [Fact]
-    public void BuildArguments_FansTheMcpConfigWhenGiven_WithStrict()
+    public void BuildArguments_FansTheMcpConfigWhenGiven_WithStrict_WhenUnattended()
     {
         // The user's own cockpit-configured servers (#26/#44) ride --mcp-config, so an SDK session actually reaches
-        // them — dropping this is what left an SDK session with no registry servers. Strict (AC-378, unlike the TTY
-        // route): a headless/delegated session must get EXACTLY the resolved servers, never the CLI's own
-        // user/project claude.ai-connectors unioned in on top.
-        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "/tmp/cockpit-mcp/abc.json");
+        // them — dropping this is what left an SDK session with no registry servers. Strict (AC-378): an unattended
+        // session must get EXACTLY the resolved servers, never the CLI's own user/project claude.ai-connectors
+        // unioned in on top.
+        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "/tmp/cockpit-mcp/abc.json", strictMcpConfig: true);
 
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/cockpit-mcp/abc.json"));
         Assert.Contains("--strict-mcp-config", arguments);
@@ -54,12 +54,27 @@ public class ClaudeSdkArgumentsTests
     }
 
     [Fact]
+    public void BuildArguments_FansTheMcpConfigWhenGiven_WithoutStrict_WhenAttended()
+    {
+        // The re-cut of AC-378: strictness belongs on "is anyone watching", not on "is this the SDK route". An
+        // interactive SDK pane (SessionKind.Sdk, or a profile whose DefaultKind is Sdk) is a session the operator
+        // drives themselves, so it unions with their own user/project config exactly like the TTY route — otherwise
+        // opening a pane in SDK mode silently strips their claude.ai connectors.
+        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "/tmp/cockpit-mcp/abc.json");
+
+        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--mcp-config", "/tmp/cockpit-mcp/abc.json"));
+        Assert.DoesNotContain("--strict-mcp-config", arguments);
+    }
+
+    [Fact]
     public void BuildArguments_OmitsMcpConfigAndStrict_WhenPathIsNullOrBlank()
     {
-        var argsWithNullPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: null);
+        // Both attended and unattended: a strict flag without a config to pair with would narrow to nothing by
+        // accident, which is the trap in the other direction.
+        var argsWithNullPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: null, strictMcpConfig: true);
         Assert.DoesNotContain("--mcp-config", argsWithNullPath);
         Assert.DoesNotContain("--strict-mcp-config", argsWithNullPath);
-        var argsWithBlankPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "   ");
+        var argsWithBlankPath = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, mcpConfigPath: "   ", strictMcpConfig: true);
         Assert.DoesNotContain("--mcp-config", argsWithBlankPath);
         Assert.DoesNotContain("--strict-mcp-config", argsWithBlankPath);
     }

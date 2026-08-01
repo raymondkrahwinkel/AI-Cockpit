@@ -534,10 +534,46 @@ public class PluginSessionDriverAdapterTests
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var launchOptions = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
 
-        // The operator's per-session option answers must reach the plugin driver, not be dropped.
+        // The operator's per-session option answers must reach the plugin driver, not be dropped. Compared by content
+        // rather than by reference: the adapter states this session's attendance (AC-378) on the way through, so what
+        // the driver receives is a superset of what the caller passed, never the same instance.
         await adapter.StartAsync(launchOptions: launchOptions);
 
-        Assert.Same(launchOptions, inner.LastLaunchOptions);
+        Assert.NotNull(inner.LastLaunchOptions);
+        Assert.Equal("workspace-write", inner.LastLaunchOptions!["sandbox"]);
+        Assert.Equal("o3", inner.LastLaunchOptions["model"]);
+    }
+
+    [Fact]
+    public async Task StartAsync_StatesThisSessionIsAttended_WhenTheCallerDidNotSayOtherwise()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // AC-378: everything that is not a delegated task or a self-driving embedded run is a pane an operator opened,
+        // and the host says so out loud rather than leaving the driver to read absence. A driver must be free to treat
+        // silence as unattended (the safe answer on an older host), which only works if a newer host is never silent.
+        await adapter.StartAsync(launchOptions: new Dictionary<string, string> { ["model"] = "opus" });
+
+        Assert.NotNull(inner.LastLaunchOptions);
+        Assert.Equal("false", inner.LastLaunchOptions![WellKnownPluginSessionOptions.Unattended]);
+    }
+
+    [Fact]
+    public async Task StartAsync_LeavesAnExplicitUnattendedMarkerAlone()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // DelegationService and an Autopilot step say "nobody is watching"; the adapter's default must not overwrite
+        // that, or every delegated task would present itself as attended and its narrowing would stop binding.
+        await adapter.StartAsync(launchOptions: new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.Unattended] = "true",
+        });
+
+        Assert.NotNull(inner.LastLaunchOptions);
+        Assert.Equal("true", inner.LastLaunchOptions![WellKnownPluginSessionOptions.Unattended]);
     }
 
     [Fact]
@@ -588,9 +624,13 @@ public class PluginSessionDriverAdapterTests
 
         await adapter.StartAsync(launchOptions: launchOptions);
 
-        // No typed permission mode to fold — the same dictionary passes through, no permission-mode key invented.
-        Assert.Same(launchOptions, inner.LastLaunchOptions);
-        Assert.False(inner.LastLaunchOptions!.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        // No typed permission mode to fold — the caller's own entries pass through and no permission-mode key is
+        // invented. The attendance marker the adapter states (AC-378) is the one addition, and it says "attended":
+        // this launch is nobody's delegated task.
+        Assert.NotNull(inner.LastLaunchOptions);
+        Assert.Equal("read-only", inner.LastLaunchOptions!["sandbox"]);
+        Assert.False(inner.LastLaunchOptions.ContainsKey(WellKnownPluginSessionOptions.PermissionMode));
+        Assert.Equal("false", inner.LastLaunchOptions[WellKnownPluginSessionOptions.Unattended]);
     }
 
     [Fact]

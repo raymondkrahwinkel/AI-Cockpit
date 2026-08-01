@@ -51,4 +51,20 @@ public static class WellKnownPluginSessionOptions
     /// only a driver that actually confined sets the capability.
     /// </summary>
     public const string ConfineFileToolsToWorkingDirectory = "cockpit.confine-file-tools";
+
+    /// <summary>
+    /// The option key by which the host tells a driver that nobody is watching this session — <c>"true"</c> for a
+    /// delegated task (#67) and for an embedded run that drives itself
+    /// (<see cref="Workspaces.EmbeddedSessionRequest.StartWithInputDisabled"/>), and an explicit <c>"false"</c> for a
+    /// session an operator opened and sits in front of. The host states one or the other on every launch; a driver
+    /// that finds the key missing is running on a host older than this split and must read that as unattended, the
+    /// safe answer. It exists because "unattended" and "not a TTY" are two different questions that
+    /// AC-378 answered with one flag: strictness was hung on the SDK route, but the operator can open an interactive SDK
+    /// pane from the New-session dialog, and that pane then lost the account's own claude.ai connectors — the very
+    /// regression <c>ClaudeTtyProviderTests</c> guards the TTY route against. A driver that narrows this session's tool
+    /// surface makes that narrowing authoritative when this is set (Claude pairs <c>--mcp-config</c> with
+    /// <c>--strict-mcp-config</c>, so an agent that asks for fewer servers cannot end up with more) and additive when it
+    /// is not, leaving the operator's own configuration in place. A provider with nothing to narrow ignores it.
+    /// </summary>
+    public const string Unattended = "cockpit.unattended";
 }

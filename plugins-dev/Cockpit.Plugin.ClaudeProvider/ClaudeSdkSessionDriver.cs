@@ -65,8 +65,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
-    // The per-session --mcp-config file this launch wrote (the shared registry fanned in) — always written on this
-    // route now (AC-378), even as an explicit empty file when there are no registry servers, so --strict-mcp-config
+    // The per-session --mcp-config file this launch wrote (the shared registry fanned in) — written even as an
+    // explicit empty file when an UNATTENDED launch resolved no registry servers (AC-378), so --strict-mcp-config
     // always has a config to pair with. Deleted on dispose: it can hold a user API-key server's bearer header, and a
     // config for a session that has ended is nobody's business (the TTY route hands the same file to the host to
     // clean up; the SDK driver owns its own process lifetime, so it owns this file's lifetime too).
@@ -142,19 +142,34 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // nothing able to answer it — in the .claude.json the CLI reads for this spawn.
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, resolvedWorkingDirectory);
 
+        // Whether anyone is watching this session (AC-378): a delegated task and a self-driving embedded run are not,
+        // a pane the operator opened is — including an interactive SDK pane, which is why this is not simply "am I
+        // the SDK route". It decides both the strict flag below and whether an empty resolution still writes a file.
+        //
+        // Only an explicit "false" buys the additive behaviour. Absence means a host that does not state attendance
+        // at all (one older than this split), and there the safe reading is unattended: strict, exactly as this route
+        // behaved before. Reading absence as "attended" would instead hand a delegated agent the operator's own
+        // claude.ai connectors on such a host — the very escalation AC-378 exists to prevent — and minHostVersion
+        // cannot be leaned on to prevent that pairing, since PluginLoadPolicy only enforces it from host major 1.
+        var unattended = !string.Equals(
+            _ResolveOption(options, WellKnownPluginSessionOptions.Unattended, defaultValue: "true"),
+            "false",
+            StringComparison.OrdinalIgnoreCase);
+
         // Fan the shared MCP registry (already narrowed to this session's selection by the host adapter) into a
-        // --mcp-config file. Unlike the TTY route, always writes one — even an explicit empty file when the
-        // resolution produced no servers (writeEmptyExplicit: true) — because ClaudeSdkArguments.BuildArguments
-        // pairs --mcp-config with --strict-mcp-config on this route (AC-378): a null path here would drop
-        // --mcp-config from the command line and let the CLI fall back to its own user/project config instead of
-        // the empty set the resolution actually produced, exactly the "narrowing to nothing looks like no
-        // narrowing" trap this ticket closes.
-        _mcpConfigPath = ClaudeMcpConfig.Write(mcpServers ?? [], writeEmptyExplicit: true);
+        // --mcp-config file. Unattended, this writes one even when the resolution produced no servers
+        // (writeEmptyExplicit: true), because ClaudeSdkArguments.BuildArguments then pairs --mcp-config with
+        // --strict-mcp-config: a null path would drop --mcp-config from the command line and let the CLI fall back
+        // to its own user/project config instead of the empty set the resolution actually produced — exactly the
+        // "narrowing to nothing looks like no narrowing" trap AC-378 closes. Attended, there is no strict flag to
+        // pair with and an empty file would only strip the operator's own config for no gain, so an empty
+        // resolution leaves --mcp-config off entirely, the same as the TTY route.
+        _mcpConfigPath = ClaudeMcpConfig.Write(mcpServers ?? [], writeEmptyExplicit: unattended);
 
         // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
         // (Autopilot's CEO). Applied at start through --append-system-prompt, so it needs no post-start turn.
         var appendSystemPrompt = _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null);
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPrompt: appendSystemPrompt, mcpConfigPath: _mcpConfigPath);
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPrompt: appendSystemPrompt, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the

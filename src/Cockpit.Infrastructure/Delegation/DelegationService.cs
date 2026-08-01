@@ -661,6 +661,11 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 launchOptions: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     [WellKnownPluginSessionOptions.PaneId] = entry.TaskId,
+                    // AC-378: nobody is watching a delegated task, so its narrowing must be authoritative — the driver
+                    // hands the CLI exactly the servers _ToolsForAsync resolved and nothing from the operator's own
+                    // user/project config. This is the path where the escalation was measured: asking for a server that
+                    // resolves to nothing used to yield a session holding every account connector instead of none.
+                    [WellKnownPluginSessionOptions.Unattended] = "true",
                 },
                 // The project this task inherited from the session that delegated it (AC-320), so its MCP fan-out
                 // resolves the registry as that project sees it (AC-218) rather than unscoped. A value, never a

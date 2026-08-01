@@ -290,7 +290,14 @@
          direction, target id/title/stage), so the Autopilot epic-runner can read an epic's "parent for" children
          and their "depends on" order without every existing ITrackerProvider needing a real implementation.
          Additions only — a minor; major and abstractionsVersion stay 1. -->
-    <Version>1.43.0</Version>
+    <!-- 1.44.0 (AC-378, re-cut): added WellKnownPluginSessionOptions.Unattended — the host now states on every launch
+         whether an operator is watching, so a driver can make its per-session tool narrowing bind for a delegated or
+         self-driving session and stay additive for a pane someone opened. It replaces the assumption that "not a TTY"
+         means "nobody is watching", which cost an interactive SDK pane the account's own claude.ai connectors. One new
+         const; a driver that never reads it is unaffected. Additions only — a minor; major and abstractionsVersion
+         stay 1. A plugin that reads the key raises its manifest's minHostVersion, since an older host states nothing
+         and the key would simply be absent. -->
+    <Version>1.44.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
