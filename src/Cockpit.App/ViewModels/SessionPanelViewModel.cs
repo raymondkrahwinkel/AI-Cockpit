@@ -128,6 +128,61 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _status = "Not started.";
 
     /// <summary>
+    /// The MCP servers this session actually mounts (#44/AC-130) — the merged session/profile selection, set once
+    /// by whichever route launched the pane. <see langword="null"/> when neither named one: an unknown, not
+    /// necessarily empty, selection (see AC-537 and <see cref="ConnectedStatusLine"/>).
+    /// <para>
+    /// On the base, and the single source both the header's count and its hover read from, so the number and the
+    /// list cannot come to disagree — the failure this would otherwise have is a count of ten beside a list of
+    /// nine, with nothing to say which of the two is right (AC-563 criterion 5).
+    /// </para>
+    /// <para>
+    /// Computed by the launching view model rather than read back from the driver, since nothing on the wire
+    /// reports the resolved count after start; re-merging an already-merged value downstream is a no-op
+    /// (<c>x ?? y</c> on a non-null <c>x</c>), so holding it here changes nothing about what a session mounts.
+    /// </para>
+    /// <para>
+    /// Names, not resolved registry entries: every real caller's names already exclude the cockpit's own
+    /// always-there plumbing, because the New-session checklist only ever offers the servers a operator may pick
+    /// (AC-130 profile selections are saved from that same checklist). The one caller that can name an internal
+    /// endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools — inflates the count by
+    /// one in that narrow case; resolving it needs a live, project-scoped catalog read the header does not have,
+    /// and a cosmetic count does not justify adding one. Accepted, not silently ignored: pinned by
+    /// <c>SessionHeaderStatusAndKindChipTests</c>.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectedStatusLine))]
+    [NotifyPropertyChangedFor(nameof(McpServersTooltip))]
+    private IReadOnlySet<string>? _mcpServerSelection;
+
+    /// <summary>
+    /// The header's activity line for the current selection (AC-537). An unknown selection is left unsaid rather
+    /// than reported as zero — the count is the one figure here that describes the session's own setup, and a
+    /// wrong one is worse than none.
+    /// </summary>
+    public string ConnectedStatusLine => McpServerSelection is { Count: > 0 } servers
+        ? $"Connected ({servers.Count} MCP server{(servers.Count == 1 ? string.Empty : "s")})."
+        : "Connected.";
+
+    /// <summary>
+    /// What the activity column says on hover: the servers this session mounts, by name (AC-563). It hangs on the
+    /// column rather than on the text inside it, so an agent's <c>set_status</c> line cannot carry the list off
+    /// with the words it replaces — the list would otherwise be unreachable exactly while a session is working.
+    /// <para>
+    /// An unknown selection says so. Rendering it as an empty list would read as "this session has no MCP
+    /// servers", which is a claim about the world that not being able to work something out does not support
+    /// (same rule as AC-550 and AC-544 criterion 6).
+    /// </para>
+    /// </summary>
+    public string McpServersTooltip => McpServerSelection switch
+    {
+        null => "MCP servers\nNot known for this session — neither it nor its profile named a selection.",
+        { Count: 0 } => "MCP servers\nNone — this session was started with the selection empty.",
+        var servers => "MCP servers\n" + string.Join('\n', servers.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)),
+    };
+
+    /// <summary>
     /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): whether this
     /// session's header shows the controls that exist to investigate the cockpit (the TTY's Redraw) rather than
     /// to do the work. Seeded by <see cref="CockpitViewModel"/> and kept live from Options.

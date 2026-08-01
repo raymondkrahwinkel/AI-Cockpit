@@ -256,14 +256,21 @@ public sealed class MarkdownView : ContentControl
         foreach (var inline in inlines)
         {
             var run = new Run(inline.Text);
+
+            // Asked of the run rather than switched on its kind: emphasis around a link or a code span rides
+            // along as a flag, so a bold link is one run that is both — not a bold run holding a link.
+            if (inline.IsBold)
+            {
+                run.FontWeight = FontWeight.SemiBold;
+            }
+
+            if (inline.IsItalic)
+            {
+                run.FontStyle = FontStyle.Italic;
+            }
+
             switch (inline.Kind)
             {
-                case MarkdownInlineKind.Bold:
-                    run.FontWeight = FontWeight.SemiBold;
-                    break;
-                case MarkdownInlineKind.Italic:
-                    run.FontStyle = FontStyle.Italic;
-                    break;
                 case MarkdownInlineKind.Code:
                     run.FontFamily = MonoFont;
                     run.Background = CodeBackground;

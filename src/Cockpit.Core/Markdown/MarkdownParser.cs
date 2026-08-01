@@ -183,8 +183,17 @@ public static partial class MarkdownParser
         return i;
     }
 
-    /// <summary>Splits a run of text into inline runs: `code`, [text](url), **bold**, *italic*/_italic_.</summary>
+    /// <summary>
+    /// Splits a run of text into inline runs: `code`, [text](url), **bold**, *italic*/_italic_, and bare
+    /// http(s) URLs. Emphasis nests — the runs inside it keep their own kind and carry the surrounding
+    /// bold/italic as a flag, so the list stays flat (see <see cref="MarkdownInline"/> on why that matters).
+    /// </summary>
     public static IReadOnlyList<MarkdownInline> ParseInlines(string text)
+        => _ParseInlines(text ?? string.Empty, autolink: true);
+
+    // autolink is off while parsing the label of a [text](url) link: its text is already inside a link, and
+    // picking a URL out of it a second time would lay one clickable range over another.
+    private static List<MarkdownInline> _ParseInlines(string text, bool autolink)
     {
         var runs = new List<MarkdownInline>();
         var buffer = new StringBuilder();
@@ -202,6 +211,16 @@ public static partial class MarkdownParser
         while (i < text.Length)
         {
             var c = text[i];
+
+            // Ahead of the markers below only because a scheme can start nowhere they can. A URL inside a code
+            // span or a link is never reached: those branches consume their whole span in one step.
+            if (autolink && _BareUrlAt(text, i) is { } bare)
+            {
+                Flush();
+                runs.Add(new MarkdownInline(MarkdownInlineKind.Link, bare, bare));
+                i += bare.Length;
+                continue;
+            }
 
             if (c == '`')
             {
@@ -223,7 +242,18 @@ public static partial class MarkdownParser
                     if (urlEnd > close)
                     {
                         Flush();
-                        runs.Add(new MarkdownInline(MarkdownInlineKind.Link, text[(i + 1)..close], text[(close + 2)..urlEnd]));
+                        var url = text[(close + 2)..urlEnd];
+                        foreach (var inner in _ParseInlines(text[(i + 1)..close], autolink: false))
+                        {
+                            runs.Add(inner with
+                            {
+                                Kind = MarkdownInlineKind.Link,
+                                Url = url,
+                                OuterBold = inner.IsBold,
+                                OuterItalic = inner.IsItalic,
+                            });
+                        }
+
                         i = urlEnd + 1;
                         continue;
                     }
@@ -235,7 +265,7 @@ public static partial class MarkdownParser
                 if (end > i)
                 {
                     Flush();
-                    runs.Add(new MarkdownInline(MarkdownInlineKind.Bold, text[(i + 2)..end]));
+                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 2)..end], autolink), MarkdownInlineKind.Bold));
                     i = end + 2;
                     continue;
                 }
@@ -246,7 +276,7 @@ public static partial class MarkdownParser
                 if (end > i)
                 {
                     Flush();
-                    runs.Add(new MarkdownInline(MarkdownInlineKind.Italic, text[(i + 1)..end]));
+                    runs.AddRange(_Emphasise(_ParseInlines(text[(i + 1)..end], autolink), MarkdownInlineKind.Italic));
                     i = end + 1;
                     continue;
                 }
@@ -258,6 +288,72 @@ public static partial class MarkdownParser
 
         Flush();
         return runs;
+    }
+
+    /// <summary>
+    /// Applies an enclosing <c>**</c>/<c>*</c> to the runs it wraps. Plain text simply becomes that kind;
+    /// anything with a kind of its own (a link, a code span, the other emphasis) keeps it and takes the
+    /// surrounding emphasis as a flag. Either way one run in yields one run out, so the concatenated text —
+    /// and with it the renderer's link offsets — is exactly what the reader sees.
+    /// </summary>
+    private static IEnumerable<MarkdownInline> _Emphasise(List<MarkdownInline> runs, MarkdownInlineKind emphasis)
+        => runs.Select(run => run.Kind == MarkdownInlineKind.Text
+            ? run with { Kind = emphasis }
+            : run with
+            {
+                OuterBold = run.IsBold || emphasis == MarkdownInlineKind.Bold,
+                OuterItalic = run.IsItalic || emphasis == MarkdownInlineKind.Italic,
+            });
+
+    /// <summary>
+    /// The bare http(s) URL starting at <paramref name="start"/>, or null if none does. It runs to the next
+    /// whitespace minus the punctuation a sentence leaves behind — one character too many still renders fine
+    /// and then 404s, which is why the trailing trim exists at all.
+    /// </summary>
+    private static string? _BareUrlAt(string text, int start)
+    {
+        var rest = text.AsSpan(start);
+        var scheme = rest.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? 8
+            : rest.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ? 7
+            : 0;
+        if (scheme == 0)
+        {
+            return null;
+        }
+
+        var end = start;
+        while (end < text.Length && !char.IsWhiteSpace(text[end]) && text[end] is not ('<' or '>'))
+        {
+            end++;
+        }
+
+        while (end - start > scheme && _EndsOnSentencePunctuation(text, start, end))
+        {
+            end--;
+        }
+
+        // A scheme on its own is not a link, and "https://." would survive the trim above as one.
+        return end - start > scheme ? text[start..end] : null;
+    }
+
+    // A closing bracket is only the sentence's while nothing inside the URL opened it — that keeps
+    // "(https://x/a)" off its closer and a wiki link like "https://x/Foo_(bar)" whole.
+    private static bool _EndsOnSentencePunctuation(string text, int start, int end)
+    {
+        var last = text[end - 1];
+        if (last is '.' or ',' or ';' or ':' or '!' or '?' or '\'' or '"')
+        {
+            return true;
+        }
+
+        var opener = last switch { ')' => '(', ']' => '[', '}' => '{', _ => '\0' };
+        if (opener == '\0')
+        {
+            return false;
+        }
+
+        var url = text.AsSpan(start, end - start);
+        return url.Count(last) > url.Count(opener);
     }
 
     [GeneratedRegex(@"^(#{1,6})\s+(.*)$")]

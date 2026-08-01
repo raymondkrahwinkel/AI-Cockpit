@@ -7,7 +7,6 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
@@ -59,36 +58,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     private SessionRestorePlan? _restoredOfferSnapshot;
 
-    /// <summary>
-    /// The per-session MCP-server selection (#44) the session actually launches with — the New-session dialog's
-    /// explicit checklist result, or, when a caller passed none, the profile's own saved selection (AC-130), via
-    /// the same <see cref="McpServerRegistryFilter.EffectiveSessionSelection"/> merge <c>PluginSessionDriverAdapter
-    /// .StartAsync</c> applies before resolving the registry (<c>PluginSessionDriverAdapter.cs:139</c>) — computed
-    /// once here rather than read back from there, since nothing on the wire reports the resolved count after
-    /// start (<c>_ResolveMcpServersAsync</c> keeps its result local). Doubles as the header status line's MCP
-    /// count (AC-537). Re-merging an already-merged value through the same function downstream is a no-op
-    /// (<c>x ?? y</c> on a non-null <c>x</c>), so this changes nothing about what the session actually mounts.
-    /// <para>
-    /// Still null when neither the session nor the profile named anything (a programmatic launch — embedded/
-    /// Autopilot — against a profile with no saved selection either): a genuinely unknown, not-necessarily-zero
-    /// count from here, which the header treats the same as zero and says nothing about rather than guess.
-    /// </para>
-    /// <para>
-    /// Counts names, not resolved registry entries: every real caller's names already exclude the cockpit's own
-    /// always-there plumbing (<see cref="McpServerConfig.Internal"/>/<see cref="McpServerConfig.AlwaysMounted"/>)
-    /// because the New-session checklist only ever offers <see cref="McpServerRegistryFilter.OfferedToOperator"/>
-    /// servers (AC-130 profile selections are saved from that same checklist), so the header's number already
-    /// reads as "servers the operator picked", never the cockpit's own spawn-scoped tooling. The one caller that
-    /// can name an internal endpoint on purpose — an embedded/Autopilot run naming its own pane-scoped tools
-    /// (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>'s own remarks) — would inflate the count by
-    /// one in that narrow case; resolving that correctly needs a live, project-scoped <see cref="IMcpServerCatalog"/>
-    /// read the header does not have and a cosmetic count does not justify adding. Accepted, not silently ignored:
-    /// pinned by <c>SessionHeaderStatusAndKindChipTests</c>.
-    /// </para>
-    /// </summary>
-    private IReadOnlySet<string>? _enabledMcpServerNames;
-
-    /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
+    /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="SessionPanelViewModel.McpServerSelection"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
     private IReadOnlyDictionary<string, string>? _launchOptions;
 
     /// <summary>
@@ -588,15 +558,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
     /// <summary>
-    /// What the status line says on hover about the session's tools: the count, or why there are none. The names
-    /// themselves are <see cref="ConnectedTools"/> — fifty-five of them run together with commas was a wall of text,
-    /// and a list nobody can read is a list nobody checks.
+    /// How many tools this session connected, or why there are none — the line the empty-state card introduces a
+    /// fresh session with. The names behind it used to hang off the provider chip as a card; AC-563 removed that,
+    /// on AC-537's finding that a total of everything the agent can call (109, in Raymond's case) says nothing
+    /// about the operator's own setup. What does is the MCP-server list, which now hangs off the activity column
+    /// (<see cref="SessionPanelViewModel.McpServersTooltip"/>).
     /// </summary>
     [ObservableProperty]
     private string _connectedToolsHeading = string.Empty;
-
-    /// <summary>The session's connected tool names, so it is verifiable which tools (file tools, say) the model actually has.</summary>
-    public ObservableCollection<string> ConnectedTools { get; } = [];
 
     [ObservableProperty]
     private bool _isBusy;
@@ -827,7 +796,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public SessionViewModel()
     {
         _eventQueue = new SessionEventQueue(Apply);
-        Status = "Connected (3 MCP servers).";
+        // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563):
+        // a hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and
+        // render showing a count of three over a hover saying the selection is unknown — the exact divergence
+        // this ticket's own criterion 5 rules out, staged as if it were normal.
+        McpServerSelection = new HashSet<string>(StringComparer.Ordinal) { "youtrack", "depot", "cockpit-local-ci" };
+        Status = ConnectedStatusLine;
         ActiveProfileLabel = "raymond@work";
         KindLabel = "SDK";
 
@@ -988,9 +962,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedEffort = effort;
         // AC-537: fold in the profile's own saved selection here (same merge PluginSessionDriverAdapter.StartAsync
         // applies before resolving the registry), so a caller that passed none — but whose profile has one — is
-        // not read back as "nothing" for the header. See _enabledMcpServerNames' own doc for why this is safe to
+        // not read back as "nothing" for the header. See McpServerSelection's own doc for why this is safe to
         // do eagerly.
-        _enabledMcpServerNames = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+        McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
         // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
         _preApprovedTools = preApprovedTools is { Count: > 0 }
@@ -1092,7 +1066,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
             // AC-218: ProjectId is set on this panel by CockpitViewModel before StartConfiguredAsync runs, so it is
             // already current here — passed through so the driver's MCP fan-out resolves this project's registry view.
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume, _launchOptions, ProjectId);
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, McpServerSelection, workingDirectory, resume, _launchOptions, ProjectId);
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
@@ -1827,14 +1801,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
                 // AC-537: the tool count said nothing an operator could act on, and cwd duplicated the folder
                 // icon's own tooltip (SessionHeaderBar.axaml). The MCP-server count is the one figure here that
-                // actually describes the session's setup; see _enabledMcpServerNames for why null reads as "say
-                // nothing" rather than "zero".
-                Status = _enabledMcpServerNames is { Count: > 0 } mcpServers
-                    ? $"Connected ({mcpServers.Count} MCP server{(mcpServers.Count == 1 ? string.Empty : "s")})."
-                    : "Connected.";
-                // The names themselves, on hover, so it is verifiable which tools are available — sorted, because a
-                // list you look something up in is sorted, and the order a server happened to announce them in is not
-                // an order.
+                // actually describes the session's setup. Read off McpServerSelection, which is also what the
+                // activity column's hover lists (AC-563) — one fact, two readings.
+                Status = ConnectedStatusLine;
+                // AC-563 took the tool names off the provider chip's hover — the same count AC-537 had already
+                // ruled uninformative, one hover further along. The heading itself stays: the empty-state card
+                // (SessionView.axaml) introduces a fresh session with it, where "no tools connected" is the one
+                // thing worth saying before anything has happened.
                 ConnectedToolsHeading = init.Tools.Count == 0
                     ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
                     : $"{init.Tools.Count} tools connected";
@@ -1852,12 +1825,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                             control.SeedIfUnset(resolvedModel);
                         }
                     }
-                }
-
-                ConnectedTools.Clear();
-                foreach (var tool in init.Tools.OrderBy(tool => tool, StringComparer.OrdinalIgnoreCase))
-                {
-                    ConnectedTools.Add(tool);
                 }
 
                 break;

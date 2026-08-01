@@ -166,14 +166,20 @@
                  repo today ("Gemini (OpenAI-compatible)", 26 characters) while still bounding an unbounded plugin
                  string, so a plugin author's long name cannot widen the header (AC-537 AC6, pinned by
                  SessionHeaderKindChipWidthTests). -->
-            <Border Grid.Column="2" Classes="tag" Margin="7,0,0,0"
+            <Border x:Name="KindChip" Grid.Column="2" Classes="tag" Margin="7,0,0,0"
                     IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
                 <TextBlock Text="{Binding KindLabel}" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
             </Border>
 
-            <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status. -->
-            <Panel Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0">
+            <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status.
+                 AC-563: the session's MCP servers hover here, by name — the number in the text below is the count
+                 of that same list, so the two cannot disagree. The tip hangs on the column, not on either
+                 TextBlock: an agent's set_status swaps which of the two is shown, and a tip on the text would go
+                 with it — leaving the list unreachable exactly while a session is working. Background="Transparent"
+                 because a Panel with no brush is not hit-testable, so the hover would never fire. -->
+            <Panel x:Name="ActivityColumn" Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0"
+                   Background="Transparent" ToolTip.Tip="{Binding McpServersTooltip}">
                 <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
                            IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

@@ -75,40 +75,60 @@
                  overflow this redesign fixes. Same bar height as before (hard constraint). -->
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
-                    <!-- Reading level (AC-138): how much of this SDK session to show — Developer (everything),
-                         Focus (tool runs fold, cost on the pill) or Simple (no tool noise, plain words). Lives in
-                         this SDK-only control strip, so it never shows on a TTY pane, which has no reading level.
-                         Binds the enum straight through the option's Value, so the running session switches live. -->
-                    <ComboBox x:Name="ReadingLevelPicker" ItemsSource="{Binding ReadingLevels}"
-                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding ReadingLevel, Mode=TwoWay}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact pill" VerticalAlignment="Center"
-                              ToolTip.Tip="How much of the session to show — Developer, Focus or Simple"/>
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
                          driver and rendered generically. An SDK session can carry three of them, which crowded the
                          header — so they collapse behind a single sliders icon that opens a flyout to change them.
                          The driver still names, labels and values each control; the header keeps no built-in
-                         provider vocabulary, and the values live in the flyout rather than on the bar. -->
-                    <Button IsVisible="{Binding HasLiveControls}" Classes="toolChip" VerticalAlignment="Center"
-                            Padding="6,4" ToolTip.Tip="This session's model and turn settings — click to change">
+                         provider vocabulary, and the values live in the flyout rather than on the bar.
+                         The reading level (AC-138) joined them there (AC-562) — it was the last control still
+                         standing loose on the bar. No IsVisible on the button any more: it used to hide with
+                         HasLiveControls, which on a provider that declares none would now take the reading level
+                         down with it. This is the SDK pane and the flyout always holds at least that one, so the
+                         button is always warranted here; a TTY pane has neither and carries no such button. -->
+                    <Button x:Name="SessionSettingsButton" Classes="toolChip" VerticalAlignment="Center" Padding="6,4"
+                            ToolTip.Tip="What this session runs with, and how much of it you see — click to change">
                         <materialIcons:MaterialIcon Kind="Tune" Width="15" Height="15" VerticalAlignment="Center"
                                                     Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <Button.Flyout>
                             <Flyout Placement="Bottom">
-                                <ItemsControl ItemsSource="{Binding LiveControls}" MinWidth="200" Margin="4">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:LiveControlViewModel">
-                                            <StackPanel Spacing="3" Margin="0,0,0,8">
-                                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                                <ComboBox ItemsSource="{Binding ChoiceItems}"
-                                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
-                                                          DisplayMemberBinding="{Binding Label}"
-                                                          PlaceholderText="{Binding Label}" Classes="Compact"
-                                                          HorizontalAlignment="Stretch"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <!-- Two headings, because the flyout now mixes two kinds of setting: what the
+                                     session does (model, effort, permission mode — they change the run) and how
+                                     much of it is shown (reading level — it changes only this window). -->
+                                <StackPanel MinWidth="200" Margin="4" Spacing="3">
+                                    <TextBlock Text="Session" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,4"
+                                               IsVisible="{Binding HasLiveControls}"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <ItemsControl ItemsSource="{Binding LiveControls}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LiveControlViewModel">
+                                                <StackPanel Spacing="3" Margin="0,0,0,8">
+                                                    <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                    <ComboBox ItemsSource="{Binding ChoiceItems}"
+                                                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
+                                                              DisplayMemberBinding="{Binding Label}"
+                                                              PlaceholderText="{Binding Label}" Classes="Compact"
+                                                              HorizontalAlignment="Stretch"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="Display" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,4"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <!-- Reading level (AC-138): how much of this SDK session to show — Developer
+                                         (everything), Focus (tool runs fold, cost on the pill) or Simple (no tool
+                                         noise, plain words). Binds the enum straight through the option's Value,
+                                         so the running session still switches live from in here. -->
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="Reading level" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox x:Name="ReadingLevelPicker" ItemsSource="{Binding ReadingLevels}"
+                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding ReadingLevel, Mode=TwoWay}"
+                                                  DisplayMemberBinding="{Binding Label}" Classes="Compact"
+                                                  HorizontalAlignment="Stretch"
+                                                  ToolTip.Tip="How much of the session to show — Developer, Focus or Simple"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </Flyout>
                         </Button.Flyout>
                     </Button>
@@ -128,32 +148,14 @@
 
                 <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · token
                      meter · usage pill — defined once in SessionHeaderBar for every session kind, so the SDK and
-                     TTY headers can no longer diverge. The live controls above dock right and stay on the bar. The
-                     kind chip's hover is this view's own connected-tools card (a scannable list of the session's
-                     MCP tools, not a comma wall). -->
-                <controls:SessionHeaderBar VerticalAlignment="Center">
-                    <controls:SessionHeaderBar.KindChipTooltip>
-                        <StackPanel Spacing="8" MaxWidth="440">
-                            <TextBlock Text="{Binding ConnectedToolsHeading}" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <ItemsControl ItemsSource="{Binding ConnectedTools}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="x:String">
-                                        <Border Classes="tag" Margin="0,0,4,4">
-                                            <TextBlock Text="{Binding}" FontSize="10.5"
-                                                       FontFamily="{StaticResource CockpitMonoFont}"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </controls:SessionHeaderBar.KindChipTooltip>
-                </controls:SessionHeaderBar>
+                     TTY headers can no longer diverge. The live controls above dock right and stay on the bar.
+                     The kind chip carries no hover here (AC-563): it used to open a card listing every tool the
+                     session connected, which is the same total AC-537 took out of the status line for saying
+                     nothing about the operator's own setup — a hundred-odd tool names is not an opinion about
+                     anything. The KindChipTooltip slot stays; the TTY header still fills it with its render
+                     diagnostics. What the operator actually wanted is the MCP-server list, and that hangs off the
+                     activity column in SessionHeaderBar itself. -->
+                <controls:SessionHeaderBar VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
 

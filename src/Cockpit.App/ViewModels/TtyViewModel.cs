@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.Usage;
@@ -43,7 +44,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private string? _configuredWorkingDirectory;
     private bool _isLaunchConfigured;
     private SessionResume? _configuredResume;
-    private IReadOnlySet<string>? _configuredEnabledMcpServerNames;
     private SessionResources? _configuredContributed;
     private bool _launched;
 
@@ -518,7 +518,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     {
         _configuredProfile = profile;
         _configuredResume = resume;
-        _configuredEnabledMcpServerNames = enabledMcpServerNames;
+        // AC-563: the header's MCP hover lives on the shared bar, so this route resolves its selection here too —
+        // the same merge the driver applies downstream, where re-merging an already-merged value is a no-op. Held
+        // as the one field and handed to the launch below, so what the header names is what the session mounts;
+        // without the merge a terminal pane would report an unknown selection while its profile had named one.
+        McpServerSelection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
         _configuredContributed = contributed;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
         // Show and publish the effective working directory: the per-session override when given, else the
@@ -625,7 +629,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             _LaunchOptions(),
             _configuredWorkingDirectory,
             _configuredResume,
-            _configuredEnabledMcpServerNames,
+            McpServerSelection,
             _configuredContributed,
             // AC-218: set on the panel by CockpitViewModel before LaunchConfigured, so it is already current here.
             ProjectId));
