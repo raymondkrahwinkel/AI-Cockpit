@@ -272,18 +272,31 @@ public class PullRequestRefreshSourceTests
     public async Task AFailedFetch_StillRaisesUpdated_SoAFirstEverAttemptIsNotSilent()
     {
         var storage = new InMemoryStorage();
+
+        // The constructor's due-time-zero tick fetches straight away, so a handler attached on the line after it can
+        // already be too late: the fetch fails, Updated fires with nothing listening, and the wait below then just
+        // runs its two seconds out and reports a null that never had a chance. Holding the fetch until the handler
+        // is actually on makes the ordering this test's own rather than the thread pool's. More time would not have
+        // helped — the event it is waiting for is already gone.
+        var subscribed = new TaskCompletionSource();
         var source = new PullRequestRefreshSource(
             storage,
-            (_, _) => Task.FromException<PullRequestFeedResult>(new InvalidOperationException("gh not installed")),
+            async (_, _) =>
+            {
+                await subscribed.Task;
+                throw new InvalidOperationException("gh not installed");
+            },
             pollInterval: TimeSpan.FromMinutes(10));
 
         PullRequestFeedSnapshot? received = null;
         source.Updated += (_, snapshot) => received = snapshot;
+        subscribed.SetResult();
 
-        await _WaitUntilAsync(() => received is not null, TimeSpan.FromSeconds(2));
+        var raised = await _WaitUntilAsync(() => received is not null, TimeSpan.FromSeconds(2));
 
         source.Dispose();
 
+        Assert.True(raised, "a failed fetch must still raise Updated, so a first-ever attempt is not silent");
         Assert.NotNull(received);
         Assert.Null(received!.FetchedAt);
         Assert.Null(storage.Get<PullRequestFeedSnapshot>("refreshSourceSnapshot"));
