@@ -47,6 +47,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: a ticked usage window that no figure has arrived for now says so in the usage detail, instead of leaving the
   setting looking broken. The pill itself still stays empty — a window nobody reported is not "0% used".
 - fixed: Ctrl+double-clicking a link in a terminal session opened the page twice.
+- fixed: an MCP server that refuses a single call no longer reports your sign-in as expired. The cockpit renews the
+  credential and sends the call once more; if that is refused too, it used to tell you the sign-in had run out and to
+  authorize again from Settings — advice that cannot be right, because the token it just tried was issued seconds
+  earlier. In practice the next call went through untouched, but a session reading "sign in again" stops and waits for
+  something nobody needs to do. It now says the sign-in could not be confirmed and that sending the request again is
+  the thing to try. A sign-in with nothing left to renew from is still reported as expired, because there it is.
 
 ### Added
 

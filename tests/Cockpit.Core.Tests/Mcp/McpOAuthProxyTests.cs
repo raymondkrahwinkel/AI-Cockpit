@@ -290,6 +290,34 @@ public class McpOAuthProxyTests
     }
 
     [Fact]
+    public async Task WhenTheServerRefusesEvenAFreshToken_TheAgentIsToldToSendItAgain_NotToSignInAgain()
+    {
+        await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) =>
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        });
+
+        var (proxy, key) = _Proxy(_CoordinatorThatRenewsOnRejection());
+        await using (proxy)
+        {
+            var proxyUrl = await _MountedAsync(proxy, _ServerAt(upstream.Url));
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(_Post(proxyUrl, """{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", key));
+            var message = (string)JsonNode.Parse(await response.Content.ReadAsStringAsync())!["error"]!["message"]!;
+
+            // What is known here is that a renewal succeeded and the server said no anyway — which is a revoked grant
+            // and a server refusing a live token once, and nothing on this path can tell those two apart. Measured
+            // twice on Depot (AC-550): the melding arrived, nothing was done, and the next call went straight
+            // through. "Your sign-in expired, go and authorize again" is the one reading the evidence rules out, and
+            // an agent that reads it stops working and waits for an action nobody needs to take.
+            Assert.DoesNotContain("press Sign in", message, StringComparison.Ordinal);
+            Assert.Contains("again", message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public async Task WhenTheRenewalAfterARefusalFails_TheCallIsAnsweredWithThatReason_NotTheRefusal()
     {
         await using var upstream = await InProcessUpstreamServer.StartAsync((context, _) =>

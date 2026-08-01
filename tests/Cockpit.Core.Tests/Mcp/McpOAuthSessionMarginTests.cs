@@ -184,6 +184,26 @@ public class McpOAuthSessionMarginTests
     }
 
     [Fact]
+    public async Task RenewRejected_WithNothingToRenewFrom_StillReportsAnExpiredSignIn()
+    {
+        var store = new FakeMcpOAuthTokenStore();
+        var refused = _TokenExpiringIn(TimeSpan.FromHours(6), accessToken: "revoked-at-the-far-end");
+        await store.SaveAsync("depot", "depot", refused);
+        var authorizer = new RenewingMcpOAuthAuthorizer(store, TimeSpan.FromHours(1));
+
+        var access = await new McpOAuthCoordinator(store, authorizer, NullLogger<McpOAuthCoordinator>.Instance)
+            .RenewRejectedAsync(_Server(), refused.AccessToken);
+
+        // The other half of AC-550, and the half a careless fix loses: softening every refusal into "could not be
+        // confirmed, try again" would bury the one case where signing in again is exactly what is needed. Here the
+        // server refused the token and there is no refresh grant behind it, so nothing can renew it and no retry
+        // will ever produce a different answer — this genuinely is a sign-in that has to be made anew.
+        Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
+        Assert.Equal(McpOAuthAttentionReason.SignInExpired, access.Reason);
+        Assert.Equal(0, authorizer.Attempts);
+    }
+
+    [Fact]
     public async Task RenewRejected_ForATokenSomebodyElseAlreadyReplaced_HandsBackTheCurrentOneWithoutRenewing()
     {
         var store = new FakeMcpOAuthTokenStore();

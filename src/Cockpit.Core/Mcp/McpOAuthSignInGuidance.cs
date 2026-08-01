@@ -36,6 +36,11 @@ public static class McpOAuthSignInGuidance
             + "again — so the renewal that would have fixed it could not be applied to this one. The credential has "
             + "been renewed; sending the same request again should work.",
 
+        McpOAuthAttentionReason.RenewedCredentialRefused =>
+            $"'{serverName}' refused a credential the cockpit had renewed for it moments earlier, so whether its "
+            + "sign-in is still good could not be confirmed. Sending the same request again is the first thing to "
+            + "try; only if it keeps being refused is the sign-in itself worth renewing from Settings ▸ MCP servers.",
+
         // Not reached from a failure: None is what a successful acquire carries. Answering with a sentence rather
         // than throwing keeps a logging path from becoming the thing that breaks a session.
         _ => $"the cockpit cannot present a credential to '{serverName}'.",

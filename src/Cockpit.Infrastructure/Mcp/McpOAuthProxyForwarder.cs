@@ -165,6 +165,12 @@ internal sealed class McpOAuthProxyForwarder(
 
         // Still refused with a credential minted seconds ago. Renewing again would only find the same answer, so
         // this is where it stops and the operator is told instead.
+        //
+        // Told what, exactly, is the whole of AC-550. A renewal that worked and a server that says no anyway is a
+        // revoked grant and a server refusing one live token at the same time, and there is nothing here to separate
+        // them: this end holds a token the authorization server issued seconds ago. Measured twice on Depot — the
+        // sign-in was reported dead and the very next call went through untouched — so "expired, go and sign in"
+        // is the reading the evidence rules out, and it is the one that makes an agent stop and wait.
         if (_IsRefusal(second))
         {
             logger.LogWarning(
@@ -173,7 +179,7 @@ internal sealed class McpOAuthProxyForwarder(
                 (int)second.StatusCode);
 
             second.Dispose();
-            await _RespondUnavailableAsync(context, McpOAuthAttentionReason.SignInExpired, cancellationToken).ConfigureAwait(false);
+            await _RespondUnavailableAsync(context, McpOAuthAttentionReason.RenewedCredentialRefused, cancellationToken).ConfigureAwait(false);
             return null;
         }
 
