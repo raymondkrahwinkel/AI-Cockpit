@@ -27,7 +27,6 @@ internal sealed class AssistantSettingsEntry
     // that matches no source, which is the least powerful thing it could mean.
     public List<string> ConsentBypassSources { get; set; } = [];
 
-    // <inheritdoc cref="ConsentBypassSources"/>
     public List<string> ConsentBypassDangerousSources { get; set; } = [];
 
     public static AssistantSettingsEntry FromDomain(AssistantSettings settings) => new()

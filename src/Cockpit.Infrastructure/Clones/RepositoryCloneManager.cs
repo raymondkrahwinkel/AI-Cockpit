@@ -6,7 +6,6 @@ using Cockpit.Infrastructure.Worktrees;
 
 namespace Cockpit.Infrastructure.Clones;
 
-// <inheritdoc cref="IRepositoryCloneManager" />
 internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISingletonService
 {
     private readonly IRepositoryCloneRegistry _registry;

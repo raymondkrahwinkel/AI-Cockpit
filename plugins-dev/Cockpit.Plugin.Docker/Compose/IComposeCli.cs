@@ -14,5 +14,5 @@ internal interface IComposeCli
     Task<ComposeResult> RunAsync(string workingDirectory, IReadOnlyList<string> args, CancellationToken cancellationToken);
 }
 
-/// <summary>The result of a <c>docker compose</c> invocation.</summary>
+// The result of a `docker compose` invocation.
 internal sealed record ComposeResult(int ExitCode, string Stdout, string Stderr);

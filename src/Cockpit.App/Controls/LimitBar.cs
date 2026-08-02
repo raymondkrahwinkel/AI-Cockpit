@@ -43,7 +43,6 @@ public sealed class LimitBar : TemplatedControl
     public static readonly StyledProperty<double?> ThresholdProperty =
         AvaloniaProperty.Register<LimitBar, double?>(nameof(Threshold));
 
-    // <inheritdoc cref="ThresholdProperty"/>
     public double? Threshold
     {
         get => GetValue(ThresholdProperty);

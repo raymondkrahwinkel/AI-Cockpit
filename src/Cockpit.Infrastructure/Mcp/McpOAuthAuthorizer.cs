@@ -35,11 +35,9 @@ internal interface IMcpOAuthAuthorizer
 internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMcpOAuthTokenStore tokenStore)
     : IMcpOAuthAuthorizer, ISingletonService
 {
-    /// <summary>
-    /// Stands in for the hand-off to the desktop. Null in production, where <see cref="_OpenBrowser"/> is the only
-    /// part of this class that reaches outside the process — and the only part a test cannot exercise without a
-    /// browser window appearing on the machine running the suite.
-    /// </summary>
+    // Stands in for the hand-off to the desktop. Null in production, where `_OpenBrowser` is the only
+    // part of this class that reaches outside the process — and the only part a test cannot exercise without a
+    // browser window appearing on the machine running the suite.
     internal Func<Uri, bool>? BrowserOpener { get; init; }
 
     public ClientOAuthOptions CreateOptions(McpServerConfig server, bool interactive = true, McpSignInStageRecorder? stageRecorder = null)
@@ -91,11 +89,9 @@ internal sealed class McpOAuthAuthorizer(ILogger<McpOAuthAuthorizer> logger, IMc
         return options;
     }
 
-    /// <summary>
-    /// The non-interactive authorization step: there is nobody to log in, so it declines. Returning no code makes
-    /// the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
-    /// point being that starting a session must never make a browser window appear on its own.
-    /// </summary>
+    // The non-interactive authorization step: there is nobody to log in, so it declines. Returning no code makes
+    // the SDK report the authorization as failed, which the coordinator reads as "this needs the operator" — the
+    // point being that starting a session must never make a browser window appear on its own.
     private Task<AuthorizationResult?> _RefuseAuthorizationAsync(AuthorizationCallbackContext context, CancellationToken cancellationToken)
     {
         logger.LogInformation("An MCP server needs an interactive sign-in, which was not requested here; leaving it unauthorized.");

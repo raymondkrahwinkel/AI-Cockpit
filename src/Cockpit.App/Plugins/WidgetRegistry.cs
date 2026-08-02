@@ -54,22 +54,18 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
 
     public IReadOnlyList<WidgetRegistration> Widgets => [.. _widgets.Select(widget => widget.Registration)];
 
-    /// <remarks>
-    /// The union across every widget-providing plugin, not per widget. Over-scrubbing costs a plugin a setting
-    /// whose name another plugin declared secret; under-scrubbing ships a live credential in a file you meant
-    /// to share. Of the two, the first is the one you can afford — and a plain setting named "pat" or
-    /// "credential" is not a thing anyone writes by accident.
-    /// </remarks>
+    // The union across every widget-providing plugin, not per widget. Over-scrubbing costs a plugin a setting
+    // whose name another plugin declared secret; under-scrubbing ships a live credential in a file you meant
+    // to share. Of the two, the first is the one you can afford — and a plain setting named "pat" or
+    // "credential" is not a thing anyone writes by accident.
     public IReadOnlyList<string> DeclaredSecretKeys =>
         [.. _widgets.SelectMany(widget => widget.DeclaredSecretKeys).Distinct(StringComparer.OrdinalIgnoreCase)];
 
-    /// <summary>
-    /// First registration of a type id wins, and a later one is refused rather than added beside it. Two
-    /// plugins can claim the same id — nothing stops a third party picking one that exists, and the cockpit's
-    /// own clock did exactly that when it was split out of the reference-widgets plugin. Adding both put the
-    /// type in the gallery twice and left <see cref="CreateInstance"/> silently resolving to whichever plugin
-    /// happened to load first, which is not a thing an operator can see, let alone fix.
-    /// </summary>
+    // First registration of a type id wins, and a later one is refused rather than added beside it. Two
+    // plugins can claim the same id — nothing stops a third party picking one that exists, and the cockpit's
+    // own clock did exactly that when it was split out of the reference-widgets plugin. Adding both put the
+    // type in the gallery twice and left `CreateInstance` silently resolving to whichever plugin
+    // happened to load first, which is not a thing an operator can see, let alone fix.
     public bool Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys)
     {
         if (IsInstalled(widget.Id))

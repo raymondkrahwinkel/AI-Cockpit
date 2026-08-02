@@ -127,7 +127,6 @@ internal sealed class SessionStateStore : ISessionStateStore, ISingletonService
         }
     }
 
-    // <inheritdoc cref="ISessionStateStore.TryLoadAsync"/>
     public async Task<IReadOnlyList<SessionStateRecord>?> TryLoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_filePath))

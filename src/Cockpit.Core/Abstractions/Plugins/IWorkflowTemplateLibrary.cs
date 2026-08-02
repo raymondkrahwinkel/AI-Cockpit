@@ -16,19 +16,18 @@ public interface IWorkflowTemplateLibrary
     bool IsInstalled(string id);
 }
 
-/// <summary>
-/// A template as it sits on disk: the flow itself, and what the store said about it — so the picker can say where it
-/// came from, and can refuse to open one whose steps this build does not have rather than showing a canvas of nodes
-/// the editor cannot resolve.
-/// </summary>
-/// <param name="Id">Stable identity, as the store published it.</param>
-/// <param name="Name">What the picker shows.</param>
-/// <param name="Description">One line: what the flow does.</param>
-/// <param name="Json">The flow, in the workflow editor's own format — the same text a flow is exported to.</param>
-/// <param name="Author">Who published it.</param>
-/// <param name="Version">The version installed, so an update is a thing that can be seen.</param>
-/// <param name="Category">The heading the picker files it under.</param>
-/// <param name="Requires">The plugins whose steps this flow uses.</param>
+// A template as it sits on disk: the flow itself, and what the store said about it — so the picker can say where it
+// came from, and can refuse to open one whose steps this build does not have rather than showing a canvas of nodes
+// the editor cannot resolve.
+//
+// `Id`: Stable identity, as the store published it.
+// `Name`: What the picker shows.
+// `Description`: One line: what the flow does.
+// `Json`: The flow, in the workflow editor's own format — the same text a flow is exported to.
+// `Author`: Who published it.
+// `Version`: The version installed, so an update is a thing that can be seen.
+// `Category`: The heading the picker files it under.
+// `Requires`: The plugins whose steps this flow uses.
 public sealed record InstalledWorkflowTemplate(
     string Id,
     string Name,

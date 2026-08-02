@@ -30,26 +30,23 @@ internal interface IEpicSubMergeChecker
     bool? IsMerged(string issueId);
 }
 
-/// <summary>
-/// The real <see cref="IEpicSubMergeChecker"/> (AC-346): a sub counts as merged when a commit <em>subject line</em>
-/// (the commit message's first line — never its body, which can casually mention another ticket's id in a bullet) in
-/// <c>origin/main</c>'s history starts with its exact ticket number — this project's own commit format (<c>{TICKET}</c>
-/// on the first line, see this repo's own <c>git log</c>). "Starts with, followed by something that cannot extend the
-/// id" (a word-boundary match, not a bare prefix) is deliberate: <c>git log --grep="^AC-3"</c> also matches
-/// "AC-34 - …" and "AC-350 - …", which would read a sibling sub as merged the moment any commit with a colliding
-/// numeric prefix landed anywhere in history — found by an independent review, reproduced on a throwaway repo. Matching
-/// is therefore done in .NET against <c>git log --format=%s</c> (subject lines only) rather than through git's own
-/// <c>--grep</c>, so both the "first line only" and the "exact id, not a prefix" rules are enforced the same way
-/// regardless of which regex engine the local git build happens to use.
-/// <para>
-/// Checked against <c>origin/main</c>, never a local branch or worktree (the ticket's own wording): a run's local
-/// worktree can carry a sub's commits before they are actually merged, and trusting that would let the epic-runner
-/// "see" a step as done before the human has merged its PR. <c>git fetch</c> first so a merge someone else just
-/// clicked through is not missed by a stale local ref — best-effort, since an offline box or a repo with no configured
-/// remote should still fall back to whatever <c>origin/main</c> already points at locally rather than refuse the whole
-/// check.
-/// </para>
-/// </summary>
+// The real `IEpicSubMergeChecker` (AC-346): a sub counts as merged when a commit *subject line*
+// (the commit message's first line — never its body, which can casually mention another ticket's id in a bullet) in
+// `origin/main`'s history starts with its exact ticket number — this project's own commit format (`{TICKET}`
+// on the first line, see this repo's own `git log`). "Starts with, followed by something that cannot extend the
+// id" (a word-boundary match, not a bare prefix) is deliberate: `git log --grep="^AC-3"` also matches
+// "AC-34 - …" and "AC-350 - …", which would read a sibling sub as merged the moment any commit with a colliding
+// numeric prefix landed anywhere in history — found by an independent review, reproduced on a throwaway repo. Matching
+// is therefore done in .NET against `git log --format=%s` (subject lines only) rather than through git's own
+// `--grep`, so both the "first line only" and the "exact id, not a prefix" rules are enforced the same way
+// regardless of which regex engine the local git build happens to use.
+//
+// Checked against `origin/main`, never a local branch or worktree (the ticket's own wording): a run's local
+// worktree can carry a sub's commits before they are actually merged, and trusting that would let the epic-runner
+// "see" a step as done before the human has merged its PR. `git fetch` first so a merge someone else just
+// clicked through is not missed by a stale local ref — best-effort, since an offline box or a repo with no configured
+// remote should still fall back to whatever `origin/main` already points at locally rather than refuse the whole
+// check.
 internal sealed class GitEpicSubMergeChecker(string repositoryDirectory) : IEpicSubMergeChecker
 {
     private IReadOnlyList<string>? _subjects;

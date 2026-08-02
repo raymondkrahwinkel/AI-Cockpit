@@ -1,18 +1,19 @@
 namespace Cockpit.Core.Abstractions.Secrets;
 
-/// <summary>What the cockpit knows about its own credential protection before anything is unlocked.</summary>
-/// <param name="Enabled">Whether the operator turned encryption on.</param>
-/// <param name="Unlocked">Whether the key for this session has been derived, so the settings can be read.</param>
-/// <param name="ShouldWarnUnprotected">
-/// Whether the awareness banner (AC-41) should show: encryption is off, the settings hold at least one credential
-/// in the clear, and the operator has not dismissed the warning for this exact set of credential fields. Defaults
-/// off, so a status built without it (a test, a design-time stand-in) simply does not nag.
-/// </param>
+// What the cockpit knows about its own credential protection before anything is unlocked.
+//
+// `Enabled`: Whether the operator turned encryption on.
+// `Unlocked`: Whether the key for this session has been derived, so the settings can be read.
+// `ShouldWarnUnprotected`:
+// Whether the awareness banner (AC-41) should show: encryption is off, the settings hold at least one credential
+// in the clear, and the operator has not dismissed the warning for this exact set of credential fields. Defaults
+// off, so a status built without it (a test, a design-time stand-in) simply does not nag.
 public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false);
 
-/// <summary>How far a migration has come, so the operator watches it happen instead of watching nothing happen.</summary>
-/// <param name="Completed">Fields converted so far.</param>
-/// <param name="Total">Fields to convert.</param>
+// How far a migration has come, so the operator watches it happen instead of watching nothing happen.
+//
+// `Completed`: Fields converted so far.
+// `Total`: Fields to convert.
 public readonly record struct SecretMigrationProgress(int Completed, int Total);
 
 /// <summary>

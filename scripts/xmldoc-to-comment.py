@@ -45,7 +45,7 @@ TYPEPARAM_OPEN = re.compile(r'<typeparam\s+name="([^"]*)"\s*>')
 DROP_TAGS = re.compile(r"</?(summary|remarks|list|param|typeparam|returns|value)\b[^>]*>")
 PARA = re.compile(r"<para\s*>")
 PARA_CLOSE = re.compile(r"</para\s*>")
-INHERITDOC = re.compile(r"<inheritdoc\s*/?>")
+INHERITDOC = re.compile(r'<inheritdoc(?:\s+cref="[^"]*")?\s*/?>')
 ITEM_OPEN = re.compile(r"<item\s*>")
 ITEM_CLOSE = re.compile(r"</item\s*>")
 
