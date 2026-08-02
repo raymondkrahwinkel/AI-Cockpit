@@ -28,10 +28,8 @@ public interface ISessionLabelSink
     Task<bool> SuggestNameAsync(string paneId, string name);
 }
 
-/// <summary>
-/// No-op <see cref="ISessionLabelSink"/> for any context without the App view-model layer (a headless or
-/// test host): reports nothing matched rather than failing. The App registers a live sink over its cockpit.
-/// </summary>
+// No-op `ISessionLabelSink` for any context without the App view-model layer (a headless or
+// test host): reports nothing matched rather than failing. The App registers a live sink over its cockpit.
 public sealed class NullSessionLabelSink : ISessionLabelSink
 {
     public static NullSessionLabelSink Instance { get; } = new();

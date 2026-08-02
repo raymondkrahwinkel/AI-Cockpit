@@ -20,65 +20,60 @@ public interface IAgentNotifyAuditLog
     Task<IReadOnlyList<AgentNotifyAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the host did with one <c>notify</c> attempt (AC-392).</summary>
+// What the host did with one `notify` attempt (AC-392).
 public enum AgentNotifyOutcome
 {
-    /// <summary>The message was accepted and is waiting in the recipient's inbox.</summary>
+    // The message was accepted and is waiting in the recipient's inbox.
     Accepted,
 
-    /// <summary>An identical message was already waiting unread, so no second one was added; the sender got the waiting message's id back.</summary>
+    // An identical message was already waiting unread, so no second one was added; the sender got the waiting message's id back.
     Deduplicated,
 
-    /// <summary>The request carried no transport-verified pane, so it could not be attributed to a sender at all.</summary>
+    // The request carried no transport-verified pane, so it could not be attributed to a sender at all.
     RefusedNoVerifiedPane,
 
-    /// <summary>The addressed pane was not in the caller's own workspace snapshot — either it sits on another desk, or the caller itself resolved to no workspace the cockpit could place it in. Both are the same refusal: the caller cannot address that pane.</summary>
+    // The addressed pane was not in the caller's own workspace snapshot — either it sits on another desk, or the caller itself resolved to no workspace the cockpit could place it in. Both are the same refusal: the caller cannot address that pane.
     RefusedNotInWorkspace,
 
-    /// <summary>The caller addressed its own pane.</summary>
+    // The caller addressed its own pane.
     RefusedSelf,
 
-    /// <summary>
-    /// The addressee, kind or body was missing, or longer than one message may be. The bound is the recipient's
-    /// protection: the body becomes text in another agent's context, and an unbounded one is both a way to fill host
-    /// memory and a way to spend a neighbour's whole context window.
-    /// </summary>
+    // The addressee, kind or body was missing, or longer than one message may be. The bound is the recipient's
+    // protection: the body becomes text in another agent's context, and an unbounded one is both a way to fill host
+    // memory and a way to spend a neighbour's whole context window.
     RefusedInvalidContent,
 
-    /// <summary>
-    /// The addressed pane was in the caller's workspace when it was checked, but no longer by the time the message had
-    /// been delivered — its session ended in between. The delivery was taken back rather than left waiting for a pane
-    /// nobody answers to.
-    /// </summary>
+    // The addressed pane was in the caller's workspace when it was checked, but no longer by the time the message had
+    // been delivered — its session ended in between. The delivery was taken back rather than left waiting for a pane
+    // nobody answers to.
     RefusedRecipientGone,
 
-    /// <summary>The recipient already holds the most messages one inbox keeps, and has not drained them.</summary>
+    // The recipient already holds the most messages one inbox keeps, and has not drained them.
     RefusedRecipientInboxFull,
 
-    /// <summary>The attempt failed unexpectedly (a race on a closing session, say) and no message was accepted. Recorded so the trail holds every attempt, not only the ones the host reached a verdict on.</summary>
+    // The attempt failed unexpectedly (a race on a closing session, say) and no message was accepted. Recorded so the trail holds every attempt, not only the ones the host reached a verdict on.
     RefusedError,
 }
 
-/// <summary>One line of the agent-notify trail (AC-392).</summary>
-/// <param name="At">When the attempt was handled.</param>
-/// <param name="Outcome">What the host did with it — accepted, deduplicated, or the reason it was refused.</param>
-/// <param name="FromPaneId">The transport-verified sender, or null when the request carried no verified pane (the one case where there is nobody to name).</param>
-/// <param name="ToPaneId">The pane the sender addressed, exactly as given — including one it was not allowed to reach.</param>
-/// <param name="Kind">The sender's label for the message, trimmed.</param>
-/// <param name="Body">The message text, trimmed: the trail is for recognising an attempt later, not for keeping a second copy of every message.</param>
-/// <param name="MessageId">The id of the message now waiting for the recipient, or null when nothing is.</param>
-/// <param name="Urgent">Whether the sender asked for the recipient to be woken (AC-395) — what it asked for, kept separate from what it got.</param>
-/// <param name="Wake">
-/// What became of that wake, or null when none was attempted — an ordinary message, or one refused before it
-/// ever reached the question. The trail is the only place a refused wake is written down: the sender is told, but
-/// the sender is not who this record is for. Without it the operator can see that agents talked and never that
-/// one tried to start a turn on another's session.
-/// <para>
-/// Defaulted rather than required, and last, so the lines already on disk from before wake existed still read
-/// back. A trail that stops parsing its own history the day a field is added is not append-only in any sense
-/// that matters.
-/// </para>
-/// </param>
+// One line of the agent-notify trail (AC-392).
+//
+// `At`: When the attempt was handled.
+// `Outcome`: What the host did with it — accepted, deduplicated, or the reason it was refused.
+// `FromPaneId`: The transport-verified sender, or null when the request carried no verified pane (the one case where there is nobody to name).
+// `ToPaneId`: The pane the sender addressed, exactly as given — including one it was not allowed to reach.
+// `Kind`: The sender's label for the message, trimmed.
+// `Body`: The message text, trimmed: the trail is for recognising an attempt later, not for keeping a second copy of every message.
+// `MessageId`: The id of the message now waiting for the recipient, or null when nothing is.
+// `Urgent`: Whether the sender asked for the recipient to be woken (AC-395) — what it asked for, kept separate from what it got.
+// `Wake`:
+// What became of that wake, or null when none was attempted — an ordinary message, or one refused before it
+// ever reached the question. The trail is the only place a refused wake is written down: the sender is told, but
+// the sender is not who this record is for. Without it the operator can see that agents talked and never that
+// one tried to start a turn on another's session.
+//
+// Defaulted rather than required, and last, so the lines already on disk from before wake existed still read
+// back. A trail that stops parsing its own history the day a field is added is not append-only in any sense
+// that matters.
 public sealed record AgentNotifyAuditEntry(
     DateTimeOffset At,
     AgentNotifyOutcome Outcome,

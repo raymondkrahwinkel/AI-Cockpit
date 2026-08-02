@@ -51,11 +51,9 @@ internal sealed class WorkspaceTypeRegistry(IServiceProvider services) : IWorksp
 
     public IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [.. _types.Select(type => type.Registration)];
 
-    /// <summary>
-    /// First registration of a type id wins, and a later one is refused rather than added beside it — the same
-    /// rule the widget registry keeps, and for the same reason: two entries with one id put the type in the "+"
-    /// menu twice and leave <see cref="CreateBody"/> resolving to whichever plugin loaded first.
-    /// </summary>
+    // First registration of a type id wins, and a later one is refused rather than added beside it — the same
+    // rule the widget registry keeps, and for the same reason: two entries with one id put the type in the "+"
+    // menu twice and leave `CreateBody` resolving to whichever plugin loaded first.
     public bool Register(WorkspaceTypeRegistration registration, IPluginStorage pluginStorage, ICockpitSessionObserver sessions)
     {
         if (IsRegistered(registration.Id))

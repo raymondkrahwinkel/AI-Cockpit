@@ -25,7 +25,7 @@ internal interface IStreamingCliRunner
         CancellationToken cancellationToken);
 }
 
-/// <param name="Started">False when the executable could not be launched — it is not installed or not on PATH.</param>
+// `Started`: False when the executable could not be launched — it is not installed or not on PATH.
 internal sealed record StreamedRun(bool Started, int ExitCode)
 {
     public static StreamedRun NotStarted { get; } = new(Started: false, ExitCode: -1);

@@ -11,16 +11,13 @@ internal interface IRunContainerCleanup
     Task RemoveAsync(string runId, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Finds a run's leftovers by the label every one of its containers carries, and forces them away.
-/// <para>
-/// By label rather than by name: act names containers after the workflow and job, so two projects running the same
-/// job would clean up each other's containers — and a label is the only thing here that is unique to one run.
-/// </para>
-/// </summary>
+// Finds a run's leftovers by the label every one of its containers carries, and forces them away.
+//
+// By label rather than by name: act names containers after the workflow and job, so two projects running the same
+// job would clean up each other's containers — and a label is the only thing here that is unique to one run.
 internal sealed class DockerRunCleanup(ICliRunner runner) : IRunContainerCleanup
 {
-    /// <summary>Long enough for a busy engine, short enough that stopping a run never appears to hang.</summary>
+    // Long enough for a busy engine, short enough that stopping a run never appears to hang.
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(20);
 
     public async Task RemoveAsync(string runId, CancellationToken cancellationToken)

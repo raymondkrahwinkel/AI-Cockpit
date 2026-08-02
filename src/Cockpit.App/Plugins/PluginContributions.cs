@@ -5,37 +5,31 @@ using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>A left-menu accordion section a plugin contributes, shown under the session list: which plugin it came from (#72 — the operator orders and hides the menu per plugin), its title, and a factory that builds the section content.</summary>
+// A left-menu accordion section a plugin contributes, shown under the session list: which plugin it came from (#72 — the operator orders and hides the menu per plugin), its title, and a factory that builds the section content.
 public sealed record PluginSideSection(string PluginId, string Title, Func<Control> CreateView);
 
-/// <summary>
-/// A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run
-/// on click (typically opening a dialog). <paramref name="Badge"/> (AC-516) is the live counter handle the plugin
-/// got back from <see cref="ICockpitHost.AddSideMenuButtonWithBadge"/>, or null for a button added through the
-/// plain <see cref="ICockpitHost.AddSideMenuButton"/> — trailing and defaulted rather than inserted, because this
-/// record is host-internal (never crosses the plugin ABI boundary), but its one construction site
-/// (<c>CockpitViewModel</c>) still only ever needs to name what changed.
-/// </summary>
+// A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run
+// on click (typically opening a dialog). `Badge` (AC-516) is the live counter handle the plugin
+// got back from `ICockpitHost.AddSideMenuButtonWithBadge`, or null for a button added through the
+// plain `ICockpitHost.AddSideMenuButton` — trailing and defaulted rather than inserted, because this
+// record is host-internal (never crosses the plugin ABI boundary), but its one construction site
+// (`CockpitViewModel`) still only ever needs to name what changed.
 public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke, SideMenuButtonBadge? Badge = null);
 
-/// <summary>A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).</summary>
+// A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
 
-/// <summary>A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).</summary>
+// A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 
-/// <summary>
-/// One thing a plugin put in the left menu: either a launcher <see cref="Button"/> or an inline <see cref="Section"/>,
-/// never both. They share a list so the operator's order (#72) applies across them — a section moved to the top belongs
-/// at the top, not below every plugin that happens to contribute a button instead.
-/// </summary>
+// One thing a plugin put in the left menu: either a launcher `Button` or an inline `Section`,
+// never both. They share a list so the operator's order (#72) applies across them — a section moved to the top belongs
+// at the top, not below every plugin that happens to contribute a button instead.
 public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, PluginSideSection? Section);
 
-/// <summary>
-/// A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
-/// wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
-/// that builds it.
-/// </summary>
+// A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
+// wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
+// that builds it.
 public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView);
 
 /// <summary>

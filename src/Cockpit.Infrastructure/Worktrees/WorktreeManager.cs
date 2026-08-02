@@ -8,7 +8,6 @@ using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
-// <inheritdoc cref="IWorktreeManager" />
 internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 {
     // Cap on the readable branch fragment in a folder name, so a long branch cannot push a Windows worktree path past its limit.

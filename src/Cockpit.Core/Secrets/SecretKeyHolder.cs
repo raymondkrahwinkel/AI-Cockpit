@@ -28,10 +28,9 @@ public interface ISecretKeyHolder
     void NoteUnprotectedSecretsWritten();
 }
 
-/// <inheritdoc cref="ISecretKeyHolder"/>
 public sealed class SecretKeyHolder : ISecretKeyHolder
 {
-    /// <summary>The process-wide holder. See the interface docs for why this is not purely a container concern.</summary>
+    // The process-wide holder. See the interface docs for why this is not purely a container concern.
     public static SecretKeyHolder Shared { get; } = new();
 
     private readonly HashSet<string> _declared = new(StringComparer.OrdinalIgnoreCase);
@@ -42,22 +41,18 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
 
     public SecretFields Fields => _fields;
 
-    /// <inheritdoc />
     public event EventHandler? UnprotectedSecretsWritten;
 
-    /// <inheritdoc />
     public void NoteUnprotectedSecretsWritten() => UnprotectedSecretsWritten?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>The app is unlocked: from here on, the settings are read and written through <paramref name="protector"/>.</summary>
+    // The app is unlocked: from here on, the settings are read and written through `protector`.
     public void Unlock(ISecretProtector protector) => Protector = protector;
 
-    /// <summary>Encryption is off — the settings are read and written in the clear.</summary>
+    // Encryption is off — the settings are read and written in the clear.
     public void Lock() => Protector = null;
 
-    /// <summary>
-    /// Adds the secret keys a plugin declared (<c>plugin.json</c>), so its own fields are protected too. Additive:
-    /// each plugin declares its own, and the second one to load must not erase the first one's.
-    /// </summary>
+    // Adds the secret keys a plugin declared (`plugin.json`), so its own fields are protected too. Additive:
+    // each plugin declares its own, and the second one to load must not erase the first one's.
     public void Declare(IEnumerable<string> keys)
     {
         _declared.UnionWith(keys);

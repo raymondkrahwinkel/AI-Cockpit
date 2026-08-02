@@ -192,7 +192,6 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MoveInstalledPluginUpAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, -1);
 
-    // <inheritdoc cref="MoveInstalledPluginUpAsync"/>
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private Task MoveInstalledPluginDownAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, +1);
 

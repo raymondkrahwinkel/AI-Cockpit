@@ -218,7 +218,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // already reads — the pop-out's own view of the identical, provider-neutral ledger, not a second one.
     public ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
 
-    // <inheritdoc cref="BackgroundSubAgents"/>
     public ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
 
     // A task kind this build does not recognise — carried rather than dropped, same reasoning as the

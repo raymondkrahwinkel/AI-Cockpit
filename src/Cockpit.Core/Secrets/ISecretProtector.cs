@@ -12,9 +12,7 @@ public interface ISecretProtector
     string Unprotect(string path, string value);
 }
 
-/// <summary>
-/// A value could not be decrypted: the wrong password, or a value that was altered. Deliberately one exception
-/// for both — AES-GCM cannot tell them apart, and pretending otherwise would be a guess dressed as a diagnosis.
-/// </summary>
+// A value could not be decrypted: the wrong password, or a value that was altered. Deliberately one exception
+// for both — AES-GCM cannot tell them apart, and pretending otherwise would be a guess dressed as a diagnosis.
 public sealed class SecretProtectionException(string message, Exception? innerException = null)
     : Exception(message, innerException);

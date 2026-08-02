@@ -25,11 +25,9 @@ internal interface ILocalJobRunner
         CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// The order a local run is decided in: is this machine able, is this job allowed, is the machine free — and only
-/// then act. Each question is answered before the next is asked, so a refusal always names the first thing wrong
-/// rather than whichever check happened to run last.
-/// </summary>
+// The order a local run is decided in: is this machine able, is this job allowed, is the machine free — and only
+// then act. Each question is answered before the next is asked, so a refusal always names the first thing wrong
+// rather than whichever check happened to run last.
 internal sealed class LocalJobRunner(
     ILocalCiRuntime runtime,
     IStreamingCliRunner cli,
@@ -187,7 +185,7 @@ internal sealed class LocalJobRunner(
         }
     }
 
-    /// <summary>The half that is not ready speaks for itself — those sentences are what the detection is for.</summary>
+    // The half that is not ready speaks for itself — those sentences are what the detection is for.
     private static string _WhyTheMachineCannot(LocalCiRuntimeStatus status) =>
         status.Docker.IsReady ? status.Act.Message : status.Docker.Message;
 }

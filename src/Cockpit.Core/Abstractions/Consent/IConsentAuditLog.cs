@@ -19,36 +19,33 @@ public interface IConsentAuditLog
     Task<IReadOnlyList<ConsentAuditEntry>> ReadRecentAsync(int limit = 200, CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the operator decided about a consent request (#AC-47).</summary>
+// What the operator decided about a consent request (#AC-47).
 public enum ConsentAuditAction
 {
-    /// <summary>The operator approved the action.</summary>
+    // The operator approved the action.
     Approved,
 
-    /// <summary>The operator denied it, or it was denied without asking — no consent surface, or the request was cancelled (fail-closed).</summary>
+    // The operator denied it, or it was denied without asking — no consent surface, or the request was cancelled (fail-closed).
     Denied,
 
-    /// <summary>
-    /// Nobody was asked: the operator had switched the assistant's consent bypass on for this source beforehand
-    /// (#AC-575), so the card never appeared. Its own value rather than an <see cref="Approved"/> with a flag —
-    /// the window that answers "what has this thing ever done" has to be able to tell an approval the operator
-    /// gave from one they had clicked away in advance.
-    /// </summary>
-    /// <remarks>
-    /// Added last on purpose. The value is persisted by name, but an older build reading a trail that contains it
-    /// gets a <see cref="System.Text.Json.JsonException"/> on that line — which <c>JsonlAuditLog</c> catches per
-    /// line, so the unknown value costs that one entry and not the rest of the trail.
-    /// </remarks>
+    // Nobody was asked: the operator had switched the assistant's consent bypass on for this source beforehand
+    // (#AC-575), so the card never appeared. Its own value rather than an `Approved` with a flag —
+    // the window that answers "what has this thing ever done" has to be able to tell an approval the operator
+    // gave from one they had clicked away in advance.
+    // Added last on purpose. The value is persisted by name, but an older build reading a trail that contains it
+    // gets a `System.Text.Json.JsonException` on that line — which `JsonlAuditLog` catches per
+    // line, so the unknown value costs that one entry and not the rest of the trail.
     Bypassed,
 }
 
-/// <summary>One line of the consent audit trail (#AC-47).</summary>
-/// <param name="SourceLabel">A short human name for who asked — "Workflows", "Terminal MCP".</param>
-/// <param name="PaneId">The session the request belonged to, if any.</param>
-/// <param name="PluginId">The plugin that asked, if it came through a plugin rather than a host-internal caller.</param>
-/// <param name="Scope">The kind of action, the key a remembered approval is scoped by.</param>
-/// <param name="ActionText">The literal action that was asked about, trimmed: the command, the URL, the pane — enough to recognise later.</param>
-/// <param name="Remembered">True when the operator chose not to be asked again this session for this source and scope.</param>
+// One line of the consent audit trail (#AC-47).
+//
+// `SourceLabel`: A short human name for who asked — "Workflows", "Terminal MCP".
+// `PaneId`: The session the request belonged to, if any.
+// `PluginId`: The plugin that asked, if it came through a plugin rather than a host-internal caller.
+// `Scope`: The kind of action, the key a remembered approval is scoped by.
+// `ActionText`: The literal action that was asked about, trimmed: the command, the URL, the pane — enough to recognise later.
+// `Remembered`: True when the operator chose not to be asked again this session for this source and scope.
 public sealed record ConsentAuditEntry(
     DateTimeOffset At,
     ConsentAuditAction Action,

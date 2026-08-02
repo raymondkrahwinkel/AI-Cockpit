@@ -65,29 +65,29 @@ internal interface IDockerEngine
     Task TagImageAsync(string source, string target, CancellationToken cancellationToken);
 }
 
-/// <summary>What a <c>prune</c> should sweep.</summary>
+// What a `prune` should sweep.
 internal enum PruneTarget
 {
-    /// <summary>Stopped containers.</summary>
+    // Stopped containers.
     Containers,
 
-    /// <summary>Dangling (untagged) images.</summary>
+    // Dangling (untagged) images.
     Images,
 
-    /// <summary>Volumes not used by any container.</summary>
+    // Volumes not used by any container.
     Volumes,
 }
 
-/// <summary>The engine's local image is missing and could not be resolved — distinct from a daemon-unreachable error so the tool can point the operator at <c>pull_image</c> rather than at the endpoint.</summary>
+// The engine's local image is missing and could not be resolved — distinct from a daemon-unreachable error so the tool can point the operator at `pull_image` rather than at the endpoint.
 internal sealed class ImageNotFoundException(string image) : Exception($"The image '{image}' was not found.")
 {
     public string Image { get; } = image;
 }
 
-/// <summary>Engine-agnostic daemon summary.</summary>
+// Engine-agnostic daemon summary.
 internal sealed record DockerDaemonInfo(string ServerVersion, string ApiVersion, string Os, string Arch);
 
-/// <summary>Engine-agnostic container summary — only the fields the MCP surface returns.</summary>
+// Engine-agnostic container summary — only the fields the MCP surface returns.
 internal sealed record DockerContainer(
     string Id,
     string Name,
@@ -96,19 +96,19 @@ internal sealed record DockerContainer(
     string Status,
     IReadOnlyList<DockerPortMapping> Ports);
 
-/// <summary>A single published/exposed port on a container.</summary>
+// A single published/exposed port on a container.
 internal sealed record DockerPortMapping(string Type, int PrivatePort, int PublicPort, string? Ip);
 
-/// <summary>The result of an exec: exit code plus captured output.</summary>
+// The result of an exec: exit code plus captured output.
 internal sealed record ExecResult(long ExitCode, string Stdout, string Stderr);
 
-/// <summary>A container's captured logs, stdout and stderr separated (a tty container puts everything on stdout).</summary>
+// A container's captured logs, stdout and stderr separated (a tty container puts everything on stdout).
 internal sealed record ContainerLogs(string Stdout, string Stderr);
 
-/// <summary>Engine-agnostic image summary — only the fields the MCP surface returns.</summary>
+// Engine-agnostic image summary — only the fields the MCP surface returns.
 internal sealed record DockerImage(string Id, IReadOnlyList<string> Tags, long SizeBytes);
 
-/// <summary>The fields of a container inspect the MCP surface returns — enough to debug why a container is unhealthy or how it is wired.</summary>
+// The fields of a container inspect the MCP surface returns — enough to debug why a container is unhealthy or how it is wired.
 internal sealed record ContainerInspection(
     string Id,
     string Name,
@@ -120,13 +120,13 @@ internal sealed record ContainerInspection(
     IReadOnlyList<ContainerMount> Mounts,
     IReadOnlyList<ContainerNetwork> Networks);
 
-/// <summary>A bind/volume mount on a container.</summary>
+// A bind/volume mount on a container.
 internal sealed record ContainerMount(string Type, string Source, string Destination, bool ReadWrite);
 
-/// <summary>A container's attachment to a network.</summary>
+// A container's attachment to a network.
 internal sealed record ContainerNetwork(string Name, string IpAddress);
 
-/// <summary>A one-shot resource sample for a container.</summary>
+// A one-shot resource sample for a container.
 internal sealed record ContainerStats(
     double CpuPercent,
     long MemoryUsageBytes,
@@ -136,22 +136,20 @@ internal sealed record ContainerStats(
     long BlockReadBytes,
     long BlockWriteBytes);
 
-/// <summary>The processes inside a container: the column titles and one row of values per process.</summary>
+// The processes inside a container: the column titles and one row of values per process.
 internal sealed record ContainerProcesses(IReadOnlyList<string> Titles, IReadOnlyList<IReadOnlyList<string>> Processes);
 
-/// <summary>A local volume.</summary>
+// A local volume.
 internal sealed record DockerVolume(string Name, string Driver, string Mountpoint);
 
-/// <summary>A network.</summary>
+// A network.
 internal sealed record DockerNetwork(string Id, string Name, string Driver, string Scope);
 
-/// <summary>What a prune removed.</summary>
+// What a prune removed.
 internal sealed record PruneResult(long SpaceReclaimedBytes, IReadOnlyList<string> Deleted);
 
-/// <summary>
-/// A structured <c>docker run -d</c> request. The MCP tool reconstructs a verbatim command line from this for the
-/// consent prompt, so dangerous bits (<c>--privileged</c>, a bind like <c>-v /:/host</c>) are shown literally.
-/// </summary>
+// A structured `docker run -d` request. The MCP tool reconstructs a verbatim command line from this for the
+// consent prompt, so dangerous bits (`--privileged`, a bind like `-v /:/host`) are shown literally.
 internal sealed record RunSpec(
     string Image,
     string? Name = null,

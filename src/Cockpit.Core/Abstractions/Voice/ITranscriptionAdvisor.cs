@@ -1,17 +1,15 @@
 namespace Cockpit.Core.Abstractions.Voice;
 
-/// <summary>
-/// What speech-to-text acceleration this machine can actually load right now. CPU is always available (the
-/// runtime is bundled), so only the GPU paths are reported here — and each flag means "a real device answered
-/// the probe", not merely "this OS could in principle publish the runtime". So a machine with no NVIDIA card
-/// reports <see cref="CudaUsable"/> = false, which is how the Options dialog knows never to offer CUDA there.
-/// </summary>
+// What speech-to-text acceleration this machine can actually load right now. CPU is always available (the
+// runtime is bundled), so only the GPU paths are reported here — and each flag means "a real device answered
+// the probe", not merely "this OS could in principle publish the runtime". So a machine with no NVIDIA card
+// reports `CudaUsable` = false, which is how the Options dialog knows never to offer CUDA there.
 public sealed record TranscriptionCapabilities(bool CudaUsable, bool VulkanUsable)
 {
-    /// <summary>True when any GPU backend can load — i.e. a "GPU" option is worth offering at all.</summary>
+    // True when any GPU backend can load — i.e. a "GPU" option is worth offering at all.
     public bool GpuUsable => CudaUsable || VulkanUsable;
 
-    /// <summary>Nothing but the bundled CPU runtime is available on this host.</summary>
+    // Nothing but the bundled CPU runtime is available on this host.
     public static TranscriptionCapabilities CpuOnly { get; } = new(CudaUsable: false, VulkanUsable: false);
 }
 
