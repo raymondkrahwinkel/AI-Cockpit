@@ -953,6 +953,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a profile whose Default kind is TTY no longer shows the "Default view" picker. The reading level only
+  applies to an SDK session, so on a TTY profile it read as a setting that did nothing — the New-session dialog
+  already hid the same row for a TTY session. Flip the profile to SDK and the picker comes back straight away. A
+  provider that has no TTY route at all (Ollama, LM Studio, a plugin that registered none) always starts SDK, so
+  it keeps showing the picker.
 - changed: the actions on a worktree row are icons now instead of labels, leaving the row room for the branch,
   its state and its owner. Each name moved to the front of the button's tooltip. Release comes first, and only
   appears on a row where releasing is actually possible — the other two stay put while disabled, because their

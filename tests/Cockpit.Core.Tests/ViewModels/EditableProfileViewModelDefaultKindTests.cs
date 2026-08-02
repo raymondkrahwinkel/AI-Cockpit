@@ -80,6 +80,41 @@ public class EditableProfileViewModelDefaultKindTests
         Assert.Null(editable.ToProfile().DefaultKind);
     }
 
+    // AC-138/139: "Default view" is an SDK-only setting, so the editor hides it while the profile opens on TTY —
+    // the same rule the New-session dialog applies to its own View row.
+    [Fact]
+    public void IsDefaultKindEffectivelySdk_FollowsTheToggle_ForAProviderWithATtyRoute()
+    {
+        var editable = new EditableProfileViewModel(ClaudeProfile(ProfileSessionKind.Tty), isLoggedIn: true);
+        Assert.False(editable.IsDefaultKindEffectivelySdk);
+
+        editable.SelectDefaultKindSdkCommand.Execute(null);
+        Assert.True(editable.IsDefaultKindEffectivelySdk);
+    }
+
+    [Fact]
+    public void IsDefaultKindEffectivelySdk_RaisesPropertyChanged_SoTheRowAppearsWhenTheToggleFlips()
+    {
+        var editable = new EditableProfileViewModel(ClaudeProfile(ProfileSessionKind.Tty), isLoggedIn: true);
+        var raised = new List<string?>();
+        editable.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        editable.SelectDefaultKindSdkCommand.Execute(null);
+
+        Assert.Contains(nameof(EditableProfileViewModel.IsDefaultKindEffectivelySdk), raised);
+    }
+
+    // An SDK-only provider always starts SDK whatever the (unoffered) toggle reads, so the reading level is the one
+    // setting that certainly applies — hiding it there would hide the only case where it always takes effect.
+    [Fact]
+    public void IsDefaultKindEffectivelySdk_IsTrueForALocalProfile_EvenThoughTheToggleReadsTty()
+    {
+        var editable = new EditableProfileViewModel(LocalProfile(), isLoggedIn: true);
+
+        Assert.Equal(SessionKind.Tty, editable.SelectedDefaultKind);
+        Assert.True(editable.IsDefaultKindEffectivelySdk);
+    }
+
     [Fact]
     public void HasTtyProvider_UsesTheInjectedResolver_ForAPluginProviderThatRegisteredOne()
     {
