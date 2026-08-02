@@ -311,6 +311,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return await open;
         }
 
+        // AC-618: the categories already in use, so the editor can offer them as chips instead of the operator
+        // retyping one. Read fresh rather than cached — this dialog opens far less often than the store changes.
+        var knownCategories = (await _projectStore.LoadAsync()).CategoryOrder;
+
         var viewModel = await ProjectDialogViewModel.CreateAsync(
             project, _profileStore, _mcpServerCatalog, _projectFields.Fields, _memorySources.Sources, _memorySources.Families,
             // AC-523: the "Servers…" flow re-reads the live registry through this rather than replaying the
@@ -318,7 +322,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             refreshMemorySources: () => (_memorySources.Sources, _memorySources.Families),
             // AC-604: a new project has no id yet, so nothing could have claimed it — only an existing project is
             // resolved against the ownership registry.
-            fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null);
+            fieldOwnership: project is not null ? _projectOwnership.Resolve(project.Id) : null,
+            knownCategories: knownCategories);
 
         // Read once the window has closed; Close()'s value is only available from ShowDialog. Cancel and the
         // window's own X both leave this null, which is the same answer.

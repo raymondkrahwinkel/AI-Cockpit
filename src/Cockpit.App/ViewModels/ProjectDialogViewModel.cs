@@ -103,6 +103,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         IReadOnlyList<ProjectMemorySourceFamily>? memorySourceFamilies = null,
         Func<(IReadOnlyList<ProjectMemorySourceRegistration> Sources, IReadOnlyList<ProjectMemorySourceFamily> Families)>? refreshMemorySources = null,
         IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? fieldOwnership = null,
+        IReadOnlyList<string>? knownCategories = null,
         CancellationToken cancellationToken = default)
     {
         var viewModel = new ProjectDialogViewModel(project)
@@ -122,6 +123,14 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // ConfigureMemorySourceAsync's own refresh is harmless, just not live, for a caller that opts out.
             _refreshMemorySources = refreshMemorySources ?? (() => (memorySources ?? [], memorySourceFamilies ?? [])),
         };
+
+        // AC-618: chips for the categories already in use elsewhere (ProjectSettings.CategoryOrder), so picking one
+        // is a click instead of retyping a name that has to match case-insensitively to land in the same group.
+        foreach (var category in knownCategories ?? [])
+        {
+            viewModel.CategoryChips.Add(new ProjectCategoryChipViewModel(
+                category, string.Equals(category, viewModel.Category, StringComparison.OrdinalIgnoreCase)));
+        }
 
         foreach (var registration in pluginFields ?? [])
         {
@@ -325,6 +334,16 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _category = string.Empty;
 
+    /// <summary>
+    /// The categories already in use elsewhere (AC-618), as clickable chips under the field — built once, in
+    /// <see cref="CreateAsync"/>, from <see cref="Cockpit.Core.Projects.ProjectSettings.CategoryOrder"/>. Empty for
+    /// the design-time constructor and for a build with no categories in use yet, in which case
+    /// <see cref="HasCategoryChips"/> is false and the row stays off screen rather than showing an empty bar.
+    /// </summary>
+    public ObservableCollection<ProjectCategoryChipViewModel> CategoryChips { get; } = [];
+
+    public bool HasCategoryChips => CategoryChips.Count > 0;
+
     [ObservableProperty]
     private string _description = string.Empty;
 
@@ -521,6 +540,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [RelayCommand]
     private void ClearLogo() => LogoSource = string.Empty;
 
+    /// <summary>A category chip's click (AC-618): fills the field exactly as if the operator had typed it — no second, chip-only path onto the saved project.</summary>
+    [RelayCommand]
+    private void SelectCategory(string category) => Category = category;
+
     [RelayCommand]
     private void AddInfoField() => AdditionalInfo.Add(new ProjectInfoFieldViewModel());
 
@@ -631,6 +654,15 @@ public partial class ProjectDialogViewModel : ViewModelBase
     private void Cancel() => CloseRequested?.Invoke(null);
 
     partial void OnNameChanged(string value) => SaveCommand.NotifyCanExecuteChanged();
+
+    /// <summary>Keeps each chip's <see cref="ProjectCategoryChipViewModel.IsActive"/> matching the field as the operator types or clicks a chip — case-insensitively, the same comparison <see cref="ProjectSettings.CategoryOrder"/> itself groups by.</summary>
+    partial void OnCategoryChanged(string value)
+    {
+        foreach (var chip in CategoryChips)
+        {
+            chip.IsActive = string.Equals(chip.Name, value, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     /// <summary>Re-running the repo-relative-fix check whenever the folder itself changes (AC-605 criterion 5) — a row already offering "make repo-relative" may no longer once the operator points the project at a folder that no longer contains it, or the reverse.</summary>
     partial void OnSourceDirectoryChanged(string value) => _RefreshResourceDiagnostics();

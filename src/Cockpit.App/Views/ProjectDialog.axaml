@@ -71,6 +71,33 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
         </Style>
+
+        <!-- AC-618: a category already in use, offered as a chip under the field — clicking one fills the field
+             exactly as typing it would (SelectCategoryCommand), so there is only one way a category ends up saved.
+             Quiet by default, the same trio Button.toolChip already uses; the accent marks the one matching what
+             is currently in the field, the same "current mode" convention ScreenshotSelectionWindow's own tool
+             chips use. -->
+        <Style Selector="Button.categoryChip">
+            <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.categoryChip:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Button.categoryChip.active">
+            <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Button.categoryChip.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="TextElement.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
     </Window.Styles>
 
     <!-- Two explicit rows rather than a docked fill: the footer is exactly as tall as it needs to be and the row
@@ -154,13 +181,29 @@
                     </Grid>
 
                     <!-- AC-618: category is what the manager's list groups by ("Privé" before "Werk" — the operator's
-                         own ordering, remembered the first time each name is typed). Free text, no chips yet: the
-                         known-categories list would have to travel through SessionDialogService.ShowProjectDialogAsync,
-                         which is out of scope here — see AC-618's own delivery notes. -->
+                         own ordering, remembered the first time each name is typed). Free text; the chips below are
+                         the categories already in use elsewhere, offered so retyping one is a click instead —
+                         clicking one only ever fills the box (SelectCategoryCommand), there is no second path onto
+                         the saved project and no button that does anything typing itself would not. -->
                     <StackPanel Spacing="2">
                         <TextBlock Classes="FieldLabel" Text="Category"/>
                         <TextBlock Classes="FieldHint" Text="Where this project shows up in the list. Leave it blank to leave it uncategorized."/>
                         <TextBox Text="{Binding Category}" PlaceholderText="Work"/>
+                        <ItemsControl ItemsSource="{Binding CategoryChips}" IsVisible="{Binding HasCategoryChips}" Margin="0,6,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCategoryChipViewModel">
+                                    <Button Classes="categoryChip" Classes.active="{Binding IsActive}"
+                                            Content="{Binding DisplayLabel}"
+                                            Command="{Binding $parent[ItemsControl].((vm:ProjectDialogViewModel)DataContext).SelectCategoryCommand}"
+                                            CommandParameter="{Binding Name}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
 
                     <StackPanel Spacing="2">
