@@ -35,6 +35,11 @@ public sealed class PluginActions(
         return Task.CompletedTask;
     }
 
+    // AC-577, no fast path — deliberately. This writes to the on-screen session (statusline, name), so the
+    // marshalling is the whole job and an inline branch would let a caller off the UI thread mutate a bound
+    // property directly. The consequence is written down rather than discovered: PluginActions must never be
+    // constructed in a process without a dispatcher loop, and a test that claims to cover this line belongs in
+    // Cockpit.App.ViewTests — Cockpit.Core.Tests can no longer name Avalonia.Threading at all.
     public Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) =>
         Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {

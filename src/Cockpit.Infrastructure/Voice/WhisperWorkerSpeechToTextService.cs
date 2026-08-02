@@ -29,6 +29,12 @@ internal sealed class WhisperWorkerSpeechToTextService(
     private const int SampleRateHz = 16_000;
 
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    // Spawning has its own gate rather than borrowing _gate (AC-603). _gate serializes clips and is taken by
+    // TranscribeAsync alone; WarmUpAsync reaches the spawn from the hotkey press without it, so the invariant
+    // "one spawn at a time" has to live with the spawn instead of with one of its two callers.
+    private readonly SemaphoreSlim _spawnGate = new(1, 1);
+
     private readonly object _stateLock = new();
     private Process? _worker;
     private Stream? _stdin;
@@ -125,6 +131,11 @@ internal sealed class WhisperWorkerSpeechToTextService(
     /// </summary>
     public async Task WarmUpAsync(CancellationToken cancellationToken = default)
     {
+        // The press counts as use, or the idle reaper still measures from the last clip: a worker warmed at
+        // 12:06 after a dictation at 12:00 is six minutes "idle" the moment it comes up, and the next tick
+        // kills it — quite possibly between this press and its release.
+        Volatile.Write(ref _lastUsedTicks, DateTime.UtcNow.Ticks);
+
         try
         {
             await _EnsureWorkerAsync(cancellationToken).ConfigureAwait(false);
@@ -137,7 +148,28 @@ internal sealed class WhisperWorkerSpeechToTextService(
 
     /// <summary>Ensures a live worker exists for the coming clip, returning whether this call had to spawn one
     /// (a cold start, AC-535) rather than reuse an already-warm process.</summary>
+    /// <remarks>
+    /// Serialized on <c>_spawnGate</c> because it has two callers that hold nothing in common (AC-603): the clip's
+    /// own path under <c>_gate</c>, and <see cref="WarmUpAsync"/> from the hotkey press under nothing at all. Let
+    /// both past the health check below and the second one kills the process the first is still waiting on and
+    /// starts the cold start over — at the release, which is the exact wait warming up exists to remove. Holding
+    /// the gate across the spawn is the point: a release arriving mid-spawn waits for that worker rather than
+    /// replacing it.
+    /// </remarks>
     private async Task<bool> _EnsureWorkerAsync(CancellationToken cancellationToken)
+    {
+        await _spawnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await _SpawnIfNeededAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _spawnGate.Release();
+        }
+    }
+
+    private async Task<bool> _SpawnIfNeededAsync(CancellationToken cancellationToken)
     {
         if (_worker is { HasExited: false } && _stdin is not null && _ready is { Task.IsCompletedSuccessfully: true })
         {
@@ -357,5 +389,6 @@ internal sealed class WhisperWorkerSpeechToTextService(
 
         _KillWorker();
         _gate.Dispose();
+        _spawnGate.Dispose();
     }
 }

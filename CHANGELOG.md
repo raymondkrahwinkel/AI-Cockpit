@@ -65,7 +65,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
-- fixed: a Ctrl+click on a link in a terminal session opens one browser tab again instead of two. The cockpit
+- fixed: a keyboard shortcut you set to a combination another action already uses now actually fires. Nothing
+  stopped two actions holding the same keys, and the one that ran was decided by where it happened to sit in the
+  list — so the shortcut you had just set did nothing, with no sign anywhere that it had lost. A combination now
+  belongs to one action: assign it somewhere else and the row that held it before gives it up, in front of you.
+- fixed: warming up the speech model on a key press no longer costs you the wait it was meant to save. Two presses
+  in quick succession, or a short sentence whose release arrived while the model was still loading, made the second
+  one throw away the first and start the load again — so a cold start landed exactly where it hurts, after you had
+  stopped speaking. A press also counts as using the transcriber now, so the housekeeping that unloads an idle one
+  cannot reclaim the model you just warmed. The cockpit
   swallowed the click itself but not the release that belongs to it, and the terminal forwards a release to the
   running program whether or not it saw the press — so the agent in the terminal received a stray click over the
   same link and opened it a second time, on top of the tab the cockpit had already opened.

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -19,7 +20,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public void KillIfIdle_CalledTwiceWithNoDictationBetween_LogsAndKillsAtMostOnce()
     {
-        var (service, logger) = _CreateService();
+        var (service, logger, _) = _CreateService();
         _SetWorker(service, new Process());
         _SetLastUsedTicks(service, DateTime.UtcNow.AddMinutes(-10));
 
@@ -33,7 +34,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public void KillIfIdle_NoWorkerLeft_LogsNothing()
     {
-        var (service, logger) = _CreateService();
+        var (service, logger, _) = _CreateService();
         _SetLastUsedTicks(service, DateTime.UtcNow.AddMinutes(-10));
 
         _InvokeKillIfIdle(service);
@@ -44,7 +45,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public void KillIfIdle_ClipInFlight_NeitherKillsNorLogs()
     {
-        var (service, logger) = _CreateService();
+        var (service, logger, _) = _CreateService();
         var worker = new Process();
         _SetWorker(service, worker);
         _SetPending(service, new TaskCompletionSource<string>());
@@ -59,7 +60,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public void KillIfIdle_NotIdleYet_NeitherKillsNorLogs()
     {
-        var (service, logger) = _CreateService();
+        var (service, logger, _) = _CreateService();
         var worker = new Process();
         _SetWorker(service, worker);
         _SetLastUsedTicks(service, DateTime.UtcNow);
@@ -73,7 +74,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public async Task OnWorkerExited_StderrHasLines_FaultsBothWaitersWithTheTailFolded_In()
     {
-        var (service, _) = _CreateService();
+        var (service, _, _) = _CreateService();
         var ready = new TaskCompletionSource();
         var pending = new TaskCompletionSource<string>();
         _Field(service, "_ready").SetValue(service, ready);
@@ -93,7 +94,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public async Task OnWorkerExited_NoStderrCaptured_MessageNamesNoTail()
     {
-        var (service, _) = _CreateService();
+        var (service, _, _) = _CreateService();
         var ready = new TaskCompletionSource();
         _Field(service, "_ready").SetValue(service, ready);
 
@@ -106,7 +107,7 @@ public class WhisperWorkerSpeechToTextServiceTests
     [Fact]
     public void LogTranscribed_SuccessfulClip_LogsOneInformationLine_NeverAWarning()
     {
-        var (service, logger) = _CreateService();
+        var (service, logger, _) = _CreateService();
 
         _Method(service, "_LogTranscribed").Invoke(service, [3.2, 450L, 380L, true, 17]);
 
@@ -122,12 +123,60 @@ public class WhisperWorkerSpeechToTextServiceTests
         Assert.Contains("380", message, StringComparison.Ordinal);
     }
 
-    private static (WhisperWorkerSpeechToTextService Service, CapturingLogger<WhisperWorkerSpeechToTextService> Logger) _CreateService()
+    [Fact]
+    public async Task WarmUp_CountsAsUse_SoTheReaperCannotKillWhatThePressJustWarmed()
+    {
+        // The press arrives minutes after the last clip, so the idle clock is already past its deadline. Warming
+        // without touching it hands the next tick a worker that came up seconds ago and reads as long idle —
+        // killed somewhere between this press and its release, which is the one moment it is needed.
+        var (service, _, _) = _CreateService();
+        _SetLastUsedTicks(service, DateTime.UtcNow.AddMinutes(-10));
+
+        await service.WarmUpAsync();
+
+        var worker = new Process();
+        _SetWorker(service, worker);
+        _InvokeKillIfIdle(service);
+
+        Assert.Same(worker, _GetWorker(service));
+    }
+
+    [Fact]
+    public async Task Spawning_IsHeldOnItsOwnGate_SoASecondPressCannotKillTheWorkerTheFirstIsWaitingOn()
+    {
+        // AC-603's race in one assertion: the spawn holds _spawnGate for its whole duration, so the release path
+        // (which holds only _gate) queues behind it instead of walking past the health check, killing the loading
+        // worker and starting the cold start again.
+        var (service, _, settingsStore) = _CreateService();
+        var insideLoad = new TaskCompletionSource();
+        var finishLoad = new TaskCompletionSource<VoiceSettings>();
+        settingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            insideLoad.TrySetResult();
+            return finishLoad.Task;
+        });
+
+        var warming = service.WarmUpAsync();
+        // A failure form, not a wait: the spawn either reaches the settings load or the test says so (AC-590).
+        await insideLoad.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(0, _SpawnGate(service).CurrentCount);
+
+        finishLoad.TrySetException(new InvalidOperationException("no worker is spawned in a test"));
+        await warming;
+
+        Assert.Equal(1, _SpawnGate(service).CurrentCount);
+    }
+
+    private static (WhisperWorkerSpeechToTextService Service, CapturingLogger<WhisperWorkerSpeechToTextService> Logger, IVoiceSettingsStore SettingsStore) _CreateService()
     {
         var settingsStore = Substitute.For<IVoiceSettingsStore>();
         var logger = new CapturingLogger<WhisperWorkerSpeechToTextService>();
-        return (new WhisperWorkerSpeechToTextService(settingsStore, logger), logger);
+        return (new WhisperWorkerSpeechToTextService(settingsStore, logger), logger, settingsStore);
     }
+
+    private static SemaphoreSlim _SpawnGate(WhisperWorkerSpeechToTextService service) =>
+        (SemaphoreSlim)_Field(service, "_spawnGate").GetValue(service)!;
 
     private static void _InvokeKillIfIdle(WhisperWorkerSpeechToTextService service) =>
         _Method(service, "_KillIfIdle").Invoke(service, null);
