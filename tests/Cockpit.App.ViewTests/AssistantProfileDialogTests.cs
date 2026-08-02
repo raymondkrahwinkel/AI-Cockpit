@@ -128,7 +128,6 @@ public class AssistantProfileDialogTests
         {
             Purpose = "the voice assistant",
             Delegation = new DelegationPolicy(AllowedAsTarget: true, MaxConcurrent: 3, Purpose: "bulk work"),
-            MemoryLimitMb = 4096,
         };
         stored = stored with { DefaultWorkingDirectory = "/srv/work" };
 
