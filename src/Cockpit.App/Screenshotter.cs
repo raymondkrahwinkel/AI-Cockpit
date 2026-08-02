@@ -61,6 +61,12 @@ internal static class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
     {
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
+        // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
+        // can still read without a browser.
+        ["glossary"] = (_, _) => new GlossaryDialog(),
+        // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
+        // rendering can — after the window is up, via the Hovers table below.
+        ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
@@ -203,6 +209,17 @@ internal static class Screenshotter
             DataContext = new ViewModels.ConfirmationDialogViewModel(
                 "Remove store", "Remove 'AI-Cockpit Plugins'? The plugins you installed from it stay where they are.", "Remove"),
         },
+        // AC-512 criterion 4: the honest notice a browser that would not even start gets, instead of the Guide
+        // menu item quietly opening nothing — reuses the same confirmation surface with an OK-only label.
+        ["guide-unreachable"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ViewModels.ConfirmationDialogViewModel(
+                "Can't open your browser",
+                $"{Core.Configuration.CockpitBrand.ProductName} could not open your browser to show the guide. "
+                + $"It lives online at {Core.Configuration.CockpitBrand.GuideUrl} — visit it once you have a "
+                + "browser and a connection.",
+                "OK"),
+        },
         // Asked for while changing a password, which is the variant with the extra field: the same dialog with
         // one fewer box paints nothing this one does not.
         ["password"] = (_, _) => new PasswordDialog
@@ -337,6 +354,7 @@ internal static class Screenshotter
     {
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["session-mcp-hover"] = window => _OpenTooltip(window, "ActivityColumn"),
         ["session-mcp-hover-statusline"] = window => _OpenTooltip(window, "ActivityColumn"),

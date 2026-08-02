@@ -110,6 +110,9 @@ public interface ISessionDialogService
     /// <summary>Shows the About dialog (#46) over the main window: app name, version, description and links.</summary>
     Task ShowAboutDialogAsync();
 
+    /// <summary>Shows the in-app glossary (AC-512) over the main window: the five primitives, explained without a browser.</summary>
+    Task ShowGlossaryDialogAsync();
+
     /// <summary>Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.</summary>
     Task ShowDelegatedTasksDialogAsync();
 

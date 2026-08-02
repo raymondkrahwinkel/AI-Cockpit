@@ -103,6 +103,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IClaimCollisionMonitor? _claimCollisionMonitor;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
+    // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
+    private readonly IFirstRunWizard? _firstRunWizard;
+    // AC-512: the seam behind OpenGuideCommand — defaults to the real ExternalLink.TryOpen (also covering the
+    // parameterless design-time constructor below), replaceable in tests (see ExternalLinkTests' own remark on
+    // why a real URL cannot be exercised there directly).
+    private readonly Func<string, bool> _tryOpenExternalLink = ExternalLink.TryOpen;
     private readonly SessionStateRecorder? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
@@ -2427,7 +2433,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-575: only so the assistant's consent-bypass list in Options can be filled from sources the host has
         // actually stamped, rather than from free text the operator types in. Read-only here — nothing on this
         // view model writes the trail.
-        IConsentAuditLog? consentAuditLog = null)
+        IConsentAuditLog? consentAuditLog = null,
+        // AC-512: the first-run wizard's own strand injects the real implementation; null here (design-time/tests,
+        // or a host build that has not registered one yet) leaves "Run setup again" a no-op rather than a crash.
+        IFirstRunWizard? firstRunWizard = null,
+        Func<string, bool>? tryOpenExternalLink = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2542,6 +2552,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ttySessionFactory = ttySessionFactory;
         _sessionProfileStore = sessionProfileStore;
         _ttyProviderResolver = ttyProviderResolver;
+        _firstRunWizard = firstRunWizard;
+        if (tryOpenExternalLink is not null)
+        {
+            _tryOpenExternalLink = tryOpenExternalLink;
+        }
+
         _dialogService = dialogService;
         _captureService = captureService;
         _playbackService = playbackService;
@@ -5084,6 +5100,45 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _dialogService.ShowAboutDialogAsync();
     }
+
+    /// <summary>
+    /// Opens the guide in the operator's browser (AC-512) — the guide's content lives on the website, not in the
+    /// app. Honest about the one thing this cannot know: whether that browser can actually reach it. When it
+    /// cannot even start (no default browser, a locked-down machine), says so rather than opening nothing.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenGuideAsync()
+    {
+        if (_tryOpenExternalLink(CockpitBrand.GuideUrl) || _dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowConfirmationDialogAsync(
+            "Can't open your browser",
+            $"{CockpitBrand.ProductName} could not open your browser to show the guide. It lives online at "
+            + $"{CockpitBrand.GuideUrl} — visit it once you have a browser and a connection.",
+            "OK");
+    }
+
+    /// <summary>
+    /// Shows the in-app glossary (AC-512): the five primitives, explained without a browser — the guide's own
+    /// depth stays on the website, this is what still answers something when that site is unreachable (AC-510).
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowGlossaryAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowGlossaryDialogAsync();
+    }
+
+    /// <summary>Reopens the first-run wizard (AC-512) from the Help menu — a no-op without one wired up.</summary>
+    [RelayCommand]
+    private Task RunSetupAgainAsync() => _firstRunWizard?.ShowAsync() ?? Task.CompletedTask;
 
     /// <summary>
     /// Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as

@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.GlossaryDialog"
+        Title="Glossary"
+        Width="440" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitChromeBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineSoftBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Close" Classes="Accent" IsDefault="True" Click="OnClose"/>
+            </StackPanel>
+        </Border>
+
+        <!-- AC-512: the five primitives, named the way the rest of the app already names them (the sidebar's
+             own "New session", "Profiles" and "MCP servers" rows) rather than a friendlier layer over them —
+             that layer was tried before and cut. The full guide (Help → Guide) covers the rest of the depth. -->
+        <StackPanel Margin="20,18" Spacing="14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Session" FontWeight="SemiBold" FontSize="12.5"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Text="One running AI conversation, in its own pane — backed by the SDK or a plain TTY."/>
+            </StackPanel>
+            <StackPanel Spacing="2">
+                <TextBlock Text="Project" FontWeight="SemiBold" FontSize="12.5"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Text="A folder the cockpit remembers, with its own profile, resources and quick-start defaults."/>
+            </StackPanel>
+            <StackPanel Spacing="2">
+                <TextBlock Text="Profile" FontWeight="SemiBold" FontSize="12.5"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Text="A saved provider and its configuration — model, permissions, credentials — a session runs under."/>
+            </StackPanel>
+            <StackPanel Spacing="2">
+                <TextBlock Text="Plugin" FontWeight="SemiBold" FontSize="12.5"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Text="An installable extension: a provider, a dialog, an MCP server, or a workflow template."/>
+            </StackPanel>
+            <StackPanel Spacing="2">
+                <TextBlock Text="MCP server" FontWeight="SemiBold" FontSize="12.5"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           Text="A Model Context Protocol server a session's provider can call as a tool."/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

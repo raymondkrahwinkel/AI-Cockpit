@@ -16,7 +16,10 @@ public static class CockpitBrand
     /// <summary>The product name as it appears to the operator.</summary>
     public const string ProductName = "Wispslate Cockpit";
 
-    /// <summary>Where the guide lives. Placeholder until AC-167 picks the canonical domain.</summary>
+    /// <summary>
+    /// Where the guide lives; placeholder until AC-167 picks the canonical domain. AC-512: the site describes the
+    /// newest release, not the host reading it — accepted rather than versioned, so an older host may read ahead of itself.
+    /// </summary>
     public const string GuideUrl = "https://wispslate.app/guide";
 
     /// <summary>The Depot the first-run wizard offers to sign in to. Placeholder until AC-167.</summary>
