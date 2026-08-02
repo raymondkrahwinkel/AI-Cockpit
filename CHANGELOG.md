@@ -36,6 +36,25 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   started one, but not afterwards — so "call that one Luna" meant leaving the conversation and doing it yourself in
   the sidebar. Both renames ask for your approval first, the same as starting or stopping a session does, and a name
   the assistant sets counts as one you chose: nothing later relabels it behind your back.
+- added: the voice assistant remembers things you tell it. Say "remember that I'm called Raymond" or "prod means the
+  release desk" and it writes that down, so the next conversation starts knowing it instead of starting from nothing.
+  What it kept lives in a plain text file next to your settings — open it any time to read it, correct it, or throw
+  a line out.
+- added: the assistant hands itself over and starts again before its conversation gets too long to send. It runs all
+  day and never used to let go of anything, so the exchange grew until the model would eventually refuse a question
+  mid-sentence. It now keeps a short note of where things stand and, once its context is nearly full, picks that note
+  up in a fresh conversation. You keep talking; it stops carrying the whole morning around.
+- added: you hear that the assistant is doing something. It used to go quiet the moment it went looking — nothing
+  between your question and the answer, which is indistinguishable from not having been heard. Now it says it is
+  going to have a look, and on a long one it says it is still at it, less often as the wait goes on.
+
+### Changed
+
+- changed: the Assistant Profile's instruction box adds to the assistant's own instructions rather than replacing
+  them. Typing "your name is Zyra" used to silently switch off everything else it knows about talking to you — that
+  it answers in your language, that it is being listened to rather than read, that it never treats a spoken "yes" as
+  permission. If you do want to write its instructions from scratch, there is now an advanced tick-box for it that
+  spells out what goes.
 
 ### Fixed
 
