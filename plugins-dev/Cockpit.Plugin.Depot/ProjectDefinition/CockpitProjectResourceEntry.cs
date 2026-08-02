@@ -25,7 +25,16 @@ public sealed class CockpitProjectResourceEntry
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
-    /// <summary>Builds a row for writing, or null when <paramref name="reference"/> is blank or not portable — a caller that needs to know *why* a row dropped (to tell the operator) wants <see cref="CockpitProjectResourceFilter.Apply"/> instead.</summary>
+    /// <summary>
+    /// Builds a row for writing, or null when <paramref name="reference"/> is blank, not portable, or (AC-612)
+    /// recognised by <see cref="ProjectResourceSecretPathHeuristic"/> as likely credential material — Raymond's
+    /// decision was that such a row never reaches a shared definition at all, the same treatment as an absolute
+    /// path, checked here regardless of what shape the reference otherwise classifies as (an anchor-relative
+    /// <c>~/.ssh/id_rsa</c> is portable by shape alone, which is exactly why this check cannot be folded into the
+    /// portability gate above — it has to run whether or not that gate would have let the row through). A caller
+    /// that needs to know *why* a row dropped (to tell the operator) wants <see cref="CockpitProjectResourceFilter.Apply"/>
+    /// instead.
+    /// </summary>
     public static CockpitProjectResourceEntry? Create(string role, string reference, string? label = null)
     {
         // A blank reference names nothing — not a path shape Classify should judge, a row with nothing to point at.
@@ -35,7 +44,7 @@ public sealed class CockpitProjectResourceEntry
         }
 
         var portability = ProjectResourcePortabilityClassifier.Classify(reference);
-        if (!ProjectResourcePortabilityClassifier.IsPortable(portability))
+        if (!ProjectResourcePortabilityClassifier.IsPortable(portability) || ProjectResourceSecretPathHeuristic.IsLikelySecretPath(reference))
         {
             return null;
         }

@@ -327,7 +327,11 @@
                                                  are about what a starting session is given for this row, and off by default (unlike the one
                                                  beside it): opening a file is a bigger step than mentioning it exists, so nothing is read until
                                                  the operator says so. See ProjectResource.SendsContent's own doc comment for the reasoning. -->
+                                            <!-- AC-612: disabled (never just hidden) once IsSecretPath recognises the typed reference — a
+                                                 disabled-but-still-visible control is what tells the operator this row is why the box will
+                                                 not tick, rather than the box quietly doing nothing were it left enabled. -->
                                             <CheckBox Grid.Column="3" IsChecked="{Binding SendsContent}" IsVisible="{Binding ShowsSendsContentOption}"
+                                                      IsEnabled="{Binding !IsSecretPath}"
                                                       Content="Send along" FontSize="11" VerticalAlignment="Center"
                                                       ToolTip.Tip="Ticked, this file's contents are read and sent to the session at start — never for anything sensitive. Unticked (the default), only where it lives is sent. Either way it is a snapshot from when the session starts; an edit made afterward is not seen by a session already running."/>
                                             <Button Grid.Column="4" Classes="Subtle" VerticalAlignment="Center"
@@ -422,6 +426,14 @@
                                         <TextBlock Classes="FieldHint" Margin="0" IsVisible="{Binding IsBroken}"
                                                    Foreground="{StaticResource CockpitStatusErrorBrush}"
                                                    Text="This reference could not be found."/>
+                                        <!-- AC-612: a path recognised as likely credential material (see ProjectResourceSecretPathHeuristic's
+                                             own remarks — a heuristic, not a security boundary) — names only the path's own shape, never a
+                                             character of the file's content (Iron Law #8). Same FieldHint/error-red language as the "could
+                                             not be found" hint above, since this is exactly as severe a thing to tell the operator. -->
+                                        <TextBlock Classes="FieldHint" Margin="0"
+                                                   IsVisible="{Binding SecretPathWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{StaticResource CockpitStatusErrorBrush}"
+                                                   Text="{Binding SecretPathWarning}"/>
                                         <!-- AC-605 criterion 7: every row's scope (repo / your machines / everyone with the instance / only
                                              this machine), shown as a full sentence rather than a terse ◆/● badge — see
                                              ProjectResourceRowViewModel.ScopeLabel's own remarks on why this must not read like the

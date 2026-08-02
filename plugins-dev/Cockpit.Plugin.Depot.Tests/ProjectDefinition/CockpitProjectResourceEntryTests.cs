@@ -64,4 +64,30 @@ public class CockpitProjectResourceEntryTests
     {
         Assert.Null(CockpitProjectResourceEntry.Create("Memory", reference));
     }
+
+    // --- AC-612: a reference ProjectResourceSecretPathHeuristic recognises is refused outright, whatever shape it is otherwise ---
+
+    [Fact]
+    public void Create_AnAnchorRelativeSecretPathReference_ReturnsNullEvenThoughItIsOtherwisePortable()
+    {
+        // Portable by shape alone (anchor-relative, AC-605) — the secret check has to run independently of the
+        // portability gate, since that gate alone would let this row through.
+        Assert.Null(CockpitProjectResourceEntry.Create("Instructions", "~/.ssh/id_rsa"));
+    }
+
+    [Fact]
+    public void Create_AnAbsoluteSecretPathReference_ReturnsNull()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        Assert.Null(CockpitProjectResourceEntry.Create("Reference", Path.Combine(home, ".aws", "credentials")));
+    }
+
+    [Fact]
+    public void Create_APublicKeyReference_IsNotTreatedAsSecret()
+    {
+        var entry = CockpitProjectResourceEntry.Create("Instructions", "~/.ssh/id_rsa.pub");
+
+        Assert.NotNull(entry);
+        Assert.Equal("anchor-relative", entry.Portability);
+    }
 }

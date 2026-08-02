@@ -149,6 +149,11 @@ internal static class Screenshotter
         // _ProjectEditorWithInstructionsSendAlong's own remarks on why combining the two cost the resources scene
         // a hint it had already proved visible.
         ["project-editor-instructions-send-along"] = (_, _) => _ProjectEditorWithInstructionsSendAlong(),
+        // AC-612: a row pointing at a likely secrets location — its own scene rather than a row folded into
+        // project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold"
+        // reasoning both of those scenes' own remarks already give, and see _ProjectEditorWithSecretPath's own
+        // remarks on why a single row is enough here.
+        ["project-editor-secret-path"] = (_, _) => _ProjectEditorWithSecretPath(),
         ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
@@ -945,6 +950,36 @@ internal static class Screenshotter
         // every section above the resource list plus two full rows — a single row's own checkbox and hint fit with
         // room to spare. A smaller value here was tried first and clipped this scene's own hint text mid-sentence,
         // exactly what this scene exists to rule out.
+        return new ProjectDialog { DataContext = viewModel, Height = 1500 };
+    }
+
+    /// <summary>
+    /// A single Instructions row pointing at a likely secrets location (AC-612): its own scene rather than a third
+    /// row folded into <see cref="_ProjectEditorWithResources"/> or a fifth into <see cref="_ProjectEditorWithResourceScopes"/>
+    /// — both already sit at their own fold ceiling per their own remarks. One row is enough to show all three of
+    /// this ticket's effects at once: the red warning sentence itself (melden), the "Send along" checkbox visibly
+    /// present but disabled rather than merely unticked (inhoud — see <see cref="ProjectResourceRowViewModel.IsSecretPath"/>'s
+    /// own remarks on why this needs no staging: it is a pure synchronous property, unlike <c>Scope</c>/<c>IsBroken</c>
+    /// above, which the other two resource scenes stage directly because they come from an async pass this scene has
+    /// no need to race). The third effect (delen — excluded from <c>.cockpit/project.json</c>) has nothing to render
+    /// in this dialog at all; <see cref="ProjectResourceRowViewModel.SecretPathWarning"/>'s own sentence is the only
+    /// place it is said, and it renders here as the second half of that sentence.
+    /// <para>
+    /// Role Instructions, not Reference or Memory: this is the one role whose warning sentence names "content" at
+    /// all (see <see cref="ProjectResourceRowViewModel.SecretPathWarning"/>'s own remarks) — the more specific of the
+    /// two sentences this ticket added, so the one worth a render over the shorter "will not be shared" sentence a
+    /// Reference row would show instead. <c>~/.ssh/id_rsa</c>: the one path from the ticket's own minimum list an
+    /// operator is most likely to actually type, not an invented edge case.
+    /// </para>
+    /// </summary>
+    private static ProjectDialog _ProjectEditorWithSecretPath()
+    {
+        var viewModel = new ViewModels.ProjectDialogViewModel { SourceDirectory = "/home/raymond/Cockpit" };
+        viewModel.ResourceRows.Add(new ViewModels.ProjectResourceRowViewModel(
+            viewModel.MemorySourceChoices, ProjectResourceRole.Instructions, "~/.ssh/id_rsa", "SSH key"));
+
+        // 1500 rather than a value nearer this scene's own resting height — the same reasoning
+        // _ProjectEditorWithInstructionsSendAlong already gives for its own single row.
         return new ProjectDialog { DataContext = viewModel, Height = 1500 };
     }
 
